@@ -71,3 +71,19 @@ endfunction()
 
 add_solero_fomod_test(test_FomodCondition)
 add_solero_fomod_test(test_FomodEngine)
+
+function(add_solero_tools_test name)
+  add_executable(${name} ${name}.cpp
+    ../src/tools/ToolStore.cpp
+    ../src/install/DependencyChecker.cpp
+    ../src/core/AppConfig.cpp
+    ../src/core/ModList.cpp ../src/core/PluginList.cpp
+    ../src/core/Profile.cpp ../src/core/ProfileManager.cpp ../src/ai/AITransaction.cpp
+  )
+  target_include_directories(${name} PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+  target_link_libraries(${name} PRIVATE Qt6::Core Qt6::Test)
+  add_test(NAME ${name} COMMAND ${name})
+endfunction()
+
+add_solero_tools_test(test_ToolStore)
+add_solero_tools_test(test_DependencyChecker)

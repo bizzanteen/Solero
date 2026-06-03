@@ -66,6 +66,9 @@ set(SOLERO_SOURCES
   src/fomod/FomodCondition.cpp
   src/fomod/FomodEngine.cpp
   src/ui/FomodWizard.cpp
+  src/tools/ToolStore.cpp
+  src/tools/ToolRunner.cpp
+  src/install/DependencyChecker.cpp
   resources/resources.qrc
 )
 

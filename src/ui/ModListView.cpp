@@ -1,6 +1,8 @@
 #include "ModListView.h"
 #include "ModListModel.h"
 #include "SeparatorDialog.h"
+#include "install/DependencyChecker.h"
+#include "core/AppConfig.h"
 #include <QMenu>
 #include <QContextMenuEvent>
 #include <QHeaderView>
@@ -54,6 +56,11 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
 
 void ModListView::setProfile(Profile* profile) {
     m_model->setProfile(profile);
+    if (profile) {
+        auto warns = DependencyChecker::check(profile->modList(),
+                        AppConfig::instance().stagingDir());
+        m_model->setDependencyWarnings(warns);
+    }
 }
 
 void ModListView::mouseDoubleClickEvent(QMouseEvent* event) {

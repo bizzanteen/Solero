@@ -1,5 +1,7 @@
 #pragma once
 #include <QAbstractItemModel>
+#include <QHash>
+#include <QStringList>
 #include "core/Profile.h"
 
 namespace solero {
@@ -30,10 +32,12 @@ public:
     const ModEntry* entryAt(int visibleRow) const;
     void toggleCollapse(int visibleRow);
     void rebuild();  // call after any structural change
+    void setDependencyWarnings(const QHash<QString,QStringList>& w);
 
 private:
     Profile* m_profile = nullptr;
     QList<int> m_visibleRows; // raw indices into ModList, -1 = Overwrite
+    QHash<QString,QStringList> m_depWarnings;
 
     void rebuildVisibleRows();
 };

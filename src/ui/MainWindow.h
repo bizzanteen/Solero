@@ -7,6 +7,9 @@
 #include "deploy/DeployEngine.h"
 #include "deploy/DeployMode.h"
 #include "deploy/ConflictIndex.h"
+#include "tools/ToolStore.h"
+#include "tools/ToolRunner.h"
+#include "ui/ExecutableDialog.h"
 
 class QSplitter;
 class QComboBox;
@@ -49,6 +52,8 @@ private:
     void onZoomIn();
     void onZoomOut();
     void onZoomReset();
+    void rebuildToolsMenu();
+    void onAddTool();
 
     solero::ProfileManager* m_profileMgr;
     solero::AITransactionLog* m_txLog;
@@ -65,6 +70,8 @@ private:
     solero::BethiniWindow*  m_bethiniWindow = nullptr;
     QTabWidget*             m_centralTabs = nullptr;
     QLabel* m_aiChangesLabel = nullptr;
+    solero::ToolStore* m_toolStore = nullptr;
+    QToolButton* m_toolsBtn = nullptr;
 
     QString profilesRoot() const;
     QString txLogPath() const;

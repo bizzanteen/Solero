@@ -22,6 +22,12 @@ void ModListModel::rebuild() {
     endResetModel();
 }
 
+void ModListModel::setDependencyWarnings(const QHash<QString,QStringList>& w) {
+    m_depWarnings = w;
+    if (rowCount() > 0)
+        emit dataChanged(index(0,0), index(rowCount()-1, ColCount-1));
+}
+
 void ModListModel::rebuildVisibleRows() {
     m_visibleRows.clear();
     if (!m_profile) return;
@@ -117,10 +123,17 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
                 }
                 return entry.name;
             case ColVersion: return isSep ? QVariant() : entry.version;
-            case ColFlags:   return entry.hasFomodChoices ? "FOMOD" : "";
+            case ColFlags: {
+                if (isSep) return QString();
+                QString flags = entry.hasFomodChoices ? "FOMOD" : "";
+                if (m_depWarnings.contains(entry.id)) flags = "\xe2\x9a\xa0 " + flags; // ⚠
+                return flags;
+            }
             default: return {};
         }
     }
+    if (role == Qt::ToolTipRole && !isSep && m_depWarnings.contains(entry.id))
+        return m_depWarnings.value(entry.id).join("\n");
     if (role == Qt::CheckStateRole && idx.column() == ColEnabled && !isSep)
         return entry.enabled ? Qt::Checked : Qt::Unchecked;
     if (role == Qt::FontRole && isSep) {

@@ -33,6 +33,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QFileDialog>
+#include <QUuid>
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("Solero");
@@ -52,6 +53,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     QString root = profilesRoot();
     m_profileMgr = new solero::ProfileManager(root);
     m_txLog = new solero::AITransactionLog(txLogPath());
+    m_toolStore = new solero::ToolStore(solero::ToolStore::defaultPath());
 
     if (m_profileMgr->profileNames().isEmpty())
         m_profileMgr->createProfile("Default");
@@ -128,6 +130,13 @@ void MainWindow::setupToolbar() {
 
     // BethINI editor (opens as a tab)
     tb->addAction("BethINI", this, &MainWindow::onOpenBethini);
+
+    auto* toolsBtn = new QToolButton(tb);
+    toolsBtn->setText("Tools \xe2\x96\xbe");
+    toolsBtn->setPopupMode(QToolButton::InstantPopup);
+    m_toolsBtn = toolsBtn;
+    tb->addWidget(toolsBtn);
+    rebuildToolsMenu();
 
     // Game settings
     tb->addAction("Game Settings...", this, [this]{
@@ -408,3 +417,37 @@ void MainWindow::keyPressEvent(QKeyEvent* event) {
 void MainWindow::onZoomIn()    { static_cast<Application*>(qApp)->setZoomFactor(static_cast<Application*>(qApp)->zoomFactor() + 0.1); }
 void MainWindow::onZoomOut()   { static_cast<Application*>(qApp)->setZoomFactor(static_cast<Application*>(qApp)->zoomFactor() - 0.1); }
 void MainWindow::onZoomReset() { static_cast<Application*>(qApp)->setZoomFactor(1.0); }
+
+void MainWindow::rebuildToolsMenu() {
+    auto* menu = new QMenu(m_toolsBtn);
+    for (const auto& t : m_toolStore->tools()) {
+        QString id = t.id;
+        menu->addAction(t.name, this, [this, id]{
+            const auto& tools = m_toolStore->tools();
+            for (const auto& e : tools) if (e.id == id) {
+                statusBar()->showMessage("Running " + e.name + "...");
+                qApp->processEvents();
+                auto res = solero::ToolRunner::run(e,
+                    solero::AppConfig::instance().gameDir(),
+                    solero::AppConfig::instance().stagingDir());
+                if (!res.launched) QMessageBox::warning(this, "Tool", res.error);
+                else statusBar()->showMessage(e.name + " finished.");
+                if (auto* p = m_profileMgr->activeProfile()) m_modListView->setProfile(p);
+                break;
+            }
+        });
+    }
+    menu->addSeparator();
+    menu->addAction("Add Tool...", this, &MainWindow::onAddTool);
+    m_toolsBtn->setMenu(menu);
+}
+
+void MainWindow::onAddTool() {
+    solero::ExecutableDialog dlg({}, this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    solero::Executable e = dlg.result();
+    if (e.id.isEmpty()) e.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m_toolStore->add(e);
+    m_toolStore->save();
+    rebuildToolsMenu();
+}

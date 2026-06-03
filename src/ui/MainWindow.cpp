@@ -57,6 +57,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     statusBar()->showMessage("Ready");
 
     switchProfile(m_profileMgr->profileNames().first());
+    refreshDeployState(); // reflect any existing deployment from a previous run
 }
 
 MainWindow::~MainWindow() {
@@ -253,6 +254,11 @@ void MainWindow::onDeployToggle() {
         statusBar()->showMessage("Undeployed.");
     }
 
+    updateDeployButton();
+}
+
+void MainWindow::updateDeployButton() {
+    if (!m_deployAction) return;
     if (m_deployed) {
         m_deployAction->setText("\xe2\x9c\x93 Deployed");
         m_deployAction->setToolTip("Mods are deployed - click to undeploy");
@@ -260,6 +266,18 @@ void MainWindow::onDeployToggle() {
         m_deployAction->setText("\xe2\x9c\x97 Not Deployed");
         m_deployAction->setToolTip("Click to deploy mods to game directory");
     }
+}
+
+void MainWindow::refreshDeployState() {
+    // A deployment persists on disk via the deploy record in the game dir.
+    // Detect it on startup so the toggle reflects reality across relaunches.
+    m_deployed = false;
+    if (solero::AppConfig::instance().isConfigured()) {
+        QString rec = solero::DeployEngine::recordPath(
+            solero::AppConfig::instance().gameDir());
+        m_deployed = QFile::exists(rec);
+    }
+    updateDeployButton();
 }
 
 void MainWindow::onNewProfile() {

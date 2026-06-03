@@ -40,6 +40,8 @@ private:
     void switchProfile(const QString& name);
     void refreshProfileCombo();
     void onDeployToggle();
+    void refreshDeployState();   // detect an existing deployment on startup
+    void updateDeployButton();   // sync the toggle's text/tooltip to m_deployed
     void onOpenBethini();
     void onNewProfile();
     void onDeleteProfile();

@@ -1,0 +1,22 @@
+#pragma once
+#include <QTreeView>
+#include "core/Profile.h"
+
+namespace solero {
+class ModListModel;
+
+class ModListView : public QTreeView {
+    Q_OBJECT
+public:
+    explicit ModListView(QWidget* parent = nullptr);
+    void setProfile(Profile* profile);
+
+protected:
+    void contextMenuEvent(QContextMenuEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
+
+private:
+    ModListModel* m_model;
+    void onEditSeparator(int visibleRow);
+};
+}

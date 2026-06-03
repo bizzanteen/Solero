@@ -57,8 +57,8 @@ void MainWindow::setupToolbar() {
     tb->setMovable(false);
     tb->setIconSize({24, 24});
 
-    // Logo placeholder (real SVG added in Task 13)
-    QLabel* logo = new QLabel("\xe2\x98\x80", tb);
+    // Logo (emoji fallback, SVG not available)
+    QLabel* logo = new QLabel("☀", tb);
     logo->setStyleSheet("font-size: 20px; padding: 4px;");
     tb->addWidget(logo);
     tb->addSeparator();

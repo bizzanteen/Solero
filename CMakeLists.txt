@@ -59,6 +59,7 @@ set(SOLERO_SOURCES
   src/ui/LootRulesEditor.cpp
   src/loot/LootSorter.cpp
   src/bethini/IniKnowledgeBase.cpp
+  src/bethini/IniEditorPanel.cpp
   resources/resources.qrc
 )
 

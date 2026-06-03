@@ -23,12 +23,17 @@ public:
     DeployResult deploy(Profile& profile, DeployMode mode = DeployMode::HardLink);
     bool undeploy(const QString& gameDir);
 
+    void setLootEnabled(bool enabled) { m_lootEnabled = enabled; }
+    void setUserlistPath(const QString& path) { m_userlistPath = path; }
+
     static QString recordPath(const QString& gameDir);
     static QString conflictIndexPath(const QString& profileDir);
 
 private:
     QString m_gameDir;
     QString m_stagingRoot;
+    bool    m_lootEnabled = true;
+    QString m_userlistPath;
 
     void deployMod(const QString& modId,
                    const QString& gameDir,

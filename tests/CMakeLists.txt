@@ -21,6 +21,7 @@ function(add_solero_deploy_test name)
     ../src/deploy/DeployRecord.cpp
     ../src/deploy/ConflictIndex.cpp
     ../src/deploy/DeployEngine.cpp
+    ../src/loot/LootSorter.cpp
     ../src/core/ModList.cpp
     ../src/core/PluginList.cpp
     ../src/core/Profile.cpp
@@ -29,7 +30,7 @@ function(add_solero_deploy_test name)
     ../src/core/AppConfig.cpp
   )
   target_include_directories(${name} PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
-  target_link_libraries(${name} PRIVATE Qt6::Core Qt6::Test)
+  target_link_libraries(${name} PRIVATE Qt6::Core Qt6::Test libloot::libloot)
   add_test(NAME ${name} COMMAND ${name})
 endfunction()
 

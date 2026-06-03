@@ -1,11 +1,13 @@
 #include "DeployEngine.h"
 #include "Linker.h"
+#include "loot/LootSorter.h"
 #include "core/Profile.h"
 #include "core/AppConfig.h"
 #include <QDirIterator>
 #include <QFile>
 #include <QDir>
 #include <QFileInfo>
+#include <QDebug>
 
 namespace solero {
 
@@ -34,6 +36,19 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode) {
         if (entry.type != EntryType::Mod) continue;
         if (!entry.enabled) continue;
         deployMod(entry.id, m_gameDir, linker, record, conflicts);
+    }
+
+    // Sort plugins with LOOT (if enabled) before writing plugins.txt. The mod
+    // files must already be deployed above so LOOT can read the plugin headers.
+    if (m_lootEnabled) {
+        auto sortResult = LootSorter::sort(
+            profile.pluginList(),
+            m_gameDir,
+            m_userlistPath.isEmpty() ? profile.lootUserlistPath() : m_userlistPath);
+        if (!sortResult.success)
+            qWarning() << "LOOT sort failed (deploying with current order):"
+                       << sortResult.errorMessage;
+        profile.save(); // persist the sorted order back to the profile
     }
 
     QString pluginsTarget = m_gameDir + "/Data/Plugins.txt";

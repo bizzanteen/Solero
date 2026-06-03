@@ -175,6 +175,7 @@ void MainWindow::onDeployToggle() {
         solero::DeployEngine engine(
             solero::AppConfig::instance().gameDir(),
             solero::AppConfig::instance().stagingDir());
+        engine.setUserlistPath(profile->lootUserlistPath());
         auto result = engine.deploy(*profile, m_deployMode);
 
         if (!result.success) {
@@ -183,10 +184,11 @@ void MainWindow::onDeployToggle() {
         }
         m_deployed = true;
         statusBar()->showMessage(
-            QString("Deployed %1 files. %2 conflicts.")
+            QString("Deployed %1 files. %2 conflicts. Plugins sorted by LOOT.")
                 .arg(result.filesDeployed)
                 .arg(result.conflicts.conflictedPaths().size()));
         m_rightPane->setConflictIndex(result.conflicts);
+        m_rightPane->setProfile(profile); // refresh plugin list - LOOT may have reordered it
         emit conflictsUpdated(result.conflicts);
     } else {
         auto ret = QMessageBox::question(this, "UnDeploy",

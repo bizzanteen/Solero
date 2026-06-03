@@ -41,8 +41,14 @@ private:
     int matchChoiceFromIni(const RowWidget& rw) const;        // -> settingChoices index or -1
     void writeChoice(const RowWidget& rw, int choiceIndex);
 
+    // Resolution dropdown (aspect-ratio filtered)
+    void populateResolutions(const QString& aspect);
+
     Profile* m_profile = nullptr;
     QList<RowWidget> m_rows;
+
+    int        m_resRowIndex = -1;        // index into m_rows of the Resolution row
+    QComboBox* m_resCombo = nullptr;      // the Resolution dropdown
 };
 
 } // namespace solero

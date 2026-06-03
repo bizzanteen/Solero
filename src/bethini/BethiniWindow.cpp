@@ -18,33 +18,32 @@
 
 namespace solero {
 
-// Populate dropdowns whose choices are computed at runtime (BethINI uses
-// "custom functions" for these). Currently: the Resolution dropdown.
-static void augmentDynamicChoices(BethiniRow& row) {
-    if (!(row.type == "Dropdown" || row.type == "Combobox")) return;
-    if (!row.choices.isEmpty() || !row.settingChoices.isEmpty()) return;
-    if (row.iniKeys.size() != 2) return;
-    const QString k0 = row.iniKeys.at(0).key.toLower();
-    const QString k1 = row.iniKeys.at(1).key.toLower();
-    if (!(k0.contains("size w") && k1.contains("size h"))) return;
+// Is this the Resolution row (iSize W + iSize H, no built-in choices)?
+static bool isResolutionRow(const BethiniRow& row) {
+    if (!(row.type == "Dropdown" || row.type == "Combobox")) return false;
+    if (!row.choices.isEmpty() || !row.settingChoices.isEmpty()) return false;
+    if (row.iniKeys.size() != 2) return false;
+    return row.iniKeys.at(0).key.toLower().contains("size w")
+        && row.iniKeys.at(1).key.toLower().contains("size h");
+}
 
-    // Build a resolution list: the monitor's available modes plus common ones.
-    QList<QPair<int,int>> res;
+// Standard resolutions per aspect ratio.
+static QList<QPair<int,int>> resolutionsFor(const QString& aspect) {
+    if (aspect == "16:10")
+        return {{3840,2400},{2560,1600},{1920,1200},{1680,1050},{1440,900},{1280,800}};
+    return {{3840,2160},{2560,1440},{1920,1080},{1600,900},{1366,768},{1280,720}};
+}
+
+// Detect the native aspect ratio of the primary monitor ("16:10" or "16:9").
+static QString detectNativeAspect() {
     if (auto* scr = QGuiApplication::primaryScreen()) {
-        QSize nat = scr->size() * scr->devicePixelRatio();
-        res.append({nat.width(), nat.height()});
+        QSize n = scr->size();
+        if (n.height() > 0) {
+            double r = double(n.width()) / n.height();
+            if (qAbs(r - 16.0/10.0) < qAbs(r - 16.0/9.0)) return "16:10";
+        }
     }
-    for (auto rp : {QPair<int,int>{3840,2160}, {2560,1440}, {1920,1080},
-                    {1680,1050}, {1600,900}, {1366,768}, {1280,720}}) {
-        if (!res.contains(rp)) res.append(rp);
-    }
-    for (const auto& rp : res) {
-        BethiniChoiceMap cm;
-        cm.choice = QString("%1x%2").arg(rp.first).arg(rp.second);
-        cm.perKeyValues = { QStringList{QString::number(rp.first)},
-                            QStringList{QString::number(rp.second)} };
-        row.settingChoices.append(cm);
-    }
+    return "16:9";
 }
 
 BethiniWindow::BethiniWindow(QWidget* parent) : QWidget(parent) {
@@ -119,7 +118,34 @@ void BethiniWindow::buildUI() {
             for (const auto& row : group.rows) {
                 RowWidget rw;
                 rw.row = row;
-                augmentDynamicChoices(rw.row); // e.g. populate the Resolution dropdown
+
+                // Special case: the Resolution row gets an aspect-ratio toggle
+                // plus the resolution dropdown, in a single labeled row.
+                if (isResolutionRow(rw.row)) {
+                    auto* cell = new QWidget(box);
+                    auto* h = new QHBoxLayout(cell);
+                    h->setContentsMargins(0, 0, 0, 0);
+                    auto* aspect = new QComboBox(cell);
+                    aspect->addItems({"16:9", "16:10"});
+                    aspect->setCurrentText(detectNativeAspect());
+                    m_resCombo = new QComboBox(cell);
+                    h->addWidget(aspect);
+                    h->addWidget(m_resCombo, 1);
+
+                    rw.widget = m_resCombo;
+                    m_resRowIndex = m_rows.size();
+                    m_rows.append(rw);
+                    populateResolutions(aspect->currentText());
+                    connect(aspect, &QComboBox::currentTextChanged, this,
+                            [this](const QString& a){ populateResolutions(a); });
+
+                    auto* lbl = new QLabel(rw.row.label, box);
+                    lbl->setToolTip(rw.row.tooltip);
+                    cell->setToolTip(rw.row.tooltip);
+                    form->addRow(lbl, cell);
+                    continue;
+                }
+
                 QWidget* w = nullptr;
 
                 if (rw.row.type == "Checkbutton") {
@@ -196,6 +222,37 @@ void BethiniWindow::writeChoice(const RowWidget& rw, int choiceIndex) {
         if (!accepted.isEmpty())
             writeKey(rw.row.iniKeys.at(ki), accepted.first()); // canonical = first
     }
+}
+
+void BethiniWindow::populateResolutions(const QString& aspect) {
+    if (m_resRowIndex < 0 || !m_resCombo) return;
+    auto& rw = m_rows[m_resRowIndex];
+
+    auto list = resolutionsFor(aspect);
+    // Include the monitor's native mode if it matches this aspect and isn't listed.
+    if (auto* scr = QGuiApplication::primaryScreen()) {
+        QSize n = scr->size();
+        QPair<int,int> nat{n.width(), n.height()};
+        double r = n.height() ? double(n.width()) / n.height() : 0;
+        bool natIs1610 = qAbs(r - 16.0/10.0) < qAbs(r - 16.0/9.0);
+        if (((aspect == "16:10") == natIs1610) && !list.contains(nat))
+            list.prepend(nat);
+    }
+
+    rw.row.settingChoices.clear();
+    QSignalBlocker block(m_resCombo);
+    m_resCombo->clear();
+    for (const auto& rp : list) {
+        BethiniChoiceMap cm;
+        cm.choice = QString("%1x%2").arg(rp.first).arg(rp.second);
+        cm.perKeyValues = { QStringList{QString::number(rp.first)},
+                            QStringList{QString::number(rp.second)} };
+        rw.row.settingChoices.append(cm);
+        m_resCombo->addItem(cm.choice);
+    }
+    // Reselect the current INI resolution if it's in this aspect's list.
+    int ci = matchChoiceFromIni(rw);
+    if (ci >= 0) m_resCombo->setCurrentIndex(ci);
 }
 
 void BethiniWindow::loadRow(RowWidget& rw) {

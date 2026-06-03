@@ -44,6 +44,7 @@ set(SOLERO_SOURCES
   src/ui/RightPane.cpp
   src/ui/DataTab.cpp
   src/ui/ConflictsTab.cpp
+  src/ui/FileEditorDialog.cpp
   resources/resources.qrc
 )
 

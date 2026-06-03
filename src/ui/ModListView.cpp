@@ -15,13 +15,22 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     m_model = new ModListModel(this);
     setModel(m_model);
     setRootIsDecorated(false);
+    setIndentation(0); // remove the empty tree-indent column before the checkbox
     setDragDropMode(QAbstractItemView::InternalMove);
     setSelectionMode(QAbstractItemView::SingleSelection);
-    header()->setSectionResizeMode(ModListModel::ColName, QHeaderView::Stretch);
-    header()->resizeSection(ModListModel::ColEnabled,  28);
-    header()->resizeSection(ModListModel::ColPriority, 40);
-    header()->resizeSection(ModListModel::ColVersion,  80);
-    header()->resizeSection(ModListModel::ColFlags,    60);
+    setAlternatingRowColors(true);
+    // Name stretches to fill slack; all other columns are user-resizable.
+    auto* hdr = header();
+    hdr->setSectionResizeMode(ModListModel::ColEnabled,  QHeaderView::Interactive);
+    hdr->setSectionResizeMode(ModListModel::ColPriority, QHeaderView::Interactive);
+    hdr->setSectionResizeMode(ModListModel::ColName,     QHeaderView::Stretch);
+    hdr->setSectionResizeMode(ModListModel::ColVersion,  QHeaderView::Interactive);
+    hdr->setSectionResizeMode(ModListModel::ColFlags,    QHeaderView::Interactive);
+    hdr->setStretchLastSection(false);
+    hdr->resizeSection(ModListModel::ColEnabled,  28);
+    hdr->resizeSection(ModListModel::ColPriority, 40);
+    hdr->resizeSection(ModListModel::ColVersion,  80);
+    hdr->resizeSection(ModListModel::ColFlags,    60);
     setSortingEnabled(true);
     sortByColumn(ModListModel::ColPriority, Qt::AscendingOrder);
 
@@ -46,6 +55,25 @@ void ModListView::mouseDoubleClickEvent(QMouseEvent* event) {
         return;
     }
     QTreeView::mouseDoubleClickEvent(event);
+}
+
+void ModListView::mousePressEvent(QMouseEvent* event) {
+    // Single-click directly on a separator's collapse arrow toggles it.
+    auto idx = indexAt(event->pos());
+    if (idx.isValid()) {
+        const auto* entry = m_model->entryAt(idx.row());
+        if (entry && entry->type == EntryType::Separator) {
+            // The arrow glyph is drawn at the left edge of the Name column cell.
+            QModelIndex nameIdx = m_model->index(idx.row(), ModListModel::ColName);
+            QRect nameRect = visualRect(nameIdx);
+            int dx = event->pos().x() - nameRect.left();
+            if (dx >= 0 && dx < 22) {
+                m_model->toggleCollapse(idx.row());
+                return; // consume - don't start a drag/selection
+            }
+        }
+    }
+    QTreeView::mousePressEvent(event);
 }
 
 void ModListView::contextMenuEvent(QContextMenuEvent* event) {

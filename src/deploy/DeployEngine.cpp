@@ -51,19 +51,26 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode) {
         profile.save(); // persist the sorted order back to the profile
     }
 
-    QString pluginsTarget = m_gameDir + "/Data/Plugins.txt";
-    QDir().mkpath(m_gameDir + "/Data");
-    profile.pluginList().saveToFile(pluginsTarget);
+    // Plugins.txt belongs in the game's local appdata folder (inside the Proton
+    // prefix), where Skyrim actually reads it. Fall back to Data/ if unknown.
+    QString localAppData = AppConfig::instance().localAppDataDir();
+    QString pluginsDir = localAppData.isEmpty() ? (m_gameDir + "/Data") : localAppData;
+    QDir().mkpath(pluginsDir);
+    profile.pluginList().saveToFile(pluginsDir + "/Plugins.txt");
 
+    // INIs belong in the game's My Games documents folder. Fall back to gameDir.
+    QString docsDir = AppConfig::instance().documentsDir();
+    QString iniDir = docsDir.isEmpty() ? m_gameDir : docsDir;
+    QDir().mkpath(iniDir);
     const QStringList inis = {
         profile.skyrimIniPath(),
         profile.skyrimPrefsPath(),
         profile.skyrimCustomPath()
     };
     const QStringList iniTargets = {
-        m_gameDir + "/Skyrim.ini",
-        m_gameDir + "/SkyrimPrefs.ini",
-        m_gameDir + "/SkyrimCustom.ini"
+        iniDir + "/Skyrim.ini",
+        iniDir + "/SkyrimPrefs.ini",
+        iniDir + "/SkyrimCustom.ini"
     };
     for (int i = 0; i < inis.size(); ++i) {
         if (QFile::exists(inis[i])) {

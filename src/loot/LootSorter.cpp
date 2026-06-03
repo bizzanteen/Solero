@@ -25,9 +25,13 @@ LootSorter::SortResult LootSorter::sort(PluginList& pluginList,
                                         const QString& userlistPath) {
     SortResult result;
     try {
+        // libloot needs the game's local appdata folder (Plugins.txt / loadorder.txt)
+        // which on a Proton install lives inside the Wine prefix.
+        QString localPath = AppConfig::instance().localAppDataDir();
         auto handle = loot::CreateGameHandle(
             loot::GameType::tes5se,
-            std::filesystem::path(gameDir.toStdString()));
+            std::filesystem::path(gameDir.toStdString()),
+            std::filesystem::path(localPath.toStdString()));
 
         // Load metadata: masterlist (if present) then userlist (if present).
         auto& db = handle->GetDatabase();

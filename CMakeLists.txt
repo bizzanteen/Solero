@@ -18,6 +18,15 @@ FetchContent_Declare(json
 )
 FetchContent_MakeAvailable(json)
 
+# libloot C++ wrapper (built from local Rust source clone; reuses cargo cache).
+# Requires the Rust toolchain (cargo) on PATH at build time.
+set(LIBLOOT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(LIBLOOT_INSTALL_DOCS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(libloot
+  SOURCE_DIR /var/home/eamon/dev/libloot-src
+  SOURCE_SUBDIR cpp)
+FetchContent_MakeAvailable(libloot)
+
 set(SOLERO_SOURCES
   src/main.cpp
   src/app/Application.cpp
@@ -46,12 +55,13 @@ set(SOLERO_SOURCES
   src/ui/ConflictsTab.cpp
   src/ui/FileEditorDialog.cpp
   src/ui/ModFileTree.cpp
+  src/loot/LootSorter.cpp
   resources/resources.qrc
 )
 
 add_executable(solero ${SOLERO_SOURCES})
 target_include_directories(solero PRIVATE src ${CMAKE_BINARY_DIR}/include)
-target_link_libraries(solero PRIVATE Qt6::Core Qt6::Widgets Qt6::Network)
+target_link_libraries(solero PRIVATE Qt6::Core Qt6::Widgets Qt6::Network libloot::libloot)
 
 enable_testing()
 add_subdirectory(tests)

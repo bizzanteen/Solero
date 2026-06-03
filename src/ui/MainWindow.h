@@ -12,12 +12,14 @@ class QSplitter;
 class QComboBox;
 class QToolButton;
 class QLabel;
+class QTabWidget;
 
 namespace solero {
 class ModListView;
 class PluginListView;
 class RightPane;
 class BottomPanel;
+class BethiniWindow;
 }
 
 class MainWindow : public QMainWindow {
@@ -38,6 +40,7 @@ private:
     void switchProfile(const QString& name);
     void refreshProfileCombo();
     void onDeployToggle();
+    void onOpenBethini();
     void onNewProfile();
     void onDeleteProfile();
     void onZoomIn();
@@ -56,6 +59,8 @@ private:
     solero::ModListView*    m_modListView = nullptr;
     solero::RightPane*      m_rightPane = nullptr;
     solero::BottomPanel*    m_bottomPanel = nullptr;
+    solero::BethiniWindow*  m_bethiniWindow = nullptr;
+    QTabWidget*             m_centralTabs = nullptr;
     QLabel* m_aiChangesLabel = nullptr;
 
     QString profilesRoot() const;

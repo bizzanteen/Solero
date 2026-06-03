@@ -23,6 +23,8 @@ LootRulesEditor::LootRulesEditor(QWidget* parent) : QWidget(parent) {
         {"Load After", "plugins:\n  - name: \"MyMod.esp\"\n    after:\n      - name: \"OtherMod.esp\"\n"},
         {"Incompatibility", "plugins:\n  - name: \"ModA.esp\"\n    inc:\n      - name: \"ModB.esp\"\n        display: \"ModA and ModB are incompatible\"\n"},
         {"Warning", "plugins:\n  - name: \"MyMod.esp\"\n    msg:\n      - type: warn\n        content: \"Requires Patch.esp\"\n"},
+        {"Assign Group", "plugins:\n  - name: \"MyMod.esp\"\n    group: \"Worldspace settings\"\n"},
+        {"Define Group", "groups:\n  - name: \"Worldspace settings\"\n    after:\n      - \"default\"\n"},
     };
     for (const auto& [label, text] : snippets) {
         auto* btn = new QPushButton(label, this);

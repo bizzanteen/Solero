@@ -1,146 +1,118 @@
 #!/usr/bin/env python3
-"""Generate Solero's bethini-skyrimse.json from BethINI Pie's data files.
-Joins Bethini.json (widget defs: file/section/tooltip/type/range) with
-settings.json (iniValues: preset values)."""
+"""Generate Solero's bethini-skyrimse.json mirroring BethINI Pie's UI structure.
+
+Walks Bethini.json displayTabs (tab -> group -> labeled row) and joins per-INI-key
+preset values from settings.json. Output preserves BethINI's tab/group/row layout
+so Solero's BethINI window can replicate the real app."""
 import json, sys
 
 defs = json.load(open('/tmp/bethini-defs.json'))
 sett = json.load(open('/tmp/bethini-settings.json'))
 
-# Index iniValues by (name.lower) -> value dict. Names are unique enough for the
-# UI-exposed subset; collisions are rare and we take the first.
+# Index iniValues by name.lower -> entry
 ini_values = {}
 for e in sett['iniValues']:
     ini_values.setdefault(e['name'].lower(), e)
 
-# Collect setting widgets from displayTabs
-widgets = []
-def walk(o):
-    if isinstance(o, dict):
-        if 'settings' in o and 'targetINIs' in o and 'targetSections' in o:
-            widgets.append(o)
-        for v in o.values(): walk(v)
-    elif isinstance(o, list):
-        for v in o: walk(v)
-walk(defs['displayTabs'])
+PRESETS = ["Bethini Poor", "Bethini Low", "Bethini Medium", "Bethini High", "Bethini Ultra"]
+GAME_INIS = ("Skyrim.ini", "SkyrimPrefs.ini", "SkyrimCustom.ini")
+SKIP_TABS = {"Setup"}                 # BethINI's own game-path setup; Solero handles this
+SKIP_GROUPS = {"Presets", "Adjustments"}  # preset selector + scaling functions (we provide our own)
 
-PRESET_KEYS = {
-    "Low": "Bethini Low",
-    "Medium": "Bethini Medium",
-    "High": "Bethini High",
-    "Ultra": "Bethini Ultra",
-    "BethINI": "recommended",  # BethINI's recommended tweak
-}
+def preset_values_for(name):
+    iv = ini_values.get(name.lower())
+    if not iv: return {}
+    val = iv.get('value', {})
+    return {p: val[p] for p in PRESETS if p in val}
 
-def widget_type(w, ival):
-    t = w.get('type')
-    if t == 'Checkbutton':
-        return 'bool'
-    if t in ('Combobox', 'Dropdown'):
-        return 'enum'
-    if t == 'Slider' or t == 'Spinbox':
-        dp = w.get('decimal places', '0')
-        return 'float' if str(dp) not in ('0', '', None) else 'int'
-    # Entry/Color/other
-    if ival and ival.get('type') == 'float':
-        return 'float'
-    if ival and ival.get('type') == 'boolean':
-        return 'bool'
-    return 'string'
-
-def coerce(v, typ):
-    if v is None: return None
-    try:
-        if typ == 'bool':  return bool(int(v)) if str(v) in ('0','1') else bool(v)
-        if typ == 'int':   return int(float(v))
-        if typ == 'float': return float(v)
-    except (ValueError, TypeError):
-        return v
-    return v
-
-settings_out = []
-seen = set()
-for w in widgets:
+def make_row(label, w):
+    inis = w.get('targetINIs', [])
+    secs = w.get('targetSections', [])
     names = w.get('settings', [])
-    inis  = w.get('targetINIs', [])
-    secs  = w.get('targetSections', [])
     if not names or not inis or not secs:
+        return None
+    if any(i not in GAME_INIS for i in inis):
+        return None
+
+    typ = w.get('type', 'Entry')
+    row = {"label": label, "type": typ, "tooltip": w.get('tooltip', '')}
+
+    iniKeys = []
+    for idx, nm in enumerate(names):
+        ini = inis[idx] if idx < len(inis) else inis[0]
+        sec = secs[idx] if idx < len(secs) else secs[0]
+        iniKeys.append({
+            "key": nm, "section": sec, "file": ini,
+            "presets": preset_values_for(nm),
+        })
+    row["iniKeys"] = iniKeys
+
+    if typ in ("Dropdown", "Combobox"):
+        choices = w.get('choices')
+        if isinstance(choices, list):
+            clean = [str(c) for c in choices if isinstance(c, str) and not c.startswith('FUNC')]
+            if clean:
+                row["choices"] = clean
+        sc = w.get('settingChoices')
+        if isinstance(sc, dict):
+            row["settingChoices"] = sc
+
+    if typ in ("Slider", "Spinbox"):
+        if 'from' in w and 'to' in w:
+            try:
+                lo = float(w['from']); hi = float(w['to'])
+                if lo > hi: lo, hi = hi, lo
+                row["min"] = lo; row["max"] = hi
+            except (ValueError, TypeError):
+                pass
+        if 'increment' in w:
+            try: row["step"] = float(w['increment'])
+            except (ValueError, TypeError): pass
+        try: row["decimals"] = int(w.get('decimal places', '0'))
+        except (ValueError, TypeError): row["decimals"] = 0
+
+    return row
+
+def walk_group(group_dict):
+    rows = []
+    settings = group_dict.get('Settings')
+    if not isinstance(settings, dict):
+        return rows
+    for label, widget in settings.items():
+        if not isinstance(widget, dict) or 'settings' not in widget:
+            continue
+        r = make_row(label, widget)
+        if r:
+            rows.append(r)
+    return rows
+
+tabs_out = []
+for tab_name, tab in defs['displayTabs'].items():
+    if tab_name in SKIP_TABS or not isinstance(tab, dict):
         continue
-    name = names[0]
-    ini  = inis[0]
-    sec  = secs[0]
-    # Skip non-game ini files (Bethini.ini is the editor's own config)
-    if ini not in ('Skyrim.ini', 'SkyrimPrefs.ini', 'SkyrimCustom.ini'):
-        continue
-    key = (sec, name)
-    if key in seen:
-        continue
-    seen.add(key)
-
-    ival = ini_values.get(name.lower())
-    typ = widget_type(w, ival)
-
-    entry = {
-        "section": sec,
-        "key": name,
-        "file": ini,
-        "label": name,  # BethINI shows raw key; tooltip carries the human description
-        "description": w.get('tooltip', ''),
-        "type": typ,
-    }
-
-    # Range for sliders/spinboxes (some BethINI sliders run high->low; normalize)
-    if 'from' in w and 'to' in w:
-        lo = coerce(w['from'], typ); hi = coerce(w['to'], typ)
-        try:
-            if lo is not None and hi is not None and lo > hi: lo, hi = hi, lo
-        except TypeError:
-            pass
-        entry['min'] = lo; entry['max'] = hi
-    if 'increment' in w: entry['step'] = coerce(w['increment'], typ)
-
-    # Enum choices (must be a proper list; some widgets use a FUNC string)
-    if typ == 'enum' and isinstance(w.get('choices'), list):
-        choices = [str(c) for c in w['choices']
-                   if isinstance(c, str) and not c.startswith('FUNC')]
-        if choices:
-            entry['enumValues'] = choices
-        else:
-            entry['type'] = 'int'  # function-driven choices → treat as numeric
-            typ = 'int'
-
-    # Presets
-    presets = {}
-    if ival:
-        val = ival.get('value', {})
-        for out_key, src_key in PRESET_KEYS.items():
-            if src_key in val:
-                presets[out_key] = coerce(val[src_key], typ)
-        # Fall back BethINI->default if no recommended
-        if 'BethINI' not in presets and 'default' in val:
-            presets['BethINI'] = coerce(val['default'], typ)
-    if presets:
-        entry['presets'] = presets
-
-    settings_out.append(entry)
+    groups_out = []
+    for group_name, group in tab.items():
+        if group_name in SKIP_GROUPS or not isinstance(group, dict):
+            continue
+        rows = walk_group(group)
+        if rows:
+            groups_out.append({"name": group_name, "rows": rows})
+    if groups_out:
+        tabs_out.append({"name": tab_name, "groups": groups_out})
 
 out = {
     "game": "Skyrim Special Edition",
     "source": "Derived from BethINI Pie (DoubleYouC/Bethini-Pie-Skyrim-Special-Edition-Plugin)",
-    "presets": {
-        "Low":     {"description": "BethINI Low quality"},
-        "Medium":  {"description": "BethINI Medium quality"},
-        "High":    {"description": "BethINI High quality"},
-        "Ultra":   {"description": "BethINI Ultra quality"},
-        "BethINI": {"description": "BethINI recommended tweaks"},
-    },
-    "settings": settings_out,
+    "presets": PRESETS,
+    "tabs": tabs_out,
 }
 
+nrows = sum(len(g['rows']) for t in tabs_out for g in t['groups'])
+print('tabs:', [t['name'] for t in tabs_out], file=sys.stderr)
+print('total groups:', sum(len(t['groups']) for t in tabs_out), file=sys.stderr)
+print('total rows:', nrows, file=sys.stderr)
 import collections
-print('settings:', len(settings_out), file=sys.stderr)
-print('by file:', collections.Counter(s['file'] for s in settings_out), file=sys.stderr)
-print('by type:', collections.Counter(s['type'] for s in settings_out), file=sys.stderr)
-print('with presets:', sum(1 for s in settings_out if 'presets' in s), file=sys.stderr)
+types = collections.Counter(r['type'] for t in tabs_out for g in t['groups'] for r in g['rows'])
+print('row types:', dict(types), file=sys.stderr)
 
-json.dump(out, open('/var/home/eamon/dev/solero/resources/bethini-skyrimse.json','w'), indent=2)
+json.dump(out, open('/var/home/eamon/dev/solero/resources/bethini-skyrimse.json', 'w'), indent=1)

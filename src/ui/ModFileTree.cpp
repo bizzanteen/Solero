@@ -1,5 +1,6 @@
 #include "ModFileTree.h"
 #include <QHeaderView>
+#include <QStyle>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -55,10 +56,10 @@ void ModFileTree::buildTree(const QString& rootDir,
         for (int i = 0; i < parts.size() - 1; ++i) {
             accumulated += (i > 0 ? "/" : "") + parts[i];
             if (!dirItems.contains(accumulated)) {
-                QString folderLabel = QStringLiteral("\xF0\x9F\x93\x81 ") + parts[i]; // 📁
                 auto* dirItem = parent
-                    ? new QTreeWidgetItem(parent, {folderLabel, ""})
-                    : new QTreeWidgetItem(this, {folderLabel, ""});
+                    ? new QTreeWidgetItem(parent, {parts[i], ""})
+                    : new QTreeWidgetItem(this, {parts[i], ""});
+                dirItem->setIcon(0, style()->standardIcon(QStyle::SP_DirIcon));
                 dirItem->setExpanded(true);
                 dirItems[accumulated] = dirItem;
                 parent = dirItem;
@@ -71,6 +72,7 @@ void ModFileTree::buildTree(const QString& rootDir,
         auto* item = parent
             ? new QTreeWidgetItem(parent, {filename, ""})
             : new QTreeWidgetItem(this, {filename, ""});
+        item->setIcon(0, style()->standardIcon(QStyle::SP_FileIcon));
         item->setData(0, RoleFullPath, fullPath);
         item->setData(0, RoleRelPath,  relPath);
         decorate(item, relPath);

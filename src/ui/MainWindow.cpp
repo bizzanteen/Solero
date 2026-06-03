@@ -3,8 +3,10 @@
 #include "RightPane.h"
 #include "BottomPanel.h"
 #include "SetupWizard.h"
+#include "bethini/BethiniWindow.h"
 #include "app/Application.h"
 #include "core/AppConfig.h"
+#include <QTabWidget>
 #include <QSplitter>
 #include <QComboBox>
 #include <QToolBar>
@@ -109,12 +111,19 @@ void MainWindow::setupToolbar() {
     tb->addWidget(m_aiChangesLabel);
     tb->addSeparator();
 
+    // BethINI editor (opens as a tab)
+    tb->addAction("BethINI", this, &MainWindow::onOpenBethini);
+
     // Game settings
     tb->addAction("Game Settings...", this, [this]{
         solero::SetupWizard wizard(this);
         if (wizard.exec() == QDialog::Accepted)
             statusBar()->showMessage("Game settings updated.");
     });
+}
+
+void MainWindow::onOpenBethini() {
+    if (m_centralTabs) m_centralTabs->setCurrentWidget(m_bethiniWindow);
 }
 
 void MainWindow::setupCentralWidget() {
@@ -134,7 +143,12 @@ void MainWindow::setupCentralWidget() {
     outer->addWidget(m_bottomPanel);
     outer->setSizes({580, 200});
 
-    setCentralWidget(outer);
+    // Central area is tabbed: the mod manager view + the BethINI editor.
+    m_centralTabs = new QTabWidget(this);
+    m_centralTabs->addTab(outer, "Mods");
+    m_bethiniWindow = new solero::BethiniWindow(this);
+    m_centralTabs->addTab(m_bethiniWindow, "BethINI");
+    setCentralWidget(m_centralTabs);
 }
 
 void MainWindow::switchProfile(const QString& name) {
@@ -144,6 +158,7 @@ void MainWindow::switchProfile(const QString& name) {
     m_modListView->setProfile(profile);
     m_rightPane->setProfile(profile);
     m_bottomPanel->setProfile(profile);
+    m_bethiniWindow->setProfile(profile);
     // Self-review fix: load previously-computed ConflictIndex if it exists
     QString conflictPath = solero::DeployEngine::conflictIndexPath(profile->path());
     if (QFile::exists(conflictPath))

@@ -1,246 +1,262 @@
 {
-  "game": "Skyrim Special Edition",
-  "source": "Derived from BethINI Pie (DoubleYouC/Bethini-Pie-Skyrim-Special-Edition-Plugin)",
-  "presets": {
-    "Low": {
-      "description": "BethINI Low quality"
-    },
-    "Medium": {
-      "description": "BethINI Medium quality"
-    },
-    "High": {
-      "description": "BethINI High quality"
-    },
-    "Ultra": {
-      "description": "BethINI Ultra quality"
-    },
-    "BethINI": {
-      "description": "BethINI recommended tweaks"
-    }
-  },
-  "settings": [
+ "game": "Skyrim Special Edition",
+ "source": "Derived from BethINI Pie (DoubleYouC/Bethini-Pie-Skyrim-Special-Edition-Plugin)",
+ "presets": [
+  "Bethini Poor",
+  "Bethini Low",
+  "Bethini Medium",
+  "Bethini High",
+  "Bethini Ultra"
+ ],
+ "tabs": [
+  {
+   "name": "Basic",
+   "groups": [
     {
-      "section": "Display",
-      "key": "iSize W",
-      "file": "SkyrimPrefs.ini",
-      "label": "iSize W",
-      "description": "Changes the resolution.",
-      "type": "enum",
-      "presets": {
-        "BethINI": 1920
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bFull Screen",
-      "file": "SkyrimPrefs.ini",
-      "label": "bFull Screen",
-      "description": "Sets the display mode.",
-      "type": "enum",
-      "enumValues": [
+     "name": "Display",
+     "rows": [
+      {
+       "label": "Resolution",
+       "type": "Dropdown",
+       "tooltip": "Changes the resolution.",
+       "iniKeys": [
+        {
+         "key": "iSize W",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        },
+        {
+         "key": "iSize H",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Display Mode",
+       "type": "Dropdown",
+       "tooltip": "Sets the display mode.",
+       "iniKeys": [
+        {
+         "key": "bFull Screen",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        },
+        {
+         "key": "bBorderless",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "Fullscreen",
         "Borderless Windowed",
         "Windowed"
-      ],
-      "presets": {
-        "BethINI": 0
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bUseTAA",
-      "file": "SkyrimPrefs.ini",
-      "label": "bUseTAA",
-      "description": "Specifies the antialiasing (AA) applied to edges to make them smoother and less jagged.",
-      "type": "enum",
-      "enumValues": [
+       ],
+       "settingChoices": {
+        "Fullscreen": [
+         "1",
+         [
+          "0",
+          "1"
+         ]
+        ],
+        "Borderless Windowed": [
+         "0",
+         "1"
+        ],
+        "Windowed": [
+         "0",
+         "0"
+        ]
+       }
+      },
+      {
+       "label": "Antialiasing",
+       "type": "Dropdown",
+       "tooltip": "Specifies the antialiasing (AA) applied to edges to make them smoother and less jagged.",
+       "iniKeys": [
+        {
+         "key": "bUseTAA",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        },
+        {
+         "key": "bFXAAEnabled",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "TAA",
         "FXAA",
         "Off"
-      ],
-      "presets": {
-        "BethINI": 1
+       ],
+       "settingChoices": {
+        "TAA + FXAA": [
+         "1",
+         "1"
+        ],
+        "TAA": [
+         "1",
+         "0"
+        ],
+        "FXAA": [
+         "0",
+         "1"
+        ],
+        "Off": [
+         "0",
+         "0"
+        ]
+       }
+      },
+      {
+       "label": "Default World FOV",
+       "type": "Slider",
+       "tooltip": "Sets the default world field of view.",
+       "iniKeys": [
+        {
+         "key": "fDefaultWorldFOV",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 1.0,
+       "max": 120.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Default FOV",
+       "type": "Slider",
+       "tooltip": "Sets the default field of view.",
+       "iniKeys": [
+        {
+         "key": "fDefaultFOV",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 1.0,
+       "max": 120.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Default 1st Person FOV",
+       "type": "Slider",
+       "tooltip": "Sets the default 1st person field of view.",
+       "iniKeys": [
+        {
+         "key": "fDefault1stPersonFOV",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 1.0,
+       "max": 120.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Always Active",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the ability of the game to remain active when it is out of focus (i.e. if in a windowed mode setup, if one clicks outside the game window with this enabled, the game will not pause).",
+       "iniKeys": [
+        {
+         "key": "bAlwaysActive",
+         "section": "General",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "64-Bit Render Targets",
+       "type": "Checkbutton",
+       "tooltip": "Toggles 64-bit render targets. Disabling this can cause a significant performance boost with very little visual difference. Basically it is a more precise method of rendering that reduces banding artifacts.",
+       "iniKeys": [
+        {
+         "key": "bUse64bitsHDRRenderTarget",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 0,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ]
+      },
+      {
+       "label": "VSync",
+       "type": "Checkbutton",
+       "tooltip": "Toggles vertical synchronization (VSync), which removes screen tearing.",
+       "iniKeys": [
+        {
+         "key": "iVSyncPresentInterval",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Lock Frame Rate",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the ability for the game to lock the frame rate to 60 frames per second.",
+       "iniKeys": [
+        {
+         "key": "bLockFramerate",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Havok FPS",
+       "type": "Entry",
+       "tooltip": "Sets the maximum framerate supported by game physics.",
+       "iniKeys": [
+        {
+         "key": "fMaxTime",
+         "section": "HAVOK",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
       }
+     ]
     },
     {
-      "section": "Display",
-      "key": "fDefaultWorldFOV",
-      "file": "Skyrim.ini",
-      "label": "fDefaultWorldFOV",
-      "description": "Sets the default world field of view.",
-      "type": "int",
-      "min": 1,
-      "max": 120,
-      "step": 1,
-      "presets": {
-        "BethINI": 80
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fDefaultFOV",
-      "file": "Skyrim.ini",
-      "label": "fDefaultFOV",
-      "description": "Sets the default field of view.",
-      "type": "int",
-      "min": 1,
-      "max": 120,
-      "step": 1,
-      "presets": {
-        "BethINI": 80
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fDefault1stPersonFOV",
-      "file": "Skyrim.ini",
-      "label": "fDefault1stPersonFOV",
-      "description": "Sets the default 1st person field of view.",
-      "type": "int",
-      "min": 1,
-      "max": 120,
-      "step": 1,
-      "presets": {
-        "BethINI": 80
-      }
-    },
-    {
-      "section": "General",
-      "key": "bAlwaysActive",
-      "file": "Skyrim.ini",
-      "label": "bAlwaysActive",
-      "description": "Toggles the ability of the game to remain active when it is out of focus (i.e. if in a windowed mode setup, if one clicks outside the game window with this enabled, the game will not pause).",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bUse64bitsHDRRenderTarget",
-      "file": "SkyrimPrefs.ini",
-      "label": "bUse64bitsHDRRenderTarget",
-      "description": "Toggles 64-bit render targets. Disabling this can cause a significant performance boost with very little visual difference. Basically it is a more precise method of rendering that reduces banding artifacts.",
-      "type": "bool",
-      "presets": {
-        "Low": false,
-        "Medium": true,
-        "High": true,
-        "Ultra": true,
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Display",
-      "key": "iVSyncPresentInterval",
-      "file": "SkyrimPrefs.ini",
-      "label": "iVSyncPresentInterval",
-      "description": "Toggles vertical synchronization (VSync), which removes screen tearing.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bLockFramerate",
-      "file": "Skyrim.ini",
-      "label": "bLockFramerate",
-      "description": "Toggles the ability for the game to lock the frame rate to 60 frames per second.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "HAVOK",
-      "key": "fMaxTime",
-      "file": "Skyrim.ini",
-      "label": "fMaxTime",
-      "description": "Sets the maximum framerate supported by game physics.",
-      "type": "float",
-      "presets": {
-        "BethINI": 0.0167
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fGamma",
-      "file": "SkyrimPrefs.ini",
-      "label": "fGamma",
-      "description": "Sets the gamma (brightness/darkness).",
-      "type": "float",
-      "min": 0.0,
-      "max": 2.0,
-      "step": 0.001,
-      "presets": {
-        "BethINI": 1.0
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fGlobalBrightnessBoost",
-      "file": "Skyrim.ini",
-      "label": "fGlobalBrightnessBoost",
-      "description": "Sets the global brightness boost modifier",
-      "type": "float",
-      "min": -1.0,
-      "max": 1.0,
-      "step": 0.001,
-      "presets": {
-        "BethINI": 0.0
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fGlobalContrastBoost",
-      "file": "Skyrim.ini",
-      "label": "fGlobalContrastBoost",
-      "description": "Sets the global contrast boost modifier",
-      "type": "float",
-      "min": -1.0,
-      "max": 1.0,
-      "step": 0.001,
-      "presets": {
-        "BethINI": 0.0
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fGlobalSaturationBoost",
-      "file": "Skyrim.ini",
-      "label": "fGlobalSaturationBoost",
-      "description": "Sets the global saturation boost modifier",
-      "type": "float",
-      "min": -1.0,
-      "max": 1.0,
-      "step": 0.001,
-      "presets": {
-        "BethINI": 0.0
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fGlobalBloomThresholdBoost",
-      "file": "Skyrim.ini",
-      "label": "fGlobalBloomThresholdBoost",
-      "description": "Sets the global bloom threshold boost modifier",
-      "type": "float",
-      "min": -10.0,
-      "max": 10.0,
-      "step": 0.1,
-      "presets": {
-        "BethINI": 0.0
-      }
-    },
-    {
-      "section": "General",
-      "key": "sLanguage",
-      "file": "Skyrim.ini",
-      "label": "sLanguage",
-      "description": "Sets the language used for text elements.",
-      "type": "enum",
-      "enumValues": [
+     "name": "NoLabelFrame",
+     "rows": [
+      {
+       "label": "Text Language",
+       "type": "Dropdown",
+       "tooltip": "Sets the language used for text elements.",
+       "iniKeys": [
+        {
+         "key": "sLanguage",
+         "section": "General",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "ENGLISH",
         "FRENCH",
         "ITALIAN",
@@ -251,1506 +267,2000 @@
         "RUSSIAN",
         "JAPANESE",
         "Manual..."
-      ],
-      "presets": {
-        "BethINI": "ENGLISH"
+       ]
+      },
+      {
+       "label": "Freebies Seen",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the pop-up to download the Creation Club Content.",
+       "iniKeys": [
+        {
+         "key": "bFreebiesSeen",
+         "section": "General",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ]
       }
-    },
+     ]
+    }
+   ]
+  },
+  {
+   "name": "General",
+   "groups": [
     {
-      "section": "General",
-      "key": "bFreebiesSeen",
-      "file": "SkyrimPrefs.ini",
-      "label": "bFreebiesSeen",
-      "description": "Toggles the pop-up to download the Creation Club Content.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "General",
-      "key": "sIntroSequence",
-      "file": "Skyrim.ini",
-      "label": "sIntroSequence",
-      "description": "Toggles the game intro logos.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "General",
-      "key": "sMainMenuMusic",
-      "file": "Skyrim.ini",
-      "label": "sMainMenuMusic",
-      "description": "Toggles the game intro music.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bShowMarkers",
-      "file": "Skyrim.ini",
-      "label": "bShowMarkers",
-      "description": "Toggles markers useful for modders. Do NOT use for actual gameplay'",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Audio",
-      "key": "uMaxSizeForCachedSound",
-      "file": "Skyrim.ini",
-      "label": "uMaxSizeForCachedSound",
-      "description": "Sets the maximum size for cached sound.",
-      "type": "enum",
-      "enumValues": [
+     "name": "NoLabelFrame",
+     "rows": [
+      {
+       "label": "Intro Logos",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the game intro logos.",
+       "iniKeys": [
+        {
+         "key": "sIntroSequence",
+         "section": "General",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Intro Music",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the game intro music.",
+       "iniKeys": [
+        {
+         "key": "sMainMenuMusic",
+         "section": "General",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Show Markers",
+       "type": "Checkbutton",
+       "tooltip": "Toggles markers useful for modders. Do NOT use for actual gameplay'",
+       "iniKeys": [
+        {
+         "key": "bShowMarkers",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Max Cached Sound Size",
+       "type": "Combobox",
+       "tooltip": "Sets the maximum size for cached sound.",
+       "iniKeys": [
+        {
+         "key": "uMaxSizeForCachedSound",
+         "section": "Audio",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "4096",
         "262144"
-      ],
-      "presets": {
-        "BethINI": 4096
+       ]
       }
+     ]
     },
     {
-      "section": "SaveGame",
-      "key": "bDisableAutoSave",
-      "file": "Skyrim.ini",
-      "label": "bDisableAutoSave",
-      "description": "Toggles autosaves.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "SaveGame",
-      "key": "iAutoSaveCount",
-      "file": "Skyrim.ini",
-      "label": "iAutoSaveCount",
-      "description": "Sets the maximum number of autosaves to keep.",
-      "type": "int",
-      "min": 1,
-      "max": 100,
-      "step": 1,
-      "presets": {
-        "BethINI": 3
-      }
-    },
-    {
-      "section": "MAIN",
-      "key": "bSaveOnPause",
-      "file": "SkyrimPrefs.ini",
-      "label": "bSaveOnPause",
-      "description": "Toggles autosaves made upon closing certain menus that pause the game.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "SaveGame",
-      "key": "fAutosaveEveryXMins",
-      "file": "SkyrimPrefs.ini",
-      "label": "fAutosaveEveryXMins",
-      "description": "Sets the timer to make a new autosave upon closing certain menus that pause the game.",
-      "type": "int",
-      "min": 1,
-      "max": 100,
-      "step": 1,
-      "presets": {
-        "BethINI": 15
-      }
-    },
-    {
-      "section": "MAIN",
-      "key": "bSaveOnTravel",
-      "file": "SkyrimPrefs.ini",
-      "label": "bSaveOnTravel",
-      "description": "Toggles autosaves made after traveling to different locations.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "MAIN",
-      "key": "bSaveOnRest",
-      "file": "SkyrimPrefs.ini",
-      "label": "bSaveOnRest",
-      "description": "Toggles autosaves made after sleeping.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "MAIN",
-      "key": "bSaveOnWait",
-      "file": "SkyrimPrefs.ini",
-      "label": "bSaveOnWait",
-      "description": "Toggles autosaves made after waiting.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "SaveGame",
-      "key": "bDisplayMissingContentDialogue",
-      "file": "Skyrim.ini",
-      "label": "bDisplayMissingContentDialogue",
-      "description": "Toggles the missing content warning when loading a saved game missing a previously enabled plugin.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "SaveGame",
-      "key": "bAllowScriptedAutosave",
-      "file": "Skyrim.ini",
-      "label": "bAllowScriptedAutosave",
-      "description": "Toggles scripted autosaves.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "SaveGame",
-      "key": "bAllowScriptedForceSave",
-      "file": "Skyrim.ini",
-      "label": "bAllowScriptedForceSave",
-      "description": "Toggles scripted force saves.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "SaveGame",
-      "key": "uiCompression",
-      "file": "Skyrim.ini",
-      "label": "uiCompression",
-      "description": "Sets the type of compression used on the save game file.",
-      "type": "enum",
-      "enumValues": [
+     "name": "Saved Games",
+     "rows": [
+      {
+       "label": "Autosaves",
+       "type": "Checkbutton",
+       "tooltip": "Toggles autosaves.",
+       "iniKeys": [
+        {
+         "key": "bDisableAutoSave",
+         "section": "SaveGame",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Max Autosaves",
+       "type": "Spinbox",
+       "tooltip": "Sets the maximum number of autosaves to keep.",
+       "iniKeys": [
+        {
+         "key": "iAutoSaveCount",
+         "section": "SaveGame",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 1.0,
+       "max": 100.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Save on Pause",
+       "type": "Checkbutton",
+       "tooltip": "Toggles autosaves made upon closing certain menus that pause the game.",
+       "iniKeys": [
+        {
+         "key": "bSaveOnPause",
+         "section": "MAIN",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Save on Pause Timer",
+       "type": "Spinbox",
+       "tooltip": "Sets the timer to make a new autosave upon closing certain menus that pause the game.",
+       "iniKeys": [
+        {
+         "key": "fAutosaveEveryXMins",
+         "section": "SaveGame",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ],
+       "min": 1.0,
+       "max": 100.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Save on Travel",
+       "type": "Checkbutton",
+       "tooltip": "Toggles autosaves made after traveling to different locations.",
+       "iniKeys": [
+        {
+         "key": "bSaveOnTravel",
+         "section": "MAIN",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Save on Rest",
+       "type": "Checkbutton",
+       "tooltip": "Toggles autosaves made after sleeping.",
+       "iniKeys": [
+        {
+         "key": "bSaveOnRest",
+         "section": "MAIN",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Save on Wait",
+       "type": "Checkbutton",
+       "tooltip": "Toggles autosaves made after waiting.",
+       "iniKeys": [
+        {
+         "key": "bSaveOnWait",
+         "section": "MAIN",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Missing Content Warning",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the missing content warning when loading a saved game missing a previously enabled plugin.",
+       "iniKeys": [
+        {
+         "key": "bDisplayMissingContentDialogue",
+         "section": "SaveGame",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Scripted Autosaves",
+       "type": "Checkbutton",
+       "tooltip": "Toggles scripted autosaves.",
+       "iniKeys": [
+        {
+         "key": "bAllowScriptedAutosave",
+         "section": "SaveGame",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Scripted Force Saves",
+       "type": "Checkbutton",
+       "tooltip": "Toggles scripted force saves.",
+       "iniKeys": [
+        {
+         "key": "bAllowScriptedForceSave",
+         "section": "SaveGame",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Compression",
+       "type": "Dropdown",
+       "tooltip": "Sets the type of compression used on the save game file.",
+       "iniKeys": [
+        {
+         "key": "uiCompression",
+         "section": "SaveGame",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "None",
         "ZLIB",
         "LZ4"
-      ],
-      "presets": {
-        "BethINI": 2
+       ],
+       "settingChoices": {
+        "None": [
+         "0"
+        ],
+        "ZLIB": [
+         "1"
+        ],
+        "LZ4": [
+         "2"
+        ]
+       }
       }
+     ]
     },
     {
-      "section": "Papyrus",
-      "key": "fPostLoadUpdateTimeMS",
-      "file": "Skyrim.ini",
-      "label": "fPostLoadUpdateTimeMS",
-      "description": "Sets time, in milliseconds, given to scripts to update after loading.",
-      "type": "enum",
-      "enumValues": [
+     "name": "Papyrus",
+     "rows": [
+      {
+       "label": "Post-Load Update Time",
+       "type": "Combobox",
+       "tooltip": "Sets time, in milliseconds, given to scripts to update after loading.",
+       "iniKeys": [
+        {
+         "key": "fPostLoadUpdateTimeMS",
+         "section": "Papyrus",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "500",
         "2000"
-      ],
-      "presets": {
-        "BethINI": 2000.0
-      }
-    },
-    {
-      "section": "Papyrus",
-      "key": "iMaxAllocatedMemoryBytes",
-      "file": "Skyrim.ini",
-      "label": "iMaxAllocatedMemoryBytes",
-      "description": "Sets the maximum memory that Papyrus can hold at a time.",
-      "type": "enum",
-      "enumValues": [
+       ]
+      },
+      {
+       "label": "Max Allocated Memory",
+       "type": "Combobox",
+       "tooltip": "Sets the maximum memory that Papyrus can hold at a time.",
+       "iniKeys": [
+        {
+         "key": "iMaxAllocatedMemoryBytes",
+         "section": "Papyrus",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "153600",
         "307200",
         "524288"
-      ],
-      "presets": {
-        "BethINI": 524288
+       ]
+      },
+      {
+       "label": "Logging",
+       "type": "Checkbutton",
+       "tooltip": "Toggles Papyrus logs being written to disk.",
+       "iniKeys": [
+        {
+         "key": "bEnableLogging",
+         "section": "Papyrus",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Debug Info",
+       "type": "Checkbutton",
+       "tooltip": "Toggles additional debug information. If enabled, line number information will be available in error traces at the expense of higher memory usage.",
+       "iniKeys": [
+        {
+         "key": "bLoadDebugInformation",
+         "section": "Papyrus",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Profiling",
+       "type": "Checkbutton",
+       "tooltip": "Toggles script profiling, which enables profiling commands and allows profiling information to be logged, at the cost of some script performance.",
+       "iniKeys": [
+        {
+         "key": "bEnableProfiling",
+         "section": "Papyrus",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Tracing",
+       "type": "Checkbutton",
+       "tooltip": "Toggles script tracing.",
+       "iniKeys": [
+        {
+         "key": "bEnableTrace",
+         "section": "Papyrus",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
       }
+     ]
     },
     {
-      "section": "Papyrus",
-      "key": "bEnableLogging",
-      "file": "Skyrim.ini",
-      "label": "bEnableLogging",
-      "description": "Toggles Papyrus logs being written to disk.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Papyrus",
-      "key": "bLoadDebugInformation",
-      "file": "Skyrim.ini",
-      "label": "bLoadDebugInformation",
-      "description": "Toggles additional debug information. If enabled, line number information will be available in error traces at the expense of higher memory usage.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Papyrus",
-      "key": "bEnableProfiling",
-      "file": "Skyrim.ini",
-      "label": "bEnableProfiling",
-      "description": "Toggles script profiling, which enables profiling commands and allows profiling information to be logged, at the cost of some script performance.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Papyrus",
-      "key": "bEnableTrace",
-      "file": "Skyrim.ini",
-      "label": "bEnableTrace",
-      "description": "Toggles script tracing.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Display",
-      "key": "sScreenShotBaseName",
-      "file": "Skyrim.ini",
-      "label": "sScreenShotBaseName",
-      "description": "Sets the location of game screenshots.",
-      "type": "enum",
-      "enumValues": [
+     "name": "Screenshots",
+     "rows": [
+      {
+       "label": "Screenshots Directory",
+       "type": "Dropdown",
+       "tooltip": "Sets the location of game screenshots.",
+       "iniKeys": [
+        {
+         "key": "sScreenShotBaseName",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "Browse...",
         "Manual..."
-      ],
-      "presets": {
-        "BethINI": "ScreenShot"
+       ]
+      },
+      {
+       "label": "Filename",
+       "type": "Entry",
+       "tooltip": "Sets the base filename of game screenshots.",
+       "iniKeys": [
+        {
+         "key": "sScreenShotBaseName",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Index",
+       "type": "Spinbox",
+       "tooltip": "Sets the screenshot index number.",
+       "iniKeys": [
+        {
+         "key": "iScreenShotIndex",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 5000.0,
+       "decimals": 0
       }
-    },
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Gameplay",
+   "groups": [
     {
-      "section": "Display",
-      "key": "iScreenShotIndex",
-      "file": "SkyrimPrefs.ini",
-      "label": "iScreenShotIndex",
-      "description": "Sets the screenshot index number.",
-      "type": "int",
-      "min": 0,
-      "max": 5000,
-      "presets": {
-        "BethINI": 0
-      }
-    },
-    {
-      "section": "GamePlay",
-      "key": "iDifficulty",
-      "file": "SkyrimPrefs.ini",
-      "label": "iDifficulty",
-      "description": "Sets the difficulty level.",
-      "type": "enum",
-      "enumValues": [
+     "name": "NoLabelFrame",
+     "rows": [
+      {
+       "label": "Difficulty",
+       "type": "Dropdown",
+       "tooltip": "Sets the difficulty level.",
+       "iniKeys": [
+        {
+         "key": "iDifficulty",
+         "section": "GamePlay",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "Easy",
         "Apprentice",
         "Adept",
         "Expert",
         "Master",
         "Legendary"
-      ],
-      "presets": {
-        "BethINI": 2
-      }
-    },
-    {
-      "section": "Animation",
-      "key": "bAlwaysDriveRagdoll",
-      "file": "Skyrim.ini",
-      "label": "bAlwaysDriveRagdoll",
-      "description": "Toggles always drive ragdoll. This makes ragdolls more animated when bumped.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Controls",
-      "key": "bAlwaysRunByDefault",
-      "file": "SkyrimPrefs.ini",
-      "label": "bAlwaysRunByDefault",
-      "description": "Toggles the ability of the character to always run by default. If turned off, you can still run, but walking is the default action.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Combat",
-      "key": "bDisableCombatDialogue",
-      "file": "Skyrim.ini",
-      "label": "bDisableCombatDialogue",
-      "description": "Toggles those cheeky comments that enemies say while in combat.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Animation",
-      "key": "bEnableHavokHit",
-      "file": "Skyrim.ini",
-      "label": "bEnableHavokHit",
-      "description": "Toggles hit recoil. Actors respond to being punched.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Combat",
-      "key": "bForceNPCsUseAmmo",
-      "file": "Skyrim.ini",
-      "label": "bForceNPCsUseAmmo",
-      "description": "Toggles off unlimited NPC ammo. If enabled, NPCs will no longer have access to unlimited ammo, but shall be forced to only use the ammo they possess.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "VATS",
-      "key": "bVATSDisable",
-      "file": "Skyrim.ini",
-      "label": "bVATSDisable",
-      "description": "Deactivates cinematic killmove camera. Kill moves will still work.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "General",
-      "key": "bBorderRegionsEnabled",
-      "file": "Skyrim.ini",
-      "label": "bBorderRegionsEnabled",
-      "description": "Toggles off the borders at the edges of the map.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Interface",
-      "key": "bShowTutorials",
-      "file": "Skyrim.ini",
-      "label": "bShowTutorials",
-      "description": "Toggles the in-game tutorial pop-ups.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Combat",
-      "key": "f1PArrowTiltUpAngle",
-      "file": "Skyrim.ini",
-      "label": "f1PArrowTiltUpAngle",
-      "description": "Sets the upward tilt angle of arrows in 1st-person view.",
-      "type": "enum",
-      "enumValues": [
+       ],
+       "settingChoices": {
+        "Easy": [
+         "0"
+        ],
+        "Apprentice": [
+         "1"
+        ],
+        "Adept": [
+         "2"
+        ],
+        "Expert": [
+         "3"
+        ],
+        "Master": [
+         "4"
+        ],
+        "Legendary": [
+         "5"
+        ]
+       }
+      },
+      {
+       "label": "Always Drive Ragdoll",
+       "type": "Checkbutton",
+       "tooltip": "Toggles always drive ragdoll. This makes ragdolls more animated when bumped.",
+       "iniKeys": [
+        {
+         "key": "bAlwaysDriveRagdoll",
+         "section": "Animation",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Always Run by Default",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the ability of the character to always run by default. If turned off, you can still run, but walking is the default action.",
+       "iniKeys": [
+        {
+         "key": "bAlwaysRunByDefault",
+         "section": "Controls",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Combat Dialogue",
+       "type": "Checkbutton",
+       "tooltip": "Toggles those cheeky comments that enemies say while in combat.",
+       "iniKeys": [
+        {
+         "key": "bDisableCombatDialogue",
+         "section": "Combat",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Hit Recoil",
+       "type": "Checkbutton",
+       "tooltip": "Toggles hit recoil. Actors respond to being punched.",
+       "iniKeys": [
+        {
+         "key": "bEnableHavokHit",
+         "section": "Animation",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "NPCs Use Ammo",
+       "type": "Checkbutton",
+       "tooltip": "Toggles off unlimited NPC ammo. If enabled, NPCs will no longer have access to unlimited ammo, but shall be forced to only use the ammo they possess.",
+       "iniKeys": [
+        {
+         "key": "bForceNPCsUseAmmo",
+         "section": "Combat",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Disable Kill Cam",
+       "type": "Checkbutton",
+       "tooltip": "Deactivates cinematic killmove camera. Kill moves will still work.",
+       "iniKeys": [
+        {
+         "key": "bVATSDisable",
+         "section": "VATS",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Remove Borders",
+       "type": "Checkbutton",
+       "tooltip": "Toggles off the borders at the edges of the map.",
+       "iniKeys": [
+        {
+         "key": "bBorderRegionsEnabled",
+         "section": "General",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Tutorials",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the in-game tutorial pop-ups.",
+       "iniKeys": [
+        {
+         "key": "bShowTutorials",
+         "section": "Interface",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "1st Person Arrow Tilt-up Angle",
+       "type": "Combobox",
+       "tooltip": "Sets the upward tilt angle of arrows in 1st-person view.",
+       "iniKeys": [
+        {
+         "key": "f1PArrowTiltUpAngle",
+         "section": "Combat",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "0.7",
         "1.0"
-      ],
-      "presets": {
-        "BethINI": 0.7
-      }
-    },
-    {
-      "section": "Combat",
-      "key": "f3PArrowTiltUpAngle",
-      "file": "Skyrim.ini",
-      "label": "f3PArrowTiltUpAngle",
-      "description": "Sets the upward tilt angle of arrows in 3rd-person view.",
-      "type": "enum",
-      "enumValues": [
+       ]
+      },
+      {
+       "label": "3rd Person Arrow Tilt-up Angle",
+       "type": "Combobox",
+       "tooltip": "Sets the upward tilt angle of arrows in 3rd-person view.",
+       "iniKeys": [
+        {
+         "key": "f3PArrowTiltUpAngle",
+         "section": "Combat",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "0.7",
         "1.0"
-      ],
-      "presets": {
-        "BethINI": 2.5
-      }
-    },
-    {
-      "section": "Combat",
-      "key": "f1PBoltTiltUpAngle",
-      "file": "Skyrim.ini",
-      "label": "f1PBoltTiltUpAngle",
-      "description": "Sets the upward tilt angle of crossbow bolts in 1st-person view.",
-      "type": "enum",
-      "enumValues": [
+       ]
+      },
+      {
+       "label": "1st Person Bolt Tilt-up Angle",
+       "type": "Combobox",
+       "tooltip": "Sets the upward tilt angle of crossbow bolts in 1st-person view.",
+       "iniKeys": [
+        {
+         "key": "f1PBoltTiltUpAngle",
+         "section": "Combat",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "0.7",
         "1.0"
-      ],
-      "presets": {
-        "BethINI": 0.7
-      }
-    },
-    {
-      "section": "Actor",
-      "key": "fVisibleNavmeshMoveDist",
-      "file": "Skyrim.ini",
-      "label": "fVisibleNavmeshMoveDist",
-      "description": "Sets the maximum distance that arrows can hit actors.",
-      "type": "enum",
-      "enumValues": [
+       ]
+      },
+      {
+       "label": "Max Arrow Range",
+       "type": "Combobox",
+       "tooltip": "Sets the maximum distance that arrows can hit actors.",
+       "iniKeys": [
+        {
+         "key": "fVisibleNavmeshMoveDist",
+         "section": "Actor",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "4096",
         "8192",
         "12288",
         "16384"
-      ],
-      "presets": {
-        "BethINI": 12288
-      }
-    },
-    {
-      "section": "Animation",
-      "key": "fHavokHitImpulseMult",
-      "file": "Skyrim.ini",
-      "label": "fHavokHitImpulseMult",
-      "description": "Sets the hit recoil multiplier.",
-      "type": "int",
-      "min": 0,
-      "max": 200,
-      "step": 1,
-      "presets": {
-        "BethINI": 50
-      }
-    },
-    {
-      "section": "Animation",
-      "key": "fWeaponChangeClearTime",
-      "file": "Skyrim.ini",
-      "label": "fWeaponChangeClearTime",
-      "description": "Sets the weapon change clear time.",
-      "type": "float",
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.01,
-      "presets": {
-        "BethINI": 0.5
-      }
-    },
-    {
-      "section": "General",
-      "key": "fEncumberedReminderTimer",
-      "file": "Skyrim.ini",
-      "label": "fEncumberedReminderTimer",
-      "description": "Sets the time interval between subsequent \"You are carrying too much to be able to run\" messages in seconds.",
-      "type": "enum",
-      "enumValues": [
+       ]
+      },
+      {
+       "label": "Hit Recoil Multiplier",
+       "type": "Slider",
+       "tooltip": "Sets the hit recoil multiplier.",
+       "iniKeys": [
+        {
+         "key": "fHavokHitImpulseMult",
+         "section": "Animation",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 200.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Weapon Change Clear Time",
+       "type": "Slider",
+       "tooltip": "Sets the weapon change clear time.",
+       "iniKeys": [
+        {
+         "key": "fWeaponChangeClearTime",
+         "section": "Animation",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 1.0,
+       "step": 0.01,
+       "decimals": 2
+      },
+      {
+       "label": "Over-Encumbered Reminder",
+       "type": "Combobox",
+       "tooltip": "Sets the time interval between subsequent \"You are carrying too much to be able to run\" messages in seconds.",
+       "iniKeys": [
+        {
+         "key": "fEncumberedReminderTimer",
+         "section": "General",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "30",
         "300",
         "3600"
-      ],
-      "presets": {
-        "BethINI": 30.0
-      }
-    },
-    {
-      "section": "Landscape",
-      "key": "fLandFriction",
-      "file": "Skyrim.ini",
-      "label": "fLandFriction",
-      "description": "Sets the landscape friction.",
-      "type": "enum",
-      "enumValues": [
+       ]
+      },
+      {
+       "label": "Landscape Friction",
+       "type": "Combobox",
+       "tooltip": "Sets the landscape friction.",
+       "iniKeys": [
+        {
+         "key": "fLandFriction",
+         "section": "Landscape",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "2.5",
         "32"
-      ],
-      "presets": {
-        "BethINI": 2.5
-      }
-    },
-    {
-      "section": "Interface",
-      "key": "fBookOpenTime",
-      "file": "Skyrim.ini",
-      "label": "fBookOpenTime",
-      "description": "Sets the time in milliseconds it takes to open books. 50 appears to be the minimum amount for you to still be able to read the book, but might vary.",
-      "type": "enum",
-      "enumValues": [
+       ]
+      },
+      {
+       "label": "Book Open Time",
+       "type": "Combobox",
+       "tooltip": "Sets the time in milliseconds it takes to open books. 50 appears to be the minimum amount for you to still be able to read the book, but might vary.",
+       "iniKeys": [
+        {
+         "key": "fBookOpenTime",
+         "section": "Interface",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "50",
         "500",
         "1000"
-      ],
-      "presets": {
-        "BethINI": 500
-      }
-    },
-    {
-      "section": "Camera",
-      "key": "iHorseTransitionMillis",
-      "file": "Skyrim.ini",
-      "label": "iHorseTransitionMillis",
-      "description": "Sets the time in milliseconds it takes for the camera to readjust after dismounting a horse.",
-      "type": "enum",
-      "enumValues": [
+       ]
+      },
+      {
+       "label": "Horse Dismount Delay",
+       "type": "Combobox",
+       "tooltip": "Sets the time in milliseconds it takes for the camera to readjust after dismounting a horse.",
+       "iniKeys": [
+        {
+         "key": "iHorseTransitionMillis",
+         "section": "Camera",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "0",
         "250",
         "500"
-      ],
-      "presets": {
-        "BethINI": 250
+       ]
       }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Interface",
+   "groups": [
+    {
+     "name": "NoLabelFrame",
+     "rows": [
+      {
+       "label": "Subtitle Speaker Name Color",
+       "type": "Color",
+       "tooltip": "Sets the subtitle text color of the name of the person speaking.",
+       "iniKeys": [
+        {
+         "key": "iSubtitleSpeakerNameColor",
+         "section": "Interface",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Dialogue Subtitles",
+       "type": "Checkbutton",
+       "tooltip": "Toggles subtitles for NPCs who are directly talking to you.",
+       "iniKeys": [
+        {
+         "key": "bDialogueSubtitles",
+         "section": "Interface",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "General Subtitles",
+       "type": "Checkbutton",
+       "tooltip": "Toggles subtitles for NPCs who are not directly talking to you.",
+       "iniKeys": [
+        {
+         "key": "bGeneralSubtitles",
+         "section": "Interface",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Bethesda Modding Platform",
+       "type": "Checkbutton",
+       "tooltip": "Toggles Bethesda's built-in modding platform. If disabled, Creation Club news will no longer appear, but the \"Mods\" and \"Creation Club\" buttons will still be active, albeit probably broken.",
+       "iniKeys": [
+        {
+         "key": "bEnablePlatform",
+         "section": "Bethesda.net",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Mod Manager Menu",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the \"Mods\" menu item in the in-game system menu.",
+       "iniKeys": [
+        {
+         "key": "bModManagerMenuEnabled",
+         "section": "General",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Controller Vibration",
+       "type": "Checkbutton",
+       "tooltip": "Toggles controller vibration.",
+       "iniKeys": [
+        {
+         "key": "bGamePadRumble",
+         "section": "Controls",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Max Custom Name Length",
+       "type": "Spinbox",
+       "tooltip": "Sets the maximum number of characters that can be used for custom names of items renamed during enchanting.",
+       "iniKeys": [
+        {
+         "key": "uMaxCustomItemNameLength",
+         "section": "Interface",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 1.0,
+       "max": 128.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Crosshair",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the crosshair.",
+       "iniKeys": [
+        {
+         "key": "bCrosshairEnabled",
+         "section": "MAIN",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Compass",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the compass.",
+       "iniKeys": [
+        {
+         "key": "bShowCompass",
+         "section": "Interface",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "HUD Opacity",
+       "type": "Slider",
+       "tooltip": "Sets HUD opacity.",
+       "iniKeys": [
+        {
+         "key": "fHUDOpacity",
+         "section": "MAIN",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 1.0,
+       "step": 0.01,
+       "decimals": 2
+      },
+      {
+       "label": "Quest Markers",
+       "type": "Checkbutton",
+       "tooltip": "Toggles quest markers on the map and the compass.",
+       "iniKeys": [
+        {
+         "key": "bShowQuestMarkers",
+         "section": "GamePlay",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Floating Quest Markers",
+       "type": "Checkbutton",
+       "tooltip": "Toggles floating quest markers on items and characters.",
+       "iniKeys": [
+        {
+         "key": "bShowFloatingQuestMarkers",
+         "section": "GamePlay",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ]
+      }
+     ]
     },
     {
-      "section": "Interface",
-      "key": "iSubtitleSpeakerNameColor",
-      "file": "Skyrim.ini",
-      "label": "iSubtitleSpeakerNameColor",
-      "description": "Sets the subtitle text color of the name of the person speaking.",
-      "type": "string",
-      "presets": {
-        "BethINI": 8947848
-      }
-    },
-    {
-      "section": "Interface",
-      "key": "bDialogueSubtitles",
-      "file": "SkyrimPrefs.ini",
-      "label": "bDialogueSubtitles",
-      "description": "Toggles subtitles for NPCs who are directly talking to you.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Interface",
-      "key": "bGeneralSubtitles",
-      "file": "SkyrimPrefs.ini",
-      "label": "bGeneralSubtitles",
-      "description": "Toggles subtitles for NPCs who are not directly talking to you.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Bethesda.net",
-      "key": "bEnablePlatform",
-      "file": "Skyrim.ini",
-      "label": "bEnablePlatform",
-      "description": "Toggles Bethesda's built-in modding platform. If disabled, Creation Club news will no longer appear, but the \"Mods\" and \"Creation Club\" buttons will still be active, albeit probably broken.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "General",
-      "key": "bModManagerMenuEnabled",
-      "file": "Skyrim.ini",
-      "label": "bModManagerMenuEnabled",
-      "description": "Toggles the \"Mods\" menu item in the in-game system menu.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Controls",
-      "key": "bGamePadRumble",
-      "file": "SkyrimPrefs.ini",
-      "label": "bGamePadRumble",
-      "description": "Toggles controller vibration.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Interface",
-      "key": "uMaxCustomItemNameLength",
-      "file": "Skyrim.ini",
-      "label": "uMaxCustomItemNameLength",
-      "description": "Sets the maximum number of characters that can be used for custom names of items renamed during enchanting.",
-      "type": "int",
-      "min": 1,
-      "max": 128,
-      "step": 1,
-      "presets": {
-        "BethINI": 64
-      }
-    },
-    {
-      "section": "MAIN",
-      "key": "bCrosshairEnabled",
-      "file": "SkyrimPrefs.ini",
-      "label": "bCrosshairEnabled",
-      "description": "Toggles the crosshair.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Interface",
-      "key": "bShowCompass",
-      "file": "SkyrimPrefs.ini",
-      "label": "bShowCompass",
-      "description": "Toggles the compass.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "MAIN",
-      "key": "fHUDOpacity",
-      "file": "SkyrimPrefs.ini",
-      "label": "fHUDOpacity",
-      "description": "Sets HUD opacity.",
-      "type": "float",
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.01,
-      "presets": {
-        "BethINI": 1.0
-      }
-    },
-    {
-      "section": "GamePlay",
-      "key": "bShowQuestMarkers",
-      "file": "SkyrimPrefs.ini",
-      "label": "bShowQuestMarkers",
-      "description": "Toggles quest markers on the map and the compass.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "GamePlay",
-      "key": "bShowFloatingQuestMarkers",
-      "file": "SkyrimPrefs.ini",
-      "label": "bShowFloatingQuestMarkers",
-      "description": "Toggles floating quest markers on items and characters.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Menu",
-      "key": "iConsoleSizeScreenPercent",
-      "file": "Skyrim.ini",
-      "label": "iConsoleSizeScreenPercent",
-      "description": "Sets the percentage of the screen that the in-game console can fill.",
-      "type": "int",
-      "min": 0,
-      "max": 100,
-      "step": 1,
-      "presets": {
-        "BethINI": 40
-      }
-    },
-    {
-      "section": "Menu",
-      "key": "iConsoleTextSize",
-      "file": "Skyrim.ini",
-      "label": "iConsoleTextSize",
-      "description": "Sets the size for text in the in-game console.",
-      "type": "int",
-      "min": 0,
-      "max": 100,
-      "step": 1,
-      "presets": {
-        "BethINI": 20
-      }
-    },
-    {
-      "section": "Menu",
-      "key": "iConsoleHistoryCharBufferSize",
-      "file": "Skyrim.ini",
-      "label": "iConsoleHistoryCharBufferSize",
-      "description": "Sets the console history buffer size.",
-      "type": "enum",
-      "enumValues": [
+     "name": "Console",
+     "rows": [
+      {
+       "label": "Screen Percentage",
+       "type": "Spinbox",
+       "tooltip": "Sets the percentage of the screen that the in-game console can fill.",
+       "iniKeys": [
+        {
+         "key": "iConsoleSizeScreenPercent",
+         "section": "Menu",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 100.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Text Size",
+       "type": "Spinbox",
+       "tooltip": "Sets the size for text in the in-game console.",
+       "iniKeys": [
+        {
+         "key": "iConsoleTextSize",
+         "section": "Menu",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 100.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Buffer Size",
+       "type": "Combobox",
+       "tooltip": "Sets the console history buffer size.",
+       "iniKeys": [
+        {
+         "key": "iConsoleHistoryCharBufferSize",
+         "section": "Menu",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "16384",
         "32768",
         "65536",
         "131072",
         "327680",
         "655360"
-      ],
-      "presets": {
-        "BethINI": 16384
+       ]
+      },
+      {
+       "label": "Text Input Color",
+       "type": "Color",
+       "tooltip": "Sets the color of text typed into the console.",
+       "iniKeys": [
+        {
+         "key": "rConsoleTextColor",
+         "section": "Menu",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Text Output Color",
+       "type": "Color",
+       "tooltip": "Sets the color of the text output in the console.",
+       "iniKeys": [
+        {
+         "key": "rConsoleHistoryTextColor",
+         "section": "Menu",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
       }
+     ]
     },
     {
-      "section": "Menu",
-      "key": "rConsoleTextColor",
-      "file": "Skyrim.ini",
-      "label": "rConsoleTextColor",
-      "description": "Sets the color of text typed into the console.",
-      "type": "string",
-      "presets": {
-        "BethINI": "255,255,255"
+     "name": "Map Menu",
+     "rows": [
+      {
+       "label": "Unlock Map Menu Navigation",
+       "type": "Checkbutton",
+       "tooltip": "Unlocks the map menu navigation so that when the right mouse button is held, the camera can move more freely.",
+       "iniKeys": [
+        {
+         "key": "fMapWorldMaxPitch",
+         "section": "MapMenu",
+         "file": "Skyrim.ini",
+         "presets": {}
+        },
+        {
+         "key": "fMapWorldMinPitch",
+         "section": "MapMenu",
+         "file": "Skyrim.ini",
+         "presets": {}
+        },
+        {
+         "key": "fMapWorldYawRange",
+         "section": "MapMenu",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Remove Map Blur",
+       "type": "Checkbutton",
+       "tooltip": "Removes blurring effects on the map menu.",
+       "iniKeys": [
+        {
+         "key": "bWorldMapNoSkyDepthBlur",
+         "section": "MapMenu",
+         "file": "Skyrim.ini",
+         "presets": {}
+        },
+        {
+         "key": "fWorldMapDepthBlurScale",
+         "section": "MapMenu",
+         "file": "Skyrim.ini",
+         "presets": {}
+        },
+        {
+         "key": "fWorldMapMaximumDepthBlur",
+         "section": "MapMenu",
+         "file": "Skyrim.ini",
+         "presets": {}
+        },
+        {
+         "key": "fWorldMapNearDepthBlurScale",
+         "section": "MapMenu",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Map Brightness Boost",
+       "type": "Slider",
+       "tooltip": "Sets the global brightness boost modifier for the map.",
+       "iniKeys": [
+        {
+         "key": "fGlobalMapBrightnessBoost",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": -1.0,
+       "max": 1.0,
+       "step": 0.001,
+       "decimals": 3
+      },
+      {
+       "label": "Map Contrast Boost",
+       "type": "Slider",
+       "tooltip": "Sets the global contrast boost modifier for the map.",
+       "iniKeys": [
+        {
+         "key": "fGlobalMapContrastBoost",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": -1.0,
+       "max": 1.0,
+       "step": 0.001,
+       "decimals": 3
+      },
+      {
+       "label": "Map Bloom Boost",
+       "type": "Slider",
+       "tooltip": "Sets the global bloom threshold boost modifier for the map.",
+       "iniKeys": [
+        {
+         "key": "fGlobalMapBloomThresholdBoost",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": -1.0,
+       "max": 1.0,
+       "step": 0.001,
+       "decimals": 3
       }
+     ]
     },
     {
-      "section": "Menu",
-      "key": "rConsoleHistoryTextColor",
-      "file": "Skyrim.ini",
-      "label": "rConsoleHistoryTextColor",
-      "description": "Sets the color of the text output in the console.",
-      "type": "string",
-      "presets": {
-        "BethINI": "153,153,153"
+     "name": "Mouse Settings",
+     "rows": [
+      {
+       "label": "Invert Y",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the ability of the the mouse to be inverted over the y-axis (up and down movement).",
+       "iniKeys": [
+        {
+         "key": "bInvertYValues",
+         "section": "Controls",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Look Sensitivity",
+       "type": "Slider",
+       "tooltip": "Sets the look sensitivity (how fast the camera moves in response to the mouse).",
+       "iniKeys": [
+        {
+         "key": "fMouseHeadingSensitivity",
+         "section": "Controls",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.01,
+       "max": 0.1,
+       "step": 0.0001,
+       "decimals": 4
+      },
+      {
+       "label": "Cursor Velocity",
+       "type": "Slider",
+       "tooltip": "Sets the velocity of the mouse cursor in menus, such as the inventory menu.",
+       "iniKeys": [
+        {
+         "key": "fMouseCursorSpeed",
+         "section": "Interface",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.1,
+       "max": 2.0,
+       "step": 0.01,
+       "decimals": 2
+      },
+      {
+       "label": "X Scale",
+       "type": "Entry",
+       "tooltip": "Sets the mouse horizontal scale value (how much the camera moves when moving the mouse horizontally).",
+       "iniKeys": [
+        {
+         "key": "fMouseHeadingXScale",
+         "section": "Controls",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Y Scale",
+       "type": "Entry",
+       "tooltip": "Sets the mouse vertical scale value (how much the camera moves when moving the mouse vertically).",
+       "iniKeys": [
+        {
+         "key": "fMouseHeadingYScale",
+         "section": "Controls",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Mouse Wheel Zoom Speed",
+       "type": "Entry",
+       "tooltip": "Sets the transition speed when zooming in and out in third person mode using the mouse wheel. This also affects how fast the transition from first to third person occurs.",
+       "iniKeys": [
+        {
+         "key": "fMouseWheelZoomSpeed",
+         "section": "Camera",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
       }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Environment",
+   "groups": [
+    {
+     "name": "Snow",
+     "rows": [
+      {
+       "label": "Projected UV Diffuse Normals",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the use of projected UV diffuse normals. It is recommended to leave this enabled. Some mods missing the appropriate projecteddiffuse.dds texture can cause this feature to looked bugged.",
+       "iniKeys": [
+        {
+         "key": "bEnableProjecteUVDiffuseNormals",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 1,
+          "Bethini Low": 1,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ]
+      },
+      {
+       "label": "Improved Shader",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the improved snow shader. Please note that \"improved\" is subjective in this case. It is recommended to be disabled in most cases.",
+       "iniKeys": [
+        {
+         "key": "bEnableImprovedSnow",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 0,
+          "Bethini Medium": 0,
+          "Bethini High": 0,
+          "Bethini Ultra": 0
+         }
+        }
+       ]
+      },
+      {
+       "label": "Snow Ambient Occlusion",
+       "type": "Checkbutton",
+       "tooltip": "Toggles ambient occlusion on snow.",
+       "iniKeys": [
+        {
+         "key": "bDeactivateAOOnSnow",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Snow Mask",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the snow mask. This adds an effect to certain landscapes around snow.",
+       "iniKeys": [
+        {
+         "key": "bEnableSnowMask",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 0,
+          "Bethini Medium": 0,
+          "Bethini High": 0,
+          "Bethini Ultra": 0
+         }
+        }
+       ]
+      },
+      {
+       "label": "Sparkles",
+       "type": "Checkbutton",
+       "tooltip": "Toggles snow sparkles.",
+       "iniKeys": [
+        {
+         "key": "bToggleSparkles",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 0,
+          "Bethini Medium": 0,
+          "Bethini High": 0,
+          "Bethini Ultra": 0
+         }
+        }
+       ]
+      },
+      {
+       "label": "Rim Lighting",
+       "type": "Checkbutton",
+       "tooltip": "Toggles snow rim lighting.",
+       "iniKeys": [
+        {
+         "key": "bEnableSnowRimLighting",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 0,
+          "Bethini Medium": 0,
+          "Bethini High": 0,
+          "Bethini Ultra": 0
+         }
+        }
+       ]
+      },
+      {
+       "label": "Sparkle Intensity",
+       "type": "Slider",
+       "tooltip": "Sets the intensity of snow sparkles.",
+       "iniKeys": [
+        {
+         "key": "fSparklesIntensity",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 1.0,
+       "step": 0.001,
+       "decimals": 3
+      },
+      {
+       "label": "Sparkle Density",
+       "type": "Slider",
+       "tooltip": "Sets the density of snow sparkles.",
+       "iniKeys": [
+        {
+         "key": "fSparklesDensity",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.005,
+       "max": 1.0,
+       "step": 0.001,
+       "decimals": 3
+      },
+      {
+       "label": "Sparkle Size",
+       "type": "Slider",
+       "tooltip": "Sets the size of snow sparkles.",
+       "iniKeys": [
+        {
+         "key": "fSparklesSize",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.05,
+       "max": 12.0,
+       "step": 0.01,
+       "decimals": 2
+      },
+      {
+       "label": "Rim Lighting Intensity",
+       "type": "Slider",
+       "tooltip": "Sets the intensity of rim lighting.",
+       "iniKeys": [
+        {
+         "key": "fSnowRimLightIntensity",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 1.0,
+       "step": 0.001,
+       "decimals": 3
+      },
+      {
+       "label": "Rim Lighting Geometry Power",
+       "type": "Slider",
+       "tooltip": "Sets the power of gloss/rim lighting on snow-covered geometry. Higher values are darker. Lower values are brighter.",
+       "iniKeys": [
+        {
+         "key": "fSnowGeometrySpecPower",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 10.0,
+       "step": 0.01,
+       "decimals": 2
+      },
+      {
+       "label": "Rim Lighting Landscape",
+       "type": "Slider",
+       "tooltip": "Sets the power of gloss/rim lighting on snow-covered landscape. Higher values are darker. Lower values are brighter.",
+       "iniKeys": [
+        {
+         "key": "fSnowNormalSpecPower",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 10.0,
+       "step": 0.01,
+       "decimals": 2
+      }
+     ]
     },
     {
-      "section": "MapMenu",
-      "key": "fMapWorldMaxPitch",
-      "file": "Skyrim.ini",
-      "label": "fMapWorldMaxPitch",
-      "description": "Unlocks the map menu navigation so that when the right mouse button is held, the camera can move more freely.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
+     "name": "Grass",
+     "rows": [
+      {
+       "label": "Fade-in",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the gradual, fade-in effect for grass.",
+       "iniKeys": [
+        {
+         "key": "bEnableGrassFade",
+         "section": "Grass",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Draw Grass",
+       "type": "Checkbutton",
+       "tooltip": "Toggles drawing grass.",
+       "iniKeys": [
+        {
+         "key": "bDrawShaderGrass",
+         "section": "Grass",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 1,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ]
+      },
+      {
+       "label": "Create Grass",
+       "type": "Checkbutton",
+       "tooltip": "Toggles creating grass positions information.",
+       "iniKeys": [
+        {
+         "key": "bAllowCreateGrass",
+         "section": "Grass",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 1,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ]
+      },
+      {
+       "label": "Load Grass GID",
+       "type": "Checkbutton",
+       "tooltip": "Toggles loading grass from gid files.\n\nONLY TURN ON IF YOU KNOW WHAT YOU ARE DOING.\n\nTypically use No Grass In Objects mod for this functionality instead.",
+       "iniKeys": [
+        {
+         "key": "bAllowLoadGrass",
+         "section": "Grass",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Density",
+       "type": "Slider",
+       "tooltip": "Sets the grass density.",
+       "iniKeys": [
+        {
+         "key": "iMinGrassSize",
+         "section": "Grass",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 100,
+          "Bethini Low": 40,
+          "Bethini Medium": 40,
+          "Bethini High": 40,
+          "Bethini Ultra": 40
+         }
+        }
+       ],
+       "min": 1.0,
+       "max": 120.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Diversity",
+       "type": "Slider",
+       "tooltip": "Sets the grass diversity.",
+       "iniKeys": [
+        {
+         "key": "iMaxGrassTypesPerTexure",
+         "section": "Grass",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 2,
+          "Bethini Medium": 8,
+          "Bethini High": 15,
+          "Bethini Ultra": 15
+         }
+        }
+       ],
+       "min": 1.0,
+       "max": 15.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Grass Fade Start",
+       "type": "Slider",
+       "tooltip": "Sets the distance where grass starts to fade.",
+       "iniKeys": [
+        {
+         "key": "fGrassStartFadeDistance",
+         "section": "Grass",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 0.0,
+          "Bethini Low": 512.0,
+          "Bethini Medium": 1024.0,
+          "Bethini High": 4096.0,
+          "Bethini Ultra": 6144.0
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 6144.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Grass Fade Range",
+       "type": "Slider",
+       "tooltip": "Sets the grass fade range distance.",
+       "iniKeys": [
+        {
+         "key": "fGrassFadeRange",
+         "section": "Grass",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 1766,
+          "Bethini Medium": 3532,
+          "Bethini High": 6144,
+          "Bethini Ultra": 14128
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 14128.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Minimum Wind",
+       "type": "Slider",
+       "tooltip": "Sets the minimum wind magnitude blowing grass.",
+       "iniKeys": [
+        {
+         "key": "fGrassWindMagnitudeMin",
+         "section": "Grass",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 5,
+          "Bethini Medium": 5,
+          "Bethini High": 5,
+          "Bethini Ultra": 5
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 100.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Maximum Wind",
+       "type": "Slider",
+       "tooltip": "Sets the maximum wind magnitude blowing grass.",
+       "iniKeys": [
+        {
+         "key": "fGrassWindMagnitudeMax",
+         "section": "Grass",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 125,
+          "Bethini Medium": 125,
+          "Bethini High": 125,
+          "Bethini Ultra": 125
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 300.0,
+       "step": 1.0,
+       "decimals": 0
       }
+     ]
     },
     {
-      "section": "MapMenu",
-      "key": "bWorldMapNoSkyDepthBlur",
-      "file": "Skyrim.ini",
-      "label": "bWorldMapNoSkyDepthBlur",
-      "description": "Removes blurring effects on the map menu.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
+     "name": "Trees",
+     "rows": [
+      {
+       "label": "Dynamic Trees",
+       "type": "Checkbutton",
+       "tooltip": "Toggles between dynamic and static tree model rendering.",
+       "iniKeys": [
+        {
+         "key": "bEnableTreeAnimations",
+         "section": "Trees",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 1,
+          "Bethini Low": 0,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        },
+        {
+         "key": "bEnableTrees",
+         "section": "Trees",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 1,
+          "Bethini Low": 0,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ]
+      },
+      {
+       "label": "Disable Tree Animations",
+       "type": "Checkbutton",
+       "tooltip": "Toggles off tree animations.",
+       "iniKeys": [
+        {
+         "key": "fUpdateBudget",
+         "section": "Trees",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 0,
+          "Bethini Medium": 1.5,
+          "Bethini High": 1.5,
+          "Bethini Ultra": 1.5
+         }
+        }
+       ]
+      },
+      {
+       "label": "Skinned Trees",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the rendering of enhanced tree detail.",
+       "iniKeys": [
+        {
+         "key": "bRenderSkinnedTrees",
+         "section": "Trees",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 1,
+          "Bethini Low": 0,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ]
+      },
+      {
+       "label": "Max Skinned Trees",
+       "type": "Slider",
+       "tooltip": "Sets the maximum number of trees to render with enhanced tree detail.",
+       "iniKeys": [
+        {
+         "key": "uiMaxSkinnedTreesToRender",
+         "section": "Trees",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 20,
+          "Bethini Medium": 75,
+          "Bethini High": 120,
+          "Bethini Ultra": 200
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 200.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Skinned Trees Distance",
+       "type": "Slider",
+       "tooltip": "Sets the distance that trees have full skinned details. The trees switch to the lower quality SwitchNode mesh within the nif after this distance.",
+       "iniKeys": [
+        {
+         "key": "fTreesMidLODSwitchDist",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 4096,
+          "Bethini Medium": 8192,
+          "Bethini High": 10240,
+          "Bethini Ultra": 16384
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 20480.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Level 1 Tree Details",
+       "type": "Slider",
+       "tooltip": "Sets the level 1 skinned tree detail fade distance.",
+       "iniKeys": [
+        {
+         "key": "fMeshLODLevel1FadeTreeDistance",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 2048,
+          "Bethini Low": 4096,
+          "Bethini Medium": 8192,
+          "Bethini High": 10240,
+          "Bethini Ultra": 16384
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 20480.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Level 2 Tree Details",
+       "type": "Slider",
+       "tooltip": "Sets the level 2 skinned tree detail fade distance.",
+       "iniKeys": [
+        {
+         "key": "fMeshLODLevel2FadeTreeDistance",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 1024,
+          "Bethini Low": 2048,
+          "Bethini Medium": 4096,
+          "Bethini High": 6144,
+          "Bethini Ultra": 12288
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 20480.0,
+       "step": 1.0,
+       "decimals": 0
       }
+     ]
     },
     {
-      "section": "Display",
-      "key": "fGlobalMapBrightnessBoost",
-      "file": "Skyrim.ini",
-      "label": "fGlobalMapBrightnessBoost",
-      "description": "Sets the global brightness boost modifier for the map.",
-      "type": "float",
-      "min": -1.0,
-      "max": 1.0,
-      "step": 0.001,
-      "presets": {
-        "BethINI": 0.25
+     "name": "Water",
+     "rows": [
+      {
+       "label": "Reflect Trees",
+       "type": "Checkbutton",
+       "tooltip": "Toggles tree reflections in the water.",
+       "iniKeys": [
+        {
+         "key": "bReflectLODTrees",
+         "section": "Water",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 1,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ]
+      },
+      {
+       "label": "Reflect Land",
+       "type": "Checkbutton",
+       "tooltip": "Toggles land reflections in the water.",
+       "iniKeys": [
+        {
+         "key": "bReflectLODLand",
+         "section": "Water",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 1,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ]
+      },
+      {
+       "label": "Reflect Objects",
+       "type": "Checkbutton",
+       "tooltip": "Toggles object reflections in the water.",
+       "iniKeys": [
+        {
+         "key": "bReflectLODObjects",
+         "section": "Water",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 0,
+          "Bethini Medium": 0,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ]
+      },
+      {
+       "label": "Reflect Sky",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the sky reflection in the water.",
+       "iniKeys": [
+        {
+         "key": "bReflectSky",
+         "section": "Water",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 1,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ]
+      },
+      {
+       "label": "Water SSR Blur",
+       "type": "Slider",
+       "tooltip": "Sets the amount of blur on screen space reflections in water.",
+       "iniKeys": [
+        {
+         "key": "fWaterSSRBlurAmount",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 2.0,
+       "step": 0.01,
+       "decimals": 2
+      },
+      {
+       "label": "Water SSR Intensity",
+       "type": "Slider",
+       "tooltip": "Sets the intensity of screen space reflections in water.",
+       "iniKeys": [
+        {
+         "key": "fWaterSSRIntensity",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 2.0,
+       "step": 0.01,
+       "decimals": 2
+      },
+      {
+       "label": "Water SSR Perturbation",
+       "type": "Slider",
+       "tooltip": "Sets the perturbation scale of screen space reflections in water.",
+       "iniKeys": [
+        {
+         "key": "fWaterSSRNormalPerturbationScale",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 1.0,
+       "step": 0.01,
+       "decimals": 2
       }
-    },
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Shadows",
+   "groups": [
     {
-      "section": "Display",
-      "key": "fGlobalMapContrastBoost",
-      "file": "Skyrim.ini",
-      "label": "fGlobalMapContrastBoost",
-      "description": "Sets the global contrast boost modifier for the map.",
-      "type": "float",
-      "min": -1.0,
-      "max": 1.0,
-      "step": 0.001,
-      "presets": {
-        "BethINI": -0.3
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fGlobalMapBloomThresholdBoost",
-      "file": "Skyrim.ini",
-      "label": "fGlobalMapBloomThresholdBoost",
-      "description": "Sets the global bloom threshold boost modifier for the map.",
-      "type": "float",
-      "min": -1.0,
-      "max": 1.0,
-      "step": 0.001,
-      "presets": {
-        "BethINI": 0.25
-      }
-    },
-    {
-      "section": "Controls",
-      "key": "bInvertYValues",
-      "file": "SkyrimPrefs.ini",
-      "label": "bInvertYValues",
-      "description": "Toggles the ability of the the mouse to be inverted over the y-axis (up and down movement).",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Controls",
-      "key": "fMouseHeadingSensitivity",
-      "file": "SkyrimPrefs.ini",
-      "label": "fMouseHeadingSensitivity",
-      "description": "Sets the look sensitivity (how fast the camera moves in response to the mouse).",
-      "type": "float",
-      "min": 0.01,
-      "max": 0.1,
-      "step": 0.0001,
-      "presets": {
-        "BethINI": 0.0125
-      }
-    },
-    {
-      "section": "Interface",
-      "key": "fMouseCursorSpeed",
-      "file": "SkyrimPrefs.ini",
-      "label": "fMouseCursorSpeed",
-      "description": "Sets the velocity of the mouse cursor in menus, such as the inventory menu.",
-      "type": "float",
-      "min": 0.1,
-      "max": 2.0,
-      "step": 0.01,
-      "presets": {
-        "BethINI": 1.0
-      }
-    },
-    {
-      "section": "Controls",
-      "key": "fMouseHeadingXScale",
-      "file": "Skyrim.ini",
-      "label": "fMouseHeadingXScale",
-      "description": "Sets the mouse horizontal scale value (how much the camera moves when moving the mouse horizontally).",
-      "type": "float",
-      "presets": {
-        "BethINI": 0.02
-      }
-    },
-    {
-      "section": "Controls",
-      "key": "fMouseHeadingYScale",
-      "file": "Skyrim.ini",
-      "label": "fMouseHeadingYScale",
-      "description": "Sets the mouse vertical scale value (how much the camera moves when moving the mouse vertically).",
-      "type": "float",
-      "presets": {
-        "BethINI": 0.85
-      }
-    },
-    {
-      "section": "Camera",
-      "key": "fMouseWheelZoomSpeed",
-      "file": "Skyrim.ini",
-      "label": "fMouseWheelZoomSpeed",
-      "description": "Sets the transition speed when zooming in and out in third person mode using the mouse wheel. This also affects how fast the transition from first to third person occurs.",
-      "type": "float",
-      "presets": {
-        "BethINI": 3.0
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bEnableProjecteUVDiffuseNormals",
-      "file": "SkyrimPrefs.ini",
-      "label": "bEnableProjecteUVDiffuseNormals",
-      "description": "Toggles the use of projected UV diffuse normals. It is recommended to leave this enabled. Some mods missing the appropriate projecteddiffuse.dds texture can cause this feature to looked bugged.",
-      "type": "bool",
-      "presets": {
-        "Low": true,
-        "Medium": true,
-        "High": true,
-        "Ultra": true,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bEnableImprovedSnow",
-      "file": "SkyrimPrefs.ini",
-      "label": "bEnableImprovedSnow",
-      "description": "Toggles the improved snow shader. Please note that \"improved\" is subjective in this case. It is recommended to be disabled in most cases.",
-      "type": "bool",
-      "presets": {
-        "Low": false,
-        "Medium": false,
-        "High": false,
-        "Ultra": false,
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bDeactivateAOOnSnow",
-      "file": "Skyrim.ini",
-      "label": "bDeactivateAOOnSnow",
-      "description": "Toggles ambient occlusion on snow.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bEnableSnowMask",
-      "file": "Skyrim.ini",
-      "label": "bEnableSnowMask",
-      "description": "Toggles the snow mask. This adds an effect to certain landscapes around snow.",
-      "type": "bool",
-      "presets": {
-        "Low": false,
-        "Medium": false,
-        "High": false,
-        "Ultra": false,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bToggleSparkles",
-      "file": "SkyrimPrefs.ini",
-      "label": "bToggleSparkles",
-      "description": "Toggles snow sparkles.",
-      "type": "bool",
-      "presets": {
-        "Low": false,
-        "Medium": false,
-        "High": false,
-        "Ultra": false,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bEnableSnowRimLighting",
-      "file": "Skyrim.ini",
-      "label": "bEnableSnowRimLighting",
-      "description": "Toggles snow rim lighting.",
-      "type": "bool",
-      "presets": {
-        "Low": false,
-        "Medium": false,
-        "High": false,
-        "Ultra": false,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fSparklesIntensity",
-      "file": "Skyrim.ini",
-      "label": "fSparklesIntensity",
-      "description": "Sets the intensity of snow sparkles.",
-      "type": "float",
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.001,
-      "presets": {
-        "BethINI": 1.0
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fSparklesDensity",
-      "file": "Skyrim.ini",
-      "label": "fSparklesDensity",
-      "description": "Sets the density of snow sparkles.",
-      "type": "float",
-      "min": 0.005,
-      "max": 1.0,
-      "step": 0.001,
-      "presets": {
-        "BethINI": 0.85
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fSparklesSize",
-      "file": "Skyrim.ini",
-      "label": "fSparklesSize",
-      "description": "Sets the size of snow sparkles.",
-      "type": "float",
-      "min": 0.05,
-      "max": 12.0,
-      "step": 0.01,
-      "presets": {
-        "BethINI": 6.0
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fSnowRimLightIntensity",
-      "file": "Skyrim.ini",
-      "label": "fSnowRimLightIntensity",
-      "description": "Sets the intensity of rim lighting.",
-      "type": "float",
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.001,
-      "presets": {
-        "BethINI": 0.3
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fSnowGeometrySpecPower",
-      "file": "Skyrim.ini",
-      "label": "fSnowGeometrySpecPower",
-      "description": "Sets the power of gloss/rim lighting on snow-covered geometry. Higher values are darker. Lower values are brighter.",
-      "type": "float",
-      "min": 0.0,
-      "max": 10.0,
-      "step": 0.01,
-      "presets": {
-        "BethINI": 3.0
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fSnowNormalSpecPower",
-      "file": "Skyrim.ini",
-      "label": "fSnowNormalSpecPower",
-      "description": "Sets the power of gloss/rim lighting on snow-covered landscape. Higher values are darker. Lower values are brighter.",
-      "type": "float",
-      "min": 0.0,
-      "max": 10.0,
-      "step": 0.01,
-      "presets": {
-        "BethINI": 2.0
-      }
-    },
-    {
-      "section": "Grass",
-      "key": "bEnableGrassFade",
-      "file": "Skyrim.ini",
-      "label": "bEnableGrassFade",
-      "description": "Toggles the gradual, fade-in effect for grass.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Grass",
-      "key": "bDrawShaderGrass",
-      "file": "Skyrim.ini",
-      "label": "bDrawShaderGrass",
-      "description": "Toggles drawing grass.",
-      "type": "bool",
-      "presets": {
-        "Low": true,
-        "Medium": true,
-        "High": true,
-        "Ultra": true,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Grass",
-      "key": "bAllowCreateGrass",
-      "file": "Skyrim.ini",
-      "label": "bAllowCreateGrass",
-      "description": "Toggles creating grass positions information.",
-      "type": "bool",
-      "presets": {
-        "Low": true,
-        "Medium": true,
-        "High": true,
-        "Ultra": true,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Grass",
-      "key": "bAllowLoadGrass",
-      "file": "Skyrim.ini",
-      "label": "bAllowLoadGrass",
-      "description": "Toggles loading grass from gid files.\n\nONLY TURN ON IF YOU KNOW WHAT YOU ARE DOING.\n\nTypically use No Grass In Objects mod for this functionality instead.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Grass",
-      "key": "iMinGrassSize",
-      "file": "Skyrim.ini",
-      "label": "iMinGrassSize",
-      "description": "Sets the grass density.",
-      "type": "int",
-      "min": 1,
-      "max": 120,
-      "step": 1,
-      "presets": {
-        "Low": 40,
-        "Medium": 40,
-        "High": 40,
-        "Ultra": 40,
-        "BethINI": 20
-      }
-    },
-    {
-      "section": "Grass",
-      "key": "iMaxGrassTypesPerTexure",
-      "file": "Skyrim.ini",
-      "label": "iMaxGrassTypesPerTexure",
-      "description": "Sets the grass diversity.",
-      "type": "int",
-      "min": 1,
-      "max": 15,
-      "step": 1,
-      "presets": {
-        "Low": 2,
-        "Medium": 8,
-        "High": 15,
-        "Ultra": 15,
-        "BethINI": 2
-      }
-    },
-    {
-      "section": "Grass",
-      "key": "fGrassStartFadeDistance",
-      "file": "SkyrimPrefs.ini",
-      "label": "fGrassStartFadeDistance",
-      "description": "Sets the distance where grass starts to fade.",
-      "type": "int",
-      "min": 0,
-      "max": 6144,
-      "step": 1,
-      "presets": {
-        "Low": 512,
-        "Medium": 1024,
-        "High": 4096,
-        "Ultra": 6144,
-        "BethINI": 7000
-      }
-    },
-    {
-      "section": "Grass",
-      "key": "fGrassFadeRange",
-      "file": "Skyrim.ini",
-      "label": "fGrassFadeRange",
-      "description": "Sets the grass fade range distance.",
-      "type": "int",
-      "min": 0,
-      "max": 14128,
-      "step": 1,
-      "presets": {
-        "Low": 1766,
-        "Medium": 3532,
-        "High": 6144,
-        "Ultra": 14128,
-        "BethINI": 1000
-      }
-    },
-    {
-      "section": "Grass",
-      "key": "fGrassWindMagnitudeMin",
-      "file": "Skyrim.ini",
-      "label": "fGrassWindMagnitudeMin",
-      "description": "Sets the minimum wind magnitude blowing grass.",
-      "type": "int",
-      "min": 0,
-      "max": 100,
-      "step": 1,
-      "presets": {
-        "Low": 5,
-        "Medium": 5,
-        "High": 5,
-        "Ultra": 5,
-        "BethINI": 5
-      }
-    },
-    {
-      "section": "Grass",
-      "key": "fGrassWindMagnitudeMax",
-      "file": "Skyrim.ini",
-      "label": "fGrassWindMagnitudeMax",
-      "description": "Sets the maximum wind magnitude blowing grass.",
-      "type": "int",
-      "min": 0,
-      "max": 300,
-      "step": 1,
-      "presets": {
-        "Low": 125,
-        "Medium": 125,
-        "High": 125,
-        "Ultra": 125,
-        "BethINI": 125
-      }
-    },
-    {
-      "section": "Trees",
-      "key": "bEnableTreeAnimations",
-      "file": "Skyrim.ini",
-      "label": "bEnableTreeAnimations",
-      "description": "Toggles between dynamic and static tree model rendering.",
-      "type": "bool",
-      "presets": {
-        "Low": false,
-        "Medium": true,
-        "High": true,
-        "Ultra": true,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Trees",
-      "key": "fUpdateBudget",
-      "file": "Skyrim.ini",
-      "label": "fUpdateBudget",
-      "description": "Toggles off tree animations.",
-      "type": "bool",
-      "presets": {
-        "Low": false,
-        "Medium": true,
-        "High": true,
-        "Ultra": true,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Trees",
-      "key": "bRenderSkinnedTrees",
-      "file": "SkyrimPrefs.ini",
-      "label": "bRenderSkinnedTrees",
-      "description": "Toggles the rendering of enhanced tree detail.",
-      "type": "bool",
-      "presets": {
-        "Low": false,
-        "Medium": true,
-        "High": true,
-        "Ultra": true,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Trees",
-      "key": "uiMaxSkinnedTreesToRender",
-      "file": "SkyrimPrefs.ini",
-      "label": "uiMaxSkinnedTreesToRender",
-      "description": "Sets the maximum number of trees to render with enhanced tree detail.",
-      "type": "int",
-      "min": 0,
-      "max": 200,
-      "step": 1,
-      "presets": {
-        "Low": 20,
-        "Medium": 75,
-        "High": 120,
-        "Ultra": 200,
-        "BethINI": 40
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fTreesMidLODSwitchDist",
-      "file": "SkyrimPrefs.ini",
-      "label": "fTreesMidLODSwitchDist",
-      "description": "Sets the distance that trees have full skinned details. The trees switch to the lower quality SwitchNode mesh within the nif after this distance.",
-      "type": "int",
-      "min": 0,
-      "max": 20480,
-      "step": 1,
-      "presets": {
-        "Low": 4096,
-        "Medium": 8192,
-        "High": 10240,
-        "Ultra": 16384,
-        "BethINI": 3600
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fMeshLODLevel1FadeTreeDistance",
-      "file": "SkyrimPrefs.ini",
-      "label": "fMeshLODLevel1FadeTreeDistance",
-      "description": "Sets the level 1 skinned tree detail fade distance.",
-      "type": "int",
-      "min": 0,
-      "max": 20480,
-      "step": 1,
-      "presets": {
-        "Low": 4096,
-        "Medium": 8192,
-        "High": 10240,
-        "Ultra": 16384,
-        "BethINI": 2844
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fMeshLODLevel2FadeTreeDistance",
-      "file": "SkyrimPrefs.ini",
-      "label": "fMeshLODLevel2FadeTreeDistance",
-      "description": "Sets the level 2 skinned tree detail fade distance.",
-      "type": "int",
-      "min": 0,
-      "max": 20480,
-      "step": 1,
-      "presets": {
-        "Low": 2048,
-        "Medium": 4096,
-        "High": 6144,
-        "Ultra": 12288,
-        "BethINI": 2048
-      }
-    },
-    {
-      "section": "Water",
-      "key": "bReflectLODTrees",
-      "file": "Skyrim.ini",
-      "label": "bReflectLODTrees",
-      "description": "Toggles tree reflections in the water.",
-      "type": "bool",
-      "presets": {
-        "Low": true,
-        "Medium": true,
-        "High": true,
-        "Ultra": true,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Water",
-      "key": "bReflectLODLand",
-      "file": "Skyrim.ini",
-      "label": "bReflectLODLand",
-      "description": "Toggles land reflections in the water.",
-      "type": "bool",
-      "presets": {
-        "Low": true,
-        "Medium": true,
-        "High": true,
-        "Ultra": true,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Water",
-      "key": "bReflectLODObjects",
-      "file": "Skyrim.ini",
-      "label": "bReflectLODObjects",
-      "description": "Toggles object reflections in the water.",
-      "type": "bool",
-      "presets": {
-        "Low": false,
-        "Medium": false,
-        "High": true,
-        "Ultra": true,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Water",
-      "key": "bReflectSky",
-      "file": "Skyrim.ini",
-      "label": "bReflectSky",
-      "description": "Toggles the sky reflection in the water.",
-      "type": "bool",
-      "presets": {
-        "Low": true,
-        "Medium": true,
-        "High": true,
-        "Ultra": true,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fWaterSSRBlurAmount",
-      "file": "Skyrim.ini",
-      "label": "fWaterSSRBlurAmount",
-      "description": "Sets the amount of blur on screen space reflections in water.",
-      "type": "float",
-      "min": 0.0,
-      "max": 2.0,
-      "step": 0.01,
-      "presets": {
-        "BethINI": 0.3
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fWaterSSRIntensity",
-      "file": "Skyrim.ini",
-      "label": "fWaterSSRIntensity",
-      "description": "Sets the intensity of screen space reflections in water.",
-      "type": "float",
-      "min": 0.0,
-      "max": 2.0,
-      "step": 0.01,
-      "presets": {
-        "BethINI": 0.5
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fWaterSSRNormalPerturbationScale",
-      "file": "Skyrim.ini",
-      "label": "fWaterSSRNormalPerturbationScale",
-      "description": "Sets the perturbation scale of screen space reflections in water.",
-      "type": "float",
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.01,
-      "presets": {
-        "BethINI": 0.05
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bTreesReceiveShadows",
-      "file": "SkyrimPrefs.ini",
-      "label": "bTreesReceiveShadows",
-      "description": "Toggles the ability of trees to cast shadows upon themselves.",
-      "type": "bool",
-      "presets": {
-        "Low": false,
-        "Medium": true,
-        "High": true,
-        "Ultra": true,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bDisableHighTreeShadow",
-      "file": "Skyrim.ini",
-      "label": "bDisableHighTreeShadow",
-      "description": "Toggles high tree shadows.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bDrawLandShadows",
-      "file": "SkyrimPrefs.ini",
-      "label": "bDrawLandShadows",
-      "description": "Toggles the ability of land objects such as rocks and mountains to cast shadows.",
-      "type": "bool",
-      "presets": {
-        "Low": false,
-        "Medium": true,
-        "High": true,
-        "Ultra": true,
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Display",
-      "key": "iShadowMapResolution",
-      "file": "SkyrimPrefs.ini",
-      "label": "iShadowMapResolution",
-      "description": "Sets the resolution of shadows.",
-      "type": "enum",
-      "enumValues": [
+     "name": "NoLabelFrame",
+     "rows": [
+      {
+       "label": "Tree Shadows",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the ability of trees to cast shadows upon themselves.",
+       "iniKeys": [
+        {
+         "key": "bTreesReceiveShadows",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 0,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ]
+      },
+      {
+       "label": "High Tree Shadows",
+       "type": "Checkbutton",
+       "tooltip": "Toggles high tree shadows.",
+       "iniKeys": [
+        {
+         "key": "bDisableHighTreeShadow",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Land Shadows",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the ability of land objects such as rocks and mountains to cast shadows.",
+       "iniKeys": [
+        {
+         "key": "bDrawLandShadows",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 0,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ]
+      },
+      {
+       "label": "Shadow Resolution",
+       "type": "Combobox",
+       "tooltip": "Sets the resolution of shadows.",
+       "iniKeys": [
+        {
+         "key": "iShadowMapResolution",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 2,
+          "Bethini Low": 512,
+          "Bethini Medium": 1024,
+          "Bethini High": 2048,
+          "Bethini Ultra": 4096
+         }
+        }
+       ],
+       "choices": [
         "2",
         "256",
         "512",
@@ -1759,400 +2269,520 @@
         "4096",
         "8192",
         "16384"
-      ],
-      "presets": {
-        "Low": 512,
-        "Medium": 1024,
-        "High": 2048,
-        "Ultra": 4096,
-        "BethINI": 2048
+       ]
+      },
+      {
+       "label": "Shadow Bias",
+       "type": "Slider",
+       "tooltip": "Sets the directional bias of the shadows applied to surfaces. Low values reduce peter-panning (detached shadows), but cause more shadow acne (AKA shadow striping).",
+       "iniKeys": [
+        {
+         "key": "fShadowDirectionalBiasScale",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 1.0,
+          "Bethini Low": 0.47,
+          "Bethini Medium": 0.47,
+          "Bethini High": 0.47,
+          "Bethini Ultra": 0.47
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 1.0,
+       "step": 0.01,
+       "decimals": 2
+      },
+      {
+       "label": "Shadow Filtering",
+       "type": "Slider",
+       "tooltip": "Sets the amount of shadow filtering.",
+       "iniKeys": [
+        {
+         "key": "fPoissonRadiusScale",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 8.0,
+       "step": 0.01,
+       "decimals": 2
+      },
+      {
+       "label": "Detailed Draw Distance",
+       "type": "Slider",
+       "tooltip": "Sets the detailed draw distance (the shadows closest to your character).",
+       "iniKeys": [
+        {
+         "key": "fFirstSliceDistance",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0.0,
+          "Bethini Low": 1086.0,
+          "Bethini Medium": 1991.0,
+          "Bethini High": 2896.0,
+          "Bethini Ultra": 3620.0
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 6144.0,
+       "step": 4.0,
+       "decimals": 0
+      },
+      {
+       "label": "Exterior Draw Distance",
+       "type": "Slider",
+       "tooltip": "Sets the exterior shadow distance.",
+       "iniKeys": [
+        {
+         "key": "fShadowDistance",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 0.0001,
+          "Bethini Low": 2896,
+          "Bethini Medium": 3620,
+          "Bethini High": 8192,
+          "Bethini Ultra": 10240
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 16384.0,
+       "step": 4.0,
+       "decimals": 0
+      },
+      {
+       "label": "Focus Shadows",
+       "type": "Slider",
+       "tooltip": "Sets the maximum number of objects to use very highly detailed shadows based on where you are looking.",
+       "iniKeys": [
+        {
+         "key": "iNumFocusShadow",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 1,
+          "Bethini Low": 1,
+          "Bethini Medium": 2,
+          "Bethini High": 4,
+          "Bethini Ultra": 4
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 16.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "High Tree Shadow Limit",
+       "type": "Slider",
+       "tooltip": "Sets the maximum height that trees can cast high tree shadows.",
+       "iniKeys": [
+        {
+         "key": "fMaxHeightShadowCastingTrees",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 16384.0,
+       "step": 4.0,
+       "decimals": 0
       }
+     ]
     },
     {
-      "section": "Display",
-      "key": "fShadowDirectionalBiasScale",
-      "file": "Skyrim.ini",
-      "label": "fShadowDirectionalBiasScale",
-      "description": "Sets the directional bias of the shadows applied to surfaces. Low values reduce peter-panning (detached shadows), but cause more shadow acne (AKA shadow striping).",
-      "type": "float",
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.01,
-      "presets": {
-        "Low": 0.47,
-        "Medium": 0.47,
-        "High": 0.47,
-        "Ultra": 0.47,
-        "BethINI": 0.3
+     "name": "Ambient Occlusion",
+     "rows": [
+      {
+       "label": "Ambient Occlusion",
+       "type": "Checkbutton",
+       "tooltip": "Toggles ambient occlusion.",
+       "iniKeys": [
+        {
+         "key": "bSAOEnable",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 0,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ]
+      },
+      {
+       "label": "SAO Bias",
+       "type": "Slider",
+       "tooltip": "Sets the SAO bias.",
+       "iniKeys": [
+        {
+         "key": "fSAOBias",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 5.0,
+       "step": 0.1,
+       "decimals": 1
+      },
+      {
+       "label": "SAO Exp Factor",
+       "type": "Slider",
+       "tooltip": "Sets the SAO bias.",
+       "iniKeys": [
+        {
+         "key": "fSAOExpFactor",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 1.0,
+       "step": 0.01,
+       "decimals": 2
+      },
+      {
+       "label": "SAO Intensity",
+       "type": "Slider",
+       "tooltip": "Sets the SAO intensity.",
+       "iniKeys": [
+        {
+         "key": "fSAOIntensity",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 30.0,
+       "step": 0.1,
+       "decimals": 1
+      },
+      {
+       "label": "SAO Radius",
+       "type": "Slider",
+       "tooltip": "Sets the SAO radio.",
+       "iniKeys": [
+        {
+         "key": "fSAORadius",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 1024.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "SAO Value Diff Factor",
+       "type": "Slider",
+       "tooltip": "Sets the SAO value diff factor.",
+       "iniKeys": [
+        {
+         "key": "fSAOValueDiffFactor",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 1.0,
+       "step": 0.01,
+       "decimals": 2
       }
-    },
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Visuals",
+   "groups": [
     {
-      "section": "Display",
-      "key": "fPoissonRadiusScale",
-      "file": "Skyrim.ini",
-      "label": "fPoissonRadiusScale",
-      "description": "Sets the amount of shadow filtering.",
-      "type": "float",
-      "min": 0.0,
-      "max": 8.0,
-      "step": 0.01,
-      "presets": {
-        "BethINI": 4.0
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fFirstSliceDistance",
-      "file": "Skyrim.ini",
-      "label": "fFirstSliceDistance",
-      "description": "Sets the detailed draw distance (the shadows closest to your character).",
-      "type": "int",
-      "min": 0,
-      "max": 6144,
-      "step": 4,
-      "presets": {
-        "Low": 1086,
-        "Medium": 1991,
-        "High": 2896,
-        "Ultra": 3620,
-        "BethINI": 1250
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fShadowDistance",
-      "file": "SkyrimPrefs.ini",
-      "label": "fShadowDistance",
-      "description": "Sets the exterior shadow distance.",
-      "type": "int",
-      "min": 0,
-      "max": 16384,
-      "step": 4,
-      "presets": {
-        "Low": 2896,
-        "Medium": 3620,
-        "High": 8192,
-        "Ultra": 10240,
-        "BethINI": 8000
-      }
-    },
-    {
-      "section": "Display",
-      "key": "iNumFocusShadow",
-      "file": "SkyrimPrefs.ini",
-      "label": "iNumFocusShadow",
-      "description": "Sets the maximum number of objects to use very highly detailed shadows based on where you are looking.",
-      "type": "int",
-      "min": 0,
-      "max": 16,
-      "step": 1,
-      "presets": {
-        "Low": 1,
-        "Medium": 2,
-        "High": 4,
-        "Ultra": 4,
-        "BethINI": 4
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fMaxHeightShadowCastingTrees",
-      "file": "Skyrim.ini",
-      "label": "fMaxHeightShadowCastingTrees",
-      "description": "Sets the maximum height that trees can cast high tree shadows.",
-      "type": "int",
-      "min": 0,
-      "max": 16384,
-      "step": 4,
-      "presets": {
-        "BethINI": 5000
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bSAOEnable",
-      "file": "SkyrimPrefs.ini",
-      "label": "bSAOEnable",
-      "description": "Toggles ambient occlusion.",
-      "type": "bool",
-      "presets": {
-        "Low": false,
-        "Medium": true,
-        "High": true,
-        "Ultra": true,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fSAOBias",
-      "file": "Skyrim.ini",
-      "label": "fSAOBias",
-      "description": "Sets the SAO bias.",
-      "type": "float",
-      "min": 0.0,
-      "max": 5.0,
-      "step": 0.1,
-      "presets": {
-        "BethINI": 2.5
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fSAOExpFactor",
-      "file": "Skyrim.ini",
-      "label": "fSAOExpFactor",
-      "description": "Sets the SAO bias.",
-      "type": "float",
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.01,
-      "presets": {
-        "BethINI": 0.11
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fSAOIntensity",
-      "file": "Skyrim.ini",
-      "label": "fSAOIntensity",
-      "description": "Sets the SAO intensity.",
-      "type": "float",
-      "min": 0.0,
-      "max": 30.0,
-      "step": 0.1,
-      "presets": {
-        "BethINI": 15.0
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fSAORadius",
-      "file": "Skyrim.ini",
-      "label": "fSAORadius",
-      "description": "Sets the SAO radio.",
-      "type": "int",
-      "min": 0,
-      "max": 1024,
-      "step": 1,
-      "presets": {
-        "BethINI": 250
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fSAOValueDiffFactor",
-      "file": "Skyrim.ini",
-      "label": "fSAOValueDiffFactor",
-      "description": "Sets the SAO value diff factor.",
-      "type": "float",
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.01,
-      "presets": {
-        "BethINI": 0.3
-      }
-    },
-    {
-      "section": "Weather",
-      "key": "fSunBaseSize",
-      "file": "Skyrim.ini",
-      "label": "fSunBaseSize",
-      "description": "Sets sun base size.",
-      "type": "enum",
-      "enumValues": [
+     "name": "Sun",
+     "rows": [
+      {
+       "label": "Sun Base Size",
+       "type": "Combobox",
+       "tooltip": "Sets sun base size.",
+       "iniKeys": [
+        {
+         "key": "fSunBaseSize",
+         "section": "Weather",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "200",
         "425"
-      ],
-      "presets": {
-        "BethINI": 425.0
-      }
-    },
-    {
-      "section": "Weather",
-      "key": "fSunGlareSize",
-      "file": "Skyrim.ini",
-      "label": "fSunGlareSize",
-      "description": "Sets sun base size.",
-      "type": "enum",
-      "enumValues": [
+       ]
+      },
+      {
+       "label": "Sun Glare Size",
+       "type": "Combobox",
+       "tooltip": "Sets sun base size.",
+       "iniKeys": [
+        {
+         "key": "fSunGlareSize",
+         "section": "Weather",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "choices": [
         "282",
         "600"
-      ],
-      "presets": {
-        "BethINI": 600.0
+       ]
+      },
+      {
+       "label": "Sun Boost",
+       "type": "Slider",
+       "tooltip": "Sets the sun boost.",
+       "iniKeys": [
+        {
+         "key": "fSunBoost",
+         "section": "Weather",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 2.0,
+       "step": 0.01,
+       "decimals": 2
+      },
+      {
+       "label": "Sun Glare Multiplier",
+       "type": "Slider",
+       "tooltip": "Sets the sun glare multiplier.",
+       "iniKeys": [
+        {
+         "key": "fSunGlareMultiplier",
+         "section": "Weather",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 4.0,
+       "step": 0.01,
+       "decimals": 2
       }
+     ]
     },
     {
-      "section": "Weather",
-      "key": "fSunBoost",
-      "file": "Skyrim.ini",
-      "label": "fSunBoost",
-      "description": "Sets the sun boost.",
-      "type": "float",
-      "min": 0.0,
-      "max": 2.0,
-      "step": 0.01,
-      "presets": {
-        "BethINI": 1.0
+     "name": "Decals",
+     "rows": [
+      {
+       "label": "Decals",
+       "type": "Checkbutton",
+       "tooltip": "Toggles decals (mostly blood effects).",
+       "iniKeys": [
+        {
+         "key": "bDecals",
+         "section": "Decals",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 1,
+          "Bethini Low": 1,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ]
+      },
+      {
+       "label": "Disable Gore",
+       "type": "Checkbutton",
+       "tooltip": "Toggles gory effects, such as blood.",
+       "iniKeys": [
+        {
+         "key": "bDisableAllGore",
+         "section": "General",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Max Decals Per Frame",
+       "type": "Slider",
+       "tooltip": "Sets the maximum number of decals that can be shown per frame.",
+       "iniKeys": [
+        {
+         "key": "iMaxDecalsPerFrame",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 3,
+          "Bethini Low": 10,
+          "Bethini Medium": 60,
+          "Bethini High": 120,
+          "Bethini Ultra": 250
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 250.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Max Skinned Decals",
+       "type": "Slider",
+       "tooltip": "Sets the maximum number of skinned decals.",
+       "iniKeys": [
+        {
+         "key": "uMaxSkinDecals",
+         "section": "Decals",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 1,
+          "Bethini Low": 3,
+          "Bethini Medium": 35,
+          "Bethini High": 50,
+          "Bethini Ultra": 100
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 100.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Max Skinned Decals Per Frame",
+       "type": "Slider",
+       "tooltip": "Sets the maximum number of skinned decals that can be shown per frame.",
+       "iniKeys": [
+        {
+         "key": "iMaxSkinDecalsPerFrame",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 1,
+          "Bethini Low": 3,
+          "Bethini Medium": 35,
+          "Bethini High": 50,
+          "Bethini Ultra": 100
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 100.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Max Skinned Decals Per Actor",
+       "type": "Slider",
+       "tooltip": "Sets the maximum number of skinned decals per actor.",
+       "iniKeys": [
+        {
+         "key": "uMaxSkinDecalPerActor",
+         "section": "Decals",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 1,
+          "Bethini Low": 10,
+          "Bethini Medium": 20,
+          "Bethini High": 40,
+          "Bethini Ultra": 60
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 60.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Decal Lifetime",
+       "type": "Slider",
+       "tooltip": "Sets the time in seconds that some decals will stay visible.",
+       "iniKeys": [
+        {
+         "key": "fDecalLifetime",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 20.0,
+          "Bethini Low": 30.0,
+          "Bethini Medium": 240.0,
+          "Bethini High": 300.0,
+          "Bethini Ultra": 300.0
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 300.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Decal Distance",
+       "type": "Slider",
+       "tooltip": "Sets the distance that some decals will show.",
+       "iniKeys": [
+        {
+         "key": "fDecalLOD0",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 800.0,
+          "Bethini Low": 6144.0,
+          "Bethini Medium": 8192.0,
+          "Bethini High": 10240.0,
+          "Bethini Ultra": 12288.0
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 16384.0,
+       "step": 4.0,
+       "decimals": 0
       }
+     ]
     },
     {
-      "section": "Weather",
-      "key": "fSunGlareMultiplier",
-      "file": "Skyrim.ini",
-      "label": "fSunGlareMultiplier",
-      "description": "Sets the sun glare multiplier.",
-      "type": "float",
-      "min": 0.0,
-      "max": 4.0,
-      "step": 0.01,
-      "presets": {
-        "BethINI": 2.0
-      }
-    },
-    {
-      "section": "Decals",
-      "key": "bDecals",
-      "file": "SkyrimPrefs.ini",
-      "label": "bDecals",
-      "description": "Toggles decals (mostly blood effects).",
-      "type": "bool",
-      "presets": {
-        "Low": true,
-        "Medium": true,
-        "High": true,
-        "Ultra": true,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "General",
-      "key": "bDisableAllGore",
-      "file": "Skyrim.ini",
-      "label": "bDisableAllGore",
-      "description": "Toggles gory effects, such as blood.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Display",
-      "key": "iMaxDecalsPerFrame",
-      "file": "SkyrimPrefs.ini",
-      "label": "iMaxDecalsPerFrame",
-      "description": "Sets the maximum number of decals that can be shown per frame.",
-      "type": "int",
-      "min": 0,
-      "max": 250,
-      "step": 1,
-      "presets": {
-        "Low": 10,
-        "Medium": 60,
-        "High": 120,
-        "Ultra": 250,
-        "BethINI": 100
-      }
-    },
-    {
-      "section": "Decals",
-      "key": "uMaxSkinDecals",
-      "file": "SkyrimPrefs.ini",
-      "label": "uMaxSkinDecals",
-      "description": "Sets the maximum number of skinned decals.",
-      "type": "int",
-      "min": 0,
-      "max": 100,
-      "step": 1,
-      "presets": {
-        "Low": 3,
-        "Medium": 35,
-        "High": 50,
-        "Ultra": 100,
-        "BethINI": 100
-      }
-    },
-    {
-      "section": "Display",
-      "key": "iMaxSkinDecalsPerFrame",
-      "file": "SkyrimPrefs.ini",
-      "label": "iMaxSkinDecalsPerFrame",
-      "description": "Sets the maximum number of skinned decals that can be shown per frame.",
-      "type": "int",
-      "min": 0,
-      "max": 100,
-      "step": 1,
-      "presets": {
-        "Low": 3,
-        "Medium": 35,
-        "High": 50,
-        "Ultra": 100,
-        "BethINI": 25
-      }
-    },
-    {
-      "section": "Decals",
-      "key": "uMaxSkinDecalPerActor",
-      "file": "Skyrim.ini",
-      "label": "uMaxSkinDecalPerActor",
-      "description": "Sets the maximum number of skinned decals per actor.",
-      "type": "int",
-      "min": 0,
-      "max": 60,
-      "step": 1,
-      "presets": {
-        "Low": 10,
-        "Medium": 20,
-        "High": 40,
-        "Ultra": 60,
-        "BethINI": 25
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fDecalLifetime",
-      "file": "Skyrim.ini",
-      "label": "fDecalLifetime",
-      "description": "Sets the time in seconds that some decals will stay visible.",
-      "type": "int",
-      "min": 0,
-      "max": 300,
-      "step": 1,
-      "presets": {
-        "Low": 30,
-        "Medium": 240,
-        "High": 300,
-        "Ultra": 300,
-        "BethINI": 30
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fDecalLOD0",
-      "file": "Skyrim.ini",
-      "label": "fDecalLOD0",
-      "description": "Sets the distance that some decals will show.",
-      "type": "int",
-      "min": 0,
-      "max": 16384,
-      "step": 4,
-      "presets": {
-        "Low": 6144,
-        "Medium": 8192,
-        "High": 10240,
-        "Ultra": 12288,
-        "BethINI": 800
-      }
-    },
-    {
-      "section": "Particles",
-      "key": "iMaxDesired",
-      "file": "SkyrimPrefs.ini",
-      "label": "iMaxDesired",
-      "description": "Sets the amount of particle effects.",
-      "type": "enum",
-      "enumValues": [
+     "name": "Effects",
+     "rows": [
+      {
+       "label": "Particles",
+       "type": "Combobox",
+       "tooltip": "Sets the amount of particle effects.",
+       "iniKeys": [
+        {
+         "key": "iMaxDesired",
+         "section": "Particles",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 100,
+          "Bethini Low": 250,
+          "Bethini Medium": 750,
+          "Bethini High": 2000,
+          "Bethini Ultra": 6000
+         }
+        }
+       ],
+       "choices": [
         "250",
         "750",
         "1500",
@@ -2162,568 +2792,752 @@
         "7500",
         "8000",
         "10000"
-      ],
-      "presets": {
-        "Low": 250,
-        "Medium": 750,
-        "High": 2000,
-        "Ultra": 6000,
-        "BethINI": 750
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bVolumetricLightingEnable",
-      "file": "SkyrimPrefs.ini",
-      "label": "bVolumetricLightingEnable",
-      "description": "Sets Godrays (volumetric lighting) quality.",
-      "type": "enum",
-      "enumValues": [
+       ]
+      },
+      {
+       "label": "Godrays",
+       "type": "Dropdown",
+       "tooltip": "Sets Godrays (volumetric lighting) quality.",
+       "iniKeys": [
+        {
+         "key": "bVolumetricLightingEnable",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 0,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        },
+        {
+         "key": "iVolumetricLightingQuality",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 0,
+          "Bethini Medium": 1,
+          "Bethini High": 2,
+          "Bethini Ultra": 2
+         }
+        }
+       ],
+       "choices": [
         "None",
         "Low",
         "Medium",
         "High"
-      ],
-      "presets": {
-        "Low": 0,
-        "Medium": 1,
-        "High": 1,
-        "Ultra": 1,
-        "BethINI": 1
+       ],
+       "settingChoices": {
+        "None": [
+         "0",
+         "0"
+        ],
+        "Low": [
+         "1",
+         "0"
+        ],
+        "Medium": [
+         "1",
+         "1"
+        ],
+        "High": [
+         "1",
+         "2"
+        ]
+       }
+      },
+      {
+       "label": "Interior Godrays",
+       "type": "Checkbutton",
+       "tooltip": "Toggles Godrays in interiors. This may cause interiors to become overly bright in some cases.",
+       "iniKeys": [
+        {
+         "key": "bVolumetricLightingDisableInterior",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Lens Flare",
+       "type": "Checkbutton",
+       "tooltip": "Toggles lens flare.",
+       "iniKeys": [
+        {
+         "key": "bLensFlare",
+         "section": "Imagespace",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 0,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ]
+      },
+      {
+       "label": "Anamorphic Lens Flare",
+       "type": "Checkbutton",
+       "tooltip": "Toggles the horizontal lens flare effect most commonly associated with anamorphic lenses.",
+       "iniKeys": [
+        {
+         "key": "bIBLFEnable",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 0,
+          "Bethini Medium": 0,
+          "Bethini High": 0,
+          "Bethini Ultra": 0
+         }
+        }
+       ]
+      },
+      {
+       "label": "Rain Occlusion",
+       "type": "Checkbutton",
+       "tooltip": "Toggles precipitation occlusion (rain will not appear under roofs).",
+       "iniKeys": [
+        {
+         "key": "bUsePrecipitationOcclusion",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 0,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ]
+      },
+      {
+       "label": "Screen Space Reflections",
+       "type": "Checkbutton",
+       "tooltip": "Toggles screen space reflections.",
+       "iniKeys": [
+        {
+         "key": "bScreenSpaceReflectionEnabled",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 0,
+          "Bethini Low": 0,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ]
+      },
+      {
+       "label": "SSR Resolution Divider",
+       "type": "Spinbox",
+       "tooltip": "Sets the resolution divider of screen space reflections.",
+       "iniKeys": [
+        {
+         "key": "iReflectionResolutionDivider",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ],
+       "min": 1.0,
+       "max": 4.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Depth of Field",
+       "type": "Checkbutton",
+       "tooltip": "Toggles depth of field (DOF), a kind of blurring to imitate the human eye's perception, in imagespace. This is most noticeable under water, reducing visibility to realistic levels (it looks clear otherwise). It is recommended to leave this enabled, as most of the bad depth of field is controlled by the DOF Multiplier below.",
+       "iniKeys": [
+        {
+         "key": "bDoDepthOfField",
+         "section": "Imagespace",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "DOF Multiplier",
+       "type": "Slider",
+       "tooltip": "Sets the depth of field multiplier.",
+       "iniKeys": [
+        {
+         "key": "fDynamicDOFBlurMultiplier",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 1.0,
+       "step": 0.01,
+       "decimals": 2
       }
-    },
-    {
-      "section": "Display",
-      "key": "bVolumetricLightingDisableInterior",
-      "file": "Skyrim.ini",
-      "label": "bVolumetricLightingDisableInterior",
-      "description": "Toggles Godrays in interiors. This may cause interiors to become overly bright in some cases.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Imagespace",
-      "key": "bLensFlare",
-      "file": "SkyrimPrefs.ini",
-      "label": "bLensFlare",
-      "description": "Toggles lens flare.",
-      "type": "bool",
-      "presets": {
-        "Low": false,
-        "Medium": true,
-        "High": true,
-        "Ultra": true,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bIBLFEnable",
-      "file": "SkyrimPrefs.ini",
-      "label": "bIBLFEnable",
-      "description": "Toggles the horizontal lens flare effect most commonly associated with anamorphic lenses.",
-      "type": "bool",
-      "presets": {
-        "Low": false,
-        "Medium": false,
-        "High": false,
-        "Ultra": false,
-        "BethINI": false
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bUsePrecipitationOcclusion",
-      "file": "SkyrimPrefs.ini",
-      "label": "bUsePrecipitationOcclusion",
-      "description": "Toggles precipitation occlusion (rain will not appear under roofs).",
-      "type": "bool",
-      "presets": {
-        "Low": false,
-        "Medium": true,
-        "High": true,
-        "Ultra": true,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bScreenSpaceReflectionEnabled",
-      "file": "SkyrimPrefs.ini",
-      "label": "bScreenSpaceReflectionEnabled",
-      "description": "Toggles screen space reflections.",
-      "type": "bool",
-      "presets": {
-        "Low": false,
-        "Medium": true,
-        "High": true,
-        "Ultra": true,
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Display",
-      "key": "iReflectionResolutionDivider",
-      "file": "SkyrimPrefs.ini",
-      "label": "iReflectionResolutionDivider",
-      "description": "Sets the resolution divider of screen space reflections.",
-      "type": "int",
-      "min": 1,
-      "max": 4,
-      "step": 1,
-      "presets": {
-        "BethINI": 2
-      }
-    },
-    {
-      "section": "Imagespace",
-      "key": "bDoDepthOfField",
-      "file": "SkyrimPrefs.ini",
-      "label": "bDoDepthOfField",
-      "description": "Toggles depth of field (DOF), a kind of blurring to imitate the human eye's perception, in imagespace. This is most noticeable under water, reducing visibility to realistic levels (it looks clear otherwise). It is recommended to leave this enabled, as most of the bad depth of field is controlled by the DOF Multiplier below.",
-      "type": "bool",
-      "presets": {
-        "BethINI": true
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fDynamicDOFBlurMultiplier",
-      "file": "SkyrimPrefs.ini",
-      "label": "fDynamicDOFBlurMultiplier",
-      "description": "Sets the depth of field multiplier.",
-      "type": "float",
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.01,
-      "presets": {
-        "BethINI": 0.8
-      }
-    },
-    {
-      "section": "LightingShader",
-      "key": "fEnvmapLODFadeStart",
-      "file": "Skyrim.ini",
-      "label": "fEnvmapLODFadeStart",
-      "description": "Sets the distance where the environment map starts to fade.",
-      "type": "float",
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.001,
-      "presets": {
-        "Low": 0.2,
-        "Medium": 0.3,
-        "High": 0.6,
-        "Ultra": 0.9,
-        "BethINI": 0.09
-      }
-    },
-    {
-      "section": "LightingShader",
-      "key": "fEnvmapLODFadeEnd",
-      "file": "Skyrim.ini",
-      "label": "fEnvmapLODFadeEnd",
-      "description": "Sets the environment map fade end distance.",
-      "type": "float",
-      "min": 0.0,
-      "max": 1.1,
-      "step": 0.001,
-      "presets": {
-        "Low": 0.25,
-        "Medium": 0.4,
-        "High": 0.7,
-        "Ultra": 1.0,
-        "BethINI": 0.1
-      }
-    },
-    {
-      "section": "LightingShader",
-      "key": "fRefractionLODFadeStart",
-      "file": "Skyrim.ini",
-      "label": "fRefractionLODFadeStart",
-      "description": "Sets the distance where refraction starts to fade.",
-      "type": "float",
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.001,
-      "presets": {
-        "BethINI": 0.025
-      }
-    },
-    {
-      "section": "LightingShader",
-      "key": "fRefractionLODFadeEnd",
-      "file": "Skyrim.ini",
-      "label": "fRefractionLODFadeEnd",
-      "description": "Sets the refraction fade end distance.",
-      "type": "float",
-      "min": 0.0,
-      "max": 1.1,
-      "step": 0.001,
-      "presets": {
-        "BethINI": 0.03
-      }
-    },
-    {
-      "section": "LightingShader",
-      "key": "fSpecularLODFadeStart",
-      "file": "Skyrim.ini",
-      "label": "fSpecularLODFadeStart",
-      "description": "Sets the distance where specularity starts to fade.",
-      "type": "float",
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.001,
-      "presets": {
-        "BethINI": 0.09
-      }
-    },
-    {
-      "section": "LightingShader",
-      "key": "fSpecularLODFadeEnd",
-      "file": "Skyrim.ini",
-      "label": "fSpecularLODFadeEnd",
-      "description": "Sets the specular fade end distance.",
-      "type": "float",
-      "min": 0.0,
-      "max": 1.1,
-      "step": 0.001,
-      "presets": {
-        "BethINI": 0.1
-      }
-    },
-    {
-      "section": "LightingShader",
-      "key": "fDecalLODFadeStart",
-      "file": "Skyrim.ini",
-      "label": "fDecalLODFadeStart",
-      "description": "Sets the distance where decals start to fade.",
-      "type": "float",
-      "min": 0.0,
-      "max": 1.0,
-      "step": 0.001,
-      "presets": {
-        "Low": 0.1,
-        "Medium": 0.2,
-        "High": 0.5,
-        "Ultra": 0.9,
-        "BethINI": 0.05
-      }
-    },
-    {
-      "section": "LightingShader",
-      "key": "fDecalLODFadeEnd",
-      "file": "Skyrim.ini",
-      "label": "fDecalLODFadeEnd",
-      "description": "Sets the decal fade end distance.",
-      "type": "float",
-      "min": 0.0,
-      "max": 1.1,
-      "step": 0.001,
-      "presets": {
-        "Low": 0.15,
-        "Medium": 0.3,
-        "High": 0.6,
-        "Ultra": 1.0,
-        "BethINI": 0.06
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fLightLODStartFade",
-      "file": "SkyrimPrefs.ini",
-      "label": "fLightLODStartFade",
-      "description": "Sets the distance where light starts to fade",
-      "type": "int",
-      "min": 0,
-      "max": 6144,
-      "step": 1,
-      "presets": {
-        "Low": 1024,
-        "Medium": 2560,
-        "High": 4096,
-        "Ultra": 6144,
-        "BethINI": 1000
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fLightLODRange",
-      "file": "Skyrim.ini",
-      "label": "fLightLODRange",
-      "description": "Sets the light fade range distance.",
-      "type": "int",
-      "min": 0,
-      "max": 34816,
-      "step": 1,
-      "presets": {
-        "Low": 4096,
-        "Medium": 10240,
-        "High": 26624,
-        "Ultra": 34816,
-        "BethINI": 500
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fMeshLODLevel1FadeDist",
-      "file": "SkyrimPrefs.ini",
-      "label": "fMeshLODLevel1FadeDist",
-      "description": "Sets the level 1 object detail fade distance.",
-      "type": "int",
-      "min": 0,
-      "max": 20480,
-      "step": 1,
-      "presets": {
-        "Low": 4096,
-        "Medium": 8192,
-        "High": 10240,
-        "Ultra": 16384,
-        "BethINI": 9999999
-      }
-    },
-    {
-      "section": "Display",
-      "key": "fMeshLODLevel2FadeDist",
-      "file": "SkyrimPrefs.ini",
-      "label": "fMeshLODLevel2FadeDist",
-      "description": "Sets the level 2 object detail fade distance.",
-      "type": "int",
-      "min": 0,
-      "max": 20480,
-      "step": 1,
-      "presets": {
-        "Low": 2048,
-        "Medium": 4096,
-        "High": 6144,
-        "Ultra": 12288,
-        "BethINI": 9999999
-      }
-    },
-    {
-      "section": "LOD",
-      "key": "fLODFadeOutMultActors",
-      "file": "SkyrimPrefs.ini",
-      "label": "fLODFadeOutMultActors",
-      "description": "Sets the actor fade distance",
-      "type": "float",
-      "min": 0.0,
-      "max": 30.0,
-      "step": 0.1,
-      "presets": {
-        "Low": 3.0,
-        "Medium": 6.0,
-        "High": 12.0,
-        "Ultra": 15.0,
-        "BethINI": 6.0
-      }
-    },
-    {
-      "section": "LOD",
-      "key": "fLODFadeOutMultItems",
-      "file": "SkyrimPrefs.ini",
-      "label": "fLODFadeOutMultItems",
-      "description": "Sets the item fade distance",
-      "type": "float",
-      "min": 0.0,
-      "max": 30.0,
-      "step": 0.1,
-      "presets": {
-        "Low": 1.5,
-        "Medium": 3.0,
-        "High": 4.5,
-        "Ultra": 10.0,
-        "BethINI": 3.0
-      }
-    },
-    {
-      "section": "LOD",
-      "key": "fLODFadeOutMultObjects",
-      "file": "SkyrimPrefs.ini",
-      "label": "fLODFadeOutMultObjects",
-      "description": "Sets the object fade distance",
-      "type": "float",
-      "min": 0.0,
-      "max": 30.0,
-      "step": 0.1,
-      "presets": {
-        "Low": 3.0,
-        "Medium": 5.0,
-        "High": 15.0,
-        "Ultra": 30.0,
-        "BethINI": 5.0
-      }
-    },
-    {
-      "section": "General",
-      "key": "fFlickeringLightDistance",
-      "file": "Skyrim.ini",
-      "label": "fFlickeringLightDistance",
-      "description": "Sets the flickering light fade distance",
-      "type": "int",
-      "min": 0,
-      "max": 16384,
-      "step": 1,
-      "presets": {
-        "Low": 2048,
-        "Medium": 4096,
-        "High": 6144,
-        "Ultra": 8192,
-        "BethINI": 1024
-      }
-    },
-    {
-      "section": "General",
-      "key": "uGridsToLoad",
-      "file": "Skyrim.ini",
-      "label": "uGridsToLoad",
-      "description": "Sets how many grids will be actively rendered and processed around the Player Character (PC).",
-      "type": "int",
-      "min": 5,
-      "max": 21,
-      "step": 2,
-      "presets": {
-        "BethINI": 5
-      }
-    },
-    {
-      "section": "TerrainManager",
-      "key": "fBlockLevel0Distance",
-      "file": "SkyrimPrefs.ini",
-      "label": "fBlockLevel0Distance",
-      "description": "Sets the level 4 block distance. This is the distance that level 4 object LOD is shown. Additionally, level 4 terrain LOD is shown at this distance, but multiplied by the Terrain Multiplier (fSplitDistanceMult).",
-      "type": "int",
-      "min": 0,
-      "max": 98304,
-      "step": 4,
-      "presets": {
-        "Low": 16384,
-        "Medium": 32768,
-        "High": 53248,
-        "Ultra": 57344,
-        "BethINI": 35000
-      }
-    },
-    {
-      "section": "TerrainManager",
-      "key": "fBlockLevel1Distance",
-      "file": "SkyrimPrefs.ini",
-      "label": "fBlockLevel1Distance",
-      "description": "Sets the level 8 block distance. This is the distance that level 8 object LOD is shown. Additionally, level 8 terrain LOD is shown at this distance, but multiplied by the Terrain Multiplier (fSplitDistanceMult).",
-      "type": "int",
-      "min": 0,
-      "max": 262144,
-      "step": 4,
-      "presets": {
-        "Low": 32768,
-        "Medium": 81920,
-        "High": 114688,
-        "Ultra": 147456,
-        "BethINI": 70000
-      }
-    },
-    {
-      "section": "TerrainManager",
-      "key": "fBlockMaximumDistance",
-      "file": "SkyrimPrefs.ini",
-      "label": "fBlockMaximumDistance",
-      "description": "Sets the level 16 block distance. This is the distance that level 16 object LOD is shown. Additionally, level 16 terrain LOD is shown at this distance, but multiplied by the Terrain Multiplier (fSplitDistanceMult).",
-      "type": "int",
-      "min": 0,
-      "max": 393216,
-      "step": 4,
-      "presets": {
-        "Low": 131072,
-        "Medium": 196608,
-        "High": 262144,
-        "Ultra": 327680,
-        "BethINI": 250000
-      }
-    },
-    {
-      "section": "TerrainManager",
-      "key": "fSplitDistanceMult",
-      "file": "SkyrimPrefs.ini",
-      "label": "fSplitDistanceMult",
-      "description": "Sets the terrain multiplier. This value gets multiplied by the block distances to determine the terrain LOD distance.",
-      "type": "float",
-      "min": 0.0,
-      "max": 4.0,
-      "step": 0.005,
-      "presets": {
-        "Low": 1.0,
-        "Medium": 1.0,
-        "High": 1.0,
-        "Ultra": 1.0,
-        "BethINI": 1.5
-      }
-    },
-    {
-      "section": "MAIN",
-      "key": "fSkyCellRefFadeDistance",
-      "file": "SkyrimPrefs.ini",
-      "label": "fSkyCellRefFadeDistance",
-      "description": "Sets the neverfade distance.",
-      "type": "int",
-      "min": 0,
-      "max": 598016,
-      "step": 4,
-      "presets": {
-        "Low": 196608,
-        "Medium": 262144,
-        "High": 327680,
-        "Ultra": 598016,
-        "BethINI": 150000
-      }
-    },
-    {
-      "section": "TerrainManager",
-      "key": "fTreeLoadDistance",
-      "file": "SkyrimPrefs.ini",
-      "label": "fTreeLoadDistance",
-      "description": "Sets the tree LOD distance. Set to 0 if using DynDOLOD Ultra trees in object LOD.",
-      "type": "int",
-      "min": 0,
-      "max": 98304,
-      "step": 1,
-      "presets": {
-        "Low": 24576,
-        "Medium": 32768,
-        "High": 40960,
-        "Ultra": 57344,
-        "BethINI": 75000
-      }
-    },
-    {
-      "section": "Display",
-      "key": "bEnableLandFade",
-      "file": "Skyrim.ini",
-      "label": "bEnableLandFade",
-      "description": "Toggles terrain LOD fade. Recommended to be disabled to prevent flickering.",
-      "type": "bool",
-      "presets": {
-        "BethINI": false
-      }
-    },
-    {
-      "section": "General",
-      "key": "uLargeRefLODGridSize",
-      "file": "SkyrimPrefs.ini",
-      "label": "uLargeRefLODGridSize",
-      "description": "Sets how many grids full models for large references will show past the uGridsToLoad cells without the need to set the IsFullLOD flag",
-      "type": "int",
-      "min": 5,
-      "max": 21,
-      "step": 2,
-      "presets": {
-        "Low": 5,
-        "Medium": 7,
-        "High": 9,
-        "Ultra": 11,
-        "BethINI": 9
-      }
+     ]
     }
-  ]
+   ]
+  },
+  {
+   "name": "View Distance",
+   "groups": [
+    {
+     "name": "Near Details",
+     "rows": [
+      {
+       "label": "Environment Map Fade Start",
+       "type": "Slider",
+       "tooltip": "Sets the distance where the environment map starts to fade.",
+       "iniKeys": [
+        {
+         "key": "fEnvmapLODFadeStart",
+         "section": "LightingShader",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0.09,
+          "Bethini Low": 0.2,
+          "Bethini Medium": 0.3,
+          "Bethini High": 0.6,
+          "Bethini Ultra": 0.9
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 1.0,
+       "step": 0.001,
+       "decimals": 3
+      },
+      {
+       "label": "Environment Map Fade End",
+       "type": "Slider",
+       "tooltip": "Sets the environment map fade end distance.",
+       "iniKeys": [
+        {
+         "key": "fEnvmapLODFadeEnd",
+         "section": "LightingShader",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0.1,
+          "Bethini Low": 0.25,
+          "Bethini Medium": 0.4,
+          "Bethini High": 0.7,
+          "Bethini Ultra": 1.0
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 1.1,
+       "step": 0.001,
+       "decimals": 3
+      },
+      {
+       "label": "Refraction Fade Start",
+       "type": "Slider",
+       "tooltip": "Sets the distance where refraction starts to fade.",
+       "iniKeys": [
+        {
+         "key": "fRefractionLODFadeStart",
+         "section": "LightingShader",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 1.0,
+       "step": 0.001,
+       "decimals": 3
+      },
+      {
+       "label": "Refraction Fade End",
+       "type": "Slider",
+       "tooltip": "Sets the refraction fade end distance.",
+       "iniKeys": [
+        {
+         "key": "fRefractionLODFadeEnd",
+         "section": "LightingShader",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 1.1,
+       "step": 0.001,
+       "decimals": 3
+      },
+      {
+       "label": "Specular Fade Start",
+       "type": "Slider",
+       "tooltip": "Sets the distance where specularity starts to fade.",
+       "iniKeys": [
+        {
+         "key": "fSpecularLODFadeStart",
+         "section": "LightingShader",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 1.0,
+       "step": 0.001,
+       "decimals": 3
+      },
+      {
+       "label": "Specular Fade End",
+       "type": "Slider",
+       "tooltip": "Sets the specular fade end distance.",
+       "iniKeys": [
+        {
+         "key": "fSpecularLODFadeEnd",
+         "section": "LightingShader",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 0.0,
+       "max": 1.1,
+       "step": 0.001,
+       "decimals": 3
+      },
+      {
+       "label": "Decal Fade Start",
+       "type": "Slider",
+       "tooltip": "Sets the distance where decals start to fade.",
+       "iniKeys": [
+        {
+         "key": "fDecalLODFadeStart",
+         "section": "LightingShader",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0.05,
+          "Bethini Low": 0.1,
+          "Bethini Medium": 0.2,
+          "Bethini High": 0.5,
+          "Bethini Ultra": 0.9
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 1.0,
+       "step": 0.001,
+       "decimals": 3
+      },
+      {
+       "label": "Decal Fade End",
+       "type": "Slider",
+       "tooltip": "Sets the decal fade end distance.",
+       "iniKeys": [
+        {
+         "key": "fDecalLODFadeEnd",
+         "section": "LightingShader",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 0.06,
+          "Bethini Low": 0.15,
+          "Bethini Medium": 0.3,
+          "Bethini High": 0.6,
+          "Bethini Ultra": 1.0
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 1.1,
+       "step": 0.001,
+       "decimals": 3
+      },
+      {
+       "label": "Light Fade Start",
+       "type": "Slider",
+       "tooltip": "Sets the distance where light starts to fade",
+       "iniKeys": [
+        {
+         "key": "fLightLODStartFade",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 512.0,
+          "Bethini Low": 1024.0,
+          "Bethini Medium": 2560.0,
+          "Bethini High": 4096.0,
+          "Bethini Ultra": 6144.0
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 6144.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Light Fade Range",
+       "type": "Slider",
+       "tooltip": "Sets the light fade range distance.",
+       "iniKeys": [
+        {
+         "key": "fLightLODRange",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 2048.0,
+          "Bethini Low": 4096.0,
+          "Bethini Medium": 10240.0,
+          "Bethini High": 26624.0,
+          "Bethini Ultra": 34816.0
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 34816.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Level 1 Object Details",
+       "type": "Slider",
+       "tooltip": "Sets the level 1 object detail fade distance.",
+       "iniKeys": [
+        {
+         "key": "fMeshLODLevel1FadeDist",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 2048,
+          "Bethini Low": 4096,
+          "Bethini Medium": 8192,
+          "Bethini High": 10240,
+          "Bethini Ultra": 16384
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 20480.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Level 2 Object Details",
+       "type": "Slider",
+       "tooltip": "Sets the level 2 object detail fade distance.",
+       "iniKeys": [
+        {
+         "key": "fMeshLODLevel2FadeDist",
+         "section": "Display",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 1024,
+          "Bethini Low": 2048,
+          "Bethini Medium": 4096,
+          "Bethini High": 6144,
+          "Bethini Ultra": 12288
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 20480.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Actor Fade",
+       "type": "Slider",
+       "tooltip": "Sets the actor fade distance",
+       "iniKeys": [
+        {
+         "key": "fLODFadeOutMultActors",
+         "section": "LOD",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 2,
+          "Bethini Low": 3,
+          "Bethini Medium": 6,
+          "Bethini High": 12,
+          "Bethini Ultra": 15
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 30.0,
+       "step": 0.1,
+       "decimals": 1
+      },
+      {
+       "label": "Item Fade",
+       "type": "Slider",
+       "tooltip": "Sets the item fade distance",
+       "iniKeys": [
+        {
+         "key": "fLODFadeOutMultItems",
+         "section": "LOD",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 1,
+          "Bethini Low": 1.5,
+          "Bethini Medium": 3,
+          "Bethini High": 4.5,
+          "Bethini Ultra": 10
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 30.0,
+       "step": 0.1,
+       "decimals": 1
+      },
+      {
+       "label": "Object Fade",
+       "type": "Slider",
+       "tooltip": "Sets the object fade distance",
+       "iniKeys": [
+        {
+         "key": "fLODFadeOutMultObjects",
+         "section": "LOD",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 2,
+          "Bethini Low": 3,
+          "Bethini Medium": 5,
+          "Bethini High": 15,
+          "Bethini Ultra": 30
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 30.0,
+       "step": 0.1,
+       "decimals": 1
+      },
+      {
+       "label": "Flickering Light Distance",
+       "type": "Slider",
+       "tooltip": "Sets the flickering light fade distance",
+       "iniKeys": [
+        {
+         "key": "fFlickeringLightDistance",
+         "section": "General",
+         "file": "Skyrim.ini",
+         "presets": {
+          "Bethini Poor": 1024,
+          "Bethini Low": 2048,
+          "Bethini Medium": 4096,
+          "Bethini High": 6144,
+          "Bethini Ultra": 8192
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 16384.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "uGridsToLoad",
+       "type": "Spinbox",
+       "tooltip": "Sets how many grids will be actively rendered and processed around the Player Character (PC).",
+       "iniKeys": [
+        {
+         "key": "uGridsToLoad",
+         "section": "General",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ],
+       "min": 5.0,
+       "max": 21.0,
+       "step": 2.0,
+       "decimals": 0
+      }
+     ]
+    },
+    {
+     "name": "Distant Details",
+     "rows": [
+      {
+       "label": "Level 4 Block Distance",
+       "type": "Slider",
+       "tooltip": "Sets the level 4 block distance. This is the distance that level 4 object LOD is shown. Additionally, level 4 terrain LOD is shown at this distance, but multiplied by the Terrain Multiplier (fSplitDistanceMult).",
+       "iniKeys": [
+        {
+         "key": "fBlockLevel0Distance",
+         "section": "TerrainManager",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 12288,
+          "Bethini Low": 16384,
+          "Bethini Medium": 32768,
+          "Bethini High": 53248,
+          "Bethini Ultra": 57344
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 98304.0,
+       "step": 4.0,
+       "decimals": 0
+      },
+      {
+       "label": "Level 8 Block Distance",
+       "type": "Slider",
+       "tooltip": "Sets the level 8 block distance. This is the distance that level 8 object LOD is shown. Additionally, level 8 terrain LOD is shown at this distance, but multiplied by the Terrain Multiplier (fSplitDistanceMult).",
+       "iniKeys": [
+        {
+         "key": "fBlockLevel1Distance",
+         "section": "TerrainManager",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 24576,
+          "Bethini Low": 32768,
+          "Bethini Medium": 81920,
+          "Bethini High": 114688,
+          "Bethini Ultra": 147456
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 262144.0,
+       "step": 4.0,
+       "decimals": 0
+      },
+      {
+       "label": "Level 16 Block Distance",
+       "type": "Slider",
+       "tooltip": "Sets the level 16 block distance. This is the distance that level 16 object LOD is shown. Additionally, level 16 terrain LOD is shown at this distance, but multiplied by the Terrain Multiplier (fSplitDistanceMult).",
+       "iniKeys": [
+        {
+         "key": "fBlockMaximumDistance",
+         "section": "TerrainManager",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 65536,
+          "Bethini Low": 131072,
+          "Bethini Medium": 196608,
+          "Bethini High": 262144,
+          "Bethini Ultra": 327680
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 393216.0,
+       "step": 4.0,
+       "decimals": 0
+      },
+      {
+       "label": "Terrain Multiplier",
+       "type": "Slider",
+       "tooltip": "Sets the terrain multiplier. This value gets multiplied by the block distances to determine the terrain LOD distance.",
+       "iniKeys": [
+        {
+         "key": "fSplitDistanceMult",
+         "section": "TerrainManager",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 1,
+          "Bethini Low": 1,
+          "Bethini Medium": 1,
+          "Bethini High": 1,
+          "Bethini Ultra": 1
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 4.0,
+       "step": 0.005,
+       "decimals": 3
+      },
+      {
+       "label": "Neverfade Distance",
+       "type": "Slider",
+       "tooltip": "Sets the neverfade distance.",
+       "iniKeys": [
+        {
+         "key": "fSkyCellRefFadeDistance",
+         "section": "MAIN",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 131072,
+          "Bethini Low": 196608,
+          "Bethini Medium": 262144,
+          "Bethini High": 327680,
+          "Bethini Ultra": 598016
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 598016.0,
+       "step": 4.0,
+       "decimals": 0
+      },
+      {
+       "label": "Tree LOD Distance",
+       "type": "Slider",
+       "tooltip": "Sets the tree LOD distance. Set to 0 if using DynDOLOD Ultra trees in object LOD.",
+       "iniKeys": [
+        {
+         "key": "fTreeLoadDistance",
+         "section": "TerrainManager",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 16384,
+          "Bethini Low": 24576,
+          "Bethini Medium": 32768,
+          "Bethini High": 40960,
+          "Bethini Ultra": 57344
+         }
+        }
+       ],
+       "min": 0.0,
+       "max": 98304.0,
+       "step": 1.0,
+       "decimals": 0
+      },
+      {
+       "label": "Land Fade",
+       "type": "Checkbutton",
+       "tooltip": "Toggles terrain LOD fade. Recommended to be disabled to prevent flickering.",
+       "iniKeys": [
+        {
+         "key": "bEnableLandFade",
+         "section": "Display",
+         "file": "Skyrim.ini",
+         "presets": {}
+        }
+       ]
+      },
+      {
+       "label": "Large Reference Grid",
+       "type": "Spinbox",
+       "tooltip": "Sets how many grids full models for large references will show past the uGridsToLoad cells without the need to set the IsFullLOD flag",
+       "iniKeys": [
+        {
+         "key": "uLargeRefLODGridSize",
+         "section": "General",
+         "file": "SkyrimPrefs.ini",
+         "presets": {
+          "Bethini Poor": 5,
+          "Bethini Low": 5,
+          "Bethini Medium": 7,
+          "Bethini High": 9,
+          "Bethini Ultra": 11
+         }
+        }
+       ],
+       "min": 5.0,
+       "max": 21.0,
+       "step": 2.0,
+       "decimals": 0
+      }
+     ]
+    }
+   ]
+  }
+ ]
 }

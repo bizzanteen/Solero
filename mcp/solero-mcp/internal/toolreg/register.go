@@ -33,4 +33,14 @@ func Register(server *mcp.Server) {
 		Name:        "ai_revert",
 		Description: "Revert a specific AI transaction by ID, restoring the profile to its pre-change state. This is always safe - it restores exact file snapshots.",
 	}, tools.AIRevert(client))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "enable_mod",
+		Description: "Enable or disable a mod in the active profile. Changes take effect on next deploy. Tracked as an AI transaction - revert with ai_revert.",
+	}, tools.EnableMod(client))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "move_mod",
+		Description: "Move a mod to a different priority position (0 = lowest priority). Higher priority mods overwrite lower priority mods' files. Tracked - revert with ai_revert.",
+	}, tools.MoveMod(client))
 }

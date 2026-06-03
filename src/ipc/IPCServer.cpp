@@ -48,6 +48,8 @@ QByteArray IPCServer::handleRequest(const QByteArray& json) {
     if (action == "list_profiles")      return handleListProfiles(req);
     if (action == "get_summary")        return handleGetSummary(req);
     if (action == "ai_write")           return handleAIWrite(req);
+    if (action == "enable_mod")         return handleEnableMod(req);
+    if (action == "move_mod")           return handleMoveMod(req);
     if (action == "ai_revert")          return handleAIRevert(req);
     if (action == "list_transactions")  return handleListTransactions(req);
     return err("unknown action: " + action);
@@ -129,6 +131,47 @@ QByteArray IPCServer::handleAIWrite(const QJsonObject& req) {
         });
 
     QJsonObject res; res["transactionId"] = txId;
+    return ok(res);
+}
+
+QByteArray IPCServer::handleEnableMod(const QJsonObject& req) {
+    if (!m_profile || !m_txLog) return err("no active profile or tx log");
+    QString modId   = req["modId"].toString();
+    bool    enabled = req["enabled"].toBool(true);
+    QStringList files = { m_profile->modlistPath() };
+    auto reader = [](const QString& p) -> QByteArray {
+        QFile f(p); f.open(QIODevice::ReadOnly); return f.readAll();
+    };
+    QString txId = m_txLog->beginTransaction(
+        QString("%1 mod: %2").arg(enabled ? "Enable" : "Disable", modId), files, reader);
+    m_profile->modList().setEnabled(modId, enabled);
+    m_profile->save();
+    m_txLog->commitTransaction(txId, reader);
+    QJsonObject res;
+    res["transactionId"] = txId;
+    res["modId"] = modId;
+    res["enabled"] = enabled;
+    return ok(res);
+}
+
+QByteArray IPCServer::handleMoveMod(const QJsonObject& req) {
+    if (!m_profile || !m_txLog) return err("no active profile or tx log");
+    int from = req["from"].toInt(-1);
+    int to   = req["to"].toInt(-1);
+    if (from < 0 || to < 0) return err("from and to must be non-negative integers");
+    QStringList files = { m_profile->modlistPath() };
+    auto reader = [](const QString& p) -> QByteArray {
+        QFile f(p); f.open(QIODevice::ReadOnly); return f.readAll();
+    };
+    QString txId = m_txLog->beginTransaction(
+        QString("Move mod from %1 to %2").arg(from).arg(to), files, reader);
+    m_profile->modList().move(from, to);
+    m_profile->save();
+    m_txLog->commitTransaction(txId, reader);
+    QJsonObject res;
+    res["transactionId"] = txId;
+    res["from"] = from;
+    res["to"] = to;
     return ok(res);
 }
 

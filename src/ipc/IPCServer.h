@@ -31,6 +31,8 @@ private:
     QByteArray handleListProfiles(const QJsonObject& req);
     QByteArray handleGetSummary(const QJsonObject& req);
     QByteArray handleAIWrite(const QJsonObject& req);
+    QByteArray handleEnableMod(const QJsonObject& req);
+    QByteArray handleMoveMod(const QJsonObject& req);
     QByteArray handleAIRevert(const QJsonObject& req);
     QByteArray handleListTransactions(const QJsonObject& req);
 

@@ -73,3 +73,11 @@ func (c *Client) AIRevert(transactionID string) (map[string]any, error) {
 		"transactionId": transactionID,
 	})
 }
+
+func (c *Client) EnableMod(modID string, enabled bool) (map[string]any, error) {
+	return c.call(map[string]any{"action": "enable_mod", "modId": modID, "enabled": enabled})
+}
+
+func (c *Client) MoveMod(from, to int) (map[string]any, error) {
+	return c.call(map[string]any{"action": "move_mod", "from": from, "to": to})
+}

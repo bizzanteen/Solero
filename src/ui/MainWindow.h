@@ -4,6 +4,9 @@
 #include "core/ProfileManager.h"
 #include "ai/AITransaction.h"
 #include "ipc/IPCServer.h"
+#include "deploy/DeployEngine.h"
+#include "deploy/DeployMode.h"
+#include "deploy/ConflictIndex.h"
 
 class QSplitter;
 class QComboBox;
@@ -13,6 +16,7 @@ class QLabel;
 namespace solero {
 class ModListView;
 class PluginListView;
+class RightPane;
 class BottomPanel;
 }
 
@@ -21,6 +25,9 @@ class MainWindow : public QMainWindow {
 public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow();
+
+signals:
+    void conflictsUpdated(const solero::ConflictIndex& index);
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
@@ -42,11 +49,12 @@ private:
     solero::IPCServer* m_ipcServer;
 
     bool m_deployed = false;
+    solero::DeployMode m_deployMode = solero::DeployMode::HardLink;
     QAction* m_deployAction = nullptr;
     QComboBox* m_profileCombo = nullptr;
     QSplitter* m_splitter = nullptr;
     solero::ModListView*    m_modListView = nullptr;
-    solero::PluginListView* m_pluginListView = nullptr;
+    solero::RightPane*      m_rightPane = nullptr;
     solero::BottomPanel*    m_bottomPanel = nullptr;
     QLabel* m_aiChangesLabel = nullptr;
 

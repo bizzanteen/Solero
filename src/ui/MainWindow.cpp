@@ -1,6 +1,6 @@
 #include "MainWindow.h"
 #include "ModListView.h"
-#include "PluginListView.h"
+#include "RightPane.h"
 #include "BottomPanel.h"
 #include "SetupWizard.h"
 #include "app/Application.h"
@@ -20,6 +20,7 @@
 #include <QStatusBar>
 #include <QTimer>
 #include <QCoreApplication>
+#include <QFile>
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("Solero");
@@ -121,9 +122,11 @@ void MainWindow::setupCentralWidget() {
 
     m_splitter = new QSplitter(Qt::Horizontal, outer);
     m_modListView    = new solero::ModListView(m_splitter);
-    m_pluginListView = new solero::PluginListView(m_splitter);
+    m_rightPane = new solero::RightPane(m_splitter);
     m_splitter->addWidget(m_modListView);
-    m_splitter->addWidget(m_pluginListView);
+    m_splitter->addWidget(m_rightPane);
+    connect(m_modListView, &solero::ModListView::modSelected,
+            m_rightPane,   &solero::RightPane::onModSelected);
     m_splitter->setSizes({640, 640});
 
     m_bottomPanel = new solero::BottomPanel(outer);
@@ -139,7 +142,11 @@ void MainWindow::switchProfile(const QString& name) {
     auto* profile = m_profileMgr->loadProfile(name);
     m_ipcServer->setActiveProfile(profile);
     m_modListView->setProfile(profile);
-    m_pluginListView->setProfile(profile);
+    m_rightPane->setProfile(profile);
+    // Self-review fix: load previously-computed ConflictIndex if it exists
+    QString conflictPath = solero::DeployEngine::conflictIndexPath(profile->path());
+    if (QFile::exists(conflictPath))
+        m_rightPane->setConflictIndex(solero::ConflictIndex::loadFromFile(conflictPath));
     setWindowTitle(QString("Solero - %1").arg(name));
     statusBar()->showMessage(QString("Loaded profile: %1").arg(name));
 }
@@ -151,20 +158,50 @@ void MainWindow::refreshProfileCombo() {
 }
 
 void MainWindow::onDeployToggle() {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) {
+        statusBar()->showMessage("No active profile.");
+        return;
+    }
+    if (!solero::AppConfig::instance().isConfigured()) {
+        statusBar()->showMessage("Game directory not configured. Use Game Settings...");
+        return;
+    }
+
     if (!m_deployed) {
-        // Deploy
-        statusBar()->showMessage("Deploying... (not yet implemented - Stage 2)");
+        statusBar()->showMessage("Deploying...");
+        qApp->processEvents();
+
+        solero::DeployEngine engine(
+            solero::AppConfig::instance().gameDir(),
+            solero::AppConfig::instance().stagingDir());
+        auto result = engine.deploy(*profile, m_deployMode);
+
+        if (!result.success) {
+            QMessageBox::critical(this, "Deploy Failed", result.errorMessage);
+            return;
+        }
         m_deployed = true;
+        statusBar()->showMessage(
+            QString("Deployed %1 files. %2 conflicts.")
+                .arg(result.filesDeployed)
+                .arg(result.conflicts.conflictedPaths().size()));
+        m_rightPane->setConflictIndex(result.conflicts);
+        emit conflictsUpdated(result.conflicts);
     } else {
-        // Undeploy - confirm first
         auto ret = QMessageBox::question(this, "UnDeploy",
             "Remove all deployed mod links? Staged mods will not be affected.",
             QMessageBox::Yes | QMessageBox::No);
         if (ret != QMessageBox::Yes) return;
-        statusBar()->showMessage("Undeployed. (not yet implemented - Stage 2)");
+
+        solero::DeployEngine engine(
+            solero::AppConfig::instance().gameDir(),
+            solero::AppConfig::instance().stagingDir());
+        engine.undeploy(solero::AppConfig::instance().gameDir());
         m_deployed = false;
+        statusBar()->showMessage("Undeployed.");
     }
-    // Update button appearance
+
     if (m_deployed) {
         m_deployAction->setText("\xe2\x9c\x93 Deployed");
         m_deployAction->setToolTip("Mods are deployed - click to undeploy");

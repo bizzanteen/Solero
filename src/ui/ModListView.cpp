@@ -7,6 +7,7 @@
 #include <QMouseEvent>
 #include <QInputDialog>
 #include <QUuid>
+#include <QItemSelectionModel>
 
 namespace solero {
 
@@ -23,6 +24,13 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     header()->resizeSection(ModListModel::ColFlags,    60);
     setSortingEnabled(true);
     sortByColumn(ModListModel::ColPriority, Qt::AscendingOrder);
+
+    connect(selectionModel(), &QItemSelectionModel::currentRowChanged,
+            this, [this](const QModelIndex& current, const QModelIndex&) {
+        if (!current.isValid()) { emit modSelected({}); return; }
+        const auto* entry = m_model->entryAt(current.row());
+        emit modSelected(entry ? entry->id : QString("__overwrite__"));
+    });
 }
 
 void ModListView::setProfile(Profile* profile) {

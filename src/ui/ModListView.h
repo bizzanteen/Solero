@@ -11,6 +11,9 @@ public:
     explicit ModListView(QWidget* parent = nullptr);
     void setProfile(Profile* profile);
 
+signals:
+    void modSelected(const QString& modId); // "__overwrite__" for Overwrite row, empty for none
+
 protected:
     void contextMenuEvent(QContextMenuEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;

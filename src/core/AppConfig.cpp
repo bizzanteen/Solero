@@ -12,8 +12,12 @@ AppConfig& AppConfig::instance() {
     return s;
 }
 
+QString AppConfig::dataRoot() {
+    return QDir::homePath() + "/.local/share/solero";
+}
+
 QString AppConfig::configPath() {
-    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/config.json";
+    return dataRoot() + "/config.json";
 }
 
 bool AppConfig::isConfigured() const {

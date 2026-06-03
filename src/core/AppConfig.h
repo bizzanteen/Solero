@@ -18,6 +18,7 @@ public:
     void setGameDir(const QString& p);
     void setStagingDir(const QString& p);
 
+    static QString dataRoot();   // ~/.local/share/solero
     static QString configPath();
     static QStringList detectSkyrimPaths();
 

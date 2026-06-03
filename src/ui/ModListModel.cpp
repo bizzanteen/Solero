@@ -3,7 +3,7 @@
 #include <QFont>
 #include <QDir>
 #include <QDirIterator>
-#include <QStandardPaths>
+#include "core/AppConfig.h"
 
 namespace solero {
 
@@ -89,13 +89,13 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
         }
         if (role == Qt::ForegroundRole) {
             // Red if overwrite dir has files, muted yellow if empty
-            QString owDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/overwrite";
+            QString owDir = AppConfig::dataRoot() + "/overwrite";
             QDirIterator it(owDir, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
             bool hasFiles = it.hasNext();
             return hasFiles ? QColor(Qt::red) : QColor(Qt::darkYellow);
         }
         if (role == Qt::FontRole) {
-            QString owDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/overwrite";
+            QString owDir = AppConfig::dataRoot() + "/overwrite";
             QDirIterator it(owDir, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
             bool hasFiles = it.hasNext();
             QFont f; f.setBold(hasFiles); return f;

@@ -61,11 +61,11 @@ MainWindow::~MainWindow() {
 }
 
 QString MainWindow::profilesRoot() const {
-    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/profiles";
+    return solero::AppConfig::dataRoot() + "/profiles";
 }
 
 QString MainWindow::txLogPath() const {
-    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/ai-transactions.json";
+    return solero::AppConfig::dataRoot() + "/ai-transactions.json";
 }
 
 void MainWindow::setupToolbar() {

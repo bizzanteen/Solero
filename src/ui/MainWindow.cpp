@@ -143,6 +143,7 @@ void MainWindow::switchProfile(const QString& name) {
     m_ipcServer->setActiveProfile(profile);
     m_modListView->setProfile(profile);
     m_rightPane->setProfile(profile);
+    m_bottomPanel->setProfile(profile);
     // Self-review fix: load previously-computed ConflictIndex if it exists
     QString conflictPath = solero::DeployEngine::conflictIndexPath(profile->path());
     if (QFile::exists(conflictPath))

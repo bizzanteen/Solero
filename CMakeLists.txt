@@ -55,6 +55,8 @@ set(SOLERO_SOURCES
   src/ui/ConflictsTab.cpp
   src/ui/FileEditorDialog.cpp
   src/ui/ModFileTree.cpp
+  src/ui/YamlHighlighter.cpp
+  src/ui/LootRulesEditor.cpp
   src/loot/LootSorter.cpp
   resources/resources.qrc
 )

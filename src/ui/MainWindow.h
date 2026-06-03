@@ -1,5 +1,6 @@
 #pragma once
 #include <QMainWindow>
+#include <QAction>
 #include "core/ProfileManager.h"
 #include "ai/AITransaction.h"
 #include "ipc/IPCServer.h"
@@ -29,8 +30,7 @@ private:
     void setupCentralWidget();
     void switchProfile(const QString& name);
     void refreshProfileCombo();
-    void onDeploy();
-    void onUndeploy();
+    void onDeployToggle();
     void onNewProfile();
     void onDeleteProfile();
     void onZoomIn();
@@ -41,6 +41,8 @@ private:
     solero::AITransactionLog* m_txLog;
     solero::IPCServer* m_ipcServer;
 
+    bool m_deployed = false;
+    QAction* m_deployAction = nullptr;
     QComboBox* m_profileCombo = nullptr;
     QSplitter* m_splitter = nullptr;
     solero::ModListView*    m_modListView = nullptr;

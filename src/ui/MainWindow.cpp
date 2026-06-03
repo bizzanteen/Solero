@@ -98,9 +98,9 @@ void MainWindow::setupToolbar() {
     tb->addWidget(profileMenuBtn);
     tb->addSeparator();
 
-    // Actions
-    tb->addAction("Deploy", this, &MainWindow::onDeploy);
-    tb->addAction("UnDeploy", this, &MainWindow::onUndeploy);
+    // Deploy toggle
+    m_deployAction = tb->addAction("\xe2\x9c\x97 Not Deployed", this, &MainWindow::onDeployToggle);
+    m_deployAction->setToolTip("Click to deploy mods to game directory");
     tb->addSeparator();
 
     // AI changes badge
@@ -150,16 +150,28 @@ void MainWindow::refreshProfileCombo() {
     m_profileCombo->addItems(m_profileMgr->profileNames());
 }
 
-void MainWindow::onDeploy() {
-    statusBar()->showMessage("Deploy: not yet implemented (Stage 2)");
-}
-
-void MainWindow::onUndeploy() {
-    auto ret = QMessageBox::question(this, "UnDeploy",
-        "Remove all deployed mod links? Staged mods will not be affected.",
-        QMessageBox::Yes | QMessageBox::No);
-    if (ret == QMessageBox::Yes)
-        statusBar()->showMessage("UnDeploy: not yet implemented (Stage 2)");
+void MainWindow::onDeployToggle() {
+    if (!m_deployed) {
+        // Deploy
+        statusBar()->showMessage("Deploying... (not yet implemented - Stage 2)");
+        m_deployed = true;
+    } else {
+        // Undeploy - confirm first
+        auto ret = QMessageBox::question(this, "UnDeploy",
+            "Remove all deployed mod links? Staged mods will not be affected.",
+            QMessageBox::Yes | QMessageBox::No);
+        if (ret != QMessageBox::Yes) return;
+        statusBar()->showMessage("Undeployed. (not yet implemented - Stage 2)");
+        m_deployed = false;
+    }
+    // Update button appearance
+    if (m_deployed) {
+        m_deployAction->setText("\xe2\x9c\x93 Deployed");
+        m_deployAction->setToolTip("Mods are deployed - click to undeploy");
+    } else {
+        m_deployAction->setText("\xe2\x9c\x97 Not Deployed");
+        m_deployAction->setToolTip("Click to deploy mods to game directory");
+    }
 }
 
 void MainWindow::onNewProfile() {

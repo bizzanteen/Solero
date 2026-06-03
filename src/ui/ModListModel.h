@@ -7,7 +7,7 @@ namespace solero {
 class ModListModel : public QAbstractItemModel {
     Q_OBJECT
 public:
-    enum Column { ColEnabled = 0, ColName, ColVersion, ColFlags, ColCount };
+    enum Column { ColEnabled = 0, ColPriority, ColName, ColVersion, ColFlags, ColCount };
 
     explicit ModListModel(QObject* parent = nullptr);
     void setProfile(Profile* profile);
@@ -26,6 +26,7 @@ public:
 
     // Map from visible row index to raw ModList index (-1 = Overwrite)
     int rawIndexForRow(int visibleRow) const;
+    int rawToVisible(int rawIndex) const;
     const ModEntry* entryAt(int visibleRow) const;
     void toggleCollapse(int visibleRow);
     void rebuild();  // call after any structural change

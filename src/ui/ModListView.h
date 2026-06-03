@@ -17,6 +17,8 @@ protected:
 
 private:
     ModListModel* m_model;
+    void onAddSeparator();
+    void onAddSeparatorAt(int visibleRow);
     void onEditSeparator(int visibleRow);
 };
 }

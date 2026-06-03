@@ -1,6 +1,9 @@
 #include "ModListModel.h"
 #include <QColor>
 #include <QFont>
+#include <QDir>
+#include <QDirIterator>
+#include <QStandardPaths>
 
 namespace solero {
 
@@ -41,6 +44,10 @@ int ModListModel::rawIndexForRow(int visibleRow) const {
     return m_visibleRows.at(visibleRow);
 }
 
+int ModListModel::rawToVisible(int rawIndex) const {
+    return m_visibleRows.indexOf(rawIndex);
+}
+
 const ModEntry* ModListModel::entryAt(int visibleRow) const {
     int raw = rawIndexForRow(visibleRow);
     if (raw == -1 || raw == -2) return nullptr; // Overwrite or invalid
@@ -76,9 +83,23 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     bool isOverwrite = (raw == -1);
 
     if (isOverwrite) {
-        if (role == Qt::DisplayRole && idx.column() == ColName) return "[Overwrite]";
-        if (role == Qt::FontRole) { QFont f; f.setItalic(true); return f; }
-        if (role == Qt::ForegroundRole) return QColor(Qt::darkYellow);
+        if (role == Qt::DisplayRole) {
+            if (idx.column() == ColName)     return "[Overwrite]";
+            if (idx.column() == ColPriority) return QVariant();
+        }
+        if (role == Qt::ForegroundRole) {
+            // Red if overwrite dir has files, muted yellow if empty
+            QString owDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/overwrite";
+            QDirIterator it(owDir, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+            bool hasFiles = it.hasNext();
+            return hasFiles ? QColor(Qt::red) : QColor(Qt::darkYellow);
+        }
+        if (role == Qt::FontRole) {
+            QString owDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/overwrite";
+            QDirIterator it(owDir, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+            bool hasFiles = it.hasNext();
+            QFont f; f.setBold(hasFiles); return f;
+        }
         return {};
     }
 
@@ -88,6 +109,7 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
 
     if (role == Qt::DisplayRole) {
         switch (idx.column()) {
+            case ColPriority: return isSep ? QVariant() : QVariant(raw);
             case ColName:
                 if (isSep) {
                     QString arrow = entry.collapsed ? "\xe2\x96\xb6" : "\xe2\x96\xbc";
@@ -132,10 +154,11 @@ bool ModListModel::setData(const QModelIndex& idx, const QVariant& value, int ro
 QVariant ModListModel::headerData(int section, Qt::Orientation, int role) const {
     if (role != Qt::DisplayRole) return {};
     switch (section) {
-        case ColEnabled: return "";
-        case ColName:    return "Name";
-        case ColVersion: return "Version";
-        case ColFlags:   return "Flags";
+        case ColEnabled:  return "";
+        case ColPriority: return "#";
+        case ColName:     return "Name";
+        case ColVersion:  return "Version";
+        case ColFlags:    return "Flags";
         default: return {};
     }
 }

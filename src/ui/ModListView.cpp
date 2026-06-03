@@ -5,6 +5,8 @@
 #include <QContextMenuEvent>
 #include <QHeaderView>
 #include <QMouseEvent>
+#include <QInputDialog>
+#include <QUuid>
 
 namespace solero {
 
@@ -15,9 +17,12 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     setDragDropMode(QAbstractItemView::InternalMove);
     setSelectionMode(QAbstractItemView::SingleSelection);
     header()->setSectionResizeMode(ModListModel::ColName, QHeaderView::Stretch);
-    header()->resizeSection(ModListModel::ColEnabled, 28);
-    header()->resizeSection(ModListModel::ColVersion, 80);
-    header()->resizeSection(ModListModel::ColFlags, 60);
+    header()->resizeSection(ModListModel::ColEnabled,  28);
+    header()->resizeSection(ModListModel::ColPriority, 40);
+    header()->resizeSection(ModListModel::ColVersion,  80);
+    header()->resizeSection(ModListModel::ColFlags,    60);
+    setSortingEnabled(true);
+    sortByColumn(ModListModel::ColPriority, Qt::AscendingOrder);
 }
 
 void ModListView::setProfile(Profile* profile) {
@@ -37,9 +42,16 @@ void ModListView::mouseDoubleClickEvent(QMouseEvent* event) {
 
 void ModListView::contextMenuEvent(QContextMenuEvent* event) {
     auto idx = indexAt(event->pos());
-    if (!idx.isValid()) return;
-    const auto* entry = m_model->entryAt(idx.row());
     QMenu menu(this);
+
+    if (!idx.isValid()) {
+        // Right-click on empty space
+        menu.addAction("Add Separator", [this]{ onAddSeparator(); });
+        menu.exec(event->globalPos());
+        return;
+    }
+
+    const auto* entry = m_model->entryAt(idx.row());
     if (!entry) {
         // Overwrite row
         menu.addAction("Open Overwrite Folder", []{ /* Stage 2 */ });
@@ -47,11 +59,47 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         menu.addAction("Edit Separator", [this, row = idx.row()]{ onEditSeparator(row); });
         menu.addAction(entry->collapsed ? "Expand" : "Collapse",
                        [this, row = idx.row()]{ m_model->toggleCollapse(row); });
+        menu.addSeparator();
+        menu.addAction("Add Separator Below", [this, row = idx.row()]{ onAddSeparatorAt(row + 1); });
     } else {
-        menu.addAction("Open in File Manager", []{ /* stub */ });
+        menu.addAction("Open in File Manager", []{ /* Stage 2 */ });
         menu.addAction("Reinstall (FOMOD)", []{ /* Stage 3 */ });
+        menu.addSeparator();
+        menu.addAction("Add Separator Above", [this, row = idx.row()]{ onAddSeparatorAt(row); });
     }
     menu.exec(event->globalPos());
+}
+
+void ModListView::onAddSeparator() {
+    onAddSeparatorAt(m_model->rowCount() - 1); // before Overwrite
+}
+
+void ModListView::onAddSeparatorAt(int visibleRow) {
+    if (!m_model->profile()) return;
+    bool ok;
+    QString name = QInputDialog::getText(this, "New Separator", "Separator name:", QLineEdit::Normal, "New Category", &ok);
+    if (!ok || name.trimmed().isEmpty()) return;
+
+    ModEntry sep;
+    sep.type = EntryType::Separator;
+    sep.id   = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    sep.name = name.trimmed();
+    sep.color = "#555555";
+
+    // Insert at the given visible row position in the raw list
+    int rawPos = m_model->rawIndexForRow(visibleRow);
+    if (rawPos < 0) rawPos = m_model->profile()->modList().count();
+
+    // Append then move to position
+    m_model->profile()->modList().append(sep);
+    int newRaw = m_model->profile()->modList().count() - 1;
+    if (rawPos < newRaw)
+        m_model->profile()->modList().move(newRaw, rawPos);
+    m_model->profile()->save();
+    m_model->rebuild();
+
+    // Open edit dialog immediately so user can pick colour/icon
+    onEditSeparator(m_model->rawToVisible(rawPos));
 }
 
 void ModListView::onEditSeparator(int visibleRow) {

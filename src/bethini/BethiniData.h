@@ -33,6 +33,11 @@ struct BethiniRow {
     QStringList choices;               // for Dropdown/Combobox
     QList<BethiniChoiceMap> settingChoices;
 
+    // For Checkbutton: per-key acceptable values when on / off (first is
+    // canonical for writing). Not always 1/0 - e.g. bDisableAutoSave is inverted.
+    QList<QStringList> onValues;
+    QList<QStringList> offValues;
+
     bool   hasRange = false;
     double min = 0, max = 0, step = 1;
     int    decimals = 0;

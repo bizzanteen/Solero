@@ -179,6 +179,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -198,6 +208,16 @@
           "Bethini Ultra": 1
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -211,6 +231,17 @@
          "file": "SkyrimPrefs.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1",
+         "2"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -224,6 +255,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -280,6 +321,16 @@
          "file": "SkyrimPrefs.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       }
      ]
@@ -303,6 +354,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "BGS_Logo.bik"
+        ]
+       ],
+       "offValues": [
+        [
+         ""
+        ]
        ]
       },
       {
@@ -316,6 +377,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "\\Data\\Music\\Special\\MUS_MainTheme.xwm"
+        ]
+       ],
+       "offValues": [
+        [
+         ""
+        ]
        ]
       },
       {
@@ -329,6 +400,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -364,6 +445,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "0"
+        ]
+       ],
+       "offValues": [
+        [
+         "1"
+        ]
        ]
       },
       {
@@ -394,6 +485,16 @@
          "file": "SkyrimPrefs.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -424,6 +525,16 @@
          "file": "SkyrimPrefs.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -437,6 +548,16 @@
          "file": "SkyrimPrefs.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -450,6 +571,16 @@
          "file": "SkyrimPrefs.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -463,6 +594,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -476,6 +617,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -489,6 +640,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -571,6 +732,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -584,6 +755,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -597,6 +778,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -610,6 +801,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       }
      ]
@@ -725,6 +926,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -738,6 +949,16 @@
          "file": "SkyrimPrefs.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -751,6 +972,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "0"
+        ]
+       ],
+       "offValues": [
+        [
+         "1"
+        ]
        ]
       },
       {
@@ -764,6 +995,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -777,6 +1018,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -790,6 +1041,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -803,6 +1064,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "0"
+        ]
+       ],
+       "offValues": [
+        [
+         "1"
+        ]
        ]
       },
       {
@@ -816,6 +1087,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1027,6 +1308,16 @@
          "file": "SkyrimPrefs.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1040,6 +1331,16 @@
          "file": "SkyrimPrefs.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1053,6 +1354,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1066,6 +1377,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1079,6 +1400,16 @@
          "file": "SkyrimPrefs.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1109,6 +1440,16 @@
          "file": "SkyrimPrefs.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1122,6 +1463,16 @@
          "file": "SkyrimPrefs.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1152,6 +1503,16 @@
          "file": "SkyrimPrefs.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1165,6 +1526,16 @@
          "file": "SkyrimPrefs.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       }
      ]
@@ -1281,6 +1652,28 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "90"
+        ],
+        [
+         "0"
+        ],
+        [
+         "400"
+        ]
+       ],
+       "offValues": [
+        [
+         "75"
+        ],
+        [
+         "15"
+        ],
+        [
+         "80"
+        ]
        ]
       },
       {
@@ -1312,6 +1705,34 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ],
+        [
+         "0"
+        ],
+        [
+         "0"
+        ],
+        [
+         "0"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ],
+        [
+         "0.3000000119"
+        ],
+        [
+         "0.4499999881"
+        ],
+        [
+         "4"
+        ]
        ]
       },
       {
@@ -1381,6 +1802,16 @@
          "file": "SkyrimPrefs.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1483,6 +1914,16 @@
           "Bethini Ultra": 1
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1502,6 +1943,16 @@
           "Bethini Ultra": 0
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1515,6 +1966,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "0"
+        ]
+       ],
+       "offValues": [
+        [
+         "1"
+        ]
        ]
       },
       {
@@ -1534,6 +1995,16 @@
           "Bethini Ultra": 0
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1553,6 +2024,16 @@
           "Bethini Ultra": 0
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1572,6 +2053,16 @@
           "Bethini Ultra": 0
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1692,6 +2183,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1711,6 +2212,16 @@
           "Bethini Ultra": 1
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1730,6 +2241,16 @@
           "Bethini Ultra": 1
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1743,6 +2264,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1917,6 +2448,22 @@
           "Bethini Ultra": 1
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ],
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ],
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -1936,6 +2483,16 @@
           "Bethini Ultra": 1.5
          }
         }
+       ],
+       "onValues": [
+        [
+         "0"
+        ]
+       ],
+       "offValues": [
+        [
+         "1.5"
+        ]
        ]
       },
       {
@@ -1955,6 +2512,16 @@
           "Bethini Ultra": 1
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -2071,6 +2638,16 @@
           "Bethini Ultra": 1
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -2090,6 +2667,16 @@
           "Bethini Ultra": 1
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -2109,6 +2696,16 @@
           "Bethini Ultra": 1
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -2128,6 +2725,16 @@
           "Bethini Ultra": 1
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -2208,6 +2815,16 @@
           "Bethini Ultra": 1
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -2221,6 +2838,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "0"
+        ]
+       ],
+       "offValues": [
+        [
+         "1"
+        ]
        ]
       },
       {
@@ -2240,6 +2867,16 @@
           "Bethini Ultra": 1
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -2419,6 +3056,16 @@
           "Bethini Ultra": 1
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -2606,6 +3253,16 @@
           "Bethini Ultra": 1
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -2619,6 +3276,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -2860,6 +3527,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "0"
+        ]
+       ],
+       "offValues": [
+        [
+         "1"
+        ]
        ]
       },
       {
@@ -2879,6 +3556,16 @@
           "Bethini Ultra": 1
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -2898,6 +3585,16 @@
           "Bethini Ultra": 0
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -2917,6 +3614,16 @@
           "Bethini Ultra": 1
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -2936,6 +3643,16 @@
           "Bethini Ultra": 1
          }
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -2966,6 +3683,16 @@
          "file": "SkyrimPrefs.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {
@@ -3510,6 +4237,16 @@
          "file": "Skyrim.ini",
          "presets": {}
         }
+       ],
+       "onValues": [
+        [
+         "1"
+        ]
+       ],
+       "offValues": [
+        [
+         "0"
+        ]
        ]
       },
       {

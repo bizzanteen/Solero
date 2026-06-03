@@ -72,6 +72,11 @@ void BethiniData::load() {
                     row.settingChoices.append(cm);
                 }
 
+                for (const auto& ov : ro["onValues"].toArray())
+                    row.onValues.append(tokensFrom(ov));
+                for (const auto& ov : ro["offValues"].toArray())
+                    row.offValues.append(tokensFrom(ov));
+
                 if (ro.contains("min") && ro.contains("max")) {
                     row.hasRange = true;
                     row.min = ro["min"].toDouble();

@@ -344,7 +344,11 @@ void BethiniWindow::loadRow(RowWidget& rw) {
     QVariant val = readKey(k0);
 
     if (auto* cb = qobject_cast<QCheckBox*>(rw.widget)) {
-        if (val.isValid()) cb->setChecked(val.toString() == "1" || val.toBool());
+        QString cur = val.toString();
+        if (!rw.row.onValues.isEmpty())
+            cb->setChecked(rw.row.onValues.first().contains(cur));
+        else if (val.isValid())
+            cb->setChecked(cur == "1" || val.toBool());
     } else if (auto* spin = qobject_cast<QSpinBox*>(rw.widget)) {
         if (val.isValid()) spin->setValue(val.toInt());
     } else if (auto* d = qobject_cast<QDoubleSpinBox*>(rw.widget)) {
@@ -367,7 +371,17 @@ void BethiniWindow::saveRow(RowWidget& rw) {
     const auto& k0 = rw.row.iniKeys.first();
 
     if (auto* cb = qobject_cast<QCheckBox*>(rw.widget)) {
-        writeKey(k0, cb->isChecked() ? "1" : "0");
+        if (!rw.row.onValues.isEmpty()) {
+            for (int i = 0; i < rw.row.iniKeys.size(); ++i) {
+                QStringList on  = i < rw.row.onValues.size()  ? rw.row.onValues.at(i)  : QStringList();
+                QStringList off = i < rw.row.offValues.size() ? rw.row.offValues.at(i) : QStringList();
+                QString v = cb->isChecked() ? (on.isEmpty()  ? "1" : on.first())
+                                            : (off.isEmpty() ? "0" : off.first());
+                writeKey(rw.row.iniKeys.at(i), v);
+            }
+        } else {
+            writeKey(k0, cb->isChecked() ? "1" : "0");
+        }
     } else if (auto* spin = qobject_cast<QSpinBox*>(rw.widget)) {
         writeKey(k0, spin->value());
     } else if (auto* d = qobject_cast<QDoubleSpinBox*>(rw.widget)) {
@@ -409,7 +423,9 @@ void BethiniWindow::applyPresetToRow(RowWidget& rw, const QString& presetName) {
     if (pv.isEmpty()) return; // setting unchanged across presets
 
     if (auto* cb = qobject_cast<QCheckBox*>(rw.widget))
-        cb->setChecked(pv == "1");
+        cb->setChecked(!rw.row.onValues.isEmpty()
+                           ? rw.row.onValues.first().contains(pv)
+                           : pv == "1");
     else if (auto* spin = qobject_cast<QSpinBox*>(rw.widget))
         spin->setValue(pv.toInt());
     else if (auto* d = qobject_cast<QDoubleSpinBox*>(rw.widget))

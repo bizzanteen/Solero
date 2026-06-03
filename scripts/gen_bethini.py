@@ -57,6 +57,25 @@ def make_row(label, w):
         if isinstance(sc, dict):
             row["settingChoices"] = sc
 
+    # Checkbutton on/off values (not always 1/0; e.g. inverted bDisableAutoSave,
+    # or string values like the intro-music path). Onvalue/Offvalue are arrays
+    # with one entry per setting; each entry is a list of acceptable values
+    # (first is canonical for writing).
+    if typ == "Checkbutton":
+        def norm_values(arr):
+            out = []
+            if isinstance(arr, list):
+                for per_key in arr:
+                    if isinstance(per_key, list):
+                        out.append([str(x) for x in per_key])
+                    else:
+                        out.append([str(per_key)])
+            return out
+        on = norm_values(w.get("Onvalue"))
+        off = norm_values(w.get("Offvalue"))
+        if on:  row["onValues"] = on
+        if off: row["offValues"] = off
+
     if typ in ("Slider", "Spinbox"):
         if 'from' in w and 'to' in w:
             try:

@@ -13,8 +13,39 @@
 #include <QDoubleSpinBox>
 #include <QPushButton>
 #include <QSettings>
+#include <QGuiApplication>
+#include <QScreen>
 
 namespace solero {
+
+// Populate dropdowns whose choices are computed at runtime (BethINI uses
+// "custom functions" for these). Currently: the Resolution dropdown.
+static void augmentDynamicChoices(BethiniRow& row) {
+    if (!(row.type == "Dropdown" || row.type == "Combobox")) return;
+    if (!row.choices.isEmpty() || !row.settingChoices.isEmpty()) return;
+    if (row.iniKeys.size() != 2) return;
+    const QString k0 = row.iniKeys.at(0).key.toLower();
+    const QString k1 = row.iniKeys.at(1).key.toLower();
+    if (!(k0.contains("size w") && k1.contains("size h"))) return;
+
+    // Build a resolution list: the monitor's available modes plus common ones.
+    QList<QPair<int,int>> res;
+    if (auto* scr = QGuiApplication::primaryScreen()) {
+        QSize nat = scr->size() * scr->devicePixelRatio();
+        res.append({nat.width(), nat.height()});
+    }
+    for (auto rp : {QPair<int,int>{3840,2160}, {2560,1440}, {1920,1080},
+                    {1680,1050}, {1600,900}, {1366,768}, {1280,720}}) {
+        if (!res.contains(rp)) res.append(rp);
+    }
+    for (const auto& rp : res) {
+        BethiniChoiceMap cm;
+        cm.choice = QString("%1x%2").arg(rp.first).arg(rp.second);
+        cm.perKeyValues = { QStringList{QString::number(rp.first)},
+                            QStringList{QString::number(rp.second)} };
+        row.settingChoices.append(cm);
+    }
+}
 
 BethiniWindow::BethiniWindow(QWidget* parent) : QWidget(parent) {
     buildUI();
@@ -88,31 +119,32 @@ void BethiniWindow::buildUI() {
             for (const auto& row : group.rows) {
                 RowWidget rw;
                 rw.row = row;
+                augmentDynamicChoices(rw.row); // e.g. populate the Resolution dropdown
                 QWidget* w = nullptr;
 
-                if (row.type == "Checkbutton") {
+                if (rw.row.type == "Checkbutton") {
                     w = new QCheckBox(box);
-                } else if (row.type == "Slider" || row.type == "Spinbox") {
-                    if (row.decimals > 0) {
+                } else if (rw.row.type == "Slider" || rw.row.type == "Spinbox") {
+                    if (rw.row.decimals > 0) {
                         auto* s = new QDoubleSpinBox(box);
-                        s->setDecimals(row.decimals);
-                        s->setMinimum(row.hasRange ? row.min : -1e6);
-                        s->setMaximum(row.hasRange ? row.max :  1e6);
-                        if (row.step > 0) s->setSingleStep(row.step);
+                        s->setDecimals(rw.row.decimals);
+                        s->setMinimum(rw.row.hasRange ? rw.row.min : -1e6);
+                        s->setMaximum(rw.row.hasRange ? rw.row.max :  1e6);
+                        if (rw.row.step > 0) s->setSingleStep(rw.row.step);
                         w = s;
                     } else {
                         auto* s = new QSpinBox(box);
-                        s->setMinimum(row.hasRange ? int(row.min) : -1000000);
-                        s->setMaximum(row.hasRange ? int(row.max) :  1000000);
-                        if (row.step > 0) s->setSingleStep(int(row.step));
+                        s->setMinimum(rw.row.hasRange ? int(rw.row.min) : -1000000);
+                        s->setMaximum(rw.row.hasRange ? int(rw.row.max) :  1000000);
+                        if (rw.row.step > 0) s->setSingleStep(int(rw.row.step));
                         w = s;
                     }
-                } else if (row.type == "Dropdown" || row.type == "Combobox") {
+                } else if (rw.row.type == "Dropdown" || rw.row.type == "Combobox") {
                     auto* c = new QComboBox(box);
-                    if (!row.settingChoices.isEmpty())
-                        for (const auto& cm : row.settingChoices) c->addItem(cm.choice);
+                    if (!rw.row.settingChoices.isEmpty())
+                        for (const auto& cm : rw.row.settingChoices) c->addItem(cm.choice);
                     else
-                        c->addItems(row.choices);
+                        c->addItems(rw.row.choices);
                     w = c;
                 } else { // Entry, Color, fallback
                     w = new QLineEdit(box);

@@ -8,7 +8,7 @@
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "CMAKE_PREFIX_PATH": "/home/linuxbrew/.linuxbrew/Cellar/qtbase/6.11.1;/home/linuxbrew/.linuxbrew/Cellar/mesa/26.0.6"
+        "CMAKE_PREFIX_PATH": "/home/linuxbrew/.linuxbrew/opt/qtbase;/home/linuxbrew/.linuxbrew/opt/mesa"
       }
     },
     {
@@ -18,7 +18,7 @@
       "binaryDir": "${sourceDir}/build-release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_PREFIX_PATH": "/home/linuxbrew/.linuxbrew/Cellar/qtbase/6.11.1;/home/linuxbrew/.linuxbrew/Cellar/mesa/26.0.6"
+        "CMAKE_PREFIX_PATH": "/home/linuxbrew/.linuxbrew/opt/qtbase;/home/linuxbrew/.linuxbrew/opt/mesa"
       }
     }
   ]

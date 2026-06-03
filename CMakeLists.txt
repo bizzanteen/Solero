@@ -58,6 +58,7 @@ set(SOLERO_SOURCES
   src/ui/YamlHighlighter.cpp
   src/ui/LootRulesEditor.cpp
   src/loot/LootSorter.cpp
+  src/bethini/IniKnowledgeBase.cpp
   resources/resources.qrc
 )
 

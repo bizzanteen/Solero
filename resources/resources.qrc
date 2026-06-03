@@ -1,5 +1,6 @@
 <RCC>
   <qresource prefix="/">
     <file>icons/solero-logo.svg</file>
+    <file>bethini-skyrimse.json</file>
   </qresource>
 </RCC>

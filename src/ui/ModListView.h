@@ -12,7 +12,9 @@ public:
     void setProfile(Profile* profile);
 
 signals:
-    void modSelected(const QString& modId); // "__overwrite__" for Overwrite row, empty for none
+    // Emitted on selection change. Each entry is a mod id, "__overwrite__" for the
+    // Overwrite row, or "__separator__" for separator rows. Empty list = nothing selected.
+    void modsSelected(const QStringList& ids);
 
 protected:
     void contextMenuEvent(QContextMenuEvent* event) override;

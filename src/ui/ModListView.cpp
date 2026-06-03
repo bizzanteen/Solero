@@ -17,7 +17,8 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     setRootIsDecorated(false);
     setIndentation(0); // remove the empty tree-indent column before the checkbox
     setDragDropMode(QAbstractItemView::InternalMove);
-    setSelectionMode(QAbstractItemView::SingleSelection);
+    setSelectionMode(QAbstractItemView::ExtendedSelection); // Ctrl+click multi-select
+    setSelectionBehavior(QAbstractItemView::SelectRows);
     setAlternatingRowColors(true);
     // Name stretches to fill slack; all other columns are user-resizable.
     auto* hdr = header();
@@ -34,11 +35,20 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     setSortingEnabled(true);
     sortByColumn(ModListModel::ColPriority, Qt::AscendingOrder);
 
-    connect(selectionModel(), &QItemSelectionModel::currentRowChanged,
-            this, [this](const QModelIndex& current, const QModelIndex&) {
-        if (!current.isValid()) { emit modSelected({}); return; }
-        const auto* entry = m_model->entryAt(current.row());
-        emit modSelected(entry ? entry->id : QString("__overwrite__"));
+    connect(selectionModel(), &QItemSelectionModel::selectionChanged,
+            this, [this](const QItemSelection&, const QItemSelection&) {
+        QStringList ids;
+        const auto rows = selectionModel()->selectedRows();
+        for (const auto& idx : rows) {
+            const auto* entry = m_model->entryAt(idx.row());
+            if (!entry)
+                ids << "__overwrite__";
+            else if (entry->type == EntryType::Separator)
+                ids << "__separator__";
+            else
+                ids << entry->id;
+        }
+        emit modsSelected(ids);
     });
 }
 

@@ -19,7 +19,7 @@ public:
     void setConflictIndex(const ConflictIndex& index);
 
 public slots:
-    void onModSelected(const QString& modId);
+    void onSelectionChanged(const QStringList& ids);
 
 private:
     PluginListView* m_pluginsTab;

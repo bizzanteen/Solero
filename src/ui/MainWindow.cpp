@@ -125,8 +125,8 @@ void MainWindow::setupCentralWidget() {
     m_rightPane = new solero::RightPane(m_splitter);
     m_splitter->addWidget(m_modListView);
     m_splitter->addWidget(m_rightPane);
-    connect(m_modListView, &solero::ModListView::modSelected,
-            m_rightPane,   &solero::RightPane::onModSelected);
+    connect(m_modListView, &solero::ModListView::modsSelected,
+            m_rightPane,   &solero::RightPane::onSelectionChanged);
     m_splitter->setSizes({640, 640});
 
     m_bottomPanel = new solero::BottomPanel(outer);

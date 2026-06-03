@@ -1,13 +1,16 @@
 #pragma once
 #include <QWidget>
 #include <QSet>
+#include <QStringList>
 #include "deploy/ConflictIndex.h"
 #include "core/Profile.h"
 
-class QTreeWidget;
-class QTreeWidgetItem;
+class QStackedWidget;
+class QLabel;
 
 namespace solero {
+
+class ModFileTree;
 
 class DataTab : public QWidget {
     Q_OBJECT
@@ -15,25 +18,40 @@ public:
     explicit DataTab(QWidget* parent = nullptr);
     void setProfile(Profile* profile);
     void setConflictIndex(const ConflictIndex& index);
-    void showMod(const QString& modId);
+
+    // Drives the view based on the current mod-list selection.
+    // ids contain mod ids; "__overwrite__" for Overwrite; "__separator__" for separators.
+    void setSelection(const QStringList& ids);
 
 private slots:
-    void onItemDoubleClicked(QTreeWidgetItem* item, int column);
+    void onFileActivated(const QString& fullPath);
     void onFileSaved(const QString& filePath);
+    void onSplitDropped();
 
 private:
-    QTreeWidget*  m_tree;
     Profile*      m_profile = nullptr;
     ConflictIndex m_conflicts;
-    QString       m_currentModId;
-    QString       m_currentStagingRoot;
+    QStringList   m_selection;
+
+    QStackedWidget* m_stack;
+    ModFileTree*    m_singleTree;   // page 0: single mod or game dir
+    QLabel*         m_placeholder;  // page 1: "Nothing to see here"
+    QWidget*        m_splitPage;    // page 2: two trees
+    ModFileTree*    m_splitLeft;
+    ModFileTree*    m_splitRight;
+
+    QString m_editTrackingRoot;  // staging root whose edits we last loaded
     QSet<QString> m_editedRelPaths;
 
     void refresh();
     QString stagingRootFor(const QString& modId) const;
+    QColor  accentColor() const;
+    void showSingleMod(const QString& modId);
+    void showGameDirectory();
+    void showSplit(const QString& modIdA, const QString& modIdB);
+    void loadEditedFor(const QString& stagingRoot, QSet<QString>& out) const;
     static QString editedMarkerPath(const QString& stagingRoot);
-    void loadEdited(const QString& stagingRoot);
-    void saveEdited(const QString& stagingRoot) const;
+    QString modDisplayName(const QString& modId) const;
 };
 
 } // namespace solero

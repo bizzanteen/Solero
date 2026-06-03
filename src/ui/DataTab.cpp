@@ -1,47 +1,73 @@
 #include "DataTab.h"
+#include "ModFileTree.h"
 #include "FileEditorDialog.h"
 #include "core/AppConfig.h"
+#include "deploy/DeployEngine.h"
+#include "deploy/DeployRecord.h"
 #include <QVBoxLayout>
-#include <QTreeWidget>
-#include <QTreeWidgetItem>
-#include <QDir>
-#include <QDirIterator>
-#include <QColor>
-#include <QFont>
-#include <QMap>
-#include <QHeaderView>
+#include <QHBoxLayout>
+#include <QStackedWidget>
+#include <QLabel>
+#include <QSplitter>
+#include <QPalette>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonArray>
 
 namespace solero {
 
-// Roles for stashing per-item data on file rows
-static constexpr int RoleFullPath = Qt::UserRole;
-static constexpr int RoleRelPath  = Qt::UserRole + 1;
-
 DataTab::DataTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    m_tree = new QTreeWidget(this);
-    m_tree->setHeaderLabels({"File", "Status"});
-    // Resizable columns; last section stretches to fill remaining width.
-    m_tree->header()->setSectionResizeMode(0, QHeaderView::Interactive);
-    m_tree->header()->setSectionResizeMode(1, QHeaderView::Interactive);
-    m_tree->header()->setStretchLastSection(true);
-    m_tree->setColumnWidth(0, 380);
-    m_tree->setColumnWidth(1, 180);
-    m_tree->setRootIsDecorated(true);
-    m_tree->setAlternatingRowColors(true);
-    layout->addWidget(m_tree);
 
-    connect(m_tree, &QTreeWidget::itemDoubleClicked,
-            this, &DataTab::onItemDoubleClicked);
+    m_stack = new QStackedWidget(this);
+
+    // Page 0: single tree (mod files or game dir)
+    m_singleTree = new ModFileTree(this);
+    connect(m_singleTree, &ModFileTree::fileActivated, this, &DataTab::onFileActivated);
+    m_stack->addWidget(m_singleTree);
+
+    // Page 1: placeholder
+    m_placeholder = new QLabel("Nothing to see here", this);
+    m_placeholder->setAlignment(Qt::AlignCenter);
+    QFont pf = m_placeholder->font(); pf.setItalic(true); m_placeholder->setFont(pf);
+    m_placeholder->setStyleSheet("color: gray;");
+    m_stack->addWidget(m_placeholder);
+
+    // Page 2: split view (two trees)
+    m_splitPage = new QWidget(this);
+    auto* splitLayout = new QHBoxLayout(m_splitPage);
+    splitLayout->setContentsMargins(0, 0, 0, 0);
+    auto* splitter = new QSplitter(Qt::Horizontal, m_splitPage);
+    m_splitLeft  = new ModFileTree(m_splitPage);
+    m_splitRight = new ModFileTree(m_splitPage);
+    splitter->addWidget(m_splitLeft);
+    splitter->addWidget(m_splitRight);
+    splitter->setSizes({400, 400});
+    splitLayout->addWidget(splitter);
+    connect(m_splitLeft,  &ModFileTree::fileActivated, this, &DataTab::onFileActivated);
+    connect(m_splitRight, &ModFileTree::fileActivated, this, &DataTab::onFileActivated);
+    connect(m_splitLeft,  &ModFileTree::filesDropped,  this, &DataTab::onSplitDropped);
+    connect(m_splitRight, &ModFileTree::filesDropped,  this, &DataTab::onSplitDropped);
+    m_stack->addWidget(m_splitPage);
+
+    layout->addWidget(m_stack);
+
+    m_stack->setCurrentWidget(m_singleTree);
+    showGameDirectory(); // nothing selected initially -> game dir view
 }
 
 void DataTab::setProfile(Profile* profile) { m_profile = profile; refresh(); }
 void DataTab::setConflictIndex(const ConflictIndex& index) { m_conflicts = index; refresh(); }
-void DataTab::showMod(const QString& modId) { m_currentModId = modId; refresh(); }
+
+void DataTab::setSelection(const QStringList& ids) {
+    m_selection = ids;
+    refresh();
+}
+
+QColor DataTab::accentColor() const {
+    return palette().color(QPalette::Highlight);
+}
 
 QString DataTab::stagingRootFor(const QString& modId) const {
     if (modId == "__overwrite__")
@@ -53,121 +79,106 @@ QString DataTab::editedMarkerPath(const QString& stagingRoot) {
     return stagingRoot + "/.solero-edited.json";
 }
 
-void DataTab::loadEdited(const QString& stagingRoot) {
-    m_editedRelPaths.clear();
+void DataTab::loadEditedFor(const QString& stagingRoot, QSet<QString>& out) const {
+    out.clear();
     QFile f(editedMarkerPath(stagingRoot));
     if (!f.open(QIODevice::ReadOnly)) return;
     for (const auto& v : QJsonDocument::fromJson(f.readAll()).array())
-        m_editedRelPaths.insert(v.toString());
+        out.insert(v.toString());
 }
 
-void DataTab::saveEdited(const QString& stagingRoot) const {
-    QJsonArray arr;
-    for (const auto& p : m_editedRelPaths) arr.append(p);
-    QFile f(editedMarkerPath(stagingRoot));
-    if (f.open(QIODevice::WriteOnly))
-        f.write(QJsonDocument(arr).toJson(QJsonDocument::Compact));
+QString DataTab::modDisplayName(const QString& modId) const {
+    if (!m_profile) return modId;
+    if (const auto* e = m_profile->modList().findById(modId)) return e->name;
+    return modId;
 }
 
 void DataTab::refresh() {
-    m_tree->clear();
-    if (m_currentModId.isEmpty()) {
-        m_tree->addTopLevelItem(new QTreeWidgetItem({"Select a mod to view its files"}));
-        m_currentStagingRoot.clear();
+    // Partition the selection: separators are ignored for counting; mods + overwrite count.
+    QStringList modIds;
+    int separatorCount = 0;
+    for (const auto& id : m_selection) {
+        if (id == "__separator__") { ++separatorCount; continue; }
+        modIds << id;
+    }
+
+    if (modIds.isEmpty()) {
+        if (separatorCount > 0) {
+            // Only separator(s) selected
+            m_stack->setCurrentWidget(m_placeholder);
+        } else {
+            // Nothing selected -> show live game directory
+            showGameDirectory();
+        }
         return;
     }
-
-    m_currentStagingRoot = stagingRootFor(m_currentModId);
-    loadEdited(m_currentStagingRoot);
-
-    QDir root(m_currentStagingRoot);
-    if (!root.exists()) {
-        m_tree->addTopLevelItem(new QTreeWidgetItem(
-            {m_currentModId == "__overwrite__"
-                 ? "Overwrite folder is empty"
-                 : "(mod staging directory not found)"}));
-        return;
+    if (modIds.size() == 1) {
+        showSingleMod(modIds.first());
+    } else if (modIds.size() == 2) {
+        showSplit(modIds.at(0), modIds.at(1));
+    } else {
+        m_stack->setCurrentWidget(m_placeholder); // 3+
     }
-
-    QMap<QString, QTreeWidgetItem*> dirItems;
-    QDirIterator it(m_currentStagingRoot, QDir::Files | QDir::NoDotAndDotDot,
-                    QDirIterator::Subdirectories);
-    while (it.hasNext()) {
-        QString fullPath = it.next();
-        QString relPath  = fullPath.mid(m_currentStagingRoot.length() + 1);
-
-        // Skip Solero's own marker files
-        if (relPath.startsWith(".solero")) continue;
-
-        QStringList parts = relPath.split('/');
-
-        QTreeWidgetItem* parent = nullptr;
-        QString accumulated;
-        for (int i = 0; i < parts.size() - 1; ++i) {
-            accumulated += (i > 0 ? "/" : "") + parts[i];
-            if (!dirItems.contains(accumulated)) {
-                auto* dirItem = parent
-                    ? new QTreeWidgetItem(parent, {parts[i], ""})
-                    : new QTreeWidgetItem(m_tree, {parts[i], ""});
-                dirItem->setExpanded(true);
-                dirItems[accumulated] = dirItem;
-                parent = dirItem;
-            } else {
-                parent = dirItems[accumulated];
-            }
-        }
-
-        QString filename = parts.last();
-        QString status;
-        QColor  color;
-        if (m_conflicts.hasConflict(relPath)) {
-            if (m_conflicts.winnerOf(relPath) == m_currentModId) {
-                status = QString("beats %1 mod(s)").arg(m_conflicts.losersOf(relPath).size());
-                color  = QColor("#27ae60");
-            } else {
-                status = "overwritten by: " + m_conflicts.winnerOf(relPath);
-                color  = QColor("#c0392b");
-            }
-        }
-
-        bool edited = m_editedRelPaths.contains(relPath);
-        if (edited)
-            status = status.isEmpty() ? QStringLiteral("✎ edited")
-                                      : QStringLiteral("✎ edited • ") + status;
-
-        auto* item = parent
-            ? new QTreeWidgetItem(parent, {filename, status})
-            : new QTreeWidgetItem(m_tree, {filename, status});
-        if (color.isValid()) item->setForeground(1, color);
-        if (edited) {
-            QFont f = item->font(0); f.setItalic(true); item->setFont(0, f);
-            item->setForeground(1, QColor("#e67e22")); // orange for edited
-        }
-        item->setData(0, RoleFullPath, fullPath);
-        item->setData(0, RoleRelPath,  relPath);
-    }
-
-    if (m_tree->topLevelItemCount() == 0)
-        m_tree->addTopLevelItem(new QTreeWidgetItem({"(staging directory is empty)"}));
 }
 
-void DataTab::onItemDoubleClicked(QTreeWidgetItem* item, int /*column*/) {
-    if (!item) return;
-    QString fullPath = item->data(0, RoleFullPath).toString();
-    if (fullPath.isEmpty()) return; // a directory row, not a file
+void DataTab::showSingleMod(const QString& modId) {
+    QString root = stagingRootFor(modId);
+    m_editTrackingRoot = root;
+    loadEditedFor(root, m_editedRelPaths);
+    m_singleTree->showModFiles(root, modId, m_conflicts, m_editedRelPaths, accentColor());
+    m_stack->setCurrentWidget(m_singleTree);
+}
 
+void DataTab::showGameDirectory() {
+    QString gameDir = AppConfig::instance().gameDir();
+    // Build relPath -> mod display name from the on-disk DeployRecord
+    QHash<QString, QString> ownerByRel;
+    QString recPath = DeployEngine::recordPath(gameDir);
+    DeployRecord rec = DeployRecord::loadFromFile(recPath);
+    for (const auto& relPath : rec.allPaths())
+        ownerByRel.insert(relPath, modDisplayName(rec.ownerOf(relPath)));
+
+    m_editTrackingRoot.clear();
+    m_singleTree->showGameDir(gameDir, ownerByRel, accentColor());
+    m_stack->setCurrentWidget(m_singleTree);
+}
+
+void DataTab::showSplit(const QString& modIdA, const QString& modIdB) {
+    QString rootA = stagingRootFor(modIdA);
+    QString rootB = stagingRootFor(modIdB);
+    QSet<QString> editedA, editedB;
+    loadEditedFor(rootA, editedA);
+    loadEditedFor(rootB, editedB);
+    m_splitLeft->setAcceptDrops(true);
+    m_splitRight->setAcceptDrops(true);
+    m_splitLeft->showModFiles(rootA, modIdA, m_conflicts, editedA, accentColor());
+    m_splitRight->showModFiles(rootB, modIdB, m_conflicts, editedB, accentColor());
+    m_stack->setCurrentWidget(m_splitPage);
+}
+
+void DataTab::onFileActivated(const QString& fullPath) {
+    if (fullPath.isEmpty()) return;
     auto* editor = new FileEditorDialog(fullPath, this);
     connect(editor, &FileEditorDialog::fileSaved, this, &DataTab::onFileSaved);
     editor->show();
 }
 
 void DataTab::onFileSaved(const QString& filePath) {
-    if (m_currentStagingRoot.isEmpty()) return;
-    if (!filePath.startsWith(m_currentStagingRoot)) return;
-    QString relPath = filePath.mid(m_currentStagingRoot.length() + 1);
+    if (m_editTrackingRoot.isEmpty()) return;
+    if (!filePath.startsWith(m_editTrackingRoot)) return;
+    QString relPath = filePath.mid(m_editTrackingRoot.length() + 1);
     m_editedRelPaths.insert(relPath);
-    saveEdited(m_currentStagingRoot);
+    // Persist
+    QJsonArray arr;
+    for (const auto& p : m_editedRelPaths) arr.append(p);
+    QFile f(editedMarkerPath(m_editTrackingRoot));
+    if (f.open(QIODevice::WriteOnly))
+        f.write(QJsonDocument(arr).toJson(QJsonDocument::Compact));
     refresh();
+}
+
+void DataTab::onSplitDropped() {
+    refresh(); // rebuild both trees to reflect the copied file
 }
 
 } // namespace solero

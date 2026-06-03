@@ -1,5 +1,4 @@
 #include "BethiniWindow.h"
-#include "core/AppConfig.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QTabWidget>
@@ -16,7 +15,6 @@
 #include <QSettings>
 #include <QPlainTextEdit>
 #include <QFile>
-#include <QDir>
 #include <QFont>
 #include <QGuiApplication>
 #include <QScreen>
@@ -56,14 +54,10 @@ BethiniWindow::BethiniWindow(QWidget* parent) : QWidget(parent) {
 }
 
 QString BethiniWindow::iniPathFor(const QString& file) const {
-    // Operate directly on the live game INIs (single shared set), not per-profile.
-    QString docs = AppConfig::instance().documentsDir();
-    if (docs.isEmpty()) return {};
-    QDir d(docs);
-    for (const auto& e : d.entryList(QDir::Files))   // match existing case (e.g. Skyrimcustom.ini)
-        if (e.compare(file, Qt::CaseInsensitive) == 0)
-            return d.absoluteFilePath(e);
-    return docs + "/" + file;
+    if (!m_profile) return {};
+    if (file == "Skyrim.ini")      return m_profile->skyrimIniPath();
+    if (file == "SkyrimPrefs.ini") return m_profile->skyrimPrefsPath();
+    return m_profile->skyrimCustomPath();
 }
 
 QVariant BethiniWindow::readKey(const BethiniIniKey& k) const {
@@ -104,7 +98,7 @@ void BethiniWindow::buildUI() {
     searchEdit->setMaximumWidth(200);
     connect(searchEdit, &QLineEdit::textChanged, this, &BethiniWindow::onSearch);
     presetBar->addWidget(searchEdit);
-    auto* saveBtn = new QPushButton("Save to Game INI", this);
+    auto* saveBtn = new QPushButton("Save to Profile", this);
     connect(saveBtn, &QPushButton::clicked, this, &BethiniWindow::onSave);
     presetBar->addWidget(saveBtn);
     outer->addLayout(presetBar);
@@ -242,13 +236,13 @@ void BethiniWindow::buildAdvancedTab(QTabWidget* tabs) {
     auto* reload = new QPushButton("Reload", page);
     connect(reload, &QPushButton::clicked, this, &BethiniWindow::loadAdvancedFile);
     bar->addWidget(reload);
-    auto* save = new QPushButton("Save to Game INI", page);
+    auto* save = new QPushButton("Save to Profile", page);
     connect(save, &QPushButton::clicked, this, &BethiniWindow::onAdvancedSave);
     bar->addWidget(save);
     v->addLayout(bar);
 
     auto* hint = new QLabel(
-        "Directly edit the live game INI. Saved immediately to the game's My Games folder.", page);
+        "Directly edit this profile's INI. Changes deploy to the game on next Deploy.", page);
     hint->setStyleSheet("color: gray;");
     v->addWidget(hint);
 

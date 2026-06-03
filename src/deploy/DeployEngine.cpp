@@ -58,8 +58,26 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode) {
     QDir().mkpath(pluginsDir);
     profile.pluginList().saveToFile(pluginsDir + "/Plugins.txt");
 
-    // INIs are managed directly as a single live game set (edited via the BethINI
-    // tab), not copied per-profile on deploy.
+    // INIs belong in the game's My Games documents folder. Fall back to gameDir.
+    QString docsDir = AppConfig::instance().documentsDir();
+    QString iniDir = docsDir.isEmpty() ? m_gameDir : docsDir;
+    QDir().mkpath(iniDir);
+    const QStringList inis = {
+        profile.skyrimIniPath(),
+        profile.skyrimPrefsPath(),
+        profile.skyrimCustomPath()
+    };
+    const QStringList iniTargets = {
+        iniDir + "/Skyrim.ini",
+        iniDir + "/SkyrimPrefs.ini",
+        iniDir + "/SkyrimCustom.ini"
+    };
+    for (int i = 0; i < inis.size(); ++i) {
+        if (QFile::exists(inis[i])) {
+            QFile::remove(iniTargets[i]);
+            QFile::copy(inis[i], iniTargets[i]);
+        }
+    }
 
     record.saveToFile(recordPath(m_gameDir));
     conflicts.saveToFile(conflictIndexPath(profile.path()));

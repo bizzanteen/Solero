@@ -5,6 +5,8 @@
 #include <QDir>
 #include "import/Mo2Importer.h"
 #include "core/Types.h"
+#include "core/Profile.h"
+#include "core/ProfileManager.h"
 using namespace solero;
 static void write(const QString& p, const QString& c){ QDir().mkpath(QFileInfo(p).path()); QFile f(p); f.open(QIODevice::WriteOnly); f.write(c.toUtf8()); }
 
@@ -34,6 +36,39 @@ private slots:
     }
     void emptyAndCommentsOnly() {
         QCOMPARE(Mo2Importer::parseModlist("# comment\n\n").size(), 0);
+    }
+    void importStagesModsAndBuildsProfile() {
+        QTemporaryDir tmp;
+        QString mo2 = tmp.path() + "/MO2";
+        // MO2 mods dir with two mod folders (Data-relative content).
+        write(mo2 + "/mods/Cool Textures/textures/a.dds", "tex");
+        write(mo2 + "/mods/Cool Mod/meshes/b.nif", "mesh");
+        // profile dir
+        write(mo2 + "/profiles/Default/modlist.txt",
+              "+Cool Mod\n+Textures_separator\n+Cool Textures\n");
+        write(mo2 + "/profiles/Default/plugins.txt", "*Skyrim.esm\n*CoolMod.esp\n");
+
+        QString staging = tmp.path() + "/staging";
+        QString profilesRoot = tmp.path() + "/profiles";
+        ProfileManager pm(profilesRoot);
+
+        auto r = Mo2Importer::importProfile(
+            mo2 + "/profiles/Default", mo2 + "/mods", staging, pm, "Imported", /*symlink*/false);
+        QVERIFY2(r.success, r.errorMessage.toUtf8());
+        QCOMPARE(r.modsStaged, 2);
+
+        Profile* p = pm.loadProfile("Imported");
+        QVERIFY(p != nullptr);
+        // 3 entries (2 mods + 1 separator), Solero order: Cool Textures(low), Textures sep, Cool Mod(high)
+        QCOMPARE(p->modList().count(), 3);
+        // Find the "Cool Textures" mod and verify its staged file is under Data/
+        QString texId;
+        for (auto it = p->modList().begin(); it != p->modList().end(); ++it)
+            if (it->name == "Cool Textures") texId = it->id;
+        QVERIFY(!texId.isEmpty());
+        QVERIFY(QFile::exists(staging + "/" + texId + "/Data/textures/a.dds"));
+        // plugins.txt imported (2 plugins)
+        QCOMPARE(p->pluginList().count(), 2);
     }
 };
 QTEST_MAIN(TestMo2Importer)

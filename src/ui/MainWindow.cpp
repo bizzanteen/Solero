@@ -7,6 +7,7 @@
 #include "app/Application.h"
 #include "core/AppConfig.h"
 #include "install/ModInstaller.h"
+#include "import/Mo2Importer.h"
 #include "ui/FomodWizard.h"
 #include "fomod/FomodEngine.h"
 #include <QJsonDocument>
@@ -109,6 +110,8 @@ void MainWindow::setupToolbar() {
     auto* profileMenu = new QMenu(profileMenuBtn);
     profileMenu->addAction("New Profile...", this, &MainWindow::onNewProfile);
     profileMenu->addAction("Delete Current Profile", this, &MainWindow::onDeleteProfile);
+    profileMenu->addSeparator();
+    profileMenu->addAction("Import MO2 Profile...", this, &MainWindow::onImportMo2);
     profileMenuBtn->setMenu(profileMenu);
     profileMenuBtn->setPopupMode(QToolButton::InstantPopup);
     tb->addWidget(profileMenuBtn);
@@ -402,6 +405,41 @@ void MainWindow::onDeleteProfile() {
     m_profileMgr->deleteProfile(current);
     refreshProfileCombo();
     switchProfile(m_profileMgr->profileNames().first());
+}
+
+void MainWindow::onImportMo2() {
+    if (!solero::AppConfig::instance().isConfigured()) {
+        statusBar()->showMessage("Configure the game first (Game Settings...)."); return;
+    }
+    QString modlist = QFileDialog::getOpenFileName(
+        this, "Select MO2 profile's modlist.txt", QDir::homePath(), "modlist.txt (modlist.txt);;All files (*)");
+    if (modlist.isEmpty()) return;
+    QString profileDir = QFileInfo(modlist).path();
+    // mods dir: MO2 layout is <base>/mods and <base>/profiles/<name>/. Go up two from profileDir.
+    QString modsDir = QDir(profileDir + "/../../mods").canonicalPath();
+    if (modsDir.isEmpty() || !QDir(modsDir).exists()) {
+        modsDir = QFileDialog::getExistingDirectory(this, "Select MO2 'mods' folder", QDir::homePath());
+        if (modsDir.isEmpty()) return;
+    }
+    bool ok;
+    QString name = QInputDialog::getText(this, "Import MO2 Profile", "New Solero profile name:",
+                                         QLineEdit::Normal, "Imported", &ok);
+    if (!ok || name.trimmed().isEmpty()) return;
+
+    auto ret = QMessageBox::question(this, "Import method",
+        "Symlink mod folders (fast, shares files with MO2) instead of copying?\n"
+        "Yes = symlink, No = copy.", QMessageBox::Yes | QMessageBox::No);
+    bool symlink = (ret == QMessageBox::Yes);
+
+    statusBar()->showMessage("Importing MO2 profile...");
+    qApp->processEvents();
+    auto r = solero::Mo2Importer::importProfile(profileDir, modsDir,
+        solero::AppConfig::instance().stagingDir(), *m_profileMgr, name.trimmed(), symlink);
+    if (!r.success) { QMessageBox::critical(this, "Import Failed", r.errorMessage); return; }
+
+    refreshProfileCombo();
+    m_profileCombo->setCurrentText(r.profileName);
+    statusBar()->showMessage(QString("Imported '%1' - %2 mods staged.").arg(r.profileName).arg(r.modsStaged));
 }
 
 void MainWindow::keyPressEvent(QKeyEvent* event) {

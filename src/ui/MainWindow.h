@@ -48,6 +48,7 @@ private:
     void onOpenBethini();
     void onNewProfile();
     void onDeleteProfile();
+    void onImportMo2();
     void onInstallMod();
     void onZoomIn();
     void onZoomOut();

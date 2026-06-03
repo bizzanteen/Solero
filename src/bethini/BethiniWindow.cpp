@@ -13,6 +13,9 @@
 #include <QDoubleSpinBox>
 #include <QPushButton>
 #include <QSettings>
+#include <QPlainTextEdit>
+#include <QFile>
+#include <QFont>
 #include <QGuiApplication>
 #include <QScreen>
 
@@ -108,7 +111,18 @@ void BethiniWindow::buildUI() {
         auto* scroll = new QScrollArea(tabs);
         scroll->setWidgetResizable(true);
         auto* page = new QWidget(scroll);
-        auto* pageLayout = new QVBoxLayout(page);
+        // Two balanced columns to save vertical space. Each group box is added
+        // to whichever column is currently shorter (by accumulated row count).
+        auto* columnsLayout = new QHBoxLayout(page);
+        const int kColumns = 2;
+        QList<QVBoxLayout*> columns;
+        QList<int> colHeights;
+        for (int c = 0; c < kColumns; ++c) {
+            auto* col = new QVBoxLayout;
+            columnsLayout->addLayout(col, 1);
+            columns.append(col);
+            colHeights.append(0);
+        }
 
         for (const auto& group : tab.groups) {
             auto* box = new QGroupBox(group.name == "NoLabelFrame" ? QString() : group.name, page);
@@ -185,16 +199,85 @@ void BethiniWindow::buildUI() {
                 rw.container = w; // hide widget on search; label tracked via form
                 m_rows.append(rw);
             }
-            pageLayout->addWidget(box);
+            // Place this group in the shortest column.
+            int shortest = 0;
+            for (int c = 1; c < kColumns; ++c)
+                if (colHeights[c] < colHeights[shortest]) shortest = c;
+            columns[shortest]->addWidget(box);
+            colHeights[shortest] += group.rows.size() + 2; // +2 for header/padding
         }
-        pageLayout->addStretch();
+        for (auto* col : columns) col->addStretch();
         scroll->setWidget(page);
         tabs->addTab(scroll, tab.name);
     }
+
+    // Advanced tab: raw editing of the profile's INI files.
+    buildAdvancedTab(tabs);
 }
 
 void BethiniWindow::setProfile(Profile* profile) {
     m_profile = profile;
+    for (auto& rw : m_rows) loadRow(rw);
+    loadAdvancedFile();
+}
+
+void BethiniWindow::buildAdvancedTab(QTabWidget* tabs) {
+    auto* page = new QWidget(tabs);
+    auto* v = new QVBoxLayout(page);
+
+    auto* bar = new QHBoxLayout;
+    bar->addWidget(new QLabel("File:"));
+    m_advFileCombo = new QComboBox(page);
+    m_advFileCombo->addItems({"Skyrim.ini", "SkyrimPrefs.ini", "SkyrimCustom.ini"});
+    connect(m_advFileCombo, &QComboBox::currentTextChanged,
+            this, &BethiniWindow::onAdvancedFileChanged);
+    bar->addWidget(m_advFileCombo);
+    bar->addStretch();
+    auto* reload = new QPushButton("Reload", page);
+    connect(reload, &QPushButton::clicked, this, &BethiniWindow::loadAdvancedFile);
+    bar->addWidget(reload);
+    auto* save = new QPushButton("Save to Profile", page);
+    connect(save, &QPushButton::clicked, this, &BethiniWindow::onAdvancedSave);
+    bar->addWidget(save);
+    v->addLayout(bar);
+
+    auto* hint = new QLabel(
+        "Directly edit this profile's INI. Changes deploy to the game on next Deploy.", page);
+    hint->setStyleSheet("color: gray;");
+    v->addWidget(hint);
+
+    m_advEdit = new QPlainTextEdit(page);
+    QFont mono("Monospace");
+    mono.setStyleHint(QFont::TypeWriter);
+    m_advEdit->setFont(mono);
+    m_advEdit->setLineWrapMode(QPlainTextEdit::NoWrap);
+    v->addWidget(m_advEdit);
+
+    tabs->addTab(page, "Advanced");
+}
+
+void BethiniWindow::loadAdvancedFile() {
+    if (!m_profile || !m_advEdit || !m_advFileCombo) return;
+    QString path = iniPathFor(m_advFileCombo->currentText());
+    QFile f(path);
+    if (f.open(QIODevice::ReadOnly))
+        m_advEdit->setPlainText(QString::fromUtf8(f.readAll()));
+    else
+        m_advEdit->setPlainText(QString("; %1 does not exist yet.\n"
+            "; Editing here and saving will create it.\n").arg(m_advFileCombo->currentText()));
+}
+
+void BethiniWindow::onAdvancedFileChanged() {
+    loadAdvancedFile();
+}
+
+void BethiniWindow::onAdvancedSave() {
+    if (!m_profile || !m_advEdit || !m_advFileCombo) return;
+    QString path = iniPathFor(m_advFileCombo->currentText());
+    QFile f(path);
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        f.write(m_advEdit->toPlainText().toUtf8());
+    // Reload the form widgets so the structured tabs reflect raw edits.
     for (auto& rw : m_rows) loadRow(rw);
 }
 

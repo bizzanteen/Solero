@@ -5,6 +5,8 @@
 #include "core/Profile.h"
 
 class QComboBox;
+class QTabWidget;
+class QPlainTextEdit;
 
 namespace solero {
 
@@ -20,6 +22,8 @@ private slots:
     void applyPreset(const QString& presetName);
     void onSave();
     void onSearch(const QString& filter);
+    void onAdvancedFileChanged();
+    void onAdvancedSave();
 
 private:
     struct RowWidget {
@@ -29,6 +33,8 @@ private:
     };
 
     void buildUI();
+    void buildAdvancedTab(QTabWidget* tabs);
+    void loadAdvancedFile();
     QString iniPathFor(const QString& file) const;
     QVariant readKey(const BethiniIniKey& k) const;
     void writeKey(const BethiniIniKey& k, const QVariant& v);
@@ -49,6 +55,9 @@ private:
 
     int        m_resRowIndex = -1;        // index into m_rows of the Resolution row
     QComboBox* m_resCombo = nullptr;      // the Resolution dropdown
+
+    QComboBox*      m_advFileCombo = nullptr; // Advanced tab: which INI to edit
+    QPlainTextEdit* m_advEdit = nullptr;      // Advanced tab: raw INI text
 };
 
 } // namespace solero

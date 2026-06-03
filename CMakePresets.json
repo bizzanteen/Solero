@@ -1,0 +1,25 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "debug",
+      "displayName": "Debug (Linux/Homebrew Qt6)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_PREFIX_PATH": "/home/linuxbrew/.linuxbrew/Cellar/qtbase/6.11.1;/home/linuxbrew/.linuxbrew/Cellar/mesa/26.0.6"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release (Linux/Homebrew Qt6)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_PREFIX_PATH": "/home/linuxbrew/.linuxbrew/Cellar/qtbase/6.11.1;/home/linuxbrew/.linuxbrew/Cellar/mesa/26.0.6"
+      }
+    }
+  ]
+}

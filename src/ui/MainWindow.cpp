@@ -2,7 +2,9 @@
 #include "ModListView.h"
 #include "PluginListView.h"
 #include "BottomPanel.h"
+#include "SetupWizard.h"
 #include "app/Application.h"
+#include "core/AppConfig.h"
 #include <QSplitter>
 #include <QComboBox>
 #include <QToolBar>
@@ -16,10 +18,23 @@
 #include <QMenu>
 #include <QIcon>
 #include <QStatusBar>
+#include <QTimer>
+#include <QCoreApplication>
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("Solero");
     resize(1280, 800);
+
+    // Load global config; show setup wizard if not yet configured
+    solero::AppConfig::instance().load();
+    if (!solero::AppConfig::instance().isConfigured()) {
+        solero::SetupWizard wizard(this);
+        if (wizard.exec() != QDialog::Accepted) {
+            // User cancelled - quit
+            QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+            return;
+        }
+    }
 
     QString root = profilesRoot();
     m_profileMgr = new solero::ProfileManager(root);
@@ -91,6 +106,14 @@ void MainWindow::setupToolbar() {
     // AI changes badge
     m_aiChangesLabel = new QLabel("AI: 0 changes", tb);
     tb->addWidget(m_aiChangesLabel);
+    tb->addSeparator();
+
+    // Game settings
+    tb->addAction("Game Settings...", this, [this]{
+        solero::SetupWizard wizard(this);
+        if (wizard.exec() == QDialog::Accepted)
+            statusBar()->showMessage("Game settings updated.");
+    });
 }
 
 void MainWindow::setupCentralWidget() {

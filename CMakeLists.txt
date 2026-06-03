@@ -35,6 +35,8 @@ set(SOLERO_SOURCES
   src/ui/BottomPanel.cpp
   src/ui/SeparatorDialog.cpp
   src/ui/ExecutableDialog.cpp
+  src/ui/SetupWizard.cpp
+  src/core/AppConfig.cpp
   resources/resources.qrc
 )
 

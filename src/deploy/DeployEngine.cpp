@@ -10,7 +10,7 @@
 namespace solero {
 
 DeployEngine::DeployEngine(const QString& gameDir, const QString& stagingRoot)
-    : m_gameDir(gameDir), m_stagingRoot(stagingRoot) {}
+    : m_gameDir(QDir::cleanPath(gameDir)), m_stagingRoot(QDir::cleanPath(stagingRoot)) {}
 
 QString DeployEngine::recordPath(const QString& gameDir) {
     return gameDir + "/" + DeployRecord::recordFilename();
@@ -22,6 +22,10 @@ QString DeployEngine::conflictIndexPath(const QString& profileDir) {
 
 DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode) {
     DeployResult result;
+
+    // Clean up any previous deployment first to avoid orphaned files
+    undeploy(m_gameDir);
+
     Linker linker(mode);
     DeployRecord record;
     ConflictIndex conflicts;
@@ -90,14 +94,15 @@ void DeployEngine::deployMod(const QString& modId,
 }
 
 bool DeployEngine::undeploy(const QString& gameDir) {
-    QString recPath = recordPath(gameDir);
+    const QString normGameDir = QDir::cleanPath(gameDir);
+    QString recPath = recordPath(normGameDir);
     DeployRecord record = DeployRecord::loadFromFile(recPath);
 
     for (const auto& relPath : record.allPaths()) {
-        QString fullPath = gameDir + "/" + relPath;
+        QString fullPath = normGameDir + "/" + relPath;
         QFile::remove(fullPath);
         QDir dir(QFileInfo(fullPath).path());
-        while (dir.path() != gameDir && dir.isEmpty()) {
+        while (QDir::cleanPath(dir.path()) != normGameDir && dir.isEmpty()) {
             QString parent = QFileInfo(dir.path()).path();
             dir.rmdir(".");
             dir = QDir(parent);

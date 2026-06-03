@@ -35,7 +35,7 @@ bool ConflictIndex::hasConflict(const QString& relPath) const {
 QStringList ConflictIndex::winningFilesOf(const QString& modId) const {
     QStringList result;
     for (auto it = m_conflicts.cbegin(); it != m_conflicts.cend(); ++it)
-        if (it.value().winner == modId)
+        if (it.value().winner == modId && !it.value().losers.isEmpty())
             result.append(it.key());
     return result;
 }

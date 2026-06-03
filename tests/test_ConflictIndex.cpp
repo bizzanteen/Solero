@@ -31,8 +31,9 @@ private slots:
         idx.recordConflict("Data/c.nif", "mod-y", "mod-x");
 
         auto winning = idx.winningFilesOf("mod-x");
-        QVERIFY(winning.contains("Data/a.nif"));
-        QCOMPARE(winning.size(), 2);
+        QVERIFY(winning.contains("Data/a.nif"));  // a.nif has a loser (mod-y)
+        QVERIFY(!winning.contains("Data/b.nif")); // b.nif has no losers - not a conflict win
+        QCOMPARE(winning.size(), 1);
 
         auto losing = idx.losingFilesOf("mod-x");
         QVERIFY(losing.contains("Data/c.nif"));

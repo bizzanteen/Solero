@@ -88,6 +88,30 @@ private slots:
         engine.deploy(profile, DeployMode::Copy);
         QVERIFY(!QFile::exists(gameDir + "/Data/skip.nif"));
     }
+    void redeploy_removesOrphanedFiles() {
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QDir().mkpath(gameDir);
+        writeFile(stagingRoot + "/aaa/Data/keep.nif");
+        writeFile(stagingRoot + "/bbb/Data/orphan.nif");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry ma; ma.type = EntryType::Mod; ma.id = "aaa"; ma.name = "Keep";   ma.enabled = true;
+        ModEntry mb; mb.type = EntryType::Mod; mb.id = "bbb"; mb.name = "Orphan"; mb.enabled = true;
+        profile.modList().append(ma);
+        profile.modList().append(mb);
+
+        DeployEngine engine(gameDir, stagingRoot);
+        engine.deploy(profile, DeployMode::Copy);
+        QVERIFY(QFile::exists(gameDir + "/Data/orphan.nif"));
+
+        // Disable bbb and re-deploy - orphan.nif must be removed
+        profile.modList().setEnabled("bbb", false);
+        engine.deploy(profile, DeployMode::Copy);
+        QVERIFY(QFile::exists(gameDir + "/Data/keep.nif"));
+        QVERIFY(!QFile::exists(gameDir + "/Data/orphan.nif"));
+    }
 };
 QTEST_MAIN(TestDeployEngine)
 #include "test_DeployEngine.moc"

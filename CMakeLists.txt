@@ -69,6 +69,7 @@ set(SOLERO_SOURCES
   src/tools/ToolStore.cpp
   src/tools/ToolRunner.cpp
   src/install/DependencyChecker.cpp
+  src/import/Mo2Importer.cpp
   resources/resources.qrc
 )
 

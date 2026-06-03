@@ -87,3 +87,17 @@ endfunction()
 
 add_solero_tools_test(test_ToolStore)
 add_solero_tools_test(test_DependencyChecker)
+
+function(add_solero_import_test name)
+  add_executable(${name} ${name}.cpp
+    ../src/import/Mo2Importer.cpp
+    ../src/core/ModList.cpp ../src/core/PluginList.cpp
+    ../src/core/Profile.cpp ../src/core/ProfileManager.cpp
+    ../src/ai/AITransaction.cpp ../src/core/AppConfig.cpp
+  )
+  target_include_directories(${name} PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+  target_link_libraries(${name} PRIVATE Qt6::Core Qt6::Test)
+  add_test(NAME ${name} COMMAND ${name})
+endfunction()
+
+add_solero_import_test(test_Mo2Importer)

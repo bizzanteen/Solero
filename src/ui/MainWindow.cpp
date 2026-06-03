@@ -153,40 +153,9 @@ void MainWindow::setupCentralWidget() {
     setCentralWidget(m_centralTabs);
 }
 
-// Find a file in dir case-insensitively (Skyrim's custom ini ships as
-// "Skyrimcustom.ini" in some installs). Returns the actual path or empty.
-static QString findIniCaseInsensitive(const QString& dir, const QString& wanted) {
-    QDir d(dir);
-    for (const auto& e : d.entryList(QDir::Files))
-        if (e.compare(wanted, Qt::CaseInsensitive) == 0)
-            return d.absoluteFilePath(e);
-    return {};
-}
-
-// Seed a profile's INI copies from the live game INIs (in the Proton documents
-// dir) the first time, so the BethINI editor starts from the real baseline.
-static void seedProfileInis(solero::Profile* profile) {
-    QString docs = solero::AppConfig::instance().documentsDir();
-    if (docs.isEmpty()) return;
-    const QList<QPair<QString,QString>> map = {
-        {"Skyrim.ini",       profile->skyrimIniPath()},
-        {"SkyrimPrefs.ini",  profile->skyrimPrefsPath()},
-        {"SkyrimCustom.ini", profile->skyrimCustomPath()},
-    };
-    for (const auto& [liveName, target] : map) {
-        if (QFile::exists(target)) continue; // never clobber profile edits
-        QString live = findIniCaseInsensitive(docs, liveName);
-        if (!live.isEmpty()) {
-            QDir().mkpath(QFileInfo(target).path());
-            QFile::copy(live, target);
-        }
-    }
-}
-
 void MainWindow::switchProfile(const QString& name) {
     if (name.isEmpty()) return;
     auto* profile = m_profileMgr->loadProfile(name);
-    seedProfileInis(profile);
     m_ipcServer->setActiveProfile(profile);
     m_modListView->setProfile(profile);
     m_rightPane->setProfile(profile);

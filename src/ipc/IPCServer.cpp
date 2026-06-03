@@ -21,11 +21,14 @@ bool IPCServer::start(const QString& socketName) {
 
 void IPCServer::onNewConnection() {
     auto* socket = m_server->nextPendingConnection();
+    socket->setParent(this);
     connect(socket, &QLocalSocket::readyRead, this, &IPCServer::onReadyRead);
+    connect(socket, &QLocalSocket::disconnected, socket, &QLocalSocket::deleteLater);
 }
 
 void IPCServer::onReadyRead() {
     auto* socket = qobject_cast<QLocalSocket*>(sender());
+    if (!socket) return;
     while (socket->canReadLine()) {
         QByteArray line = socket->readLine().trimmed();
         QByteArray response = handleRequest(line);

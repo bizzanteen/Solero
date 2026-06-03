@@ -58,3 +58,16 @@ endfunction()
 
 add_solero_install_test(test_DataDirDetector)
 add_solero_install_test(test_ModInstaller)
+
+function(add_solero_fomod_test name)
+  add_executable(${name} ${name}.cpp
+    ../src/fomod/FomodCondition.cpp
+    ../src/fomod/FomodEngine.cpp
+  )
+  target_include_directories(${name} PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+  target_link_libraries(${name} PRIVATE Qt6::Core Qt6::Xml Qt6::Test)
+  add_test(NAME ${name} COMMAND ${name})
+endfunction()
+
+add_solero_fomod_test(test_FomodCondition)
+add_solero_fomod_test(test_FomodEngine)

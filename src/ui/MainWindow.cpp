@@ -7,6 +7,12 @@
 #include "app/Application.h"
 #include "core/AppConfig.h"
 #include "install/ModInstaller.h"
+#include "ui/FomodWizard.h"
+#include "fomod/FomodEngine.h"
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QDateTime>
 #include <QTabWidget>
 #include <QSplitter>
 #include <QComboBox>
@@ -287,23 +293,53 @@ void MainWindow::onInstallMod() {
         "Mod archives (*.zip *.7z *.rar *.tar *.gz);;All files (*)");
     if (archive.isEmpty()) return;
 
-    statusBar()->showMessage("Installing...");
+    statusBar()->showMessage("Preparing...");
     qApp->processEvents();
 
-    auto result = solero::ModInstaller::installArchive(
-        archive, solero::AppConfig::instance().stagingDir());
+    auto prep = solero::ModInstaller::prepare(archive);
+    if (!prep.ok) { QMessageBox::critical(this, "Install Failed", prep.errorMessage); return; }
 
-    if (!result.success) {
-        QMessageBox::critical(this, "Install Failed", result.errorMessage);
-        statusBar()->showMessage("Install failed.");
-        return;
+    const QString staging = solero::AppConfig::instance().stagingDir();
+    solero::InstallResult result;
+    QJsonArray choiceLog;
+
+    if (prep.layout.isFomod && !prep.fomodConfigPath.isEmpty()) {
+        solero::FomodEngine engine;
+        if (!engine.load(prep.fomodConfigPath)) {
+            QMessageBox::warning(this, "FOMOD", "Could not parse the FOMOD config; installing all files.");
+            result = solero::ModInstaller::stageSimple(prep, staging);
+        } else {
+            solero::FomodWizard wizard(&engine, prep.extractDir, this);
+            if (wizard.exec() != QDialog::Accepted) { statusBar()->showMessage("Install cancelled."); return; }
+            result = solero::ModInstaller::stageFomod(prep, staging, wizard.result());
+            const auto sel = wizard.selection();
+            const auto& mod = engine.module();
+            for (int si = 0; si < mod.steps.size(); ++si) {
+                QJsonArray picks;
+                for (int gi = 0; gi < mod.steps[si].groups.size(); ++gi)
+                    for (int oi = 0; oi < mod.steps[si].groups[gi].options.size(); ++oi)
+                        if (sel.value(solero::FomodEngine::selKey(si, gi, oi)))
+                            picks.append(mod.steps[si].groups[gi].options[oi].name);
+                QJsonObject stepObj;
+                stepObj["step"] = mod.steps[si].name;
+                stepObj["selected"] = picks;
+                choiceLog.append(stepObj);
+            }
+        }
+    } else {
+        result = solero::ModInstaller::stageSimple(prep, staging);
     }
 
-    if (result.isFomod) {
-        QMessageBox::information(this, "FOMOD Mod",
-            "This is a FOMOD mod. The guided installer arrives in a later stage - "
-            "for now all of its files were installed Data-relative. You can adjust "
-            "the files via the Data tab if needed.");
+    if (!result.success) { QMessageBox::critical(this, "Install Failed", result.errorMessage); return; }
+
+    if (!choiceLog.isEmpty()) {
+        QJsonObject root;
+        root["installer_version"] = "1.0";
+        root["installed_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        root["steps"] = choiceLog;
+        QString cp = staging + "/" + result.modId + "/fomod-choices.json";
+        QFile f(cp);
+        if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     }
 
     solero::ModEntry mod;
@@ -311,7 +347,7 @@ void MainWindow::onInstallMod() {
     mod.id = result.modId;
     mod.name = result.modName;
     mod.enabled = true;
-    mod.hasFomodChoices = false;
+    mod.hasFomodChoices = !choiceLog.isEmpty();
     profile->modList().append(mod);
     profile->save();
 

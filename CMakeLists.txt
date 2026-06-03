@@ -37,6 +37,13 @@ set(SOLERO_SOURCES
   src/ui/ExecutableDialog.cpp
   src/ui/SetupWizard.cpp
   src/core/AppConfig.cpp
+  src/deploy/Linker.cpp
+  src/deploy/DeployRecord.cpp
+  src/deploy/ConflictIndex.cpp
+  src/deploy/DeployEngine.cpp
+  src/ui/RightPane.cpp
+  src/ui/DataTab.cpp
+  src/ui/ConflictsTab.cpp
   resources/resources.qrc
 )
 

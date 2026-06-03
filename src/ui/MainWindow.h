@@ -45,6 +45,7 @@ private:
     void onOpenBethini();
     void onNewProfile();
     void onDeleteProfile();
+    void onInstallMod();
     void onZoomIn();
     void onZoomOut();
     void onZoomReset();

@@ -6,6 +6,7 @@
 #include "bethini/BethiniWindow.h"
 #include "app/Application.h"
 #include "core/AppConfig.h"
+#include "install/ModInstaller.h"
 #include <QTabWidget>
 #include <QSplitter>
 #include <QComboBox>
@@ -25,6 +26,7 @@
 #include <QFile>
 #include <QDir>
 #include <QFileInfo>
+#include <QFileDialog>
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("Solero");
@@ -102,6 +104,10 @@ void MainWindow::setupToolbar() {
     profileMenuBtn->setMenu(profileMenu);
     profileMenuBtn->setPopupMode(QToolButton::InstantPopup);
     tb->addWidget(profileMenuBtn);
+    tb->addSeparator();
+
+    // Install Mod action
+    tb->addAction("Install Mod...", this, &MainWindow::onInstallMod);
     tb->addSeparator();
 
     // Deploy toggle
@@ -266,6 +272,51 @@ void MainWindow::updateDeployButton() {
         m_deployAction->setText("\xe2\x9c\x97 Not Deployed");
         m_deployAction->setToolTip("Click to deploy mods to game directory");
     }
+}
+
+void MainWindow::onInstallMod() {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) { statusBar()->showMessage("No active profile."); return; }
+    if (!solero::AppConfig::instance().isConfigured()) {
+        statusBar()->showMessage("Configure the game first (Game Settings...).");
+        return;
+    }
+
+    QString archive = QFileDialog::getOpenFileName(
+        this, "Install Mod from Archive", QDir::homePath(),
+        "Mod archives (*.zip *.7z *.rar *.tar *.gz);;All files (*)");
+    if (archive.isEmpty()) return;
+
+    statusBar()->showMessage("Installing...");
+    qApp->processEvents();
+
+    auto result = solero::ModInstaller::installArchive(
+        archive, solero::AppConfig::instance().stagingDir());
+
+    if (!result.success) {
+        QMessageBox::critical(this, "Install Failed", result.errorMessage);
+        statusBar()->showMessage("Install failed.");
+        return;
+    }
+
+    if (result.isFomod) {
+        QMessageBox::information(this, "FOMOD Mod",
+            "This is a FOMOD mod. The guided installer arrives in a later stage - "
+            "for now all of its files were installed Data-relative. You can adjust "
+            "the files via the Data tab if needed.");
+    }
+
+    solero::ModEntry mod;
+    mod.type = solero::EntryType::Mod;
+    mod.id = result.modId;
+    mod.name = result.modName;
+    mod.enabled = true;
+    mod.hasFomodChoices = false;
+    profile->modList().append(mod);
+    profile->save();
+
+    m_modListView->setProfile(profile);
+    statusBar()->showMessage(QString("Installed: %1").arg(result.modName));
 }
 
 void MainWindow::refreshDeployState() {

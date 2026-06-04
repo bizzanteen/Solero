@@ -7,6 +7,7 @@ namespace solero {
 class PluginListView;
 class DataTab;
 class ConflictsTab;
+class DownloadsTab;
 }
 
 namespace solero {
@@ -18,6 +19,7 @@ public:
     void setProfile(Profile* profile);
     void refreshPlugins(Profile* profile);
     void setConflictIndex(const ConflictIndex& index);
+    DownloadsTab* downloadsTab() const { return m_downloadsTab; }
 
 public slots:
     void onSelectionChanged(const QStringList& ids);
@@ -27,6 +29,7 @@ private:
     PluginListView* m_pluginsTab;
     DataTab*        m_dataTab;
     ConflictsTab*   m_conflictsTab;
+    DownloadsTab*   m_downloadsTab;
     ConflictIndex   m_conflictIndex;
     Profile* m_currentProfile = nullptr;
 };

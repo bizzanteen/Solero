@@ -50,6 +50,7 @@ private:
     void onDeleteProfile();
     void onImportMo2();
     void onInstallMod();
+    void installFromArchive(const QString& archive);
     void onReinstallMod(const QString& modId);
     void onModsChanged();
     void onZoomIn();

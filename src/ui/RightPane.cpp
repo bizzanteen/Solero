@@ -2,7 +2,9 @@
 #include "PluginListView.h"
 #include "DataTab.h"
 #include "ConflictsTab.h"
+#include "DownloadsTab.h"
 #include "core/AppConfig.h"
+#include <QDir>
 
 namespace solero {
 
@@ -13,6 +15,8 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     addTab(m_pluginsTab,   "Plugins");
     addTab(m_dataTab,      "Data");
     addTab(m_conflictsTab, "Conflicts");
+    m_downloadsTab = new DownloadsTab(this);
+    addTab(m_downloadsTab, "Downloads");
 }
 
 void RightPane::setProfile(Profile* profile) {

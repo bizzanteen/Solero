@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "ModListView.h"
 #include "RightPane.h"
+#include "DownloadsTab.h"
 #include "BottomPanel.h"
 #include "SetupWizard.h"
 #include "bethini/BethiniWindow.h"
@@ -161,6 +162,8 @@ void MainWindow::setupCentralWidget() {
     m_splitter = new QSplitter(Qt::Horizontal, outer);
     m_modListView    = new solero::ModListView(m_splitter);
     m_rightPane = new solero::RightPane(m_splitter);
+    connect(m_rightPane->downloadsTab(), &solero::DownloadsTab::installRequested,
+            this, &MainWindow::installFromArchive);
     m_splitter->addWidget(m_modListView);
     m_splitter->addWidget(m_rightPane);
     connect(m_modListView, &solero::ModListView::modsSelected,
@@ -364,9 +367,21 @@ void MainWindow::onInstallMod() {
         return;
     }
 
+    const QString dl = solero::AppConfig::instance().downloadsDir();
     QString archive = QFileDialog::getOpenFileName(
-        this, "Install Mod from Archive", QDir::homePath(),
+        this, "Install Mod from Archive", dl.isEmpty() ? QDir::homePath() : dl,
         "Mod archives (*.zip *.7z *.rar *.tar *.gz);;All files (*)");
+    if (archive.isEmpty()) return;
+    installFromArchive(archive);
+}
+
+void MainWindow::installFromArchive(const QString& archive) {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) { statusBar()->showMessage("No active profile."); return; }
+    if (!solero::AppConfig::instance().isConfigured()) {
+        statusBar()->showMessage("Configure the game first (Game Settings...).");
+        return;
+    }
     if (archive.isEmpty()) return;
 
     statusBar()->showMessage("Preparing...");
@@ -458,6 +473,7 @@ void MainWindow::onInstallMod() {
     m_modListView->setProfile(profile);
     if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+    m_rightPane->downloadsTab()->refresh();
     statusBar()->showMessage(QString("Installed: %1").arg(result.modName));
 }
 

@@ -1,6 +1,7 @@
 #include "PluginListView.h"
 #include "PluginListModel.h"
 #include "install/PluginScanner.h"
+#include "core/AppConfig.h"
 #include <QHeaderView>
 #include <QSet>
 namespace solero {
@@ -18,9 +19,10 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
 void PluginListView::setProfile(Profile* profile) { m_model->setProfile(profile); }
 
 void PluginListView::reconcileWith(Profile* profile, const QString& stagingRoot) {
+    Q_UNUSED(stagingRoot);
     m_model->setProfile(profile);
     if (profile) {
-        auto available = PluginScanner::scan(profile->modList(), stagingRoot);
+        auto available = PluginScanner::scanGameData(AppConfig::instance().gameDir());
         m_model->reconcile(available);
         profile->save(); // persist the reconciled plugin list
     }

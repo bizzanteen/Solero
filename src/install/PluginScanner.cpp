@@ -23,4 +23,20 @@ QStringList PluginScanner::scan(const ModList& list, const QString& stagingRoot)
     }
     return out;
 }
+
+QStringList PluginScanner::scanGameData(const QString& gameDir) {
+    QDir d(gameDir + "/Data");
+    QStringList masters, others;
+    if (d.exists()) {
+        const auto plugins = d.entryList({"*.esp","*.esm","*.esl","*.ESP","*.ESM","*.ESL"},
+                                         QDir::Files, QDir::Name);
+        for (const QString& p : plugins) {
+            if (p.endsWith(".esm", Qt::CaseInsensitive)) masters << p;
+            else others << p;
+        }
+    }
+    masters.sort(Qt::CaseInsensitive);
+    others.sort(Qt::CaseInsensitive);
+    return masters + others;
+}
 }

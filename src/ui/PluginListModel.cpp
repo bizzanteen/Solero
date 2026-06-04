@@ -1,4 +1,5 @@
 #include "PluginListModel.h"
+#include <QFont>
 
 namespace solero {
 
@@ -61,6 +62,15 @@ QVariant PluginListModel::data(const QModelIndex& idx, int role) const {
     }
     if (role == Qt::CheckStateRole && idx.column() == ColEnabled)
         return p.enabled ? Qt::Checked : Qt::Unchecked;
+    if (role == Qt::FontRole && idx.row() < m_profile->pluginList().count()) {
+        const auto& fp = m_profile->pluginList().at(idx.row());
+        QFont f;
+        if (fp.isMaster) f.setBold(true);
+        else if (fp.isLight) f.setItalic(true);
+        else if (fp.filename.endsWith(".esm", Qt::CaseInsensitive)) f.setBold(true);
+        else if (fp.filename.endsWith(".esl", Qt::CaseInsensitive)) f.setItalic(true);
+        return f;
+    }
     if (role == Qt::BackgroundRole && m_profile && idx.row() < m_profile->pluginList().count()) {
         const auto& hp = m_profile->pluginList().at(idx.row());
         if (m_highlight.contains(hp.filename.toLower())) return QColor("#3d5a80");

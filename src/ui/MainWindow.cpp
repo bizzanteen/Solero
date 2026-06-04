@@ -16,6 +16,7 @@
 #include "ui/ToolSetupWizard.h"
 #include "ui/ExecutableDialog.h"
 #include "tools/ToolRunner.h"
+#include "tools/ToolCatalog.h"
 #include "fomod/FomodEngine.h"
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -672,8 +673,56 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     if (auto* p = m_profileMgr->activeProfile()) m_modListView->setProfile(p);
 }
 
+QString MainWindow::ensureOutputMod(const QString& name) {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return {};
+
+    // Reuse an existing mod with this name in the active profile's mod list.
+    for (const auto& m : profile->modList())
+        if (m.type == solero::EntryType::Mod && m.name == name)
+            return m.id;
+
+    // Create a fresh output mod (mirrors installFromArchive's add+save+refresh).
+    solero::ModEntry mod;
+    mod.type = solero::EntryType::Mod;
+    mod.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    mod.name = name;
+    mod.enabled = true;
+
+    QDir().mkpath(solero::AppConfig::instance().stagingDir() + "/" + mod.id + "/Data");
+
+    profile->modList().append(mod);
+    profile->save();
+    m_modListView->setProfile(profile);
+
+    return mod.id;
+}
+
 void MainWindow::onAddTool2() {
-    solero::ToolSetupWizard::run(this, m_toolStore);
+    solero::ToolSetupWizard dlg(this, m_toolStore);
+    connect(&dlg, &solero::ToolSetupWizard::installModRequested,
+            this, &MainWindow::installFromArchive);
+    dlg.exec();
+    // Wire output mods for any set-up tool that produces output.
+    for (auto exe : m_toolStore->tools()) {                 // copy
+        const auto* preset = solero::ToolCatalog::byId(exe.id);
+        if (!preset) continue;
+        bool changed = false;
+        if (preset->producesOutput && exe.outputModId.isEmpty()) {
+            exe.outputModId = ensureOutputMod(preset->outputModName);
+            exe.isCapturingOutput = true;
+            changed = true;
+        }
+        // secondary actions: match by index to the preset's extraActions
+        for (int i = 0; i < exe.extraActions.size() && i < preset->extraActions.size(); ++i) {
+            if (exe.extraActions[i].outputModId.isEmpty()
+                && !preset->extraActions[i].outputModName.isEmpty()) {
+                exe.extraActions[i].outputModId = ensureOutputMod(preset->extraActions[i].outputModName);
+                changed = true;
+            }
+        }
+        if (changed) { m_toolStore->update(exe); m_toolStore->save(); }
+    }
     m_leftPane->rebuildToolTabs();
 }
 

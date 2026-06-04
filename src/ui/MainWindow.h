@@ -58,6 +58,7 @@ private:
     void onZoomReset();
     void onRunTool(const solero::Executable& exe);
     void onAddTool2();
+    QString ensureOutputMod(const QString& name);
     void onEditTool(const QString& id);
     void onRemoveTool(const QString& id);
 

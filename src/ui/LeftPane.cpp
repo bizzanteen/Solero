@@ -4,6 +4,7 @@
 #include "tools/ToolStore.h"
 #include "ToolPanel.h"
 #include <QToolButton>
+#include <QIcon>
 namespace solero {
 
 LeftPane::LeftPane(ModListView* mods, BethiniWindow* bethini, ToolStore* tools, QWidget* parent)
@@ -31,7 +32,8 @@ void LeftPane::rebuildToolTabs() {
     }
     for (const auto& exe : m_tools->tools()) {
         auto* panel = new ToolPanel(exe, this);
-        addTab(panel, exe.name);
+        int idx = addTab(panel, exe.name);
+        setTabIcon(idx, QIcon(exe.iconPath));
         connect(panel, &ToolPanel::runRequested, this, &LeftPane::runTool);
         connect(panel, &ToolPanel::editRequested, this, &LeftPane::editTool);
         connect(panel, &ToolPanel::removeRequested, this, &LeftPane::removeTool);

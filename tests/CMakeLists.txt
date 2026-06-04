@@ -108,3 +108,8 @@ add_executable(test_PluginScanner test_PluginScanner.cpp
 target_include_directories(test_PluginScanner PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_PluginScanner PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_PluginScanner COMMAND test_PluginScanner)
+
+add_executable(test_ToolCatalog test_ToolCatalog.cpp ../src/tools/ToolCatalog.cpp)
+target_include_directories(test_ToolCatalog PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_ToolCatalog PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_ToolCatalog COMMAND test_ToolCatalog)

@@ -70,6 +70,11 @@ set(SOLERO_SOURCES
   src/ui/FomodWizard.cpp
   src/tools/ToolStore.cpp
   src/tools/ToolRunner.cpp
+  src/tools/ToolCatalog.cpp
+  src/tools/ToolDownloader.cpp
+  src/ui/ToolPanel.cpp
+  src/ui/ToolSetupWizard.cpp
+  src/ui/LeftPane.cpp
   src/install/DependencyChecker.cpp
   src/install/PluginScanner.cpp
   src/import/Mo2Importer.cpp

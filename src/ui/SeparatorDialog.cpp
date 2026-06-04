@@ -7,7 +7,6 @@
 #include <QPushButton>
 #include <QColorDialog>
 #include <QListWidget>
-#include <QCheckBox>
 #include <QDir>
 
 namespace solero {
@@ -21,10 +20,15 @@ SeparatorDialog::SeparatorDialog(const ModEntry& sep, QWidget* parent)
 
     m_iconList = new QListWidget(this);
     m_iconList->setViewMode(QListView::IconMode);
-    m_iconList->setIconSize(QSize(28, 28));
+    m_iconList->setIconSize(QSize(32, 32));
+    m_iconList->setGridSize(QSize(92, 72));
+    m_iconList->setUniformItemSizes(true);
+    m_iconList->setMovement(QListView::Static);
     m_iconList->setResizeMode(QListView::Adjust);
-    m_iconList->setSpacing(4);
+    m_iconList->setWordWrap(true);
+    m_iconList->setSpacing(2);
     m_iconList->setStyleSheet("background:#2b2b2b;");
+    m_iconList->setSelectionMode(QAbstractItemView::SingleSelection);
     m_iconList->setMaximumHeight(150);
 
     auto* none = new QListWidgetItem("None", m_iconList);
@@ -36,13 +40,10 @@ SeparatorDialog::SeparatorDialog(const ModEntry& sep, QWidget* parent)
         QString res = ":/icons/separators/" + f;
         QString base = f;
         if (base.endsWith(".svg")) base.chop(4);
-        auto* it = new QListWidgetItem(renderSvgIcon(res, Qt::white, 28), base, m_iconList);
+        auto* it = new QListWidgetItem(renderSvgIcon(res, Qt::white, 32), base, m_iconList);
         it->setData(Qt::UserRole, res);
         if (res == sep.icon) m_iconList->setCurrentItem(it);
     }
-
-    m_colorIconCheck = new QCheckBox("Colour the icon to match the separator", this);
-    m_colorIconCheck->setChecked(sep.iconColored);
 
     m_colorBtn = new QPushButton(sep.color.isEmpty() ? "(none)" : sep.color, this);
     if (!sep.color.isEmpty())
@@ -50,7 +51,6 @@ SeparatorDialog::SeparatorDialog(const ModEntry& sep, QWidget* parent)
 
     layout->addRow("Name:", m_nameEdit);
     layout->addRow("Icon:", m_iconList);
-    layout->addRow("", m_colorIconCheck);
     layout->addRow("Colour:", m_colorBtn);
 
     auto* btns = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
@@ -62,7 +62,6 @@ SeparatorDialog::SeparatorDialog(const ModEntry& sep, QWidget* parent)
         m_result.icon = m_iconList->currentItem()
                         ? m_iconList->currentItem()->data(Qt::UserRole).toString()
                         : QString();
-        m_result.iconColored = m_colorIconCheck->isChecked();
         accept();
     });
     connect(btns, &QDialogButtonBox::rejected, this, &QDialog::reject);

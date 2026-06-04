@@ -151,10 +151,10 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
         return m_depWarnings.value(entry.id).join("\n");
     if (role == Qt::CheckStateRole && idx.column() == ColEnabled && !isSep)
         return entry.enabled ? Qt::Checked : Qt::Unchecked;
+    if (role == Qt::EditRole && idx.column() == ColName)
+        return entry.name;
     if (role == Qt::DecorationRole && isSep && idx.column() == ColName && !entry.icon.isEmpty()) {
-        QColor tint = (entry.iconColored && !entry.color.isEmpty())
-                          ? QColor(entry.color) : QColor(Qt::white);
-        return renderSvgIcon(entry.icon, tint, 20);
+        return renderSvgIcon(entry.icon, solero::contrastText(QColor(entry.color)), 20);
     }
     if (role == Qt::FontRole && isSep) {
         QFont f; f.setBold(true); return f;
@@ -189,7 +189,6 @@ bool ModListModel::setData(const QModelIndex& idx, const QVariant& value, int ro
     }
     if (role == Qt::EditRole && idx.column() == ColName) {
         const auto& cur = m_profile->modList().at(raw);
-        if (cur.type != EntryType::Mod) return false;
         QString nn = value.toString().trimmed();
         if (nn.isEmpty()) return false;
         ModEntry e = cur;
@@ -224,6 +223,8 @@ Qt::ItemFlags ModListModel::flags(const QModelIndex& idx) const {
         if (entry.type == EntryType::Mod && idx.column() == ColEnabled)
             f |= Qt::ItemIsUserCheckable;
         if (entry.type == EntryType::Mod && idx.column() == ColName)
+            f |= Qt::ItemIsEditable;
+        if (entry.type == EntryType::Separator && idx.column() == ColName)
             f |= Qt::ItemIsEditable;
     }
     return f;

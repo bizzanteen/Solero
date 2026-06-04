@@ -31,5 +31,6 @@ private:
     void onAddSeparatorAt(int visibleRow);
     void onEditSeparator(int visibleRow);
     void onDeleteSeparator(int visibleRow);
+    void showIconPicker(int visibleRow, const QPoint& globalPos);
 };
 }

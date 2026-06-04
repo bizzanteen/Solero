@@ -3,6 +3,8 @@
 #include "SeparatorDialog.h"
 #include "install/DependencyChecker.h"
 #include "core/AppConfig.h"
+#include "core/Profile.h"
+#include "ui/IconUtil.h"
 #include <QMenu>
 #include <QContextMenuEvent>
 #include <QHeaderView>
@@ -15,8 +17,27 @@
 #include <QMessageBox>
 #include <QCheckBox>
 #include <QDir>
+#include <QFileInfo>
+#include <QFrame>
+#include <QListWidget>
+#include <QWidgetAction>
+#include <QStyledItemDelegate>
+#include <QLineEdit>
 
 namespace solero {
+
+namespace {
+class RenameDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    void setEditorData(QWidget* editor, const QModelIndex& idx) const override {
+        if (auto* le = qobject_cast<QLineEdit*>(editor)) {
+            le->setText(idx.data(Qt::EditRole).toString());
+            le->end(false); // cursor at end, nothing selected (instead of select-all)
+        } else { QStyledItemDelegate::setEditorData(editor, idx); }
+    }
+};
+} // namespace
 
 ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     m_model = new ModListModel(this);
@@ -30,6 +51,7 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     setAlternatingRowColors(true);
     setIconSize(QSize(20, 20));
     setEditTriggers(QAbstractItemView::SelectedClicked | QAbstractItemView::EditKeyPressed);
+    setItemDelegateForColumn(ModListModel::ColName, new RenameDelegate(this));
     // Name stretches to fill slack; all other columns are user-resizable.
     auto* hdr = header();
     hdr->setSectionResizeMode(ModListModel::ColEnabled,  QHeaderView::Interactive);
@@ -85,22 +107,65 @@ void ModListView::mouseDoubleClickEvent(QMouseEvent* event) {
 }
 
 void ModListView::mousePressEvent(QMouseEvent* event) {
-    // Single-click directly on a separator's collapse arrow toggles it.
     auto idx = indexAt(event->pos());
     if (idx.isValid()) {
         const auto* entry = m_model->entryAt(idx.row());
-        if (entry && entry->type == EntryType::Separator) {
-            // The arrow glyph is drawn at the left edge of the Name column cell.
+        if (entry && entry->type == EntryType::Separator
+            && selectionModel()->isSelected(idx)) {
             QModelIndex nameIdx = m_model->index(idx.row(), ModListModel::ColName);
-            QRect nameRect = visualRect(nameIdx);
-            int dx = event->pos().x() - nameRect.left();
-            if (dx >= 0 && dx < 22) {
-                m_model->toggleCollapse(idx.row());
-                return; // consume - don't start a drag/selection
+            QRect r = visualRect(nameIdx);
+            QRect iconRect(r.left() + 2, r.top(), iconSize().width() + 6, r.height());
+            if (iconRect.contains(event->pos())) {
+                showIconPicker(idx.row(), event->globalPosition().toPoint());
+                return; // consume
             }
         }
     }
     QTreeView::mousePressEvent(event);
+}
+
+void ModListView::showIconPicker(int row, const QPoint& gpos) {
+    const auto* entry = m_model->entryAt(row);
+    if (!entry || entry->type != EntryType::Separator || !m_model->profile()) return;
+    QString id = entry->id;
+    QMenu menu(this);
+    auto* grid = new QListWidget(&menu);
+    grid->setViewMode(QListView::IconMode);
+    grid->setIconSize(QSize(26,26));
+    grid->setGridSize(QSize(38,38));
+    grid->setUniformItemSizes(true);
+    grid->setMovement(QListView::Static);
+    grid->setResizeMode(QListView::Adjust);
+    grid->setSpacing(2);
+    grid->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    grid->setStyleSheet("background:#2b2b2b; border:none;");
+    grid->setFrameShape(QFrame::NoFrame);
+    // "None" first
+    auto* none = new QListWidgetItem(grid); none->setData(Qt::UserRole, QString()); none->setToolTip("None");
+    none->setSizeHint(QSize(34,34));
+    for (const QString& f : QDir(":/icons/separators").entryList(QStringList()<<"*.svg", QDir::Files)) {
+        QString path = ":/icons/separators/" + f;
+        auto* it = new QListWidgetItem(grid);
+        it->setIcon(solero::renderSvgIcon(path, Qt::white, 26));
+        it->setData(Qt::UserRole, path);
+        it->setToolTip(QFileInfo(f).completeBaseName());
+        it->setSizeHint(QSize(34,34));
+    }
+    // ~6 columns
+    grid->setFixedSize(6*38 + 16, 5*38 + 8);
+    auto* wa = new QWidgetAction(&menu);
+    wa->setDefaultWidget(grid);
+    menu.addAction(wa);
+    connect(grid, &QListWidget::itemClicked, this, [this, id, &menu](QListWidgetItem* it){
+        if (auto* e = m_model->profile() ? m_model->profile()->modList().findById(id) : nullptr) {
+            ModEntry up = *e; up.icon = it->data(Qt::UserRole).toString();
+            m_model->profile()->modList().update(id, up);
+            m_model->profile()->save();
+            m_model->rebuild();
+        }
+        menu.close();
+    });
+    menu.exec(gpos);
 }
 
 void ModListView::contextMenuEvent(QContextMenuEvent* event) {

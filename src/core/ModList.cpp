@@ -58,7 +58,6 @@ static QJsonObject entryToJson(const ModEntry& e) {
     o["parentId"]        = e.parentId;
     o["color"]           = e.color;
     o["icon"]            = e.icon;
-    o["iconColored"]     = e.iconColored;
     o["collapsed"]       = e.collapsed;
     o["hasFomodChoices"] = e.hasFomodChoices;
     o["isOutputMod"]     = e.isOutputMod;
@@ -81,7 +80,6 @@ static ModEntry entryFromJson(const QJsonObject& o) {
     e.parentId        = o["parentId"].toString();
     e.color           = o["color"].toString();
     e.icon            = o["icon"].toString();
-    e.iconColored     = o["iconColored"].toBool(false);
     e.collapsed       = o["collapsed"].toBool(false);
     e.hasFomodChoices = o["hasFomodChoices"].toBool(false);
     e.isOutputMod     = o["isOutputMod"].toBool(false);

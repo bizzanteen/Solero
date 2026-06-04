@@ -11,8 +11,6 @@
 #include "import/Mo2Importer.h"
 #include "ui/FomodWizard.h"
 #include "ui/ProgressModal.h"
-#include "ui/LeftPane.h"
-#include "ui/ToolPanel.h"
 #include "ui/ToolSetupWizard.h"
 #include "ui/ExecutableDialog.h"
 #include "tools/ToolRunner.h"
@@ -43,6 +41,8 @@
 #include <QFileInfo>
 #include <QFileDialog>
 #include <QUuid>
+#include <QDesktopServices>
+#include <QUrl>
 #include <memory>
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
@@ -130,14 +130,25 @@ void MainWindow::setupToolbar() {
     tb->addAction("Install Mod...", this, &MainWindow::onInstallMod);
     tb->addSeparator();
 
+    // Tools dropdown
+    m_toolsBtn = new QToolButton(tb);
+    m_toolsBtn->setText("Tools \xe2\x96\xbe");
+    m_toolsBtn->setPopupMode(QToolButton::InstantPopup);
+    m_toolsMenu = new QMenu(m_toolsBtn);
+    m_toolsBtn->setMenu(m_toolsMenu);
+    tb->addWidget(m_toolsBtn);
+
+    // BethINI (modal window)
+    tb->addAction("BethINI", this, &MainWindow::onOpenBethini);
+    tb->addSeparator();
+
     // Deploy toggle
     m_deployAction = tb->addAction("\xe2\x9c\x97 Not Deployed", this, &MainWindow::onDeployToggle);
     m_deployAction->setToolTip("Click to deploy mods to game directory");
     tb->addSeparator();
 
-    // AI changes badge
-    m_aiChangesLabel = new QLabel("AI: 0 changes", tb);
-    tb->addWidget(m_aiChangesLabel);
+    // Play (launch Skyrim via Steam)
+    tb->addAction("\xe2\x96\xb6 Play", this, &MainWindow::onPlay);
     tb->addSeparator();
 
     // Game settings
@@ -146,6 +157,8 @@ void MainWindow::setupToolbar() {
         if (wizard.exec() == QDialog::Accepted)
             statusBar()->showMessage("Game settings updated.");
     });
+
+    rebuildToolsMenu();
 }
 
 void MainWindow::setupCentralWidget() {
@@ -154,10 +167,9 @@ void MainWindow::setupCentralWidget() {
 
     m_modListView = new solero::ModListView(m_splitter);
     m_rightPane   = new solero::RightPane(m_splitter);
-    m_bethiniWindow = new solero::BethiniWindow(this);
+    m_bethiniWindow = new solero::BethiniWindow(this); // shown as a top-level modal window
 
-    m_leftPane = new solero::LeftPane(m_modListView, m_bethiniWindow, m_toolStore, m_splitter);
-    m_splitter->addWidget(m_leftPane);
+    m_splitter->addWidget(m_modListView);
     m_splitter->addWidget(m_rightPane);
     m_splitter->setSizes({640, 640});
 
@@ -171,11 +183,6 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onModsChanged);
     connect(m_modListView, &solero::ModListView::modActivated,
             m_rightPane, &solero::RightPane::showDataFor);
-
-    connect(m_leftPane, &solero::LeftPane::runTool, this, &MainWindow::onRunTool);
-    connect(m_leftPane, &solero::LeftPane::addToolRequested, this, &MainWindow::onAddTool2);
-    connect(m_leftPane, &solero::LeftPane::editTool, this, &MainWindow::onEditTool);
-    connect(m_leftPane, &solero::LeftPane::removeTool, this, &MainWindow::onRemoveTool);
 
     m_bottomPanel = new solero::BottomPanel(outer);
     outer->addWidget(m_splitter);
@@ -723,7 +730,50 @@ void MainWindow::onAddTool2() {
         }
         if (changed) { m_toolStore->update(exe); m_toolStore->save(); }
     }
-    m_leftPane->rebuildToolTabs();
+    rebuildToolsMenu();
+}
+
+void MainWindow::rebuildToolsMenu() {
+    if (!m_toolsMenu) return;
+    m_toolsMenu->clear();
+    m_toolsMenu->addAction("Add Tool\xe2\x80\xa6", this, &MainWindow::onAddTool2);
+    const auto& tools = m_toolStore->tools();
+    if (!tools.isEmpty()) m_toolsMenu->addSeparator();
+    for (const auto& exe : tools) {
+        QMenu* sub = m_toolsMenu->addMenu(QIcon(exe.iconPath), exe.name);
+        QString id = exe.id;
+        solero::Executable primary = exe;
+        sub->addAction("\xe2\x96\xb6 Run " + exe.name, this, [this, primary]{ onRunTool(primary); });
+        for (const auto& a : exe.extraActions) {
+            solero::Executable ax = primary;
+            ax.binaryPath = a.binaryPath; ax.arguments = a.arguments;
+            ax.outputModId = a.outputModId; ax.isCapturingOutput = !a.outputModId.isEmpty();
+            ax.extraActions.clear();
+            QString label = a.label;
+            sub->addAction("\xe2\x96\xb6 " + label, this, [this, ax]{ onRunTool(ax); });
+        }
+        sub->addSeparator();
+        sub->addAction("Edit\xe2\x80\xa6", this, [this, id]{ onEditTool(id); });
+        sub->addAction("Remove", this, [this, id]{ onRemoveTool(id); });
+    }
+}
+
+void MainWindow::onOpenBethini() {
+    if (!m_bethiniWindow) return;
+    if (auto* p = m_profileMgr->activeProfile()) m_bethiniWindow->setProfile(p);
+    m_bethiniWindow->setWindowFlag(Qt::Window, true);
+    m_bethiniWindow->setWindowModality(Qt::ApplicationModal);
+    m_bethiniWindow->setWindowTitle("BethINI - Skyrim INI Editor");
+    m_bethiniWindow->resize(900, 700);
+    m_bethiniWindow->show();
+    m_bethiniWindow->raise();
+    m_bethiniWindow->activateWindow();
+}
+
+void MainWindow::onPlay() {
+    // Launch Skyrim SE through Steam.
+    QDesktopServices::openUrl(QUrl("steam://rungameid/489830"));
+    statusBar()->showMessage("Launching Skyrim via Steam\xe2\x80\xa6");
 }
 
 void MainWindow::onEditTool(const QString& id) {
@@ -734,7 +784,7 @@ void MainWindow::onEditTool(const QString& id) {
             e.id = id;
             m_toolStore->update(e);
             m_toolStore->save();
-            m_leftPane->rebuildToolTabs();
+            rebuildToolsMenu();
         }
         break;
     }
@@ -747,5 +797,5 @@ void MainWindow::onRemoveTool(const QString& id) {
     if (ret != QMessageBox::Yes) return;
     m_toolStore->remove(id);
     m_toolStore->save();
-    m_leftPane->rebuildToolTabs();
+    rebuildToolsMenu();
 }

@@ -74,7 +74,6 @@ set(SOLERO_SOURCES
   src/tools/ToolDownloader.cpp
   src/ui/ToolPanel.cpp
   src/ui/ToolSetupWizard.cpp
-  src/ui/LeftPane.cpp
   src/ui/ThemeAdapter.cpp
   src/ui/ThemeAdapter.h
   src/install/DependencyChecker.cpp

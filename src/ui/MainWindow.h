@@ -10,13 +10,13 @@
 #include "tools/ToolStore.h"
 #include "tools/ToolRunner.h"
 #include "ui/ExecutableDialog.h"
-#include "ui/LeftPane.h"
 
 class QSplitter;
 class QComboBox;
 class QToolButton;
 class QLabel;
 class QTabWidget;
+class QMenu;
 
 namespace solero {
 class ModListView;
@@ -61,6 +61,9 @@ private:
     QString ensureOutputMod(const QString& name);
     void onEditTool(const QString& id);
     void onRemoveTool(const QString& id);
+    void rebuildToolsMenu();
+    void onOpenBethini();
+    void onPlay();
 
     solero::ProfileManager* m_profileMgr;
     solero::AITransactionLog* m_txLog;
@@ -76,8 +79,8 @@ private:
     solero::RightPane*      m_rightPane = nullptr;
     solero::BottomPanel*    m_bottomPanel = nullptr;
     solero::BethiniWindow*  m_bethiniWindow = nullptr;
-    solero::LeftPane*       m_leftPane = nullptr;
-    QLabel* m_aiChangesLabel = nullptr;
+    QToolButton* m_toolsBtn = nullptr;
+    QMenu* m_toolsMenu = nullptr;
     solero::ToolStore* m_toolStore = nullptr;
 
     QString profilesRoot() const;

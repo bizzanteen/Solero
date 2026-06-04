@@ -21,6 +21,7 @@ public:
     const QString& documentsDir() const    { return m_documents; }
     const QString& downloadsDir() const    { return m_downloads; }
     void setDownloadsDir(const QString& p) { m_downloads = p; }
+    QString toolsDir() const;
 
     void setGameDir(const QString& p);
     void setStagingDir(const QString& p);

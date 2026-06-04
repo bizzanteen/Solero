@@ -93,6 +93,13 @@ bool AppConfig::save() const {
     return true;
 }
 
+QString AppConfig::toolsDir() const {
+    if (m_stagingDir.isEmpty())
+        return QDir::homePath() + "/Modding/Solero/tools";
+    QDir d(m_stagingDir); d.cdUp();
+    return d.absolutePath() + "/tools";
+}
+
 QString AppConfig::detectProtonDir() const {
     QStringList bases = {
         QDir::homePath() + "/.local/share/Steam/compatibilitytools.d",

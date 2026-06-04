@@ -124,7 +124,7 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
         if (!p) return;
 
         const QString downloadsDir = AppConfig::instance().downloadsDir();
-        const QString toolsRoot = QDir::homePath() + "/Modding/Tools";
+        const QString toolsRoot = AppConfig::instance().toolsDir();
 
         ProgressModal prog(this, "Set Up Tool", "Downloading " + p->name + "\xe2\x80\xa6");
         prog.show(); prog.pump();

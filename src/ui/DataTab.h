@@ -8,7 +8,7 @@
 class QStackedWidget;
 class QLabel;
 class QLineEdit;
-class QCheckBox;
+class QPushButton;
 
 namespace solero {
 
@@ -36,9 +36,11 @@ private:
     QStringList   m_selection;
 
     QLineEdit*      m_search;
-    QCheckBox*      m_showAll;
+    QPushButton*    m_showAllBtn;
+    QPushButton*    m_collapseBtn;
     QString         m_filter;        // current search text
-    bool            m_showAllFiles = false; // mirror of m_showAll
+    bool            m_showAllFiles = false; // mirror of m_showAllBtn
+    bool            m_collapsed = false;     // mirror of m_collapseBtn
 
     QStackedWidget* m_stack;
     ModFileTree*    m_singleTree;   // page 0: single mod or game dir
@@ -52,6 +54,9 @@ private:
 
     void refresh();
     void applyFilter();
+    void applyFolderState();
+    void updateShowAllText();
+    void updateCollapseText();
     QString stagingRootFor(const QString& modId) const;
     QColor  accentColor() const;
     void showSingleMod(const QString& modId);

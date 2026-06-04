@@ -9,7 +9,7 @@
 #include <QStackedWidget>
 #include <QLabel>
 #include <QLineEdit>
-#include <QCheckBox>
+#include <QPushButton>
 #include <QSplitter>
 #include <QPalette>
 #include <QFile>
@@ -25,24 +25,40 @@ DataTab::DataTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
 
-    // Top bar: search + "Show all files" toggle
+    // Top bar: search + Show-mod/all toggle + Collapse/Expand toggle
     auto* topBar = new QHBoxLayout;
     m_search = new QLineEdit(this);
-    m_search->setPlaceholderText(QStringLiteral("Search files\xE2\x80\xA6"));
-    m_showAll = new QCheckBox(QStringLiteral("Show all files"), this);
+    m_search->setPlaceholderText(QStringLiteral("Search files…"));
+
     m_showAllFiles = AppConfig::instance().dataShowAllFiles();
-    m_showAll->setChecked(m_showAllFiles);
+    m_showAllBtn = new QPushButton(this);
+    m_showAllBtn->setCheckable(true);
+    m_showAllBtn->setChecked(m_showAllFiles);
+    updateShowAllText();
+
+    m_collapseBtn = new QPushButton(this);
+    m_collapseBtn->setCheckable(true);
+    m_collapseBtn->setChecked(m_collapsed);
+    updateCollapseText();
+
     topBar->addWidget(m_search, 1);
-    topBar->addWidget(m_showAll, 0);
+    topBar->addWidget(m_showAllBtn, 0);
+    topBar->addWidget(m_collapseBtn, 0);
     layout->addLayout(topBar);
 
     connect(m_search, &QLineEdit::textChanged, this, [this](const QString& text) {
         m_filter = text;
         applyFilter();
     });
-    connect(m_showAll, &QCheckBox::toggled, this, [this](bool checked) {
-        m_showAllFiles = checked;
+    connect(m_showAllBtn, &QPushButton::toggled, this, [this](bool on) {
+        m_showAllFiles = on;
+        updateShowAllText();
         refresh();
+    });
+    connect(m_collapseBtn, &QPushButton::toggled, this, [this](bool on) {
+        m_collapsed = on;
+        updateCollapseText();
+        applyFolderState();
     });
 
     m_stack = new QStackedWidget(this);
@@ -124,6 +140,23 @@ void DataTab::applyFilter() {
     m_splitRight->setFilter(m_filter);
 }
 
+void DataTab::applyFolderState() {
+    for (ModFileTree* t : { m_singleTree, m_splitLeft, m_splitRight }) {
+        if (m_collapsed) t->collapseAll();
+        else             t->expandAll();
+    }
+}
+
+void DataTab::updateShowAllText() {
+    m_showAllBtn->setText(m_showAllFiles ? QStringLiteral("Show all files")
+                                         : QStringLiteral("Show mod files"));
+}
+
+void DataTab::updateCollapseText() {
+    m_collapseBtn->setText(m_collapsed ? QStringLiteral("Expand folders")
+                                       : QStringLiteral("Collapse folders"));
+}
+
 void DataTab::refresh() {
     if (m_showAllFiles) {
         showGameDirectory();
@@ -179,6 +212,7 @@ void DataTab::showSingleMod(const QString& modId) {
     m_singleTree->showModFiles(root, modId, m_conflicts, m_editedRelPaths, accentColor(),
                                [this](const QString& id){ return modDisplayName(id); });
     m_stack->setCurrentWidget(m_singleTree);
+    applyFolderState();
     applyFilter();
 }
 
@@ -194,6 +228,7 @@ void DataTab::showGameDirectory() {
     m_editTrackingRoot.clear();
     m_singleTree->showGameDir(gameDir, ownerByRel, accentColor());
     m_stack->setCurrentWidget(m_singleTree);
+    applyFolderState();
     applyFilter();
 }
 
@@ -210,6 +245,7 @@ void DataTab::showSplit(const QString& modIdA, const QString& modIdB) {
     m_splitRight->showModFiles(rootB, modIdB, m_conflicts, editedB, accentColor(),
                                [this](const QString& id){ return modDisplayName(id); });
     m_stack->setCurrentWidget(m_splitPage);
+    applyFolderState();
     applyFilter();
 }
 

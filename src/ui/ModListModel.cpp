@@ -163,9 +163,9 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
         QFont f; f.setItalic(true); return f;
     }
     if (role == Qt::BackgroundRole && isSep && !entry.color.isEmpty())
-        return QColor(entry.color).lighter(170);
+        return QColor(entry.color);
     if (role == Qt::ForegroundRole && isSep && !entry.color.isEmpty())
-        return QColor(entry.color).darker(150);
+        return solero::contrastText(QColor(entry.color));
     if (role == Qt::ForegroundRole && !isSep && entry.isOutputMod)
         return QColor("#7f9cc4");
     if (role == Qt::UserRole)

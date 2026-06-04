@@ -79,6 +79,7 @@ set(SOLERO_SOURCES
   src/loot/LootSorter.cpp
   src/bethini/BethiniData.cpp
   src/bethini/BethiniWindow.cpp
+  src/bethini/IniFile.cpp
   src/install/ArchiveTool.cpp
   src/install/DataDirDetector.cpp
   src/install/ModInstaller.cpp

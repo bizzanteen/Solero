@@ -114,3 +114,8 @@ add_executable(test_ToolCatalog test_ToolCatalog.cpp ../src/tools/ToolCatalog.cp
 target_include_directories(test_ToolCatalog PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_ToolCatalog PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_ToolCatalog COMMAND test_ToolCatalog)
+
+add_executable(test_IniFile test_IniFile.cpp ../src/bethini/IniFile.cpp)
+target_include_directories(test_IniFile PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_IniFile PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_IniFile COMMAND test_IniFile)

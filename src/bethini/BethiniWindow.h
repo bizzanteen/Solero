@@ -1,7 +1,9 @@
 #pragma once
 #include <QWidget>
 #include <QList>
+#include <QHash>
 #include "BethiniData.h"
+#include "IniFile.h"
 #include "core/Profile.h"
 
 class QComboBox;
@@ -40,11 +42,14 @@ private:
     void showStatus(const QString& message);  // green feedback, auto-clears
     void loadAdvancedFile();
     QString iniPathFor(const QString& file) const;
+    IniFile& iniFor(const QString& file) const;     // lazy-load into cache
+    void saveAllInis();                             // flush dirty cached INIs
     QVariant readKey(const BethiniIniKey& k) const;
     void writeKey(const BethiniIniKey& k, const QVariant& v);
 
     void loadRow(RowWidget& rw);
     void saveRow(RowWidget& rw);
+    bool rowDiffersFromIni(const RowWidget& rw) const;
     void applyPresetToRow(RowWidget& rw, const QString& presetName);
 
     // Dropdown helpers
@@ -56,6 +61,8 @@ private:
 
     Profile* m_profile = nullptr;
     QList<RowWidget> m_rows;
+
+    mutable QHash<QString, IniFile> m_iniCache; // keyed by absolute INI path
 
     int        m_resRowIndex = -1;        // index into m_rows of the Resolution row
     QComboBox* m_resCombo = nullptr;      // the Resolution dropdown

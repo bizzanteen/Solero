@@ -12,8 +12,9 @@
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 #include <QPushButton>
-#include <QSettings>
 #include <QPlainTextEdit>
+#include <QMessageBox>
+#include <limits>
 #include <QFile>
 #include <QFont>
 #include <QGuiApplication>
@@ -62,18 +63,39 @@ QString BethiniWindow::iniPathFor(const QString& file) const {
     return m_profile->skyrimCustomPath();
 }
 
+IniFile& BethiniWindow::iniFor(const QString& file) const {
+    QString path = iniPathFor(file);
+    auto it = m_iniCache.find(path);
+    if (it == m_iniCache.end()) {
+        IniFile ini;
+        ini.load(path);
+        it = m_iniCache.insert(path, ini);
+    }
+    return it.value();
+}
+
+void BethiniWindow::saveAllInis() {
+    for (auto it = m_iniCache.begin(); it != m_iniCache.end(); ++it)
+        if (it.value().dirty())
+            it.value().save(it.key());
+}
+
 QVariant BethiniWindow::readKey(const BethiniIniKey& k) const {
     QString path = iniPathFor(k.file);
     if (path.isEmpty()) return {};
-    QSettings ini(path, QSettings::IniFormat);
-    return ini.value(k.section + "/" + k.key);
+    if (!iniFor(k.file).has(k.section, k.key)) return {}; // absent -> invalid
+    return iniFor(k.file).value(k.section, k.key);
 }
 
 void BethiniWindow::writeKey(const BethiniIniKey& k, const QVariant& v) {
     QString path = iniPathFor(k.file);
     if (path.isEmpty()) return;
-    QSettings ini(path, QSettings::IniFormat);
-    ini.setValue(k.section + "/" + k.key, v);
+    IniFile& ini = iniFor(k.file);
+    QString s = v.toString();
+    // Skip writing an empty value for a key that doesn't already exist, to
+    // avoid creating spurious empty keys for untouched Entry rows.
+    if (s.isEmpty() && !ini.has(k.section, k.key)) return;
+    ini.setValue(k.section, k.key, s);
 }
 
 void BethiniWindow::buildUI() {
@@ -186,8 +208,10 @@ void BethiniWindow::buildUI() {
                         w = s;
                     } else {
                         auto* s = new QSpinBox(box);
-                        s->setMinimum(rw.row.hasRange ? int(rw.row.min) : -1000000);
-                        s->setMaximum(rw.row.hasRange ? int(rw.row.max) :  1000000);
+                        s->setMinimum(rw.row.hasRange ? int(rw.row.min)
+                                                      : std::numeric_limits<int>::min());
+                        s->setMaximum(rw.row.hasRange ? int(rw.row.max)
+                                                      : std::numeric_limits<int>::max());
                         if (rw.row.step > 0) s->setSingleStep(int(rw.row.step));
                         w = s;
                     }
@@ -229,6 +253,7 @@ void BethiniWindow::buildUI() {
 
 void BethiniWindow::setProfile(Profile* profile) {
     m_profile = profile;
+    m_iniCache.clear(); // reload from the new profile's INIs
     for (auto& rw : m_rows) loadRow(rw);
     loadAdvancedFile();
 }
@@ -287,8 +312,16 @@ void BethiniWindow::onAdvancedSave() {
     if (!m_profile || !m_advEdit || !m_advFileCombo) return;
     QString path = iniPathFor(m_advFileCombo->currentText());
     QFile f(path);
-    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        f.write(m_advEdit->toPlainText().toUtf8());
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        QMessageBox::critical(this, "Save failed",
+            QString("Could not write %1:\n%2").arg(path, f.errorString()));
+        return;
+    }
+    f.write(m_advEdit->toPlainText().toUtf8());
+    f.close();
+    // Invalidate the cached structured view so subsequent reads/writes reload
+    // the hand-edited content from disk.
+    m_iniCache.remove(path);
     // Reload the form widgets so the structured tabs reflect raw edits.
     for (auto& rw : m_rows) loadRow(rw);
 }
@@ -440,6 +473,7 @@ void BethiniWindow::applyPresetToRow(RowWidget& rw, const QString& presetName) {
 void BethiniWindow::applyPreset(const QString& presetName) {
     if (!m_profile) { showStatus("No profile loaded"); return; }
     for (auto& rw : m_rows) applyPresetToRow(rw, presetName);
+    saveAllInis();
     QString shortName = presetName;
     shortName.remove("Bethini ");
     showStatus(QStringLiteral("✓ Applied preset: %1").arg(shortName));
@@ -468,8 +502,8 @@ void BethiniWindow::applyRecommendedTweaks() {
         {"SkyrimPrefs.ini", "Display",  "bShadowsOnGrass",         "1"},
         // Allow loose-file mods.
         {"SkyrimPrefs.ini", "Launcher", "bEnableFileSelection",    "1"},
-        // Disable story-manager logging spam.
-        {"SkyrimPrefs.ini", "General",  "iStoryManagerLoggingEvent", "-1"},
+        // Disable story-manager logging spam (correct engine target is Skyrim.ini).
+        {"Skyrim.ini",      "General",  "iStoryManagerLoggingEvent", "-1"},
     };
 
     int count = 0;
@@ -482,6 +516,7 @@ void BethiniWindow::applyRecommendedTweaks() {
         ++count;
     }
 
+    saveAllInis();
     // Re-read the UI rows so widgets reflect the new INI values.
     reloadRows();
     showStatus(QStringLiteral("✓ Applied %1 recommended tweaks").arg(count));
@@ -502,12 +537,54 @@ void BethiniWindow::showStatus(const QString& message) {
     });
 }
 
+// Does the row's current widget value differ from what's stored in the INI?
+// Used to write only changed rows on save (avoids writing defaults/empties back
+// and creating spurious keys for untouched rows).
+bool BethiniWindow::rowDiffersFromIni(const RowWidget& rw) const {
+    if (rw.row.iniKeys.isEmpty()) return false;
+    const auto& k0 = rw.row.iniKeys.first();
+
+    if (auto* cb = qobject_cast<QCheckBox*>(rw.widget)) {
+        if (!rw.row.onValues.isEmpty()) {
+            for (int i = 0; i < rw.row.iniKeys.size(); ++i) {
+                QStringList on  = i < rw.row.onValues.size()  ? rw.row.onValues.at(i)  : QStringList();
+                QStringList off = i < rw.row.offValues.size() ? rw.row.offValues.at(i) : QStringList();
+                QString want = cb->isChecked() ? (on.isEmpty()  ? "1" : on.first())
+                                               : (off.isEmpty() ? "0" : off.first());
+                if (readKey(rw.row.iniKeys.at(i)).toString() != want) return true;
+            }
+            return false;
+        }
+        return readKey(k0).toString() != (cb->isChecked() ? "1" : "0");
+    } else if (auto* spin = qobject_cast<QSpinBox*>(rw.widget)) {
+        QVariant cur = readKey(k0);
+        return !cur.isValid() || cur.toInt() != spin->value();
+    } else if (auto* d = qobject_cast<QDoubleSpinBox*>(rw.widget)) {
+        QVariant cur = readKey(k0);
+        return !cur.isValid() || cur.toDouble() != d->value();
+    } else if (auto* combo = qobject_cast<QComboBox*>(rw.widget)) {
+        if (!rw.row.settingChoices.isEmpty())
+            return matchChoiceFromIni(rw) != combo->currentIndex();
+        return readKey(k0).toString() != combo->currentText();
+    } else if (auto* edit = qobject_cast<QLineEdit*>(rw.widget)) {
+        return readKey(k0).toString() != edit->text();
+    }
+    return false;
+}
+
 void BethiniWindow::onSave() {
     if (!m_profile) return;
-    for (auto& rw : m_rows) saveRow(rw);
+    for (auto& rw : m_rows)
+        if (rowDiffersFromIni(rw)) saveRow(rw);
+    saveAllInis();
 }
 
 void BethiniWindow::onSearch(const QString& filter) {
+    // Track, per group box, whether any of its rows remained visible so we can
+    // hide titled boxes whose every row was filtered out.
+    QHash<QGroupBox*, bool> groupHasVisible;
+    QList<QGroupBox*> groupOrder;
+
     for (auto& rw : m_rows) {
         bool match = filter.isEmpty()
             || rw.row.label.contains(filter, Qt::CaseInsensitive)
@@ -518,8 +595,23 @@ void BethiniWindow::onSearch(const QString& filter) {
             if (auto* form = qobject_cast<QFormLayout*>(rw.widget->parentWidget()->layout())) {
                 if (auto* lbl = form->labelForField(rw.widget)) lbl->setVisible(match);
             }
+            // Walk up to the owning QGroupBox to track visibility.
+            QWidget* p = rw.widget->parentWidget();
+            while (p && !qobject_cast<QGroupBox*>(p)) p = p->parentWidget();
+            if (auto* box = qobject_cast<QGroupBox*>(p)) {
+                if (!groupHasVisible.contains(box)) {
+                    groupHasVisible.insert(box, false);
+                    groupOrder.append(box);
+                }
+                if (match) groupHasVisible[box] = true;
+            }
         }
     }
+
+    // Hide a group entirely when none of its rows matched (so empty titled
+    // boxes don't linger); show it again otherwise.
+    for (QGroupBox* box : groupOrder)
+        box->setVisible(groupHasVisible.value(box));
 }
 
 } // namespace solero

@@ -14,10 +14,13 @@ public:
     static bool nexusApiKeyAvailable();
     static QString extractIcon(const QString& exePath, const QString& destDir);
     static QString nexusApiKey();
-    static QString nexusDownloadUrl(const ToolPreset& p);   // "" on failure
+    // "" on failure; sets *error (when non-null) to a user-facing message, and
+    // *fileName (when non-null) to the Nexus API file_name for the chosen file.
+    static QString nexusDownloadUrl(const ToolPreset& p, QString* error = nullptr,
+                                    QString* fileName = nullptr);
     static bool curlDownload(const QString& url, const QString& dest,
                              const QString& header, const std::function<void(int)>& onProgress);
 private:
-    static QString githubDownloadUrl(const ToolPreset& p);  // "" on failure
+    static QString githubDownloadUrl(const ToolPreset& p, QString* fileName = nullptr);  // "" on failure
 };
 }

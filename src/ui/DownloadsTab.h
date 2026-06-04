@@ -15,6 +15,7 @@ public:
     void setDownloadProgress(const QString& fileName, qint64 received, qint64 total);
 signals:
     void installRequested(const QString& archivePath);
+    void cancelRequested(const QString& fileName);
 private:
     void showContextMenu(const QPoint& pos);
     void applyFilters();

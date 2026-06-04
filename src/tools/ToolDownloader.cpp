@@ -21,48 +21,83 @@ QString ToolDownloader::nexusApiKey() {
 }
 bool ToolDownloader::nexusApiKeyAvailable() { return !nexusApiKey().isEmpty(); }
 
-static QByteArray curlJson(const QString& url, const QString& header) {
+// Runs curl and returns the body. On failure (non-zero curl exit) sets *err and
+// returns empty. The body is not validated as JSON here; callers parse it.
+static QByteArray curlJson(const QString& url, const QString& header, QString* err = nullptr) {
     QProcess p;
     QStringList args; args << "-s";
     if (!header.isEmpty()) { args << "-H" << header; }
     args << url;
     p.start("curl", args);
     p.waitForFinished(60000);
+    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
+        if (err) *err = "Network request failed (curl exit " + QString::number(p.exitCode())
+                      + "): " + QString::fromUtf8(p.readAllStandardError()).trimmed();
+        return {};
+    }
     return p.readAllStandardOutput();
 }
 
-QString ToolDownloader::nexusDownloadUrl(const ToolPreset& pr) {
+QString ToolDownloader::nexusDownloadUrl(const ToolPreset& pr, QString* error, QString* fileName) {
     QString key = nexusApiKey();
-    if (key.isEmpty()) return {};
+    if (key.isEmpty()) { if (error) *error = "No Nexus API key configured (~/.nexus_api_key)."; return {}; }
     QString base = "https://api.nexusmods.com/v1/games/" + pr.nexusGame + "/mods/" + pr.nexusModId;
-    auto files = QJsonDocument::fromJson(curlJson(base + "/files.json", "apikey: " + key)).object();
-    int fileId = -1; int bestMainId = -1;
+
+    QString curlErr;
+    QByteArray filesBody = curlJson(base + "/files.json", "apikey: " + key, &curlErr);
+    if (filesBody.isEmpty()) { if (error) *error = curlErr; return {}; }
+    QJsonParseError pe{};
+    auto filesDoc = QJsonDocument::fromJson(filesBody, &pe);
+    if (pe.error != QJsonParseError::NoError || !filesDoc.isObject()) {
+        if (error) *error = "Nexus API returned an unexpected response (not JSON): "
+                          + QString::fromUtf8(filesBody.left(200)).trimmed();
+        return {};
+    }
+    auto files = filesDoc.object();
+    int fileId = -1; int bestMainId = -1; QString chosenName;
+    QString bestMainName;
     for (const auto& v : files["files"].toArray()) {
         auto o = v.toObject();
         int fid = o["file_id"].toInt();
-        if (o["is_primary"].toBool()) { fileId = fid; break; }
-        if (o["category_name"].toString() == "MAIN" && fid > bestMainId) bestMainId = fid;
+        if (o["is_primary"].toBool()) { fileId = fid; chosenName = o["file_name"].toString(); break; }
+        if (o["category_name"].toString() == "MAIN" && fid > bestMainId) {
+            bestMainId = fid; bestMainName = o["file_name"].toString();
+        }
     }
-    if (fileId < 0) fileId = bestMainId;
-    if (fileId < 0) return {};
-    auto link = QJsonDocument::fromJson(
-        curlJson(base + "/files/" + QString::number(fileId) + "/download_link.json", "apikey: " + key)).array();
-    if (link.isEmpty()) return {};
+    if (fileId < 0) { fileId = bestMainId; chosenName = bestMainName; }
+    if (fileId < 0) { if (error) *error = "No primary/main file found for this mod on Nexus."; return {}; }
+    if (fileName) *fileName = chosenName;
+
+    QByteArray linkBody = curlJson(
+        base + "/files/" + QString::number(fileId) + "/download_link.json", "apikey: " + key, &curlErr);
+    auto linkDoc = QJsonDocument::fromJson(linkBody);
+    auto link = linkDoc.array();
+    if (link.isEmpty()) {
+        // Free accounts get a 403/empty here: direct download needs Premium.
+        if (error) *error = "This file needs Nexus Premium for direct download, or use the "
+                            "mod page's 'Mod Manager Download' (nxm) button.";
+        return {};
+    }
     return link[0].toObject()["URI"].toString();
 }
 
-QString ToolDownloader::githubDownloadUrl(const ToolPreset& pr) {
+QString ToolDownloader::githubDownloadUrl(const ToolPreset& pr, QString* fileName) {
     QString api = "https://api.github.com/repos/" + pr.githubOwner + "/" + pr.githubRepo + "/releases/latest";
     auto rel = QJsonDocument::fromJson(curlJson(api, "")).object();
     QString match = pr.assetMatch.toLower();
     for (const auto& v : rel["assets"].toArray()) {
         auto o = v.toObject();
-        if (o["name"].toString().toLower().contains(match))
+        if (o["name"].toString().toLower().contains(match)) {
+            if (fileName) *fileName = o["name"].toString();
             return o["browser_download_url"].toString();
+        }
     }
     // fall back to first asset
     auto assets = rel["assets"].toArray();
-    return assets.isEmpty() ? QString() : assets[0].toObject()["browser_download_url"].toString();
+    if (assets.isEmpty()) return {};
+    auto first = assets[0].toObject();
+    if (fileName) *fileName = first["name"].toString();
+    return first["browser_download_url"].toString();
 }
 
 bool ToolDownloader::curlDownload(const QString& url, const QString& dest,
@@ -75,31 +110,59 @@ bool ToolDownloader::curlDownload(const QString& url, const QString& dest,
     if (!header.isEmpty()) args << "-H" << header;
     args << "-o" << dest << safe;
     p.start("curl", args);
-    if (!p.waitForStarted(15000)) return false;
+    if (!p.waitForStarted(15000)) { QFile::remove(dest); return false; }
     while (p.state() != QProcess::NotRunning) {
         p.waitForFinished(200);
         if (onProgress) onProgress(-1); // indeterminate (curl progress parsing omitted)
     }
-    return p.exitCode() == 0 && QFileInfo(dest).size() > 0;
+    const bool ok = p.exitCode() == 0 && QFileInfo(dest).size() > 0;
+    if (!ok) QFile::remove(dest);   // never leave a partial/empty archive behind
+    return ok;
 }
 
 ToolDownloadResult ToolDownloader::fetch(const ToolPreset& preset, const QString& downloadsDir,
                                          const QString& toolsRoot,
                                          const std::function<void(int)>& onProgress) {
     ToolDownloadResult r;
-    QString url = preset.source == ToolSource::Nexus ? nexusDownloadUrl(preset)
-                                                     : githubDownloadUrl(preset);
-    if (url.isEmpty()) { r.error = "Could not resolve a download URL (Nexus key missing or release not found)."; return r; }
+    QString resolveErr;
+    QString remoteName;  // Nexus/GitHub file_name, used to derive the real extension.
+    QString url = preset.source == ToolSource::Nexus
+                      ? nexusDownloadUrl(preset, &resolveErr, &remoteName)
+                      : githubDownloadUrl(preset, &remoteName);
+    if (url.isEmpty()) {
+        r.error = !resolveErr.isEmpty() ? resolveErr
+                                        : "Could not resolve a download URL (release not found).";
+        return r;
+    }
 
     QDir().mkpath(downloadsDir);
-    QString ext = url.contains(".7z") ? ".7z" : (url.contains(".rar") ? ".rar" : ".zip");
+    // Derive the archive extension from the real filename (API file_name, else the
+    // URL's filename) so ArchiveTool's .rar/.7z routing works; guessing by url.contains
+    // misfires when the extension only appears in a query string.
+    auto extOf = [](const QString& name) -> QString {
+        const QString suffix = QFileInfo(name).suffix().toLower();
+        if (suffix == "7z" || suffix == "rar" || suffix == "zip" || suffix == "tar" || suffix == "gz")
+            return "." + suffix;
+        return {};
+    };
+    QString ext = extOf(remoteName);
+    if (ext.isEmpty()) ext = extOf(QUrl(url).fileName());
+    if (ext.isEmpty()) ext = ".zip";  // last-resort default
     QString archive = downloadsDir + "/" + preset.id + ext;
     QString header = preset.source == ToolSource::Nexus ? ("apikey: " + nexusApiKey()) : QString();
-    if (!curlDownload(url, archive, header, onProgress)) { r.error = "Download failed."; return r; }
+    if (!curlDownload(url, archive, header, onProgress)) {
+        QFile::remove(archive);   // ensure no partial/empty archive lingers for re-extract
+        r.error = "Download failed.";
+        return r;
+    }
 
     QString dest = toolsRoot + "/" + preset.id;
     QDir(dest).removeRecursively();
-    if (!ArchiveTool::extract(archive, dest, onProgress)) { r.error = "Extraction failed."; return r; }
+    if (!ArchiveTool::extract(archive, dest, onProgress)) {
+        QFile::remove(archive);   // a corrupt/partial archive that won't extract - don't keep it
+        r.error = "Extraction failed.";
+        return r;
+    }
 
     // Flatten a single wrapper dir if present.
     QDir d(dest);

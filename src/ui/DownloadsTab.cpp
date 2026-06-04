@@ -182,6 +182,27 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
 
     menu.addSeparator();
 
+    // Cancel: enabled only when the selected row is an active download
+    // (empty path + status starts with "Downloading"). fileName is col-0 text.
+    {
+        const int row = m_table->currentRow();
+        QString activeFileName;
+        if (row >= 0) {
+            auto* nameItem = m_table->item(row, 0);
+            auto* statusItem = m_table->item(row, 1);
+            const bool noPath = nameItem && nameItem->data(Qt::UserRole).toString().isEmpty();
+            const bool downloading = statusItem && statusItem->text().startsWith("Downloading");
+            if (nameItem && noPath && downloading) activeFileName = nameItem->text();
+        }
+        auto* cancelAction = menu.addAction("Cancel download");
+        cancelAction->setEnabled(!activeFileName.isEmpty());
+        connect(cancelAction, &QAction::triggered, this, [this, activeFileName]{
+            emit cancelRequested(activeFileName);
+        });
+    }
+
+    menu.addSeparator();
+
     // Collect selected rows' real file paths (skip in-progress rows with empty path).
     QStringList selectedPaths;
     for (const QModelIndex& idx : m_table->selectionModel()->selectedRows()) {

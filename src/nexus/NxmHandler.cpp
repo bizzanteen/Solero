@@ -33,11 +33,16 @@ NxmLink NxmHandler::parse(const QString& url) {
     return link;
 }
 
-static QByteArray curlGet(const QString& url) {
+// Runs curl with the Nexus apikey header. On curl failure sets *err and returns empty.
+static QByteArray curlGet(const QString& url, QString* err = nullptr) {
     QProcess p;
     QStringList args; args << "-s" << "-H" << ("apikey: " + ToolDownloader::nexusApiKey()) << url;
     p.start("curl", args);
     p.waitForFinished(60000);
+    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
+        if (err) *err = "curl failed (exit " + QString::number(p.exitCode()) + ")";
+        return {};
+    }
     return p.readAllStandardOutput();
 }
 
@@ -45,13 +50,18 @@ QString NxmHandler::resolveDownloadUrl(const NxmLink& link) {
     if (!link.valid) return {};
     QString url = "https://api.nexusmods.com/v1/games/" + link.game + "/mods/" + link.modId
                 + "/files/" + link.fileId + "/download_link.json";
-    if (!link.key.isEmpty()) {
+    // Only append key+expires when both are present (a dangling expires= breaks the
+    // API call); free-account nxm links carry both, premium links carry neither.
+    if (!link.key.isEmpty() && !link.expires.isEmpty()) {
         QUrlQuery q;
         q.addQueryItem("key", link.key);
         q.addQueryItem("expires", link.expires);
         url += "?" + q.query(QUrl::FullyEncoded);
     }
-    auto arr = QJsonDocument::fromJson(curlGet(url)).array();
+    QString err;
+    QByteArray body = curlGet(url, &err);
+    if (body.isEmpty()) return {};   // curl failed or empty body; caller warns generically
+    auto arr = QJsonDocument::fromJson(body).array();
     if (arr.isEmpty()) return {};
     return arr[0].toObject()["URI"].toString();
 }
@@ -60,7 +70,10 @@ QString NxmHandler::fileName(const NxmLink& link) {
     if (!link.valid) return {};
     QString url = "https://api.nexusmods.com/v1/games/" + link.game + "/mods/" + link.modId
                 + "/files/" + link.fileId + ".json";
-    auto obj = QJsonDocument::fromJson(curlGet(url)).object();
+    QString err;
+    QByteArray body = curlGet(url, &err);
+    if (body.isEmpty()) return {};
+    auto obj = QJsonDocument::fromJson(body).object();
     return obj["file_name"].toString();
 }
 

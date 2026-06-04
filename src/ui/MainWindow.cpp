@@ -221,6 +221,8 @@ void MainWindow::setupCentralWidget() {
 
     connect(m_rightPane->downloadsTab(), &solero::DownloadsTab::installRequested,
             this, &MainWindow::installFromArchive);
+    connect(m_rightPane->downloadsTab(), &solero::DownloadsTab::cancelRequested,
+            this, [this](const QString& fn){ m_downloads->cancel(fn); });
     connect(m_modListView, &solero::ModListView::modsSelected,
             m_rightPane, &solero::RightPane::onSelectionChanged);
     connect(m_modListView, &solero::ModListView::reinstallRequested,

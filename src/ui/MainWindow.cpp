@@ -9,6 +9,7 @@
 #include "install/ModInstaller.h"
 #include "import/Mo2Importer.h"
 #include "ui/FomodWizard.h"
+#include "ui/ProgressModal.h"
 #include "fomod/FomodEngine.h"
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -35,6 +36,7 @@
 #include <QFileInfo>
 #include <QFileDialog>
 #include <QUuid>
+#include <memory>
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("Solero");
@@ -217,6 +219,11 @@ static void seedProfileInis(solero::Profile* profile) {
 void MainWindow::switchProfile(const QString& name) {
     if (name.isEmpty()) return;
     bool wasDeployed = m_deployed;
+    std::unique_ptr<solero::ProgressModal> prog;
+    if (wasDeployed && solero::AppConfig::instance().isConfigured()) {
+        prog = std::make_unique<solero::ProgressModal>(this, "Switch Profile", "Undeploying current...");
+        prog->show(); prog->pump();
+    }
     // Undeploy the outgoing profile's files first (deploy record is in the game dir).
     if (wasDeployed && solero::AppConfig::instance().isConfigured()) {
         solero::DeployEngine engine(solero::AppConfig::instance().gameDir(),
@@ -224,6 +231,7 @@ void MainWindow::switchProfile(const QString& name) {
         engine.undeploy(solero::AppConfig::instance().gameDir());
     }
 
+    if (prog) prog->setMessage("Loading " + name + "...");
     auto* profile = m_profileMgr->loadProfile(name);
     seedProfileInis(profile);
     m_ipcServer->setActiveProfile(profile);
@@ -239,6 +247,7 @@ void MainWindow::switchProfile(const QString& name) {
 
     // Deploy the incoming profile if the previous one was deployed.
     if (wasDeployed && solero::AppConfig::instance().isConfigured()) {
+        if (prog) prog->setMessage("Deploying " + name + "...");
         statusBar()->showMessage("Switching profile - deploying " + name + "...");
         qApp->processEvents();
         solero::DeployEngine engine(solero::AppConfig::instance().gameDir(),
@@ -256,6 +265,7 @@ void MainWindow::switchProfile(const QString& name) {
     } else {
         statusBar()->showMessage(QString("Loaded profile: %1").arg(name));
     }
+    if (prog) prog->close();
 }
 
 void MainWindow::refreshProfileCombo() {
@@ -279,11 +289,16 @@ void MainWindow::onDeployToggle() {
         statusBar()->showMessage("Deploying...");
         qApp->processEvents();
 
+        solero::ProgressModal prog(this, "Deploy", "Deploying mods + sorting plugins with LOOT...");
+        prog.show(); prog.pump();
+
         solero::DeployEngine engine(
             solero::AppConfig::instance().gameDir(),
             solero::AppConfig::instance().stagingDir());
         engine.setUserlistPath(profile->lootUserlistPath());
         auto result = engine.deploy(*profile, m_deployMode);
+
+        prog.close();
 
         if (!result.success) {
             QMessageBox::critical(this, "Deploy Failed", result.errorMessage);
@@ -304,10 +319,15 @@ void MainWindow::onDeployToggle() {
             QMessageBox::Yes | QMessageBox::No);
         if (ret != QMessageBox::Yes) return;
 
+        solero::ProgressModal prog(this, "Deploy", "Undeploying...");
+        prog.show(); prog.pump();
+
         solero::DeployEngine engine(
             solero::AppConfig::instance().gameDir(),
             solero::AppConfig::instance().stagingDir());
         engine.undeploy(solero::AppConfig::instance().gameDir());
+
+        prog.close();
         m_deployed = false;
         m_deployDirty = false;
         statusBar()->showMessage("Undeployed.");
@@ -352,8 +372,11 @@ void MainWindow::onInstallMod() {
     statusBar()->showMessage("Preparing...");
     qApp->processEvents();
 
+    auto extractProg = std::make_unique<solero::ProgressModal>(this, "Install", "Extracting archive...");
+    extractProg->show(); extractProg->pump();
+
     auto prep = solero::ModInstaller::prepare(archive);
-    if (!prep.ok) { QMessageBox::critical(this, "Install Failed", prep.errorMessage); return; }
+    if (!prep.ok) { extractProg->close(); QMessageBox::critical(this, "Install Failed", prep.errorMessage); return; }
 
     const QString staging = solero::AppConfig::instance().stagingDir();
     solero::InstallResult result;
@@ -362,8 +385,12 @@ void MainWindow::onInstallMod() {
     if (prep.layout.isFomod && !prep.fomodConfigPath.isEmpty()) {
         solero::FomodEngine engine;
         if (!engine.load(prep.fomodConfigPath)) {
+            extractProg->close();
             QMessageBox::warning(this, "FOMOD", "Could not parse the FOMOD config; installing all files.");
+            solero::ProgressModal stageProg(this, "Install", "Installing files...");
+            stageProg.show(); stageProg.pump();
             result = solero::ModInstaller::stageSimple(prep, staging);
+            stageProg.close();
         } else {
             // Extract image directories referenced by the FOMOD so the wizard can show them.
             QStringList imgDirs;
@@ -377,9 +404,13 @@ void MainWindow::onInstallMod() {
                         if (!imgDirs.contains(top, Qt::CaseInsensitive)) imgDirs << top;
                     }
             if (!imgDirs.isEmpty()) solero::ModInstaller::extractSubpaths(prep, imgDirs);
+            extractProg->close();
             solero::FomodWizard wizard(&engine, prep.extractDir, this);
             if (wizard.exec() != QDialog::Accepted) { statusBar()->showMessage("Install cancelled."); return; }
+            solero::ProgressModal stageProg(this, "Install", "Installing files...");
+            stageProg.show(); stageProg.pump();
             result = solero::ModInstaller::stageFomod(prep, staging, wizard.result());
+            stageProg.close();
             const auto sel = wizard.selection();
             const auto& mod = engine.module();
             for (int si = 0; si < mod.steps.size(); ++si) {
@@ -395,7 +426,11 @@ void MainWindow::onInstallMod() {
             }
         }
     } else {
+        extractProg->close();
+        solero::ProgressModal stageProg(this, "Install", "Installing files...");
+        stageProg.show(); stageProg.pump();
         result = solero::ModInstaller::stageSimple(prep, staging);
+        stageProg.close();
     }
 
     if (!result.success) { QMessageBox::critical(this, "Install Failed", result.errorMessage); return; }
@@ -416,6 +451,7 @@ void MainWindow::onInstallMod() {
     mod.name = result.modName;
     mod.enabled = true;
     mod.hasFomodChoices = !choiceLog.isEmpty();
+    mod.sourceArchive = archive;
     profile->modList().append(mod);
     profile->save();
 
@@ -439,8 +475,12 @@ void MainWindow::onReinstallMod(const QString& modId) {
 
     statusBar()->showMessage("Preparing...");
     qApp->processEvents();
+
+    auto extractProg = std::make_unique<solero::ProgressModal>(this, "Reinstall", "Extracting archive...");
+    extractProg->show(); extractProg->pump();
+
     auto prep = solero::ModInstaller::prepare(archive);
-    if (!prep.ok) { QMessageBox::critical(this, "Reinstall Failed", prep.errorMessage); return; }
+    if (!prep.ok) { extractProg->close(); QMessageBox::critical(this, "Reinstall Failed", prep.errorMessage); return; }
 
     const QString staging = solero::AppConfig::instance().stagingDir();
     solero::InstallResult result;
@@ -449,7 +489,11 @@ void MainWindow::onReinstallMod(const QString& modId) {
     if (prep.layout.isFomod && !prep.fomodConfigPath.isEmpty()) {
         solero::FomodEngine engine;
         if (!engine.load(prep.fomodConfigPath)) {
+            extractProg->close();
+            solero::ProgressModal stageProg(this, "Reinstall", "Installing files...");
+            stageProg.show(); stageProg.pump();
             result = solero::ModInstaller::stageSimple(prep, staging, modId);
+            stageProg.close();
         } else {
             // Extract image directories referenced by the FOMOD so the wizard can show them.
             QStringList imgDirs;
@@ -463,9 +507,13 @@ void MainWindow::onReinstallMod(const QString& modId) {
                         if (!imgDirs.contains(top, Qt::CaseInsensitive)) imgDirs << top;
                     }
             if (!imgDirs.isEmpty()) solero::ModInstaller::extractSubpaths(prep, imgDirs);
+            extractProg->close();
             solero::FomodWizard wizard(&engine, prep.extractDir, this);
             if (wizard.exec() != QDialog::Accepted) { statusBar()->showMessage("Reinstall cancelled."); return; }
+            solero::ProgressModal stageProg(this, "Reinstall", "Installing files...");
+            stageProg.show(); stageProg.pump();
             result = solero::ModInstaller::stageFomod(prep, staging, wizard.result(), modId);
+            stageProg.close();
             const auto sel = wizard.selection();
             const auto& mod = engine.module();
             for (int si = 0; si < mod.steps.size(); ++si) {
@@ -479,7 +527,11 @@ void MainWindow::onReinstallMod(const QString& modId) {
             }
         }
     } else {
+        extractProg->close();
+        solero::ProgressModal stageProg(this, "Reinstall", "Installing files...");
+        stageProg.show(); stageProg.pump();
         result = solero::ModInstaller::stageSimple(prep, staging, modId);
+        stageProg.close();
     }
 
     if (!result.success) { QMessageBox::critical(this, "Reinstall Failed", result.errorMessage); return; }

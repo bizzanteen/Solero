@@ -82,6 +82,31 @@ SetupWizard::SetupWizard(QWidget* parent) : QDialog(parent) {
     stagingLayout->addLayout(stagingRow);
     layout->addWidget(stagingGroup);
 
+    // Downloads directory
+    auto* downloadsGroup = new QGroupBox("Downloads Directory", this);
+    auto* downloadsLayout = new QVBoxLayout(downloadsGroup);
+
+    auto* downloadsHint = new QLabel(
+        "Folder where your downloaded mod archives live. "
+        "Solero can install directly from here.", downloadsGroup);
+    downloadsHint->setWordWrap(true);
+    downloadsLayout->addWidget(downloadsHint);
+
+    QString downloadsDefault = AppConfig::instance().downloadsDir();
+    if (downloadsDefault.isEmpty()) {
+        QDir d(m_stagingDirEdit->text().trimmed()); d.cdUp();
+        downloadsDefault = d.absolutePath() + "/downloads";
+    }
+
+    auto* downloadsRow = new QHBoxLayout;
+    m_downloadsEdit = new QLineEdit(downloadsDefault, downloadsGroup);
+    auto* downloadsBrowse = new QPushButton("Browse…", downloadsGroup);
+    downloadsBrowse->setFixedWidth(80);
+    downloadsRow->addWidget(m_downloadsEdit);
+    downloadsRow->addWidget(downloadsBrowse);
+    downloadsLayout->addLayout(downloadsRow);
+    layout->addWidget(downloadsGroup);
+
     // Status / validation
     m_statusLabel = new QLabel("", this);
     m_statusLabel->setStyleSheet("color: red;");
@@ -95,6 +120,7 @@ SetupWizard::SetupWizard(QWidget* parent) : QDialog(parent) {
 
     connect(gameBrowse,   &QPushButton::clicked, this, &SetupWizard::browseGameDir);
     connect(stagingBrowse,&QPushButton::clicked, this, &SetupWizard::browseStagingDir);
+    connect(downloadsBrowse,&QPushButton::clicked, this, &SetupWizard::browseDownloadsDir);
     connect(m_gameDirEdit,   &QLineEdit::textChanged, this, &SetupWizard::updateAcceptState);
     connect(m_stagingDirEdit,&QLineEdit::textChanged, this, &SetupWizard::updateAcceptState);
     connect(btns, &QDialogButtonBox::accepted, this, &SetupWizard::onAccept);
@@ -120,6 +146,13 @@ void SetupWizard::browseStagingDir() {
         m_stagingDirEdit->setText(path);
 }
 
+void SetupWizard::browseDownloadsDir() {
+    QString path = QFileDialog::getExistingDirectory(
+        this, "Select Downloads Directory", QDir::homePath());
+    if (!path.isEmpty())
+        m_downloadsEdit->setText(path);
+}
+
 void SetupWizard::updateAcceptState() {
     QString gameDir = m_gameDirEdit->text().trimmed();
     bool valid = !gameDir.isEmpty() && QFile::exists(gameDir + "/SkyrimSE.exe");
@@ -143,6 +176,9 @@ void SetupWizard::onAccept() {
 
     // Create staging dir if it doesn't exist
     QDir().mkpath(cfg.stagingDir());
+
+    cfg.setDownloadsDir(m_downloadsEdit->text().trimmed());
+    QDir().mkpath(cfg.downloadsDir());
 
     cfg.save();
     accept();

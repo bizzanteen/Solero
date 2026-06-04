@@ -501,7 +501,7 @@ void MainWindow::installFromArchive(const QString& archive) {
         root["installer_version"] = "1.0";
         root["installed_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
         root["steps"] = choiceLog;
-        QString cp = staging + "/" + result.modId + "/fomod-choices.json";
+        QString cp = staging + "/" + result.modId + "/.solero-fomod-choices.json";
         QFile f(cp);
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     }
@@ -611,7 +611,7 @@ void MainWindow::onReinstallMod(const QString& modId) {
         root["installer_version"] = "1.0";
         root["installed_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
         root["steps"] = choiceLog;
-        QFile f(staging + "/" + modId + "/fomod-choices.json");
+        QFile f(staging + "/" + modId + "/.solero-fomod-choices.json");
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     }
     existing->hasFomodChoices = !choiceLog.isEmpty();
@@ -882,7 +882,7 @@ void MainWindow::onOpenBethini() {
     m_bethiniWindow->setWindowFlag(Qt::Window, true);
     m_bethiniWindow->setWindowModality(Qt::ApplicationModal);
     m_bethiniWindow->setWindowTitle("BethINI - Skyrim INI Editor");
-    m_bethiniWindow->resize(900, 700);
+    m_bethiniWindow->resize(1150, 820);
     m_bethiniWindow->show();
     m_bethiniWindow->raise();
     m_bethiniWindow->activateWindow();

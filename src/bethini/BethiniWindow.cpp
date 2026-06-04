@@ -34,7 +34,7 @@ static bool isResolutionRow(const BethiniRow& row) {
 // Standard resolutions per aspect ratio.
 static QList<QPair<int,int>> resolutionsFor(const QString& aspect) {
     if (aspect == "16:10")
-        return {{3840,2400},{2560,1600},{1920,1200},{1680,1050},{1440,900},{1280,800}};
+        return {{3840,2400},{2560,1600},{1920,1200},{1680,1050},{1600,1000},{1440,900},{1280,800}};
     return {{3840,2160},{2560,1440},{1920,1080},{1600,900},{1366,768},{1280,720}};
 }
 
@@ -51,6 +51,7 @@ static QString detectNativeAspect() {
 }
 
 BethiniWindow::BethiniWindow(QWidget* parent) : QWidget(parent) {
+    setMinimumSize(1000, 720);
     buildUI();
 }
 

@@ -114,6 +114,14 @@ void DeployEngine::deployMod(const QString& modId,
         QString relPath = srcPath.mid(modRoot.length() + 1);
         QString dstPath = gameDir + "/" + relPath;
 
+        // Skip per-mod metadata: the hidden .solero marker(s) and any legacy
+        // fomod-choices.json. These live in the staging root and must never
+        // deploy (they would collide across mods in the game dir).
+        QString fn = QFileInfo(srcPath).fileName();
+        if (fn.startsWith(".solero")
+            || fn.compare("fomod-choices.json", Qt::CaseInsensitive) == 0)
+            continue;
+
         QString previousOwner = record.ownerOf(relPath);
         if (!previousOwner.isEmpty()) {
             conflicts.recordConflict(relPath, modId, previousOwner);

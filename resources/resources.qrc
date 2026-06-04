@@ -10,5 +10,30 @@
     <file>icons/tools/pgpatcher.png</file>
     <file>icons/tools/synthesis.png</file>
     <file>icons/tools/radium.png</file>
+    <file>icons/separators/combat.svg</file>
+    <file>icons/separators/weapons.svg</file>
+    <file>icons/separators/armor.svg</file>
+    <file>icons/separators/magic.svg</file>
+    <file>icons/separators/gameplay.svg</file>
+    <file>icons/separators/graphics.svg</file>
+    <file>icons/separators/textures.svg</file>
+    <file>icons/separators/lighting.svg</file>
+    <file>icons/separators/weather.svg</file>
+    <file>icons/separators/environment.svg</file>
+    <file>icons/separators/audio.svg</file>
+    <file>icons/separators/animation.svg</file>
+    <file>icons/separators/ui.svg</file>
+    <file>icons/separators/bugfixes.svg</file>
+    <file>icons/separators/patches.svg</file>
+    <file>icons/separators/quests.svg</file>
+    <file>icons/separators/npcs.svg</file>
+    <file>icons/separators/followers.svg</file>
+    <file>icons/separators/creatures.svg</file>
+    <file>icons/separators/locations.svg</file>
+    <file>icons/separators/performance.svg</file>
+    <file>icons/separators/tools.svg</file>
+    <file>icons/separators/frameworks.svg</file>
+    <file>icons/separators/immersion.svg</file>
+    <file>icons/separators/misc.svg</file>
   </qresource>
 </RCC>

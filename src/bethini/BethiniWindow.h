@@ -7,6 +7,7 @@
 class QComboBox;
 class QTabWidget;
 class QPlainTextEdit;
+class QLabel;
 
 namespace solero {
 
@@ -20,6 +21,7 @@ public:
 
 private slots:
     void applyPreset(const QString& presetName);
+    void applyRecommendedTweaks();
     void onSave();
     void onSearch(const QString& filter);
     void onAdvancedFileChanged();
@@ -34,6 +36,8 @@ private:
 
     void buildUI();
     void buildAdvancedTab(QTabWidget* tabs);
+    void reloadRows();                       // re-read all row widgets from the INIs
+    void showStatus(const QString& message);  // green feedback, auto-clears
     void loadAdvancedFile();
     QString iniPathFor(const QString& file) const;
     QVariant readKey(const BethiniIniKey& k) const;
@@ -58,6 +62,8 @@ private:
 
     QComboBox*      m_advFileCombo = nullptr; // Advanced tab: which INI to edit
     QPlainTextEdit* m_advEdit = nullptr;      // Advanced tab: raw INI text
+
+    QLabel* m_statusLabel = nullptr;          // green feedback line
 };
 
 } // namespace solero

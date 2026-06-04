@@ -18,6 +18,7 @@
 #include <QFont>
 #include <QGuiApplication>
 #include <QScreen>
+#include <QTimer>
 
 namespace solero {
 
@@ -92,6 +93,10 @@ void BethiniWindow::buildUI() {
         connect(btn, &QPushButton::clicked, this, [this, preset]{ applyPreset(preset); });
         presetBar->addWidget(btn);
     }
+    auto* recBtn = new QPushButton("Apply Recommended Tweaks", this);
+    recBtn->setToolTip("Apply BethINI's curated set of recommended INI tweaks for Skyrim SE");
+    connect(recBtn, &QPushButton::clicked, this, &BethiniWindow::applyRecommendedTweaks);
+    presetBar->addWidget(recBtn);
     presetBar->addStretch();
     auto* searchEdit = new QLineEdit(this);
     searchEdit->setPlaceholderText("Search…");
@@ -102,6 +107,12 @@ void BethiniWindow::buildUI() {
     connect(saveBtn, &QPushButton::clicked, this, &BethiniWindow::onSave);
     presetBar->addWidget(saveBtn);
     outer->addLayout(presetBar);
+
+    // Green feedback line shown after applying a preset / recommended tweaks.
+    m_statusLabel = new QLabel(this);
+    m_statusLabel->setStyleSheet("color: #2e7d32; font-weight: bold;");
+    m_statusLabel->setVisible(false);
+    outer->addWidget(m_statusLabel);
 
     // Tabs
     auto* tabs = new QTabWidget(this);
@@ -435,7 +446,68 @@ void BethiniWindow::applyPresetToRow(RowWidget& rw, const QString& presetName) {
 }
 
 void BethiniWindow::applyPreset(const QString& presetName) {
+    if (!m_profile) { showStatus("No profile loaded"); return; }
     for (auto& rw : m_rows) applyPresetToRow(rw, presetName);
+    QString shortName = presetName;
+    shortName.remove("Bethini ");
+    showStatus(QStringLiteral("✓ Applied preset: %1").arg(shortName));
+}
+
+// BethINI Pie's well-known "Recommended Tweaks" for Skyrim SE: a curated set of
+// high-confidence, widely-recommended, safe INI writes. These go straight to the
+// active profile's INI files via the same write path the editor uses; they do
+// not depend on a UI row existing for the key.
+void BethiniWindow::applyRecommendedTweaks() {
+    if (!m_profile) { showStatus("No profile loaded"); return; }
+
+    struct Tweak { const char* file; const char* section; const char* key; const char* value; };
+    static const Tweak kTweaks[] = {
+        // Disable mouse acceleration for 1:1 mouse input.
+        {"Skyrim.ini",      "Controls", "bMouseAcceleration",      "0"},
+        // Multi-threaded movement processing.
+        {"Skyrim.ini",      "General",  "bMultiThreadMovement",    "1"},
+        // Disable Papyrus debug logging (perf + reduces log spam).
+        {"Skyrim.ini",      "Papyrus",  "bEnableLogging",          "0"},
+        {"Skyrim.ini",      "Papyrus",  "bEnableTrace",            "0"},
+        {"Skyrim.ini",      "Papyrus",  "bLoadDebugInformation",   "0"},
+        // VSync on (engine standard key for SE).
+        {"SkyrimPrefs.ini", "Display",  "iVSyncPresentInterval",   "1"},
+        // Shadows render on grass.
+        {"SkyrimPrefs.ini", "Display",  "bShadowsOnGrass",         "1"},
+        // Allow loose-file mods.
+        {"SkyrimPrefs.ini", "Launcher", "bEnableFileSelection",    "1"},
+        // Disable story-manager logging spam.
+        {"SkyrimPrefs.ini", "General",  "iStoryManagerLoggingEvent", "-1"},
+    };
+
+    int count = 0;
+    for (const auto& t : kTweaks) {
+        BethiniIniKey k;
+        k.file    = QString::fromLatin1(t.file);
+        k.section = QString::fromLatin1(t.section);
+        k.key     = QString::fromLatin1(t.key);
+        writeKey(k, QString::fromLatin1(t.value));
+        ++count;
+    }
+
+    // Re-read the UI rows so widgets reflect the new INI values.
+    reloadRows();
+    showStatus(QStringLiteral("✓ Applied %1 recommended tweaks").arg(count));
+}
+
+void BethiniWindow::reloadRows() {
+    for (auto& rw : m_rows) loadRow(rw);
+    loadAdvancedFile();
+}
+
+void BethiniWindow::showStatus(const QString& message) {
+    if (!m_statusLabel) return;
+    m_statusLabel->setText(message);
+    m_statusLabel->setVisible(true);
+    QTimer::singleShot(4000, m_statusLabel, [lbl = m_statusLabel]{
+        lbl->clear();
+        lbl->setVisible(false);
+    });
 }
 
 void BethiniWindow::onSave() {

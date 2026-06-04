@@ -52,10 +52,11 @@ QVariant PluginListModel::data(const QModelIndex& idx, int role) const {
             case ColPriority: return idx.row();
             case ColName:     return p.filename;
             case ColFlags: {
-                QStringList f;
-                if (p.isMaster) f << "ESM";
-                if (p.isLight)  f << "ESL";
-                return f.join(' ');
+                if (p.isMaster || p.filename.endsWith(".esm", Qt::CaseInsensitive))
+                    return QStringLiteral("ESM");
+                if (p.isLight || p.filename.endsWith(".esl", Qt::CaseInsensitive))
+                    return QStringLiteral("ESL");
+                return QStringLiteral("ESP");
             }
             default: return {};
         }

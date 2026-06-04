@@ -6,6 +6,7 @@ namespace solero {
 enum class ToolSource { Nexus, Github };
 struct ToolPreset {
     QString id, name, author, creditUrl;
+    QString description, docsUrl, authorUrl;
     ToolSource source = ToolSource::Nexus;
     // Nexus
     QString nexusGame = "skyrimspecialedition";

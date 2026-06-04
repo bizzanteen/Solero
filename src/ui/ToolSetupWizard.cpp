@@ -41,7 +41,7 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
         item->setData(Qt::UserRole, p.id);
     }
     auto* custom = new QListWidgetItem(QIcon::fromTheme("list-add"),
-                                       "\xe2\x9e\x95 Add Custom Tool\xe2\x80\xa6", list);
+                                       "Add Custom Tool\xe2\x80\xa6", list);
     custom->setData(Qt::UserRole, "__custom__");
     body->addWidget(list);
 
@@ -56,17 +56,23 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
     nameLbl->setWordWrap(true);
     auto* authorLbl = new QLabel(detailsW);
     authorLbl->setWordWrap(true);
-    authorLbl->setTextFormat(Qt::PlainText);
-    auto* creditLbl = new QLabel(detailsW);
-    creditLbl->setWordWrap(true);
-    creditLbl->setTextFormat(Qt::PlainText);
+    authorLbl->setTextFormat(Qt::RichText);
+    authorLbl->setOpenExternalLinks(true);
+    auto* descLbl = new QLabel(detailsW);
+    descLbl->setWordWrap(true);
+    descLbl->setTextFormat(Qt::PlainText);
+    auto* docsLbl = new QLabel(detailsW);
+    docsLbl->setWordWrap(true);
+    docsLbl->setTextFormat(Qt::RichText);
+    docsLbl->setOpenExternalLinks(true);
     auto* openBtn = new QPushButton("Open mod page", detailsW);
     auto* endorseBtn = new QPushButton("Endorse (coming soon)", detailsW);
     endorseBtn->setEnabled(false);
     details->addWidget(iconLbl);
     details->addWidget(nameLbl);
     details->addWidget(authorLbl);
-    details->addWidget(creditLbl);
+    details->addWidget(descLbl);
+    details->addWidget(docsLbl);
     details->addStretch();
     details->addWidget(openBtn);
     details->addWidget(endorseBtn);
@@ -95,8 +101,10 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
         if (selectedId() == "__custom__") {
             iconLbl->setPixmap(QIcon::fromTheme("list-add").pixmap(64, 64));
             nameLbl->setText("<h3>Add a Custom Tool</h3>");
-            authorLbl->setText("Manually point Solero at any executable.");
-            creditLbl->clear();
+            authorLbl->clear();
+            descLbl->setText("Manually point Solero at any executable.");
+            docsLbl->clear();
+            docsLbl->hide();
             openBtn->setEnabled(false);
             endorseBtn->setEnabled(false);
             return;
@@ -104,15 +112,26 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
         const ToolPreset* p = selectedPreset();
         if (!p) {
             iconLbl->clear();
-            nameLbl->clear(); authorLbl->clear(); creditLbl->clear();
+            nameLbl->clear(); authorLbl->clear(); descLbl->clear(); docsLbl->clear();
             openBtn->setEnabled(false);
             return;
         }
         iconLbl->setPixmap(QPixmap(p->iconResource));
         nameLbl->setText("<h3>" + p->name.toHtmlEscaped() + "</h3>");
-        authorLbl->setText("By " + p->author);
-        creditLbl->setText("Please consider endorsing " + p->name
-                           + " by " + p->author + " on Nexus.");
+        if (p->authorUrl.isEmpty())
+            authorLbl->setText("By " + p->author.toHtmlEscaped());
+        else
+            authorLbl->setText(QString("By <a href=\"%1\">%2</a>")
+                                   .arg(p->authorUrl.toHtmlEscaped(), p->author.toHtmlEscaped()));
+        descLbl->setText(p->description);
+        if (p->docsUrl.isEmpty()) {
+            docsLbl->clear();
+            docsLbl->hide();
+        } else {
+            docsLbl->setText(QString("<a href=\"%1\">Documentation \xe2\x86\x97</a>")
+                                 .arg(p->docsUrl.toHtmlEscaped()));
+            docsLbl->show();
+        }
         openBtn->setEnabled(!p->creditUrl.isEmpty());
     };
     connect(list, &QListWidget::currentItemChanged, this, [=]{ updateDetails(); });

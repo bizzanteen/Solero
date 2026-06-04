@@ -11,6 +11,12 @@ private slots:
         QVERIFY(ToolCatalog::byId("radium") != nullptr);
         QCOMPARE(ToolCatalog::byId("radium")->source, ToolSource::Github);
     }
+    void presetsHaveDescriptionAndDocs() {
+        auto* xe = ToolCatalog::byId("xedit");
+        QVERIFY(xe != nullptr);
+        QVERIFY(!xe->description.isEmpty());
+        QVERIFY(xe->docsUrl.startsWith("http"));
+    }
     void xeditRunModes() {
         // Quick Auto Clean and Quick Show Conflicts are now extraActions on the single xedit preset.
         QVERIFY(ToolCatalog::byId("xedit-qac") == nullptr);

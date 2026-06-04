@@ -4,12 +4,16 @@ using namespace solero;
 class TestToolCatalog : public QObject { Q_OBJECT
 private slots:
     void hasCommonTools() {
-        QCOMPARE(ToolCatalog::presets().size(), 7);
+        QCOMPARE(ToolCatalog::presets().size(), 8);
         QVERIFY(ToolCatalog::byId("xedit") != nullptr);
         QCOMPARE(ToolCatalog::byId("xedit")->source, ToolSource::Nexus);
         QVERIFY(!ToolCatalog::byId("xedit")->author.isEmpty());
         QVERIFY(ToolCatalog::byId("radium") != nullptr);
         QCOMPARE(ToolCatalog::byId("radium")->source, ToolSource::Github);
+        auto* pandora = ToolCatalog::byId("pandora");
+        QVERIFY(pandora != nullptr);
+        QCOMPARE(pandora->proton, true);
+        QCOMPARE(pandora->producesOutput, true);
     }
     void presetsHaveDescriptionAndDocs() {
         auto* xe = ToolCatalog::byId("xedit");

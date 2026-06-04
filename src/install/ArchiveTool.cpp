@@ -21,6 +21,23 @@ bool ArchiveTool::sevenZipAvailable() { return !sevenZipBinary().isEmpty(); }
 QStringList ArchiveTool::listEntries(const QString& archivePath, bool* ok) {
     QStringList result;
     if (ok) *ok = false;
+
+    if (archivePath.endsWith(".rar", Qt::CaseInsensitive)) {
+        QProcess proc;
+        proc.start("unrar", {"lb", archivePath});
+        if (!proc.waitForFinished(120000)) return result;
+        if (proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0) return result;
+        const QString out = QString::fromUtf8(proc.readAllStandardOutput());
+        for (const QString& line : out.split('\n')) {
+            QString t = line.trimmed();
+            if (t.isEmpty()) continue;
+            t.replace('\\', '/');
+            result.append(t);
+        }
+        if (ok) *ok = true;
+        return result;
+    }
+
     QString bin = sevenZipBinary();
     if (bin.isEmpty()) return result;
 
@@ -52,6 +69,32 @@ QStringList ArchiveTool::listEntries(const QString& archivePath, bool* ok) {
 
 bool ArchiveTool::extract(const QString& archivePath, const QString& destDir,
                           const std::function<void(int)>& onProgress) {
+    if (archivePath.endsWith(".rar", Qt::CaseInsensitive)) {
+        QDir().mkpath(destDir);
+        QProcess proc;
+        QEventLoop loop;
+        QObject::connect(&proc, &QProcess::readyReadStandardOutput, &proc, [&]{
+            proc.readAllStandardOutput();
+            if (onProgress) onProgress(-1); // indeterminate
+        });
+        QObject::connect(&proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                         &loop, &QEventLoop::quit);
+        proc.start("unar", {"-q", "-D", "-f", "-o", destDir, archivePath});
+        if (!proc.waitForStarted(15000)) {
+            // unar not available; fall back to unrar.
+            QProcess pr;
+            QEventLoop loop2;
+            QObject::connect(&pr, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                             &loop2, &QEventLoop::quit);
+            pr.start("unrar", {"x", "-o+", "-y", archivePath, destDir + "/"});
+            if (!pr.waitForStarted(15000)) return false;
+            loop2.exec();
+            return pr.exitStatus() == QProcess::NormalExit && pr.exitCode() == 0;
+        }
+        loop.exec();
+        return proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
+    }
+
     QString bin = sevenZipBinary();
     if (bin.isEmpty()) return false;
     QDir().mkpath(destDir);
@@ -74,6 +117,7 @@ bool ArchiveTool::extract(const QString& archivePath, const QString& destDir,
 }
 
 bool ArchiveTool::isSolid(const QString& archivePath) {
+    if (archivePath.endsWith(".rar", Qt::CaseInsensitive)) return false;
     QString bin = sevenZipBinary();
     if (bin.isEmpty()) return false;
     QProcess proc;

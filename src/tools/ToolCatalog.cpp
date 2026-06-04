@@ -55,6 +55,19 @@ const QList<ToolPreset>& ToolCatalog::presets() {
         }
 
         {
+            ToolPreset t = github("pandora", "Pandora Behaviour Engine", "Monitor221hb",
+                                   "Monitor221hz", "Pandora-Behaviour-Engine-Plus",
+                                   "Pandora_Behaviour_Engine", "Pandora Behaviour Engine+.exe", "");
+            t.description = "Fast multi-threaded animation behaviour engine (Nemesis alternative).";
+            t.docsUrl = "https://github.com/Monitor221hz/Pandora-Behaviour-Engine-Plus";
+            t.authorUrl = "https://github.com/Monitor221hz";
+            t.proton = true;
+            t.producesOutput = true;
+            t.outputModName = "Pandora Output";
+            v << t;
+        }
+
+        {
             ToolPreset t = nexus("eslifier", "ESLifier", "MaskPlague", "119846",
                                  "ESLifier.exe", "");
             t.description = "Compact and ESL-flag plugins to save load-order slots.";

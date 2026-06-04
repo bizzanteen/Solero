@@ -60,6 +60,7 @@ static QJsonObject entryToJson(const ModEntry& e) {
     o["icon"]            = e.icon;
     o["collapsed"]       = e.collapsed;
     o["hasFomodChoices"] = e.hasFomodChoices;
+    o["sourceArchive"]   = e.sourceArchive;
     QJsonArray tags;
     for (const auto& t : e.tags) tags.append(t);
     o["tags"] = tags;
@@ -80,6 +81,7 @@ static ModEntry entryFromJson(const QJsonObject& o) {
     e.icon            = o["icon"].toString();
     e.collapsed       = o["collapsed"].toBool(false);
     e.hasFomodChoices = o["hasFomodChoices"].toBool(false);
+    e.sourceArchive   = o["sourceArchive"].toString();
     for (const auto& t : o["tags"].toArray()) e.tags.append(t.toString());
     return e;
 }

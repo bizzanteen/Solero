@@ -19,6 +19,8 @@ public:
     // localAppData holds Plugins.txt / loadorder.txt; documents holds the INIs.
     const QString& localAppDataDir() const { return m_localAppData; }
     const QString& documentsDir() const    { return m_documents; }
+    const QString& downloadsDir() const    { return m_downloads; }
+    void setDownloadsDir(const QString& p) { m_downloads = p; }
 
     void setGameDir(const QString& p);
     void setStagingDir(const QString& p);
@@ -41,6 +43,7 @@ private:
     QString m_dataDir; // derived: gameDir/Data
     QString m_localAppData;
     QString m_documents;
+    QString m_downloads;
 };
 
 } // namespace solero

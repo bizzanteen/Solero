@@ -26,6 +26,7 @@ struct ModEntry {
     bool enabled = true;
     bool hasFomodChoices = false;
     QStringList tags;
+    QString sourceArchive; // archive path this mod was installed from (for Reinstall)
 
     // Separator fields
     QString color;       // hex e.g. "#c0392b"

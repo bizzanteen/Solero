@@ -51,6 +51,8 @@ set(SOLERO_SOURCES
   src/deploy/ConflictIndex.cpp
   src/deploy/DeployEngine.cpp
   src/ui/RightPane.cpp
+  src/ui/ProgressModal.cpp
+  src/ui/DownloadsTab.cpp
   src/ui/DataTab.cpp
   src/ui/ConflictsTab.cpp
   src/ui/FileEditorDialog.cpp

@@ -34,6 +34,10 @@ void AppConfig::setGameDir(const QString& p) {
 
 void AppConfig::setStagingDir(const QString& p) {
     m_stagingDir = p;
+    if (m_downloads.isEmpty()) {
+        QDir d(p); d.cdUp(); // parent of mods/
+        m_downloads = d.absolutePath() + "/downloads";
+    }
 }
 
 QString AppConfig::detectLocalAppData(const QString& gameDir) {
@@ -61,6 +65,11 @@ bool AppConfig::load() {
     m_stagingDir   = obj["stagingDir"].toString();
     m_localAppData = obj["localAppDataDir"].toString();
     m_documents    = obj["documentsDir"].toString();
+    m_downloads    = obj["downloadsDir"].toString();
+    if (m_downloads.isEmpty() && !m_stagingDir.isEmpty()) {
+        QDir d(m_stagingDir); d.cdUp();
+        m_downloads = d.absolutePath() + "/downloads";
+    }
     m_dataDir      = m_gameDir.isEmpty() ? QString() : m_gameDir + "/Data";
     // Back-fill runtime paths for configs written before this field existed.
     if (m_localAppData.isEmpty() && !m_gameDir.isEmpty())
@@ -77,6 +86,7 @@ bool AppConfig::save() const {
     obj["stagingDir"]      = m_stagingDir;
     obj["localAppDataDir"] = m_localAppData;
     obj["documentsDir"]    = m_documents;
+    obj["downloadsDir"]    = m_downloads;
     QFile f(configPath());
     if (!f.open(QIODevice::WriteOnly)) return false;
     f.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));

@@ -17,11 +17,15 @@ const QList<ToolPreset>& ToolCatalog::presets() {
             t.exeRelPath=exe; t.args=args; t.proton=true; return t;
         };
 
-        v << nexus("xedit", "SSEEdit (xEdit)", "ElminsterAU & the xEdit Team", "164",
-                   "SSEEdit.exe", "-sse");
-
-        v << nexus("xedit-qac", "xEdit Quick Auto Clean", "ElminsterAU & the xEdit Team", "164",
-                   "SSEEditQuickAutoClean.exe", "-sse -qac -autoexit", {"xedit"});
+        {
+            ToolPreset t = nexus("xedit", "SSEEdit (xEdit)", "ElminsterAU & the xEdit Team", "164",
+                                 "SSEEdit.exe", "-sse");
+            t.extraActions = {
+                { "Quick Auto Clean", "SSEEditQuickAutoClean.exe", "-sse", "" },
+                { "Quick Show Conflicts", "SSEEdit.exe", "-sse -quickshowconflicts", "" },
+            };
+            v << t;
+        }
 
         {
             ToolPreset t = nexus("dyndolod", "DynDOLOD", "Sheson", "68518",

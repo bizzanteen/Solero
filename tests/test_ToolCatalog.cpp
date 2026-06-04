@@ -4,18 +4,22 @@ using namespace solero;
 class TestToolCatalog : public QObject { Q_OBJECT
 private slots:
     void hasCommonTools() {
-        QCOMPARE(ToolCatalog::presets().size(), 8);
+        QCOMPARE(ToolCatalog::presets().size(), 7);
         QVERIFY(ToolCatalog::byId("xedit") != nullptr);
         QCOMPARE(ToolCatalog::byId("xedit")->source, ToolSource::Nexus);
         QVERIFY(!ToolCatalog::byId("xedit")->author.isEmpty());
         QVERIFY(ToolCatalog::byId("radium") != nullptr);
         QCOMPARE(ToolCatalog::byId("radium")->source, ToolSource::Github);
     }
-    void xeditQacReusesXeditDownload() {
-        // The Quick Auto Clean entry points at the same xEdit folder via a different exe.
-        auto* qac = ToolCatalog::byId("xedit-qac");
-        QVERIFY(qac != nullptr);
-        QVERIFY(qac->needs.contains("xedit"));
+    void xeditRunModes() {
+        // Quick Auto Clean and Quick Show Conflicts are now extraActions on the single xedit preset.
+        QVERIFY(ToolCatalog::byId("xedit-qac") == nullptr);
+        auto* xe = ToolCatalog::byId("xedit");
+        QVERIFY(xe != nullptr);
+        QCOMPARE(xe->extraActions.size(), 2);
+        QCOMPARE(xe->extraActions[0].label, QString("Quick Auto Clean"));
+        QCOMPARE(xe->extraActions[0].exeRelPath, QString("SSEEditQuickAutoClean.exe"));
+        QCOMPARE(xe->extraActions[1].label, QString("Quick Show Conflicts"));
     }
     void dyndolodMergedTexGen() {
         auto* dd = ToolCatalog::byId("dyndolod");

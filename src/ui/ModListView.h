@@ -10,6 +10,7 @@ class ModListView : public QTreeView {
 public:
     explicit ModListView(QWidget* parent = nullptr);
     void setProfile(Profile* profile);
+    void deleteSelectedMods();
 
 signals:
     // Emitted on selection change. Each entry is a mod id, "__overwrite__" for the
@@ -29,6 +30,5 @@ private:
     void onAddSeparator();
     void onAddSeparatorAt(int visibleRow);
     void onEditSeparator(int visibleRow);
-    void onDeleteMod(int visibleRow);
 };
 }

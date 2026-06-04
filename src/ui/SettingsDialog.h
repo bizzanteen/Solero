@@ -1,6 +1,8 @@
 #pragma once
 #include <QDialog>
 
+class QCheckBox;
+
 namespace solero {
 
 class SetupPanel;
@@ -12,6 +14,9 @@ public:
 
 private:
     SetupPanel* m_setupPanel = nullptr;
+    QCheckBox* m_confirmDelete = nullptr;
+    QCheckBox* m_cycleSeparatorColors = nullptr;
+    QCheckBox* m_dataShowAllFiles = nullptr;
 };
 
 } // namespace solero

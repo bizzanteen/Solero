@@ -28,6 +28,16 @@ public:
     void setLocalAppDataDir(const QString& p) { m_localAppData = p; }
     void setDocumentsDir(const QString& p)    { m_documents = p; }
 
+    // Persisted preferences
+    bool confirmModDeletion() const          { return m_confirmModDeletion; }
+    void setConfirmModDeletion(bool v)        { m_confirmModDeletion = v; }
+    bool cycleSeparatorColors() const         { return m_cycleSeparatorColors; }
+    void setCycleSeparatorColors(bool v)      { m_cycleSeparatorColors = v; }
+    bool dataShowAllFiles() const             { return m_dataShowAllFiles; }
+    void setDataShowAllFiles(bool v)          { m_dataShowAllFiles = v; }
+    const QString& lastSeparatorColor() const { return m_lastSeparatorColor; }
+    void setLastSeparatorColor(const QString& v) { m_lastSeparatorColor = v; }
+
     static QString dataRoot();   // ~/.local/share/solero
     static QString configPath();
     static QStringList detectSkyrimPaths();
@@ -48,6 +58,10 @@ private:
     QString m_localAppData;
     QString m_documents;
     QString m_downloads;
+    bool m_confirmModDeletion = true;
+    bool m_cycleSeparatorColors = true;
+    bool m_dataShowAllFiles = false;
+    QString m_lastSeparatorColor;
 };
 
 } // namespace solero

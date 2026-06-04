@@ -76,6 +76,10 @@ bool AppConfig::load() {
         m_localAppData = detectLocalAppData(m_gameDir);
     if (m_documents.isEmpty() && !m_gameDir.isEmpty())
         m_documents = detectDocumentsDir(m_gameDir);
+    m_confirmModDeletion   = obj["confirmModDeletion"].toBool(true);
+    m_cycleSeparatorColors = obj["cycleSeparatorColors"].toBool(true);
+    m_dataShowAllFiles     = obj["dataShowAllFiles"].toBool(false);
+    m_lastSeparatorColor   = obj["lastSeparatorColor"].toString();
     return true;
 }
 
@@ -87,6 +91,10 @@ bool AppConfig::save() const {
     obj["localAppDataDir"] = m_localAppData;
     obj["documentsDir"]    = m_documents;
     obj["downloadsDir"]    = m_downloads;
+    obj["confirmModDeletion"]   = m_confirmModDeletion;
+    obj["cycleSeparatorColors"] = m_cycleSeparatorColors;
+    obj["dataShowAllFiles"]     = m_dataShowAllFiles;
+    obj["lastSeparatorColor"]   = m_lastSeparatorColor;
     QFile f(configPath());
     if (!f.open(QIODevice::WriteOnly)) return false;
     f.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));

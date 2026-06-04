@@ -1,5 +1,6 @@
 #include "SettingsDialog.h"
 #include "ui/SetupPanel.h"
+#include "core/AppConfig.h"
 #include <QTabWidget>
 #include <QDialogButtonBox>
 #include <QVBoxLayout>
@@ -22,15 +23,29 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     m_setupPanel = new SetupPanel(tabs);
     tabs->addTab(m_setupPanel, "Setup");
 
-    // Preferences tab (stub)
+    // Preferences tab
+    auto& cfg = AppConfig::instance();
     auto* prefs = new QWidget(tabs);
     auto* prefsLayout = new QVBoxLayout(prefs);
 
-    auto* heading = new QLabel("<h3>Preferences (coming soon)</h3>", prefs);
+    auto* heading = new QLabel("<h3>Preferences</h3>", prefs);
     prefsLayout->addWidget(heading);
 
+    m_confirmDelete = new QCheckBox("Confirm before deleting mods", prefs);
+    m_confirmDelete->setChecked(cfg.confirmModDeletion());
+    prefsLayout->addWidget(m_confirmDelete);
+
+    m_cycleSeparatorColors = new QCheckBox("Automatically give new separators a different colour", prefs);
+    m_cycleSeparatorColors->setChecked(cfg.cycleSeparatorColors());
+    prefsLayout->addWidget(m_cycleSeparatorColors);
+
+    m_dataShowAllFiles = new QCheckBox("Data tab: show all files by default", prefs);
+    m_dataShowAllFiles->setChecked(cfg.dataShowAllFiles());
+    prefsLayout->addWidget(m_dataShowAllFiles);
+
+    // Disabled stub: deploy mode is not wired up yet.
     auto* deployRow = new QVBoxLayout;
-    auto* deployLabel = new QLabel("Deploy mode:", prefs);
+    auto* deployLabel = new QLabel("Deploy mode (not wired up yet):", prefs);
     deployLabel->setEnabled(false);
     auto* deployCombo = new QComboBox(prefs);
     deployCombo->addItems({"Hard link", "Symlink", "Copy"});
@@ -39,27 +54,6 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     deployRow->addWidget(deployCombo);
     prefsLayout->addLayout(deployRow);
 
-    auto* confirmDelete = new QCheckBox("Confirm before deleting mods", prefs);
-    confirmDelete->setChecked(true);
-    confirmDelete->setEnabled(false);
-    prefsLayout->addWidget(confirmDelete);
-
-    auto* followTheme = new QCheckBox("Follow system theme colours", prefs);
-    followTheme->setChecked(true);
-    followTheme->setEnabled(false);
-    prefsLayout->addWidget(followTheme);
-
-    auto* mo2Symlink = new QCheckBox("Default MO2 import to symlink", prefs);
-    mo2Symlink->setEnabled(false);
-    prefsLayout->addWidget(mo2Symlink);
-
-    auto* checkUpdates = new QCheckBox("Check tools for updates on launch", prefs);
-    checkUpdates->setEnabled(false);
-    prefsLayout->addWidget(checkUpdates);
-
-    auto* note = new QLabel("These aren't wired up yet.", prefs);
-    note->setStyleSheet("color: gray; font-style: italic;");
-    prefsLayout->addWidget(note);
     prefsLayout->addStretch();
 
     tabs->addTab(prefs, "Preferences");
@@ -72,6 +66,11 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
 
     connect(btns, &QDialogButtonBox::accepted, this, [this]{
         if (m_setupPanel->isValid()) m_setupPanel->save();
+        auto& cfg = AppConfig::instance();
+        cfg.setConfirmModDeletion(m_confirmDelete->isChecked());
+        cfg.setCycleSeparatorColors(m_cycleSeparatorColors->isChecked());
+        cfg.setDataShowAllFiles(m_dataShowAllFiles->isChecked());
+        cfg.save();
         accept();
     });
     connect(btns, &QDialogButtonBox::rejected, this, &QDialog::reject);

@@ -13,6 +13,7 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QMessageBox>
+#include <QCheckBox>
 #include <QDir>
 
 namespace solero {
@@ -122,13 +123,20 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         menu.addSeparator();
         menu.addAction("Add Separator Below", [this, row = idx.row()]{ onAddSeparatorAt(row + 1); });
     } else {
+        // If the right-clicked mod isn't part of the current selection, make it
+        // the sole selection so delete/operations act on what the user clicked.
+        if (!selectionModel()->isRowSelected(idx.row(), idx.parent())) {
+            selectionModel()->select(
+                m_model->index(idx.row(), 0),
+                QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        }
         menu.addAction("Open in File Manager", [this, id = entry->id]{
             QString dir = AppConfig::instance().stagingDir() + "/" + id;
             QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
         });
         menu.addAction(entry->hasFomodChoices ? "Reinstall (FOMOD)..." : "Reinstall...",
                        [this, id = entry->id]{ emit reinstallRequested(id); });
-        menu.addAction("Delete Mod...", [this, row = idx.row()]{ onDeleteMod(row); });
+        menu.addAction("Delete Mod...", [this]{ deleteSelectedMods(); });
         menu.addSeparator();
         menu.addAction("Add Separator Above", [this, row = idx.row()]{ onAddSeparatorAt(row); });
     }
@@ -180,20 +188,42 @@ void ModListView::onEditSeparator(int visibleRow) {
     }
 }
 
-void ModListView::onDeleteMod(int visibleRow) {
-    const auto* entry = m_model->entryAt(visibleRow);
-    if (!entry || entry->type != EntryType::Mod || !m_model->profile()) return;
-    auto ret = QMessageBox::question(this, "Delete Mod",
-        QString("Delete \"%1\"? This removes it from the list and deletes its staged files. "
-                "This cannot be undone.").arg(entry->name),
-        QMessageBox::Yes | QMessageBox::No);
-    if (ret != QMessageBox::Yes) return;
-    QString id = entry->id;
-    // Remove staged files.
-    QString modDir = AppConfig::instance().stagingDir() + "/" + id;
-    QDir(modDir).removeRecursively();
-    // Remove from the profile's mod list.
-    m_model->profile()->modList().remove(id);
+void ModListView::deleteSelectedMods() {
+    if (!m_model->profile()) return;
+
+    // Gather the selected mod entries (skip separators / Overwrite).
+    QStringList ids, names;
+    const auto rows = selectionModel()->selectedRows();
+    for (const auto& idx : rows) {
+        const auto* entry = m_model->entryAt(idx.row());
+        if (!entry || entry->type != EntryType::Mod) continue;
+        ids   << entry->id;
+        names << entry->name;
+    }
+    if (ids.isEmpty()) return;
+
+    if (AppConfig::instance().confirmModDeletion()) {
+        QString text = QString("Delete %1 mod(s)? This removes them from the list "
+                               "and deletes their staged files. This cannot be undone.")
+                           .arg(ids.size());
+        if (ids.size() <= 5)
+            text += "\n\n\xe2\x80\xa2 " + names.join("\n\xe2\x80\xa2 ");
+        QMessageBox box(QMessageBox::Question, "Delete Mod", text,
+                        QMessageBox::Yes | QMessageBox::No, this);
+        auto* dontAsk = new QCheckBox("Don't ask me again", &box);
+        box.setCheckBox(dontAsk);
+        if (box.exec() != QMessageBox::Yes) return;
+        if (dontAsk->isChecked()) {
+            AppConfig::instance().setConfirmModDeletion(false);
+            AppConfig::instance().save();
+        }
+    }
+
+    const QString stagingDir = AppConfig::instance().stagingDir();
+    for (const QString& id : ids) {
+        QDir(stagingDir + "/" + id).removeRecursively();
+        m_model->profile()->modList().remove(id);
+    }
     m_model->profile()->save();
     m_model->rebuild();
     emit modsChanged();

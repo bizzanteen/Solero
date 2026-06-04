@@ -29,6 +29,9 @@
 #include <QToolButton>
 #include <QLabel>
 #include <QVBoxLayout>
+#include <QDialog>
+#include <QCheckBox>
+#include <QDialogButtonBox>
 #include <QKeyEvent>
 #include <QStandardPaths>
 #include <QMessageBox>
@@ -907,11 +910,76 @@ void MainWindow::onEditTool(const QString& id) {
 }
 
 void MainWindow::onRemoveTool(const QString& id) {
-    auto ret = QMessageBox::question(this, "Remove Tool",
-        "Remove this tool from Solero? (The downloaded files stay on disk.)",
-        QMessageBox::Yes | QMessageBox::No);
-    if (ret != QMessageBox::Yes) return;
+    auto* profile = m_profileMgr->activeProfile();
+
+    // Find the tool's Executable and its display name.
+    QString toolName = id;
+    QStringList candidateIds;
+    for (const auto& exe : m_toolStore->tools()) {
+        if (exe.id != id) continue;
+        toolName = exe.name;
+        if (!exe.outputModId.isEmpty()) candidateIds << exe.outputModId;
+        for (const auto& a : exe.extraActions)
+            if (!a.outputModId.isEmpty()) candidateIds << a.outputModId;
+        break;
+    }
+
+    // DynDOLOD also installs a "DynDOLOD Resources SE" mod.
+    if (id == "dyndolod" && profile) {
+        for (const auto& m : profile->modList())
+            if (m.type == solero::EntryType::Mod && m.name == "DynDOLOD Resources SE")
+                candidateIds << m.id;
+    }
+
+    // De-duplicate and keep only ids that resolve to an existing mod.
+    QStringList modIds;
+    QStringList modNames;
+    for (const QString& mid : candidateIds) {
+        if (modIds.contains(mid)) continue;
+        const solero::ModEntry* m = profile ? profile->modList().findById(mid) : nullptr;
+        if (!m) continue;
+        modIds   << mid;
+        modNames << m->name;
+    }
+
+    QList<QCheckBox*> boxes;
+    if (modIds.isEmpty()) {
+        auto ret = QMessageBox::question(this, "Remove Tool",
+            QString("Remove tool '%1'? (The downloaded files stay on disk.)").arg(toolName),
+            QMessageBox::Yes | QMessageBox::No);
+        if (ret != QMessageBox::Yes) return;
+    } else {
+        QDialog dlg(this);
+        dlg.setWindowTitle("Remove Tool");
+        auto* lay = new QVBoxLayout(&dlg);
+        lay->addWidget(new QLabel(QString("Remove tool '%1'?").arg(toolName), &dlg));
+        for (const QString& name : modNames) {
+            auto* cb = new QCheckBox(QString("Also remove mod: \"%1\"").arg(name), &dlg);
+            cb->setChecked(true);
+            boxes << cb;
+            lay->addWidget(cb);
+        }
+        auto* btns = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+        connect(btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+        connect(btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+        lay->addWidget(btns);
+        if (dlg.exec() != QDialog::Accepted) return;
+    }
+
     m_toolStore->remove(id);
     m_toolStore->save();
+
+    bool removedAny = false;
+    for (int i = 0; i < modIds.size(); ++i) {
+        if (i < boxes.size() && !boxes[i]->isChecked()) continue;
+        if (!profile) break;
+        profile->modList().remove(modIds[i]);
+        QDir(solero::AppConfig::instance().stagingDir() + "/" + modIds[i]).removeRecursively();
+        removedAny = true;
+    }
+    if (removedAny && profile) {
+        profile->save();
+        m_modListView->setProfile(profile);
+    }
     rebuildToolsMenu();
 }

@@ -93,6 +93,26 @@ bool AppConfig::save() const {
     return true;
 }
 
+QString AppConfig::detectProtonDir() const {
+    QStringList bases = {
+        QDir::homePath() + "/.local/share/Steam/compatibilitytools.d",
+        QDir::homePath() + "/.steam/root/compatibilitytools.d",
+    };
+    if (!m_gameDir.isEmpty()) { QDir g(m_gameDir); g.cdUp(); /* common */ bases << g.absolutePath(); }
+    QString first;
+    for (const QString& base : bases) {
+        QDir d(base);
+        if (!d.exists()) continue;
+        for (const QString& sub : d.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+            QString dir = base + "/" + sub;
+            if (!QFile::exists(dir + "/proton")) continue;
+            if (first.isEmpty()) first = dir;
+            if (sub.contains("GE", Qt::CaseInsensitive)) return dir;
+        }
+    }
+    return first;
+}
+
 QStringList AppConfig::detectSkyrimPaths() {
     QStringList candidates = {
         QDir::homePath() + "/.local/share/Steam/steamapps/common/Skyrim Special Edition",

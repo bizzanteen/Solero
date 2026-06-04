@@ -36,6 +36,9 @@ public:
     static QString detectLocalAppData(const QString& gameDir);
     static QString detectDocumentsDir(const QString& gameDir);
 
+    // Find the Proton directory Skyrim uses (prefer GE). Empty if none found.
+    QString detectProtonDir() const;
+
 private:
     AppConfig() = default;
     QString m_gameDir;

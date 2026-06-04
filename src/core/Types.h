@@ -45,6 +45,13 @@ struct PluginEntry {
 
 // Executable / tool
 
+struct ToolAction {
+    QString label;        // e.g. "Run TexGen"
+    QString binaryPath;   // absolute path to the secondary exe/binary
+    QString arguments;
+    QString outputModId;  // optional capture target for this action
+};
+
 struct Executable {
     QString id;
     QString name;
@@ -59,6 +66,8 @@ struct Executable {
     // Tool-mode only
     bool isCapturingOutput = false;
     QString outputModId;     // if isCapturingOutput; empty = Overwrite
+    QString iconPath;
+    QList<ToolAction> extraActions;
 };
 
 // AI transaction

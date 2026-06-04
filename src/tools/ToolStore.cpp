@@ -28,6 +28,13 @@ static QJsonObject toJson(const Executable& e) {
     o["protonVersion"]=e.protonVersion; o["winePrefix"]=e.winePrefix;
     o["runThroughDeployer"]=e.runThroughDeployer; o["isPrimary"]=e.isPrimary;
     o["isCapturingOutput"]=e.isCapturingOutput; o["outputModId"]=e.outputModId;
+    o["iconPath"]=e.iconPath;
+    QJsonArray acts;
+    for (const auto& a : e.extraActions) {
+        QJsonObject ao; ao["label"]=a.label; ao["binaryPath"]=a.binaryPath;
+        ao["arguments"]=a.arguments; ao["outputModId"]=a.outputModId; acts.append(ao);
+    }
+    o["extraActions"]=acts;
     return o;
 }
 static Executable fromJson(const QJsonObject& o) {
@@ -38,6 +45,13 @@ static Executable fromJson(const QJsonObject& o) {
     e.protonVersion=o["protonVersion"].toString(); e.winePrefix=o["winePrefix"].toString();
     e.runThroughDeployer=o["runThroughDeployer"].toBool(true); e.isPrimary=o["isPrimary"].toBool(false);
     e.isCapturingOutput=o["isCapturingOutput"].toBool(false); e.outputModId=o["outputModId"].toString();
+    e.iconPath=o["iconPath"].toString();
+    for (const auto& v : o["extraActions"].toArray()) {
+        auto ao=v.toObject(); ToolAction a;
+        a.label=ao["label"].toString(); a.binaryPath=ao["binaryPath"].toString();
+        a.arguments=ao["arguments"].toString(); a.outputModId=ao["outputModId"].toString();
+        e.extraActions.append(a);
+    }
     return e;
 }
 

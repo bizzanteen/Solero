@@ -7,6 +7,8 @@
 
 class QStackedWidget;
 class QLabel;
+class QLineEdit;
+class QCheckBox;
 
 namespace solero {
 
@@ -33,6 +35,11 @@ private:
     ConflictIndex m_conflicts;
     QStringList   m_selection;
 
+    QLineEdit*      m_search;
+    QCheckBox*      m_showAll;
+    QString         m_filter;        // current search text
+    bool            m_showAllFiles = false; // mirror of m_showAll
+
     QStackedWidget* m_stack;
     ModFileTree*    m_singleTree;   // page 0: single mod or game dir
     QLabel*         m_placeholder;  // page 1: "Nothing to see here"
@@ -44,6 +51,7 @@ private:
     QSet<QString> m_editedRelPaths;
 
     void refresh();
+    void applyFilter();
     QString stagingRootFor(const QString& modId) const;
     QColor  accentColor() const;
     void showSingleMod(const QString& modId);

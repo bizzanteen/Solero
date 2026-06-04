@@ -83,17 +83,23 @@ void ModFileTree::showModFiles(const QString& stagingRoot,
                                const QString& modId,
                                const ConflictIndex& conflicts,
                                const QSet<QString>& editedRelPaths,
-                               const QColor& accent) {
+                               const QColor& accent,
+                               const std::function<QString(const QString&)>& nameOf) {
     m_stagingRoot = stagingRoot;
+    auto disp = [&](const QString& id){ return (nameOf && !id.isEmpty()) ? nameOf(id) : id; };
     buildTree(stagingRoot, [&](QTreeWidgetItem* item, const QString& relPath) {
         QString status;
         QColor color;
         if (conflicts.hasConflict(relPath)) {
             if (conflicts.winnerOf(relPath) == modId) {
-                status = QString("beats %1 mod(s)").arg(conflicts.losersOf(relPath).size());
+                auto losers = conflicts.losersOf(relPath);
+                QString first = losers.isEmpty() ? QString() : disp(*losers.begin());
+                status = losers.size() > 1
+                    ? QString("Overwrites %1 +%2 more").arg(first).arg(losers.size() - 1)
+                    : QString("Overwrites %1").arg(first);
                 color  = QColor("#27ae60");
             } else {
-                status = "overwritten by: " + conflicts.winnerOf(relPath);
+                status = "Overwritten by " + disp(conflicts.winnerOf(relPath));
                 color  = QColor("#c0392b");
             }
         }
@@ -125,6 +131,21 @@ void ModFileTree::showGameDir(const QString& gameDir,
             QFont f = item->font(0); f.setBold(true); item->setFont(0, f);
         }
     });
+}
+
+void ModFileTree::setFilter(const QString& text) {
+    const QString t = text.trimmed();
+    std::function<bool(QTreeWidgetItem*)> apply = [&](QTreeWidgetItem* it) -> bool {
+        bool selfMatch = t.isEmpty() || it->text(0).contains(t, Qt::CaseInsensitive);
+        bool childMatch = false;
+        for (int i = 0; i < it->childCount(); ++i)
+            childMatch = apply(it->child(i)) || childMatch;
+        bool visible = selfMatch || childMatch;
+        it->setHidden(!visible);
+        if (childMatch && !t.isEmpty()) it->setExpanded(true);
+        return visible;
+    };
+    for (int i = 0; i < topLevelItemCount(); ++i) apply(topLevelItem(i));
 }
 
 QStringList ModFileTree::mimeTypes() const {

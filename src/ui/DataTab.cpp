@@ -8,9 +8,14 @@
 #include <QHBoxLayout>
 #include <QStackedWidget>
 #include <QLabel>
+#include <QLineEdit>
+#include <QCheckBox>
 #include <QSplitter>
 #include <QPalette>
 #include <QFile>
+#include <QFileInfo>
+#include <QDir>
+#include <QDirIterator>
 #include <QJsonDocument>
 #include <QJsonArray>
 
@@ -19,6 +24,26 @@ namespace solero {
 DataTab::DataTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
+
+    // Top bar: search + "Show all files" toggle
+    auto* topBar = new QHBoxLayout;
+    m_search = new QLineEdit(this);
+    m_search->setPlaceholderText(QStringLiteral("Search files\xE2\x80\xA6"));
+    m_showAll = new QCheckBox(QStringLiteral("Show all files"), this);
+    m_showAllFiles = AppConfig::instance().dataShowAllFiles();
+    m_showAll->setChecked(m_showAllFiles);
+    topBar->addWidget(m_search, 1);
+    topBar->addWidget(m_showAll, 0);
+    layout->addLayout(topBar);
+
+    connect(m_search, &QLineEdit::textChanged, this, [this](const QString& text) {
+        m_filter = text;
+        applyFilter();
+    });
+    connect(m_showAll, &QCheckBox::toggled, this, [this](bool checked) {
+        m_showAllFiles = checked;
+        refresh();
+    });
 
     m_stack = new QStackedWidget(this);
 
@@ -93,7 +118,19 @@ QString DataTab::modDisplayName(const QString& modId) const {
     return modId;
 }
 
+void DataTab::applyFilter() {
+    m_singleTree->setFilter(m_filter);
+    m_splitLeft->setFilter(m_filter);
+    m_splitRight->setFilter(m_filter);
+}
+
 void DataTab::refresh() {
+    if (m_showAllFiles) {
+        showGameDirectory();
+        applyFilter();
+        return;
+    }
+
     // Partition the selection: separators are ignored for counting; mods + overwrite count.
     QStringList modIds;
     int separatorCount = 0;
@@ -105,6 +142,7 @@ void DataTab::refresh() {
     if (modIds.isEmpty()) {
         if (separatorCount > 0) {
             // Only separator(s) selected
+            m_placeholder->setText("Nothing to see here");
             m_stack->setCurrentWidget(m_placeholder);
         } else {
             // Nothing selected -> show live game directory
@@ -117,16 +155,31 @@ void DataTab::refresh() {
     } else if (modIds.size() == 2) {
         showSplit(modIds.at(0), modIds.at(1));
     } else {
-        m_stack->setCurrentWidget(m_placeholder); // 3+
+        m_placeholder->setText("Nothing to see here"); // 3+
+        m_stack->setCurrentWidget(m_placeholder);
     }
 }
 
 void DataTab::showSingleMod(const QString& modId) {
     QString root = stagingRootFor(modId);
+
+    QDirIterator probe(root, QDir::Files, QDirIterator::Subdirectories);
+    bool empty = true;
+    while (probe.hasNext()) {
+        if (!QFileInfo(probe.next()).fileName().startsWith(".solero")) { empty = false; break; }
+    }
+    if (empty) {
+        m_placeholder->setText("Mod folder is empty");
+        m_stack->setCurrentWidget(m_placeholder);
+        return;
+    }
+
     m_editTrackingRoot = root;
     loadEditedFor(root, m_editedRelPaths);
-    m_singleTree->showModFiles(root, modId, m_conflicts, m_editedRelPaths, accentColor());
+    m_singleTree->showModFiles(root, modId, m_conflicts, m_editedRelPaths, accentColor(),
+                               [this](const QString& id){ return modDisplayName(id); });
     m_stack->setCurrentWidget(m_singleTree);
+    applyFilter();
 }
 
 void DataTab::showGameDirectory() {
@@ -141,6 +194,7 @@ void DataTab::showGameDirectory() {
     m_editTrackingRoot.clear();
     m_singleTree->showGameDir(gameDir, ownerByRel, accentColor());
     m_stack->setCurrentWidget(m_singleTree);
+    applyFilter();
 }
 
 void DataTab::showSplit(const QString& modIdA, const QString& modIdB) {
@@ -151,9 +205,12 @@ void DataTab::showSplit(const QString& modIdA, const QString& modIdB) {
     loadEditedFor(rootB, editedB);
     m_splitLeft->setAcceptDrops(true);
     m_splitRight->setAcceptDrops(true);
-    m_splitLeft->showModFiles(rootA, modIdA, m_conflicts, editedA, accentColor());
-    m_splitRight->showModFiles(rootB, modIdB, m_conflicts, editedB, accentColor());
+    m_splitLeft->showModFiles(rootA, modIdA, m_conflicts, editedA, accentColor(),
+                              [this](const QString& id){ return modDisplayName(id); });
+    m_splitRight->showModFiles(rootB, modIdB, m_conflicts, editedB, accentColor(),
+                               [this](const QString& id){ return modDisplayName(id); });
     m_stack->setCurrentWidget(m_splitPage);
+    applyFilter();
 }
 
 void DataTab::onFileActivated(const QString& fullPath) {

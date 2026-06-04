@@ -3,6 +3,7 @@
 #include <QSet>
 #include <QHash>
 #include <QColor>
+#include <functional>
 #include "deploy/ConflictIndex.h"
 
 namespace solero {
@@ -20,7 +21,11 @@ public:
                       const QString& modId,
                       const ConflictIndex& conflicts,
                       const QSet<QString>& editedRelPaths,
-                      const QColor& accent);
+                      const QColor& accent,
+                      const std::function<QString(const QString&)>& nameOf = {});
+
+    // Filter visible rows by a search string (matches filenames/paths).
+    void setFilter(const QString& text);
 
     // Populate from the live game directory, colouring mod-owned files.
     void showGameDir(const QString& gameDir,

@@ -11,6 +11,11 @@
 #include "import/Mo2Importer.h"
 #include "ui/FomodWizard.h"
 #include "ui/ProgressModal.h"
+#include "ui/LeftPane.h"
+#include "ui/ToolPanel.h"
+#include "ui/ToolSetupWizard.h"
+#include "ui/ExecutableDialog.h"
+#include "tools/ToolRunner.h"
 #include "fomod/FomodEngine.h"
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -134,16 +139,6 @@ void MainWindow::setupToolbar() {
     tb->addWidget(m_aiChangesLabel);
     tb->addSeparator();
 
-    // BethINI editor (opens as a tab)
-    tb->addAction("BethINI", this, &MainWindow::onOpenBethini);
-
-    auto* toolsBtn = new QToolButton(tb);
-    toolsBtn->setText("Tools \xe2\x96\xbe");
-    toolsBtn->setPopupMode(QToolButton::InstantPopup);
-    m_toolsBtn = toolsBtn;
-    tb->addWidget(toolsBtn);
-    rebuildToolsMenu();
-
     // Game settings
     tb->addAction("Game Settings...", this, [this]{
         solero::SetupWizard wizard(this);
@@ -152,41 +147,40 @@ void MainWindow::setupToolbar() {
     });
 }
 
-void MainWindow::onOpenBethini() {
-    if (m_centralTabs) m_centralTabs->setCurrentWidget(m_bethiniWindow);
-}
-
 void MainWindow::setupCentralWidget() {
     auto* outer = new QSplitter(Qt::Vertical, this);
-
     m_splitter = new QSplitter(Qt::Horizontal, outer);
-    m_modListView    = new solero::ModListView(m_splitter);
-    m_rightPane = new solero::RightPane(m_splitter);
+
+    m_modListView = new solero::ModListView(m_splitter);
+    m_rightPane   = new solero::RightPane(m_splitter);
+    m_bethiniWindow = new solero::BethiniWindow(this);
+
+    m_leftPane = new solero::LeftPane(m_modListView, m_bethiniWindow, m_toolStore, m_splitter);
+    m_splitter->addWidget(m_leftPane);
+    m_splitter->addWidget(m_rightPane);
+    m_splitter->setSizes({640, 640});
+
     connect(m_rightPane->downloadsTab(), &solero::DownloadsTab::installRequested,
             this, &MainWindow::installFromArchive);
-    m_splitter->addWidget(m_modListView);
-    m_splitter->addWidget(m_rightPane);
     connect(m_modListView, &solero::ModListView::modsSelected,
-            m_rightPane,   &solero::RightPane::onSelectionChanged);
+            m_rightPane, &solero::RightPane::onSelectionChanged);
     connect(m_modListView, &solero::ModListView::reinstallRequested,
             this, &MainWindow::onReinstallMod);
     connect(m_modListView, &solero::ModListView::modsChanged,
             this, &MainWindow::onModsChanged);
     connect(m_modListView, &solero::ModListView::modActivated,
-            m_rightPane,   &solero::RightPane::showDataFor);
-    m_splitter->setSizes({640, 640});
+            m_rightPane, &solero::RightPane::showDataFor);
+
+    connect(m_leftPane, &solero::LeftPane::runTool, this, &MainWindow::onRunTool);
+    connect(m_leftPane, &solero::LeftPane::addToolRequested, this, &MainWindow::onAddTool2);
+    connect(m_leftPane, &solero::LeftPane::editTool, this, &MainWindow::onEditTool);
+    connect(m_leftPane, &solero::LeftPane::removeTool, this, &MainWindow::onRemoveTool);
 
     m_bottomPanel = new solero::BottomPanel(outer);
     outer->addWidget(m_splitter);
     outer->addWidget(m_bottomPanel);
     outer->setSizes({580, 200});
-
-    // Central area is tabbed: the mod manager view + the BethINI editor.
-    m_centralTabs = new QTabWidget(this);
-    m_centralTabs->addTab(outer, "Mods");
-    m_bethiniWindow = new solero::BethiniWindow(this);
-    m_centralTabs->addTab(m_bethiniWindow, "BethINI");
-    setCentralWidget(m_centralTabs);
+    setCentralWidget(outer);
 }
 
 // Find a file in dir case-insensitively (Skyrim's custom ini ships as
@@ -668,36 +662,41 @@ void MainWindow::onZoomIn()    { static_cast<Application*>(qApp)->setZoomFactor(
 void MainWindow::onZoomOut()   { static_cast<Application*>(qApp)->setZoomFactor(static_cast<Application*>(qApp)->zoomFactor() - 0.1); }
 void MainWindow::onZoomReset() { static_cast<Application*>(qApp)->setZoomFactor(1.0); }
 
-void MainWindow::rebuildToolsMenu() {
-    auto* menu = new QMenu(m_toolsBtn);
-    for (const auto& t : m_toolStore->tools()) {
-        QString id = t.id;
-        menu->addAction(t.name, this, [this, id]{
-            const auto& tools = m_toolStore->tools();
-            for (const auto& e : tools) if (e.id == id) {
-                statusBar()->showMessage("Running " + e.name + "...");
-                qApp->processEvents();
-                auto res = solero::ToolRunner::run(e,
-                    solero::AppConfig::instance().gameDir(),
-                    solero::AppConfig::instance().stagingDir());
-                if (!res.launched) QMessageBox::warning(this, "Tool", res.error);
-                else statusBar()->showMessage(e.name + " finished.");
-                if (auto* p = m_profileMgr->activeProfile()) m_modListView->setProfile(p);
-                break;
-            }
-        });
-    }
-    menu->addSeparator();
-    menu->addAction("Add Tool...", this, &MainWindow::onAddTool);
-    m_toolsBtn->setMenu(menu);
+void MainWindow::onRunTool(const solero::Executable& exe) {
+    solero::ProgressModal prog(this, "Tool", "Running " + exe.name + "...");
+    prog.show(); prog.pump();
+    auto res = solero::ToolRunner::run(exe, solero::AppConfig::instance().gameDir(),
+                                       solero::AppConfig::instance().stagingDir());
+    prog.close();
+    if (!res.launched) QMessageBox::warning(this, "Tool", res.error);
+    if (auto* p = m_profileMgr->activeProfile()) m_modListView->setProfile(p);
 }
 
-void MainWindow::onAddTool() {
-    solero::ExecutableDialog dlg({}, this);
-    if (dlg.exec() != QDialog::Accepted) return;
-    solero::Executable e = dlg.result();
-    if (e.id.isEmpty()) e.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    m_toolStore->add(e);
+void MainWindow::onAddTool2() {
+    solero::ToolSetupWizard::run(this, m_toolStore);
+    m_leftPane->rebuildToolTabs();
+}
+
+void MainWindow::onEditTool(const QString& id) {
+    for (const auto& t : m_toolStore->tools()) if (t.id == id) {
+        solero::ExecutableDialog dlg(t, this);
+        if (dlg.exec() == QDialog::Accepted) {
+            auto e = dlg.result();
+            e.id = id;
+            m_toolStore->update(e);
+            m_toolStore->save();
+            m_leftPane->rebuildToolTabs();
+        }
+        break;
+    }
+}
+
+void MainWindow::onRemoveTool(const QString& id) {
+    auto ret = QMessageBox::question(this, "Remove Tool",
+        "Remove this tool from Solero? (The downloaded files stay on disk.)",
+        QMessageBox::Yes | QMessageBox::No);
+    if (ret != QMessageBox::Yes) return;
+    m_toolStore->remove(id);
     m_toolStore->save();
-    rebuildToolsMenu();
+    m_leftPane->rebuildToolTabs();
 }

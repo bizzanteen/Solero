@@ -10,6 +10,7 @@
 #include "tools/ToolStore.h"
 #include "tools/ToolRunner.h"
 #include "ui/ExecutableDialog.h"
+#include "ui/LeftPane.h"
 
 class QSplitter;
 class QComboBox;
@@ -45,7 +46,6 @@ private:
     void onDeployToggle();
     void refreshDeployState();   // detect an existing deployment on startup
     void updateDeployButton();   // sync the toggle's text/tooltip to m_deployed
-    void onOpenBethini();
     void onNewProfile();
     void onDeleteProfile();
     void onImportMo2();
@@ -56,8 +56,10 @@ private:
     void onZoomIn();
     void onZoomOut();
     void onZoomReset();
-    void rebuildToolsMenu();
-    void onAddTool();
+    void onRunTool(const solero::Executable& exe);
+    void onAddTool2();
+    void onEditTool(const QString& id);
+    void onRemoveTool(const QString& id);
 
     solero::ProfileManager* m_profileMgr;
     solero::AITransactionLog* m_txLog;
@@ -73,10 +75,9 @@ private:
     solero::RightPane*      m_rightPane = nullptr;
     solero::BottomPanel*    m_bottomPanel = nullptr;
     solero::BethiniWindow*  m_bethiniWindow = nullptr;
-    QTabWidget*             m_centralTabs = nullptr;
+    solero::LeftPane*       m_leftPane = nullptr;
     QLabel* m_aiChangesLabel = nullptr;
     solero::ToolStore* m_toolStore = nullptr;
-    QToolButton* m_toolsBtn = nullptr;
 
     QString profilesRoot() const;
     QString txLogPath() const;

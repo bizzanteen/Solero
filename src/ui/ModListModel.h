@@ -41,8 +41,10 @@ private:
     Profile* m_profile = nullptr;
     QList<int> m_visibleRows; // raw indices into ModList, -1 = Overwrite
     QHash<QString,QStringList> m_depWarnings;
+    mutable QHash<QString,bool> m_emptyCache;
 
     void rebuildVisibleRows();
+    bool isModEmpty(const QString& id) const;
 };
 
 } // namespace solero

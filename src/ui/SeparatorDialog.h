@@ -1,7 +1,7 @@
 #pragma once
 #include <QDialog>
 #include "core/Types.h"
-class QLineEdit; class QPushButton;
+class QLineEdit; class QPushButton; class QListWidget; class QCheckBox;
 namespace solero {
 class SeparatorDialog : public QDialog {
     Q_OBJECT
@@ -12,7 +12,8 @@ private:
     void pickColor();
     ModEntry m_result;
     QLineEdit* m_nameEdit;
-    QLineEdit* m_iconEdit;
+    QListWidget* m_iconList;
+    QCheckBox* m_colorIconCheck;
     QPushButton* m_colorBtn;
 };
 }

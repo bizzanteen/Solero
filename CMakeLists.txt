@@ -7,7 +7,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network Xml Test)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network Xml Svg Test)
 
 # nlohmann/json header-only
 include(FetchContent)
@@ -87,7 +87,7 @@ set(SOLERO_SOURCES
 
 add_executable(solero ${SOLERO_SOURCES})
 target_include_directories(solero PRIVATE src ${CMAKE_BINARY_DIR}/include)
-target_link_libraries(solero PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::Xml libloot::libloot)
+target_link_libraries(solero PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::Xml Qt6::Svg libloot::libloot)
 
 enable_testing()
 add_subdirectory(tests)

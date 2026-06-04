@@ -30,5 +30,6 @@ private:
     void onAddSeparator();
     void onAddSeparatorAt(int visibleRow);
     void onEditSeparator(int visibleRow);
+    void onDeleteSeparator(int visibleRow);
 };
 }

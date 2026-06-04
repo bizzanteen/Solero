@@ -28,6 +28,8 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     setSelectionMode(QAbstractItemView::ExtendedSelection); // Ctrl+click multi-select
     setSelectionBehavior(QAbstractItemView::SelectRows);
     setAlternatingRowColors(true);
+    setIconSize(QSize(20, 20));
+    setEditTriggers(QAbstractItemView::SelectedClicked | QAbstractItemView::EditKeyPressed);
     // Name stretches to fill slack; all other columns are user-resizable.
     auto* hdr = header();
     hdr->setSectionResizeMode(ModListModel::ColEnabled,  QHeaderView::Interactive);
@@ -120,6 +122,7 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         menu.addAction("Edit Separator", [this, row = idx.row()]{ onEditSeparator(row); });
         menu.addAction(entry->collapsed ? "Expand" : "Collapse",
                        [this, row = idx.row()]{ m_model->toggleCollapse(row); });
+        menu.addAction("Delete Separator", [this, row = idx.row()]{ onDeleteSeparator(row); });
         menu.addSeparator();
         menu.addAction("Add Separator Below", [this, row = idx.row()]{ onAddSeparatorAt(row + 1); });
     } else {
@@ -137,6 +140,7 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         menu.addAction(entry->hasFomodChoices ? "Reinstall (FOMOD)..." : "Reinstall...",
                        [this, id = entry->id]{ emit reinstallRequested(id); });
         menu.addAction("Delete Mod...", [this]{ deleteSelectedMods(); });
+        menu.addAction("Rename", [this, row = idx.row()]{ edit(m_model->index(row, ModListModel::ColName)); });
         menu.addSeparator();
         menu.addAction("Add Separator Above", [this, row = idx.row()]{ onAddSeparatorAt(row); });
     }
@@ -157,7 +161,18 @@ void ModListView::onAddSeparatorAt(int visibleRow) {
     sep.type = EntryType::Separator;
     sep.id   = QUuid::createUuid().toString(QUuid::WithoutBraces);
     sep.name = name.trimmed();
-    sep.color = "#555555";
+    static const QStringList kPalette = {"#c0392b","#d35400","#f39c12","#27ae60","#16a085","#2980b9","#8e44ad","#7f8c8d","#2c3e50","#c2185b"};
+    QString last = AppConfig::instance().lastSeparatorColor();
+    QString chosen;
+    if (AppConfig::instance().cycleSeparatorColors()) {
+        int i = kPalette.indexOf(last);
+        chosen = kPalette.at((i + 1) % kPalette.size());  // i==-1 -> index 0
+    } else {
+        chosen = last.isEmpty() ? kPalette.first() : last;
+    }
+    sep.color = chosen;
+    AppConfig::instance().setLastSeparatorColor(chosen);
+    AppConfig::instance().save();
 
     // Insert at the given visible row position in the raw list
     int rawPos = m_model->rawIndexForRow(visibleRow);
@@ -186,6 +201,20 @@ void ModListView::onEditSeparator(int visibleRow) {
         m_model->profile()->save();
         m_model->rebuild();
     }
+}
+
+void ModListView::onDeleteSeparator(int visibleRow) {
+    const auto* entry = m_model->entryAt(visibleRow);
+    if (!entry || entry->type != EntryType::Separator) return;
+    QString id = entry->id;
+    QString name = entry->name;
+    if (QMessageBox::question(this, "Delete Separator",
+            QString("Delete separator \"%1\"? (Mods under it are not deleted.)").arg(name))
+        != QMessageBox::Yes) return;
+    m_model->profile()->modList().remove(id);
+    m_model->profile()->save();
+    m_model->rebuild();
+    emit modsChanged();
 }
 
 void ModListView::deleteSelectedMods() {

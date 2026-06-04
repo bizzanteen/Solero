@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QDirIterator>
 #include "core/AppConfig.h"
+#include "ui/IconUtil.h"
 
 namespace solero {
 
@@ -28,8 +29,19 @@ void ModListModel::setDependencyWarnings(const QHash<QString,QStringList>& w) {
         emit dataChanged(index(0,0), index(rowCount()-1, ColCount-1));
 }
 
+bool ModListModel::isModEmpty(const QString& id) const {
+    auto it = m_emptyCache.constFind(id);
+    if (it != m_emptyCache.constEnd()) return it.value();
+    QDirIterator di(AppConfig::instance().stagingDir() + "/" + id,
+                    QDir::Files, QDirIterator::Subdirectories);
+    bool empty = !di.hasNext();
+    m_emptyCache.insert(id, empty);
+    return empty;
+}
+
 void ModListModel::rebuildVisibleRows() {
     m_visibleRows.clear();
+    m_emptyCache.clear();
     if (!m_profile) return;
 
     bool inCollapsed = false;
@@ -119,7 +131,7 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
             case ColName:
                 if (isSep) {
                     QString arrow = entry.collapsed ? "\xe2\x96\xb6" : "\xe2\x96\xbc";
-                    return QString("%1 %2  %3").arg(arrow, entry.icon, entry.name);
+                    return QString("%1  %2").arg(arrow, entry.name);
                 }
                 return entry.name;
             case ColVersion: return isSep ? QVariant() : entry.version;
@@ -139,8 +151,16 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
         return m_depWarnings.value(entry.id).join("\n");
     if (role == Qt::CheckStateRole && idx.column() == ColEnabled && !isSep)
         return entry.enabled ? Qt::Checked : Qt::Unchecked;
+    if (role == Qt::DecorationRole && isSep && idx.column() == ColName && !entry.icon.isEmpty()) {
+        QColor tint = (entry.iconColored && !entry.color.isEmpty())
+                          ? QColor(entry.color) : QColor(Qt::white);
+        return renderSvgIcon(entry.icon, tint, 20);
+    }
     if (role == Qt::FontRole && isSep) {
         QFont f; f.setBold(true); return f;
+    }
+    if (role == Qt::FontRole && !isSep && entry.type == EntryType::Mod && isModEmpty(entry.id)) {
+        QFont f; f.setItalic(true); return f;
     }
     if (role == Qt::BackgroundRole && isSep && !entry.color.isEmpty())
         return QColor(entry.color).lighter(170);
@@ -167,6 +187,19 @@ bool ModListModel::setData(const QModelIndex& idx, const QVariant& value, int ro
         emit modsChanged();
         return true;
     }
+    if (role == Qt::EditRole && idx.column() == ColName) {
+        const auto& cur = m_profile->modList().at(raw);
+        if (cur.type != EntryType::Mod) return false;
+        QString nn = value.toString().trimmed();
+        if (nn.isEmpty()) return false;
+        ModEntry e = cur;
+        e.name = nn;
+        m_profile->modList().update(e.id, e);
+        m_profile->save();
+        emit dataChanged(idx, idx);
+        emit modsChanged();
+        return true;
+    }
     return false;
 }
 
@@ -190,6 +223,8 @@ Qt::ItemFlags ModListModel::flags(const QModelIndex& idx) const {
         const auto& entry = m_profile->modList().at(raw);
         if (entry.type == EntryType::Mod && idx.column() == ColEnabled)
             f |= Qt::ItemIsUserCheckable;
+        if (entry.type == EntryType::Mod && idx.column() == ColName)
+            f |= Qt::ItemIsEditable;
     }
     return f;
 }

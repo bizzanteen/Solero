@@ -31,7 +31,8 @@ struct ModEntry {
 
     // Separator fields
     QString color;       // hex e.g. "#c0392b"
-    QString icon;        // emoji or resource name
+    QString icon;        // icon resource path e.g. ":/icons/separators/combat.svg", or empty
+    bool iconColored = false; // false = white icon; true = tint to separator colour
     bool collapsed = false;
 };
 

@@ -1,5 +1,6 @@
 #pragma once
 #include <QDialog>
+#include <QPixmap>
 #include "fomod/FomodEngine.h"
 
 class QLabel;
@@ -14,6 +15,10 @@ public:
     FomodEngine::Selection selection() const { return m_selection; }
     QList<FomodFile> result() const;
 
+protected:
+    void resizeEvent(QResizeEvent*) override;
+    bool eventFilter(QObject* obj, QEvent* e) override;
+
 private:
     void rebuildVisibleSteps();
     void showStep(int visibleIdx);
@@ -21,6 +26,7 @@ private:
     void updateNavButtons();
     void onNext();
     void onBack();
+    void setImage(const QString& imagePath);
 
     FomodEngine* m_engine;
     QString m_extractDir;
@@ -34,6 +40,7 @@ private:
     QLabel* m_description;
     QPushButton* m_backBtn;
     QPushButton* m_nextBtn;
+    QPixmap m_currentPixmap;
 };
 
 } // namespace solero

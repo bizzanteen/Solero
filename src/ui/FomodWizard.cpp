@@ -11,6 +11,8 @@
 #include <QPixmap>
 #include <QFile>
 #include <QDir>
+#include <QResizeEvent>
+#include <QEvent>
 
 namespace solero {
 
@@ -121,13 +123,13 @@ void FomodWizard::showStep(int visibleIdx) {
             btn->setChecked(checked);
             m_selection.insert(key, checked);
 
+            btn->setProperty("fomodImg", opt.imagePath);
+            btn->setProperty("fomodDesc", opt.description);
+            btn->setAttribute(Qt::WA_Hover, true);
+            btn->installEventFilter(this);
             connect(btn, &QAbstractButton::pressed, this, [this, opt]{
                 if (!opt.description.isEmpty()) m_description->setText(opt.description);
-                QString imgFull = opt.imagePath.isEmpty() ? QString() : resolveCI(m_extractDir, opt.imagePath);
-                if (!imgFull.isEmpty()) {
-                    QPixmap pm(imgFull);
-                    m_image->setPixmap(pm.scaled(m_image->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
-                } else m_image->clear();
+                setImage(opt.imagePath);
             });
             connect(btn, &QAbstractButton::toggled, this, [this, key](bool on){
                 m_selection.insert(key, on);
@@ -164,6 +166,30 @@ void FomodWizard::onBack() {
 QList<FomodFile> FomodWizard::result() const {
     auto present = [](const QString&){ return false; };
     return m_engine->collectFiles(m_selection, present);
+}
+
+void FomodWizard::setImage(const QString& imagePath) {
+    QString full = imagePath.isEmpty() ? QString() : resolveCI(m_extractDir, imagePath);
+    if (full.isEmpty()) { m_currentPixmap = QPixmap(); m_image->clear(); return; }
+    m_currentPixmap = QPixmap(full);
+    if (m_currentPixmap.isNull()) { m_image->clear(); return; }
+    m_image->setPixmap(m_currentPixmap.scaled(m_image->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+}
+
+void FomodWizard::resizeEvent(QResizeEvent* e) {
+    QDialog::resizeEvent(e);
+    if (!m_currentPixmap.isNull())
+        m_image->setPixmap(m_currentPixmap.scaled(m_image->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+}
+
+bool FomodWizard::eventFilter(QObject* obj, QEvent* e) {
+    if (e->type() == QEvent::Enter) {
+        QString desc = obj->property("fomodDesc").toString();
+        QString img  = obj->property("fomodImg").toString();
+        if (!desc.isEmpty()) m_description->setText(desc);
+        setImage(img);
+    }
+    return QDialog::eventFilter(obj, e);
 }
 
 } // namespace solero

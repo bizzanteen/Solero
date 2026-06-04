@@ -76,7 +76,8 @@ InstallResult ModInstaller::installArchive(const QString& archivePath,
     return r;
 }
 
-InstallPrep ModInstaller::prepare(const QString& archivePath) {
+InstallPrep ModInstaller::prepare(const QString& archivePath,
+                                  const std::function<void(int)>& onProgress) {
     InstallPrep prep;
     if (!ArchiveTool::sevenZipAvailable()) { prep.errorMessage = "7z is not installed."; return prep; }
     bool listed = false;
@@ -98,7 +99,7 @@ InstallPrep ModInstaller::prepare(const QString& archivePath) {
         // If that produced no ModuleConfig, fall back to full extract.
         // (handled by the locate loop below)
     } else {
-        if (!ArchiveTool::extract(archivePath, prep.extractDir)) { prep.errorMessage = "Extraction failed."; return prep; }
+        if (!ArchiveTool::extract(archivePath, prep.extractDir, onProgress)) { prep.errorMessage = "Extraction failed."; return prep; }
     }
 
     if (prep.layout.isFomod) {
@@ -135,15 +136,16 @@ void ModInstaller::extractSubpaths(InstallPrep& prep, const QStringList& subpath
     QProcess p; p.start(bin, args); p.waitForFinished(120000);
 }
 
-bool ModInstaller::extractFull(InstallPrep& prep) {
-    return ArchiveTool::extract(prep.archivePath, prep.extractDir);
+bool ModInstaller::extractFull(InstallPrep& prep, const std::function<void(int)>& onProgress) {
+    return ArchiveTool::extract(prep.archivePath, prep.extractDir, onProgress);
 }
 
 InstallResult ModInstaller::stageSimple(InstallPrep& prep, const QString& stagingRoot,
-                                        const QString& existingModId) {
+                                        const QString& existingModId,
+                                        const std::function<void(int)>& onProgress) {
     InstallResult r;
     if (!prep.ok) { r.errorMessage = prep.errorMessage; return r; }
-    if (prep.layout.isFomod) extractFull(prep); // wizard only extracted fomod/; rare parse-fail fallback needs all files
+    if (prep.layout.isFomod) extractFull(prep, onProgress); // wizard only extracted fomod/; rare parse-fail fallback needs all files
     r.modId = existingModId.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : existingModId;
     r.modName = prep.modName;
     r.isFomod = prep.layout.isFomod;
@@ -168,10 +170,11 @@ InstallResult ModInstaller::stageSimple(InstallPrep& prep, const QString& stagin
 
 InstallResult ModInstaller::stageFomod(InstallPrep& prep, const QString& stagingRoot,
                                        const QList<FomodFile>& files,
-                                       const QString& existingModId) {
+                                       const QString& existingModId,
+                                       const std::function<void(int)>& onProgress) {
     InstallResult r;
     if (!prep.ok) { r.errorMessage = prep.errorMessage; return r; }
-    extractFull(prep); // wizard only extracted fomod/; now get the rest
+    extractFull(prep, onProgress); // wizard only extracted fomod/; now get the rest
     r.modId = existingModId.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : existingModId;
     r.modName = prep.modName;
     r.isFomod = true;

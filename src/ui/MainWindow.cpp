@@ -390,7 +390,7 @@ void MainWindow::installFromArchive(const QString& archive) {
     auto extractProg = std::make_unique<solero::ProgressModal>(this, "Install", "Extracting archive...");
     extractProg->show(); extractProg->pump();
 
-    auto prep = solero::ModInstaller::prepare(archive);
+    auto prep = solero::ModInstaller::prepare(archive, [&](int pct){ extractProg->setProgress(pct, 100); });
     if (!prep.ok) { extractProg->close(); QMessageBox::critical(this, "Install Failed", prep.errorMessage); return; }
 
     const QString staging = solero::AppConfig::instance().stagingDir();
@@ -404,7 +404,8 @@ void MainWindow::installFromArchive(const QString& archive) {
             QMessageBox::warning(this, "FOMOD", "Could not parse the FOMOD config; installing all files.");
             solero::ProgressModal stageProg(this, "Install", "Installing files...");
             stageProg.show(); stageProg.pump();
-            result = solero::ModInstaller::stageSimple(prep, staging);
+            result = solero::ModInstaller::stageSimple(prep, staging, QString(),
+                [&](int pct){ stageProg.setProgress(pct, 100); });
             stageProg.close();
         } else {
             // Extract image directories referenced by the FOMOD so the wizard can show them.
@@ -424,7 +425,8 @@ void MainWindow::installFromArchive(const QString& archive) {
             if (wizard.exec() != QDialog::Accepted) { statusBar()->showMessage("Install cancelled."); return; }
             solero::ProgressModal stageProg(this, "Install", "Installing files...");
             stageProg.show(); stageProg.pump();
-            result = solero::ModInstaller::stageFomod(prep, staging, wizard.result());
+            result = solero::ModInstaller::stageFomod(prep, staging, wizard.result(), QString(),
+                [&](int pct){ stageProg.setProgress(pct, 100); });
             stageProg.close();
             const auto sel = wizard.selection();
             const auto& mod = engine.module();
@@ -444,7 +446,8 @@ void MainWindow::installFromArchive(const QString& archive) {
         extractProg->close();
         solero::ProgressModal stageProg(this, "Install", "Installing files...");
         stageProg.show(); stageProg.pump();
-        result = solero::ModInstaller::stageSimple(prep, staging);
+        result = solero::ModInstaller::stageSimple(prep, staging, QString(),
+            [&](int pct){ stageProg.setProgress(pct, 100); });
         stageProg.close();
     }
 
@@ -498,7 +501,7 @@ void MainWindow::onReinstallMod(const QString& modId) {
     auto extractProg = std::make_unique<solero::ProgressModal>(this, "Reinstall", "Extracting archive...");
     extractProg->show(); extractProg->pump();
 
-    auto prep = solero::ModInstaller::prepare(archive);
+    auto prep = solero::ModInstaller::prepare(archive, [&](int pct){ extractProg->setProgress(pct, 100); });
     if (!prep.ok) { extractProg->close(); QMessageBox::critical(this, "Reinstall Failed", prep.errorMessage); return; }
 
     const QString staging = solero::AppConfig::instance().stagingDir();
@@ -511,7 +514,8 @@ void MainWindow::onReinstallMod(const QString& modId) {
             extractProg->close();
             solero::ProgressModal stageProg(this, "Reinstall", "Installing files...");
             stageProg.show(); stageProg.pump();
-            result = solero::ModInstaller::stageSimple(prep, staging, modId);
+            result = solero::ModInstaller::stageSimple(prep, staging, modId,
+                [&](int pct){ stageProg.setProgress(pct, 100); });
             stageProg.close();
         } else {
             // Extract image directories referenced by the FOMOD so the wizard can show them.
@@ -531,7 +535,8 @@ void MainWindow::onReinstallMod(const QString& modId) {
             if (wizard.exec() != QDialog::Accepted) { statusBar()->showMessage("Reinstall cancelled."); return; }
             solero::ProgressModal stageProg(this, "Reinstall", "Installing files...");
             stageProg.show(); stageProg.pump();
-            result = solero::ModInstaller::stageFomod(prep, staging, wizard.result(), modId);
+            result = solero::ModInstaller::stageFomod(prep, staging, wizard.result(), modId,
+                [&](int pct){ stageProg.setProgress(pct, 100); });
             stageProg.close();
             const auto sel = wizard.selection();
             const auto& mod = engine.module();
@@ -549,7 +554,8 @@ void MainWindow::onReinstallMod(const QString& modId) {
         extractProg->close();
         solero::ProgressModal stageProg(this, "Reinstall", "Installing files...");
         stageProg.show(); stageProg.pump();
-        result = solero::ModInstaller::stageSimple(prep, staging, modId);
+        result = solero::ModInstaller::stageSimple(prep, staging, modId,
+            [&](int pct){ stageProg.setProgress(pct, 100); });
         stageProg.close();
     }
 

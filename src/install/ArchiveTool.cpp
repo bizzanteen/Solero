@@ -3,6 +3,8 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QDir>
+#include <QEventLoop>
+#include <QRegularExpression>
 
 namespace solero {
 
@@ -48,13 +50,26 @@ QStringList ArchiveTool::listEntries(const QString& archivePath, bool* ok) {
     return result;
 }
 
-bool ArchiveTool::extract(const QString& archivePath, const QString& destDir) {
+bool ArchiveTool::extract(const QString& archivePath, const QString& destDir,
+                          const std::function<void(int)>& onProgress) {
     QString bin = sevenZipBinary();
     if (bin.isEmpty()) return false;
     QDir().mkpath(destDir);
     QProcess proc;
-    proc.start(bin, {"x", archivePath, "-o" + destDir, "-y", "-bd"});
-    if (!proc.waitForFinished(600000)) return false;
+    QEventLoop loop;
+    static const QRegularExpression rePct("(\\d+)%");
+    QObject::connect(&proc, &QProcess::readyReadStandardOutput, &proc, [&]{
+        QString chunk = QString::fromLatin1(proc.readAllStandardOutput());
+        auto it = rePct.globalMatch(chunk);
+        int last = -1;
+        while (it.hasNext()) last = it.next().captured(1).toInt();
+        if (last >= 0 && onProgress) onProgress(last);
+    });
+    QObject::connect(&proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                     &loop, &QEventLoop::quit);
+    proc.start(bin, {"x", archivePath, "-o" + destDir, "-y", "-bsp1"});
+    if (!proc.waitForStarted(15000)) return false;
+    loop.exec();
     return proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
 }
 

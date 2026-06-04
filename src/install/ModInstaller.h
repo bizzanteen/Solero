@@ -4,6 +4,7 @@
 #include <QStringList>
 #include <QList>
 #include <memory>
+#include <functional>
 
 class QTemporaryDir;
 
@@ -35,12 +36,15 @@ public:
     static InstallResult installArchive(const QString& archivePath,
                                         const QString& stagingRoot);
 
-    static InstallPrep prepare(const QString& archivePath);
+    static InstallPrep prepare(const QString& archivePath,
+                               const std::function<void(int)>& onProgress = {});
     static InstallResult stageSimple(InstallPrep& prep, const QString& stagingRoot,
-                                     const QString& existingModId = {});
+                                     const QString& existingModId = {},
+                                     const std::function<void(int)>& onProgress = {});
     static InstallResult stageFomod(InstallPrep& prep, const QString& stagingRoot,
                                     const QList<FomodFile>& files,
-                                    const QString& existingModId = {});
+                                    const QString& existingModId = {},
+                                    const std::function<void(int)>& onProgress = {});
     static void extractSubpaths(InstallPrep& prep, const QStringList& subpaths);
 private:
     static QString baseName(const QString& archivePath);
@@ -49,7 +53,7 @@ private:
                                const InstallLayout& layout);
     static QString resolveCaseInsensitive(const QString& base, const QString& rel);
     static bool copyDirInto(const QString& srcDir, const QString& dstDir);
-    static bool extractFull(InstallPrep& prep);
+    static bool extractFull(InstallPrep& prep, const std::function<void(int)>& onProgress = {});
 };
 
 } // namespace solero

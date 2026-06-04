@@ -10,8 +10,25 @@
 #include <QScrollArea>
 #include <QPixmap>
 #include <QFile>
+#include <QDir>
 
 namespace solero {
+
+// Resolve a possibly wrong-case, backslash-style relative path under base. Returns "" if not found.
+static QString resolveCI(const QString& base, const QString& relRaw) {
+    QString rel = relRaw; rel.replace('\\', '/');
+    QStringList parts = rel.split('/', Qt::SkipEmptyParts);
+    QString cur = base;
+    for (const QString& part : parts) {
+        QDir d(cur);
+        QString match;
+        const auto entries = d.entryList(QDir::AllEntries | QDir::NoDotAndDotDot);
+        for (const QString& e : entries) if (e.compare(part, Qt::CaseInsensitive) == 0) { match = e; break; }
+        if (match.isEmpty()) return {};
+        cur = cur + "/" + match;
+    }
+    return cur;
+}
 
 FomodWizard::FomodWizard(FomodEngine* engine, const QString& extractDir, QWidget* parent)
     : QDialog(parent), m_engine(engine), m_extractDir(extractDir) {
@@ -106,8 +123,8 @@ void FomodWizard::showStep(int visibleIdx) {
 
             connect(btn, &QAbstractButton::pressed, this, [this, opt]{
                 if (!opt.description.isEmpty()) m_description->setText(opt.description);
-                QString imgFull = m_extractDir + "/" + opt.imagePath;
-                if (!opt.imagePath.isEmpty() && QFile::exists(imgFull)) {
+                QString imgFull = opt.imagePath.isEmpty() ? QString() : resolveCI(m_extractDir, opt.imagePath);
+                if (!imgFull.isEmpty()) {
                     QPixmap pm(imgFull);
                     m_image->setPixmap(pm.scaled(m_image->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
                 } else m_image->clear();

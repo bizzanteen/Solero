@@ -21,6 +21,7 @@ struct InstallResult {
 struct InstallPrep {
     std::shared_ptr<class QTemporaryDir> tempDir;
     QString extractDir;
+    QString archivePath;
     QString modName;
     InstallLayout layout;
     QString fomodConfigPath;
@@ -44,6 +45,7 @@ private:
                                const InstallLayout& layout);
     static QString resolveCaseInsensitive(const QString& base, const QString& rel);
     static bool copyDirInto(const QString& srcDir, const QString& dstDir);
+    static bool extractFull(InstallPrep& prep);
 };
 
 } // namespace solero

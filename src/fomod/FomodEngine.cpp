@@ -28,6 +28,8 @@ static QList<FomodFile> parseFiles(const QDomElement& filesEl) {
         FomodFile f;
         f.source = e.attribute("source");
         f.destination = e.attribute("destination", e.attribute("source"));
+        f.source.replace('\\', '/');
+        f.destination.replace('\\', '/');
         f.isFolder = (tag == "folder");
         f.priority = e.attribute("priority", "0").toInt();
         out.append(f);
@@ -74,7 +76,7 @@ bool FomodEngine::load(const QString& path) {
                 opt.name = p.attribute("name");
                 opt.description = p.firstChildElement("description").text().trimmed();
                 QDomElement img = p.firstChildElement("image");
-                if (!img.isNull()) opt.imagePath = img.attribute("path");
+                if (!img.isNull()) { opt.imagePath = img.attribute("path"); opt.imagePath.replace('\\', '/'); }
                 opt.files = parseFiles(p.firstChildElement("files"));
                 QDomElement cf = p.firstChildElement("conditionFlags");
                 for (QDomElement fl = cf.firstChildElement("flag"); !fl.isNull();

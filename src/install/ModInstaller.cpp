@@ -8,6 +8,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QTemporaryDir>
+#include <QProcess>
+#include <QStandardPaths>
 
 namespace solero {
 
@@ -83,29 +85,53 @@ InstallPrep ModInstaller::prepare(const QString& archivePath) {
 
     prep.layout = DataDirDetector::detect(entries);
     prep.modName = baseName(archivePath);
+    prep.archivePath = archivePath;
     prep.tempDir = std::make_shared<QTemporaryDir>();
     if (!prep.tempDir->isValid()) { prep.errorMessage = "No temp dir."; return prep; }
     prep.extractDir = prep.tempDir->path();
-    if (!ArchiveTool::extract(archivePath, prep.extractDir)) { prep.errorMessage = "Extraction failed."; return prep; }
+    if (prep.layout.isFomod) {
+        // Fast path: extract only the fomod/ folder (config + images) for the wizard.
+        QString bin = QStandardPaths::findExecutable("7z");
+        if (bin.isEmpty()) bin = QStandardPaths::findExecutable("7za");
+        QProcess p; p.start(bin, {"x", archivePath, "-o" + prep.extractDir, "-y", "-bd", "fomod", "-r"});
+        p.waitForFinished(120000);
+        // If that produced no ModuleConfig, fall back to full extract.
+        // (handled by the locate loop below)
+    } else {
+        if (!ArchiveTool::extract(archivePath, prep.extractDir)) { prep.errorMessage = "Extraction failed."; return prep; }
+    }
 
     if (prep.layout.isFomod) {
-        QDirIterator it(prep.extractDir, QDir::Files, QDirIterator::Subdirectories);
-        while (it.hasNext()) {
-            QString f = it.next();
-            if (f.endsWith("/ModuleConfig.xml", Qt::CaseInsensitive)) {
-                if (QFileInfo(f).dir().dirName().compare("fomod", Qt::CaseInsensitive) == 0) {
-                    prep.fomodConfigPath = f; break;
+        auto locate = [&]() {
+            QDirIterator it(prep.extractDir, QDir::Files, QDirIterator::Subdirectories);
+            while (it.hasNext()) {
+                QString f = it.next();
+                if (f.endsWith("/ModuleConfig.xml", Qt::CaseInsensitive)) {
+                    if (QFileInfo(f).dir().dirName().compare("fomod", Qt::CaseInsensitive) == 0) {
+                        prep.fomodConfigPath = f; return;
+                    }
                 }
             }
+        };
+        locate();
+        if (prep.fomodConfigPath.isEmpty()) {
+            // Fast path missed it; fall back to a full extraction.
+            if (!ArchiveTool::extract(archivePath, prep.extractDir)) { prep.errorMessage = "Extraction failed."; return prep; }
+            locate();
         }
     }
     prep.ok = true;
     return prep;
 }
 
+bool ModInstaller::extractFull(InstallPrep& prep) {
+    return ArchiveTool::extract(prep.archivePath, prep.extractDir);
+}
+
 InstallResult ModInstaller::stageSimple(InstallPrep& prep, const QString& stagingRoot) {
     InstallResult r;
     if (!prep.ok) { r.errorMessage = prep.errorMessage; return r; }
+    if (prep.layout.isFomod) extractFull(prep); // wizard only extracted fomod/; rare parse-fail fallback needs all files
     r.modId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     r.modName = prep.modName;
     r.isFomod = prep.layout.isFomod;
@@ -122,6 +148,7 @@ InstallResult ModInstaller::stageFomod(InstallPrep& prep, const QString& staging
                                        const QList<FomodFile>& files) {
     InstallResult r;
     if (!prep.ok) { r.errorMessage = prep.errorMessage; return r; }
+    extractFull(prep); // wizard only extracted fomod/; now get the rest
     r.modId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     r.modName = prep.modName;
     r.isFomod = true;
@@ -136,11 +163,15 @@ InstallResult ModInstaller::stageFomod(InstallPrep& prep, const QString& staging
             QString found = resolveCaseInsensitive(fomodBase, f.source);
             if (!found.isEmpty()) src = found;
         }
-        QString destRel = f.destination.isEmpty() ? f.source : f.destination;
-        QString dst = modDir + "/Data/" + destRel;
-        if (f.isFolder || QFileInfo(src).isDir()) {
+        bool isDir = f.isFolder || QFileInfo(src).isDir();
+        if (isDir) {
+            // Folder: copy CONTENTS into Data/<destination> (empty destination => Data root).
+            QString dst = modDir + "/Data" + (f.destination.isEmpty() ? QString() : ("/" + f.destination));
             copyDirInto(src, dst);
         } else {
+            // File: destination defaults to source path (relative to Data).
+            QString destRel = f.destination.isEmpty() ? f.source : f.destination;
+            QString dst = modDir + "/Data/" + destRel;
             QDir().mkpath(QFileInfo(dst).path());
             QFile::remove(dst);
             QFile::copy(src, dst);

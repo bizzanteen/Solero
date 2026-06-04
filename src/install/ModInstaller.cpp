@@ -154,7 +154,6 @@ InstallResult ModInstaller::stageSimple(InstallPrep& prep, const QString& stagin
         // Reinstall: wipe the previous staged files (keep the dir).
         QDir md(modDir);
         for (const QString& e : md.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot)) {
-            if (e == ".solero-fomod-choices.json") continue; // overwritten later by the UI
             QString full = modDir + "/" + e;
             if (QFileInfo(full).isDir()) QDir(full).removeRecursively();
             else QFile::remove(full);
@@ -183,7 +182,6 @@ InstallResult ModInstaller::stageFomod(InstallPrep& prep, const QString& staging
         // Reinstall: wipe the previous staged files (keep the dir).
         QDir md(modDir);
         for (const QString& e : md.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot)) {
-            if (e == ".solero-fomod-choices.json") continue; // overwritten later by the UI
             QString full = modDir + "/" + e;
             if (QFileInfo(full).isDir()) QDir(full).removeRecursively();
             else QFile::remove(full);

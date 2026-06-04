@@ -501,7 +501,9 @@ void MainWindow::installFromArchive(const QString& archive) {
         root["installer_version"] = "1.0";
         root["installed_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
         root["steps"] = choiceLog;
-        QString cp = staging + "/" + result.modId + "/.solero-fomod-choices.json";
+        QString fomodDir = solero::AppConfig::dataRoot() + "/fomod-choices";
+        QDir().mkpath(fomodDir);
+        QString cp = fomodDir + "/" + result.modId + ".json";
         QFile f(cp);
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     }
@@ -611,7 +613,10 @@ void MainWindow::onReinstallMod(const QString& modId) {
         root["installer_version"] = "1.0";
         root["installed_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
         root["steps"] = choiceLog;
-        QFile f(staging + "/" + modId + "/.solero-fomod-choices.json");
+        QString fomodDir = solero::AppConfig::dataRoot() + "/fomod-choices";
+        QDir().mkpath(fomodDir);
+        QString cp = fomodDir + "/" + modId + ".json";
+        QFile f(cp);
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     }
     existing->hasFomodChoices = !choiceLog.isEmpty();
@@ -759,7 +764,14 @@ void MainWindow::showRunLock(const QString& toolName) {
         m_runLockLabel = new QLabel(m_runOverlay);
         m_runLockLabel->setAlignment(Qt::AlignCenter);
         m_runLockLabel->setStyleSheet("color:white; font-size:16px; background: transparent;");
-        lay->addStretch(); lay->addWidget(m_runLockLabel); lay->addStretch();
+        m_unlockBtn = new QPushButton("Unlock Solero", m_runOverlay);
+        m_unlockBtn->setToolTip("The tool keeps running in the background.");
+        connect(m_unlockBtn, &QPushButton::clicked, this, [this] { hideRunLock(); });
+        lay->addStretch();
+        lay->addWidget(m_runLockLabel, 0, Qt::AlignHCenter);
+        lay->addSpacing(12);
+        lay->addWidget(m_unlockBtn, 0, Qt::AlignHCenter);
+        lay->addStretch();
     }
     m_runLockLabel->setText("\xf0\x9f\x94\x92  " + toolName + " is running.\nSolero is locked until it closes.");
     m_runOverlay->setGeometry(rect());

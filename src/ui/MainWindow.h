@@ -18,6 +18,7 @@ class QToolButton;
 class QLabel;
 class QTabWidget;
 class QMenu;
+class QPushButton;
 
 namespace solero {
 class ModListView;
@@ -93,6 +94,7 @@ private:
 
     QWidget* m_runOverlay = nullptr;
     QLabel* m_runLockLabel = nullptr;
+    QPushButton* m_unlockBtn = nullptr;
 
     QString profilesRoot() const;
     QString txLogPath() const;

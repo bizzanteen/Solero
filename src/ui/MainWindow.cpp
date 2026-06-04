@@ -273,6 +273,7 @@ void MainWindow::switchProfile(const QString& name) {
         statusBar()->showMessage(QString("Loaded profile: %1").arg(name));
     }
     if (prog) prog->close();
+    updatePluginNotice();
 }
 
 void MainWindow::refreshProfileCombo() {
@@ -337,10 +338,12 @@ void MainWindow::onDeployToggle() {
         prog.close();
         m_deployed = false;
         m_deployDirty = false;
+        if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
         statusBar()->showMessage("Undeployed.");
     }
 
     updateDeployButton();
+    updatePluginNotice();
 }
 
 void MainWindow::updateDeployButton() {
@@ -357,10 +360,25 @@ void MainWindow::updateDeployButton() {
     }
 }
 
+void MainWindow::updatePluginNotice() {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) { m_rightPane->hidePluginNotice(); return; }
+    bool hasEnabledMods = false;
+    for (const auto& m : profile->modList())
+        if (m.type == solero::EntryType::Mod && m.enabled) { hasEnabledMods = true; break; }
+    if (m_deployed && m_deployDirty)
+        m_rightPane->showPluginNotice("\xe2\x9a\xa0 Mod changes haven't been deployed - redeploy to update this plugin list.");
+    else if (!m_deployed && hasEnabledMods)
+        m_rightPane->showPluginNotice("\xe2\x9a\xa0 Mods aren't deployed yet - deploy to update this plugin list.");
+    else
+        m_rightPane->hidePluginNotice();
+}
+
 void MainWindow::onModsChanged() {
     auto* profile = m_profileMgr->activeProfile();
     if (profile) m_rightPane->refreshPlugins(profile);  // plugins follow enabled mods
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+    updatePluginNotice();
 }
 
 void MainWindow::onInstallMod() {
@@ -482,6 +500,7 @@ void MainWindow::installFromArchive(const QString& archive) {
     if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     m_rightPane->downloadsTab()->refresh();
+    updatePluginNotice();
     statusBar()->showMessage(QString("Installed: %1").arg(result.modName));
 }
 
@@ -581,6 +600,7 @@ void MainWindow::onReinstallMod(const QString& modId) {
     m_modListView->setProfile(profile);
     if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+    updatePluginNotice();
     statusBar()->showMessage("Reinstalled: " + existing->name);
 }
 
@@ -595,6 +615,7 @@ void MainWindow::refreshDeployState() {
     }
     m_deployDirty = false;
     updateDeployButton();
+    updatePluginNotice();
 }
 
 void MainWindow::onNewProfile() {

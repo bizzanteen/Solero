@@ -3,6 +3,8 @@
 #include "deploy/ConflictIndex.h"
 #include "core/Profile.h"
 
+class QLabel;
+
 namespace solero {
 class PluginListView;
 class DataTab;
@@ -20,6 +22,8 @@ public:
     void refreshPlugins(Profile* profile);
     void setConflictIndex(const ConflictIndex& index);
     DownloadsTab* downloadsTab() const { return m_downloadsTab; }
+    void showPluginNotice(const QString& text);
+    void hidePluginNotice();
 
 public slots:
     void onSelectionChanged(const QStringList& ids);
@@ -27,6 +31,7 @@ public slots:
 
 private:
     PluginListView* m_pluginsTab;
+    QLabel*         m_pluginNotice = nullptr;
     DataTab*        m_dataTab;
     ConflictsTab*   m_conflictsTab;
     DownloadsTab*   m_downloadsTab;

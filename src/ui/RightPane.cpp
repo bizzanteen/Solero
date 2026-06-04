@@ -5,6 +5,9 @@
 #include "DownloadsTab.h"
 #include "core/AppConfig.h"
 #include <QDir>
+#include <QLabel>
+#include <QVBoxLayout>
+#include <QWidget>
 
 namespace solero {
 
@@ -12,11 +15,32 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     m_pluginsTab   = new PluginListView(this);
     m_dataTab      = new DataTab(this);
     m_conflictsTab = new ConflictsTab(this);
-    addTab(m_pluginsTab,   "Plugins");
+
+    auto* pluginsContainer = new QWidget(this);
+    auto* pluginsLayout = new QVBoxLayout(pluginsContainer);
+    pluginsLayout->setContentsMargins(0, 0, 0, 0);
+    pluginsLayout->setSpacing(0);
+    m_pluginNotice = new QLabel(pluginsContainer);
+    m_pluginNotice->setWordWrap(true);
+    m_pluginNotice->setStyleSheet("background:#5a4a1e; color:#ffe08a; padding:4px;");
+    m_pluginNotice->hide();
+    pluginsLayout->addWidget(m_pluginNotice);
+    pluginsLayout->addWidget(m_pluginsTab);
+
+    addTab(pluginsContainer, "Plugins");
     addTab(m_dataTab,      "Data");
     addTab(m_conflictsTab, "Conflicts");
     m_downloadsTab = new DownloadsTab(this);
     addTab(m_downloadsTab, "Downloads");
+}
+
+void RightPane::showPluginNotice(const QString& text) {
+    m_pluginNotice->setText(text);
+    m_pluginNotice->show();
+}
+
+void RightPane::hidePluginNotice() {
+    m_pluginNotice->hide();
 }
 
 void RightPane::setProfile(Profile* profile) {

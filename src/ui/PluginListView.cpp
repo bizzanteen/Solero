@@ -3,18 +3,46 @@
 #include "install/PluginScanner.h"
 #include "core/AppConfig.h"
 #include <QHeaderView>
+#include <QSortFilterProxyModel>
 #include <QSet>
 namespace solero {
 PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
     m_model = new PluginListModel(this);
+    m_proxy = new QSortFilterProxyModel(this);
     setModel(m_model);
     setDragDropMode(QAbstractItemView::InternalMove);
     setSelectionBehavior(QAbstractItemView::SelectRows);
+    horizontalHeader()->setSectionsClickable(true);
+    horizontalHeader()->setSortIndicatorShown(true);
+    horizontalHeader()->setSortIndicator(PluginListModel::ColPriority, Qt::AscendingOrder);
+    applyHeaderLayout();
+    verticalHeader()->hide();
+    connect(horizontalHeader(), &QHeaderView::sortIndicatorChanged,
+            this, &PluginListView::onSortChanged);
+}
+
+void PluginListView::applyHeaderLayout() {
     horizontalHeader()->setSectionResizeMode(PluginListModel::ColName, QHeaderView::Stretch);
     horizontalHeader()->resizeSection(PluginListModel::ColEnabled, 28);
     horizontalHeader()->resizeSection(PluginListModel::ColPriority, 40);
     horizontalHeader()->resizeSection(PluginListModel::ColFlags, 50);
-    verticalHeader()->hide();
+}
+
+void PluginListView::onSortChanged(int col, Qt::SortOrder order) {
+    if (col == PluginListModel::ColPriority) {
+        if (model() != m_model) { setModel(m_model); applyHeaderLayout(); }
+        setDragDropMode(QAbstractItemView::InternalMove);
+        setDragEnabled(true); setAcceptDrops(true);
+    } else {
+        if (model() != m_proxy) {
+            m_proxy->setSourceModel(m_model);
+            setModel(m_proxy);
+            applyHeaderLayout();
+        }
+        m_proxy->sort(col, order);
+        setDragDropMode(QAbstractItemView::NoDragDrop);
+        setDragEnabled(false); setAcceptDrops(false);
+    }
 }
 void PluginListView::setProfile(Profile* profile) { m_model->setProfile(profile); }
 

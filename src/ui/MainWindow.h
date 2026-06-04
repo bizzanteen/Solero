@@ -46,6 +46,7 @@ private:
     void onDeployToggle();
     void refreshDeployState();   // detect an existing deployment on startup
     void updateDeployButton();   // sync the toggle's text/tooltip to m_deployed
+    void updatePluginNotice();   // show/hide the Plugins-tab staleness notice
     void onNewProfile();
     void onDeleteProfile();
     void onImportMo2();

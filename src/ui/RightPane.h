@@ -21,6 +21,7 @@ public:
 
 public slots:
     void onSelectionChanged(const QStringList& ids);
+    void showDataFor(const QString& modId);
 
 private:
     PluginListView* m_pluginsTab;

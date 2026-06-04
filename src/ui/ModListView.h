@@ -17,6 +17,7 @@ signals:
     void modsSelected(const QStringList& ids);
     void reinstallRequested(const QString& modId);
     void modsChanged();
+    void modActivated(const QString& modId);
 
 protected:
     void contextMenuEvent(QContextMenuEvent* event) override;

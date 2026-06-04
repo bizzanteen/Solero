@@ -76,6 +76,8 @@ void ModListView::mouseDoubleClickEvent(QMouseEvent* event) {
         m_model->toggleCollapse(idx.row());
         return;
     }
+    // Mod (or Overwrite): activate -> right pane shows its Data.
+    emit modActivated(entry ? entry->id : QString("__overwrite__"));
     QTreeView::mouseDoubleClickEvent(event);
 }
 

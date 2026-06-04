@@ -167,6 +167,8 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onReinstallMod);
     connect(m_modListView, &solero::ModListView::modsChanged,
             this, &MainWindow::onModsChanged);
+    connect(m_modListView, &solero::ModListView::modActivated,
+            m_rightPane,   &solero::RightPane::showDataFor);
     m_splitter->setSizes({640, 640});
 
     m_bottomPanel = new solero::BottomPanel(outer);
@@ -214,6 +216,14 @@ static void seedProfileInis(solero::Profile* profile) {
 
 void MainWindow::switchProfile(const QString& name) {
     if (name.isEmpty()) return;
+    bool wasDeployed = m_deployed;
+    // Undeploy the outgoing profile's files first (deploy record is in the game dir).
+    if (wasDeployed && solero::AppConfig::instance().isConfigured()) {
+        solero::DeployEngine engine(solero::AppConfig::instance().gameDir(),
+                                    solero::AppConfig::instance().stagingDir());
+        engine.undeploy(solero::AppConfig::instance().gameDir());
+    }
+
     auto* profile = m_profileMgr->loadProfile(name);
     seedProfileInis(profile);
     m_ipcServer->setActiveProfile(profile);
@@ -226,7 +236,26 @@ void MainWindow::switchProfile(const QString& name) {
     if (QFile::exists(conflictPath))
         m_rightPane->setConflictIndex(solero::ConflictIndex::loadFromFile(conflictPath));
     setWindowTitle(QString("Solero - %1").arg(name));
-    statusBar()->showMessage(QString("Loaded profile: %1").arg(name));
+
+    // Deploy the incoming profile if the previous one was deployed.
+    if (wasDeployed && solero::AppConfig::instance().isConfigured()) {
+        statusBar()->showMessage("Switching profile - deploying " + name + "...");
+        qApp->processEvents();
+        solero::DeployEngine engine(solero::AppConfig::instance().gameDir(),
+                                    solero::AppConfig::instance().stagingDir());
+        engine.setUserlistPath(profile->lootUserlistPath());
+        auto result = engine.deploy(*profile, m_deployMode);
+        m_deployed = result.success;
+        m_deployDirty = false;
+        if (result.success) {
+            m_rightPane->setConflictIndex(result.conflicts);
+            m_rightPane->setProfile(profile);
+        }
+        updateDeployButton();
+        statusBar()->showMessage(QString("Switched to '%1' (redeployed %2 files).").arg(name).arg(result.filesDeployed));
+    } else {
+        statusBar()->showMessage(QString("Loaded profile: %1").arg(name));
+    }
 }
 
 void MainWindow::refreshProfileCombo() {
@@ -336,6 +365,18 @@ void MainWindow::onInstallMod() {
             QMessageBox::warning(this, "FOMOD", "Could not parse the FOMOD config; installing all files.");
             result = solero::ModInstaller::stageSimple(prep, staging);
         } else {
+            // Extract image directories referenced by the FOMOD so the wizard can show them.
+            QStringList imgDirs;
+            for (const auto& step : engine.module().steps)
+                for (const auto& grp : step.groups)
+                    for (const auto& opt : grp.options) {
+                        if (opt.imagePath.isEmpty()) continue;
+                        QString p = opt.imagePath; p.replace('\\', '/');
+                        int slash = p.indexOf('/');
+                        QString top = slash < 0 ? p : p.left(slash);
+                        if (!imgDirs.contains(top, Qt::CaseInsensitive)) imgDirs << top;
+                    }
+            if (!imgDirs.isEmpty()) solero::ModInstaller::extractSubpaths(prep, imgDirs);
             solero::FomodWizard wizard(&engine, prep.extractDir, this);
             if (wizard.exec() != QDialog::Accepted) { statusBar()->showMessage("Install cancelled."); return; }
             result = solero::ModInstaller::stageFomod(prep, staging, wizard.result());
@@ -410,6 +451,18 @@ void MainWindow::onReinstallMod(const QString& modId) {
         if (!engine.load(prep.fomodConfigPath)) {
             result = solero::ModInstaller::stageSimple(prep, staging, modId);
         } else {
+            // Extract image directories referenced by the FOMOD so the wizard can show them.
+            QStringList imgDirs;
+            for (const auto& step : engine.module().steps)
+                for (const auto& grp : step.groups)
+                    for (const auto& opt : grp.options) {
+                        if (opt.imagePath.isEmpty()) continue;
+                        QString p = opt.imagePath; p.replace('\\', '/');
+                        int slash = p.indexOf('/');
+                        QString top = slash < 0 ? p : p.left(slash);
+                        if (!imgDirs.contains(top, Qt::CaseInsensitive)) imgDirs << top;
+                    }
+            if (!imgDirs.isEmpty()) solero::ModInstaller::extractSubpaths(prep, imgDirs);
             solero::FomodWizard wizard(&engine, prep.extractDir, this);
             if (wizard.exec() != QDialog::Accepted) { statusBar()->showMessage("Reinstall cancelled."); return; }
             result = solero::ModInstaller::stageFomod(prep, staging, wizard.result(), modId);

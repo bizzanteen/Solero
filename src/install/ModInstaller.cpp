@@ -124,6 +124,17 @@ InstallPrep ModInstaller::prepare(const QString& archivePath) {
     return prep;
 }
 
+void ModInstaller::extractSubpaths(InstallPrep& prep, const QStringList& subpaths) {
+    if (subpaths.isEmpty() || prep.archivePath.isEmpty()) return;
+    QString bin = QStandardPaths::findExecutable("7z");
+    if (bin.isEmpty()) bin = QStandardPaths::findExecutable("7za");
+    if (bin.isEmpty()) return;
+    QStringList args; args << "x" << prep.archivePath << "-o" + prep.extractDir << "-y" << "-bd";
+    for (const QString& s : subpaths) args << s;
+    args << "-r";
+    QProcess p; p.start(bin, args); p.waitForFinished(120000);
+}
+
 bool ModInstaller::extractFull(InstallPrep& prep) {
     return ArchiveTool::extract(prep.archivePath, prep.extractDir);
 }

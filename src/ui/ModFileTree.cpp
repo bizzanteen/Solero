@@ -99,8 +99,8 @@ void ModFileTree::showModFiles(const QString& stagingRoot,
         }
         bool edited = editedRelPaths.contains(relPath);
         if (edited)
-            status = status.isEmpty() ? QStringLiteral("\xE2\x9C\x8E edited")
-                                      : QStringLiteral("\xE2\x9C\x8E edited \xE2\x80\xA2 ") + status;
+            status = status.isEmpty() ? QStringLiteral("edited")
+                                      : QStringLiteral("edited \xE2\x80\xA2 ") + status;
         item->setText(1, status);
         if (color.isValid()) item->setForeground(1, color);
         if (edited) {

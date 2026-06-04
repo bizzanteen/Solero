@@ -1,6 +1,7 @@
 #pragma once
 #include "InstallLayout.h"
 #include <QString>
+#include <QStringList>
 #include <QList>
 #include <memory>
 
@@ -40,6 +41,7 @@ public:
     static InstallResult stageFomod(InstallPrep& prep, const QString& stagingRoot,
                                     const QList<FomodFile>& files,
                                     const QString& existingModId = {});
+    static void extractSubpaths(InstallPrep& prep, const QStringList& subpaths);
 private:
     static QString baseName(const QString& archivePath);
     static bool moveNormalized(const QString& extractDir,

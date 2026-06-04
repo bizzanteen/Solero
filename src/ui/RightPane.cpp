@@ -31,6 +31,11 @@ void RightPane::setConflictIndex(const ConflictIndex& index) {
     m_dataTab->setConflictIndex(index);
 }
 
+void RightPane::showDataFor(const QString& modId) {
+    m_dataTab->setSelection({modId});
+    setCurrentWidget(m_dataTab);
+}
+
 void RightPane::onSelectionChanged(const QStringList& ids) {
     m_dataTab->setSelection(ids);
 

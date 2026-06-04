@@ -34,6 +34,10 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     addTab(m_downloadsTab, "Downloads");
 }
 
+void RightPane::showDownloadsTab() {
+    setCurrentWidget(m_downloadsTab);
+}
+
 void RightPane::showPluginNotice(const QString& text) {
     m_pluginNotice->setText(text);
     m_pluginNotice->show();

@@ -78,6 +78,7 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
 }
 
 void DownloadsTab::refresh() {
+    m_activeRows.clear();
     m_table->setSortingEnabled(false);
     m_table->setRowCount(0);
 
@@ -119,6 +120,36 @@ void DownloadsTab::refresh() {
 
     m_table->setSortingEnabled(true);
     applyFilters();
+}
+
+void DownloadsTab::setDownloadProgress(const QString& fileName, qint64 received, qint64 total) {
+    const QString status = (total > 0)
+        ? QString("Downloading %1%").arg(int(received * 100 / total))
+        : QString("Downloading %1").arg(humanSize(received));
+
+    auto it = m_activeRows.find(fileName);
+    if (it != m_activeRows.end()) {
+        if (auto* statusItem = m_table->item(it.value(), 1))
+            statusItem->setText(status);
+        return;
+    }
+
+    // Insert a new transient row at the top.
+    m_table->setSortingEnabled(false);
+    m_table->insertRow(0);
+
+    // Existing tracked rows shift down by one.
+    for (auto& row : m_activeRows) ++row;
+
+    auto* nameItem = new QTableWidgetItem(fileName);
+    nameItem->setData(Qt::UserRole, QString()); // no path yet
+    m_table->setItem(0, 0, nameItem);
+    m_table->setItem(0, 1, new QTableWidgetItem(status));
+    m_table->setItem(0, 2, new QTableWidgetItem(QString()));
+    m_table->setItem(0, 3, new QTableWidgetItem(QString()));
+
+    m_activeRows.insert(fileName, 0);
+    m_table->setSortingEnabled(true);
 }
 
 void DownloadsTab::setProfile(Profile* profile) {

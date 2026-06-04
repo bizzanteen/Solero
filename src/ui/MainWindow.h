@@ -11,6 +11,8 @@
 #include "tools/ToolStore.h"
 #include "tools/ToolRunner.h"
 #include "ui/ExecutableDialog.h"
+#include "nexus/DownloadManager.h"
+#include "nexus/NxmHandler.h"
 
 class QSplitter;
 class QComboBox;
@@ -94,6 +96,7 @@ private:
     QToolButton* m_toolsBtn = nullptr;
     QMenu* m_toolsMenu = nullptr;
     solero::ToolStore* m_toolStore = nullptr;
+    solero::DownloadManager* m_downloads = nullptr;
 
     QWidget* m_runOverlay = nullptr;
     QLabel* m_runLockLabel = nullptr;

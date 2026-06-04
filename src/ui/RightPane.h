@@ -22,6 +22,7 @@ public:
     void refreshPlugins(Profile* profile);
     void setConflictIndex(const ConflictIndex& index);
     DownloadsTab* downloadsTab() const { return m_downloadsTab; }
+    void showDownloadsTab();
     void showPluginNotice(const QString& text);
     void hidePluginNotice();
 

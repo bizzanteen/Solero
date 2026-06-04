@@ -94,9 +94,26 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::handleNxmUrl(const QString& url) {
-    raise();
-    activateWindow();
-    statusBar()->showMessage("Received Nexus link: " + url);
+    raise(); activateWindow();
+    if (!solero::AppConfig::instance().isConfigured()) {
+        QMessageBox::warning(this, "Nexus Download", "Configure the game first (\xe2\x9a\x99 Settings).");
+        return;
+    }
+    auto link = solero::NxmHandler::parse(url);
+    if (!link.valid) { QMessageBox::warning(this, "Nexus Download", "Couldn't understand that Nexus link:\n" + url); return; }
+    statusBar()->showMessage("Resolving Nexus download\xe2\x80\xa6"); qApp->processEvents();
+    QString cdn = solero::NxmHandler::resolveDownloadUrl(link);
+    if (cdn.isEmpty()) {
+        QMessageBox::warning(this, "Nexus Download",
+            "Could not resolve the download. The link may have expired, or a Nexus Premium API key may be required for this file.");
+        return;
+    }
+    QString fn = solero::NxmHandler::fileName(link);
+    if (fn.isEmpty()) fn = "nexus-" + link.modId + "-" + link.fileId + ".archive";
+    m_downloads->enqueue(cdn, fn, solero::AppConfig::instance().downloadsDir());
+    // Show the Downloads tab so the user sees progress.
+    m_rightPane->showDownloadsTab();
+    statusBar()->showMessage("Downloading " + fn + "\xe2\x80\xa6");
 }
 
 QString MainWindow::profilesRoot() const {
@@ -188,6 +205,19 @@ void MainWindow::setupCentralWidget() {
     m_splitter->addWidget(m_modListView);
     m_splitter->addWidget(m_rightPane);
     m_splitter->setSizes({640, 640});
+
+    m_downloads = new solero::DownloadManager(this);
+    connect(m_downloads, &solero::DownloadManager::progress, this,
+        [this](const QString& fn, qint64 r, qint64 t){
+            m_rightPane->downloadsTab()->setDownloadProgress(fn, r, t);
+        });
+    connect(m_downloads, &solero::DownloadManager::finished, this,
+        [this](const QString& fn, const QString& path, bool ok, const QString& err){
+            Q_UNUSED(path);
+            m_rightPane->downloadsTab()->setDownloadProgress(fn, ok ? 1 : 0, ok ? 1 : 0); // mark complete
+            m_rightPane->downloadsTab()->refresh();
+            statusBar()->showMessage(ok ? ("Downloaded: " + fn) : ("Download failed: " + fn + " - " + err));
+        });
 
     connect(m_rightPane->downloadsTab(), &solero::DownloadsTab::installRequested,
             this, &MainWindow::installFromArchive);

@@ -1,5 +1,6 @@
 #pragma once
 #include <QWidget>
+#include <QHash>
 class QTableWidget;
 class QTableWidgetItem;
 namespace solero { class Profile; }
@@ -10,6 +11,8 @@ public:
     explicit DownloadsTab(QWidget* parent = nullptr);
     void refresh();
     void setProfile(Profile* profile); // for "installed" status
+    // Show/update a transient in-progress download row at the top of the table.
+    void setDownloadProgress(const QString& fileName, qint64 received, qint64 total);
 signals:
     void installRequested(const QString& archivePath);
 private:
@@ -19,5 +22,6 @@ private:
     Profile* m_profile = nullptr;
     bool m_hideInstalled = false;
     bool m_hideNotInstalled = false;
+    QHash<QString,int> m_activeRows; // fileName -> table row for in-progress downloads
 };
 }

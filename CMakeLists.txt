@@ -45,6 +45,8 @@ set(SOLERO_SOURCES
   src/ui/SeparatorDialog.cpp
   src/ui/ExecutableDialog.cpp
   src/ui/SetupWizard.cpp
+  src/ui/SetupPanel.cpp
+  src/ui/SettingsDialog.cpp
   src/core/AppConfig.cpp
   src/deploy/Linker.cpp
   src/deploy/DeployRecord.cpp

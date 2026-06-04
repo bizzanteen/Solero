@@ -4,6 +4,7 @@
 #include "DownloadsTab.h"
 #include "BottomPanel.h"
 #include "SetupWizard.h"
+#include "ui/SettingsDialog.h"
 #include "bethini/BethiniWindow.h"
 #include "app/Application.h"
 #include "core/AppConfig.h"
@@ -156,10 +157,10 @@ void MainWindow::setupToolbar() {
     tb->addSeparator();
 
     // Game settings
-    tb->addAction("Game Settings...", this, [this]{
-        solero::SetupWizard wizard(this);
-        if (wizard.exec() == QDialog::Accepted)
-            statusBar()->showMessage("Game settings updated.");
+    tb->addAction("\xe2\x9a\x99 Settings", this, [this]{
+        solero::SettingsDialog dlg(this);
+        if (dlg.exec() == QDialog::Accepted)
+            statusBar()->showMessage("Settings updated.");
     });
 
     rebuildToolsMenu();

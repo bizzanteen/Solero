@@ -93,6 +93,12 @@ MainWindow::~MainWindow() {
     delete m_txLog;
 }
 
+void MainWindow::handleNxmUrl(const QString& url) {
+    raise();
+    activateWindow();
+    statusBar()->showMessage("Received Nexus link: " + url);
+}
+
 QString MainWindow::profilesRoot() const {
     return solero::AppConfig::dataRoot() + "/profiles";
 }

@@ -34,6 +34,9 @@ public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow();
 
+public slots:
+    void handleNxmUrl(const QString& url);
+
 signals:
     void conflictsUpdated(const solero::ConflictIndex& index);
 

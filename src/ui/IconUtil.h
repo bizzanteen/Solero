@@ -2,9 +2,22 @@
 #include <QIcon>
 #include <QPixmap>
 #include <QPainter>
+#include <QPen>
+#include <QPointF>
 #include <QColor>
 #include <QSvgRenderer>
 namespace solero {
+inline QIcon redCrossIcon(int px = 26) {
+    QPixmap pm(px, px); pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    QPen pen(QColor("#e74c3c")); pen.setWidthF(px * 0.12); pen.setCapStyle(Qt::RoundCap);
+    p.setPen(pen);
+    double m = px * 0.28;
+    p.drawLine(QPointF(m, m), QPointF(px - m, px - m));
+    p.drawLine(QPointF(px - m, m), QPointF(m, px - m));
+    return QIcon(pm);
+}
 inline QIcon renderSvgIcon(const QString& resPath, const QColor& tint, int px = 20) {
     if (resPath.isEmpty()) return {};
     QSvgRenderer r(resPath);

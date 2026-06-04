@@ -196,7 +196,6 @@ bool ModListModel::setData(const QModelIndex& idx, const QVariant& value, int ro
         m_profile->modList().update(e.id, e);
         m_profile->save();
         emit dataChanged(idx, idx);
-        emit modsChanged();
         return true;
     }
     return false;

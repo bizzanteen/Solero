@@ -142,6 +142,7 @@ void ModListView::showIconPicker(int row, const QPoint& gpos) {
     grid->setFrameShape(QFrame::NoFrame);
     // "None" first
     auto* none = new QListWidgetItem(grid); none->setData(Qt::UserRole, QString()); none->setToolTip("None");
+    none->setIcon(solero::redCrossIcon(26));
     none->setSizeHint(QSize(34,34));
     for (const QString& f : QDir(":/icons/separators").entryList(QStringList()<<"*.svg", QDir::Files)) {
         QString path = ":/icons/separators/" + f;
@@ -251,8 +252,6 @@ void ModListView::onAddSeparatorAt(int visibleRow) {
     m_model->profile()->save();
     m_model->rebuild();
 
-    emit modsChanged();
-
     // Open edit dialog immediately so user can pick colour/icon
     onEditSeparator(m_model->rawToVisible(rawPos));
 }
@@ -279,7 +278,6 @@ void ModListView::onDeleteSeparator(int visibleRow) {
     m_model->profile()->modList().remove(id);
     m_model->profile()->save();
     m_model->rebuild();
-    emit modsChanged();
 }
 
 void ModListView::deleteSelectedMods() {

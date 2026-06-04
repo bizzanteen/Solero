@@ -148,8 +148,8 @@ void DataTab::applyFolderState() {
 }
 
 void DataTab::updateShowAllText() {
-    m_showAllBtn->setText(m_showAllFiles ? QStringLiteral("Show all files")
-                                         : QStringLiteral("Show mod files"));
+    m_showAllBtn->setText(m_showAllFiles ? QStringLiteral("Showing all files")
+                                         : QStringLiteral("Showing mod files"));
 }
 
 void DataTab::updateCollapseText() {

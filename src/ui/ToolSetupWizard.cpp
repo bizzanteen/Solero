@@ -263,9 +263,15 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
 
         prog.close();
 
-        QMessageBox::information(this, "Tool Ready",
-            p->name + " is set up.\n\nThanks to " + p->author
-            + " - please consider endorsing it on Nexus.");
+        QMessageBox box(this);
+        box.setWindowTitle("Tool Ready");
+        box.setText(p->name + " is set up.");
+        box.setInformativeText("Thanks to " + p->author + " for making it. If you find it useful, please consider endorsing it on Nexus.");
+        auto* endorseBtn = box.addButton(QString::fromUtf8("\xe2\x99\xa5  Endorse and Close"), QMessageBox::AcceptRole);
+        auto* closeBtn   = box.addButton(QString::fromUtf8("\xe2\x98\xb9  Close"), QMessageBox::RejectRole);
+        box.exec();
+        // Endorsing isn't wired yet (deferred to the Nexus phase); both just close for now.
+        Q_UNUSED(endorseBtn); Q_UNUSED(closeBtn);
         accept();
     });
 }

@@ -32,6 +32,7 @@ SeparatorDialog::SeparatorDialog(const ModEntry& sep, QWidget* parent)
     m_iconList->setMaximumHeight(150);
 
     auto* none = new QListWidgetItem("None", m_iconList);
+    none->setIcon(solero::redCrossIcon(32));
     none->setData(Qt::UserRole, QString());
     if (sep.icon.isEmpty()) m_iconList->setCurrentItem(none);
 

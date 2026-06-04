@@ -48,6 +48,19 @@ void RightPane::onSelectionChanged(const QStringList& ids) {
     for (const auto& id : ids)
         if (id != "__separator__") modIds << id;
     m_conflictsTab->showMod(modIds.size() == 1 ? modIds.first() : QString());
+
+    // Highlight selected mods' plugins in the Plugins tab.
+    QStringList pluginFiles;
+    if (m_currentProfile) {
+        for (const QString& id : ids) {
+            if (id == "__separator__" || id == "__overwrite__") continue;
+            QString data = AppConfig::instance().stagingDir() + "/" + id + "/Data";
+            QDir d(data);
+            for (const QString& f : d.entryList({"*.esp","*.esm","*.esl"}, QDir::Files))
+                pluginFiles << f;
+        }
+    }
+    m_pluginsTab->highlightPlugins(pluginFiles);
 }
 
 } // namespace solero

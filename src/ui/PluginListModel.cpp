@@ -32,6 +32,11 @@ void PluginListModel::reconcile(const QStringList& available) {
     endResetModel();
 }
 
+void PluginListModel::setHighlighted(const QSet<QString>& lowerFilenames) {
+    m_highlight = lowerFilenames;
+    if (rowCount() > 0) emit dataChanged(index(0, 0), index(rowCount() - 1, ColCount - 1));
+}
+
 int PluginListModel::rowCount(const QModelIndex& parent) const {
     if (parent.isValid() || !m_profile) return 0;
     return m_profile->pluginList().count();
@@ -56,6 +61,10 @@ QVariant PluginListModel::data(const QModelIndex& idx, int role) const {
     }
     if (role == Qt::CheckStateRole && idx.column() == ColEnabled)
         return p.enabled ? Qt::Checked : Qt::Unchecked;
+    if (role == Qt::BackgroundRole && m_profile && idx.row() < m_profile->pluginList().count()) {
+        const auto& hp = m_profile->pluginList().at(idx.row());
+        if (m_highlight.contains(hp.filename.toLower())) return QColor("#3d5a80");
+    }
     return {};
 }
 

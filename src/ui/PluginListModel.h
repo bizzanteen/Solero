@@ -1,5 +1,7 @@
 #pragma once
 #include <QAbstractTableModel>
+#include <QSet>
+#include <QColor>
 #include "core/Profile.h"
 
 namespace solero {
@@ -11,6 +13,7 @@ public:
     explicit PluginListModel(QObject* parent = nullptr);
     void setProfile(Profile* profile);
     void reconcile(const QStringList& available);
+    void setHighlighted(const QSet<QString>& lowerFilenames);
 
     int rowCount(const QModelIndex& = {}) const override;
     int columnCount(const QModelIndex& = {}) const override { return ColCount; }
@@ -23,6 +26,7 @@ public:
 
 private:
     Profile* m_profile = nullptr;
+    QSet<QString> m_highlight;
 };
 
 } // namespace solero

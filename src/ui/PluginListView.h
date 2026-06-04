@@ -9,6 +9,7 @@ public:
     explicit PluginListView(QWidget* parent = nullptr);
     void setProfile(Profile* profile);
     void reconcileWith(Profile* profile, const QString& stagingRoot);
+    void highlightPlugins(const QStringList& filenames);
 private:
     PluginListModel* m_model;
 };

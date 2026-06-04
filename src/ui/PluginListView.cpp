@@ -2,6 +2,7 @@
 #include "PluginListModel.h"
 #include "install/PluginScanner.h"
 #include <QHeaderView>
+#include <QSet>
 namespace solero {
 PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
     m_model = new PluginListModel(this);
@@ -23,5 +24,11 @@ void PluginListView::reconcileWith(Profile* profile, const QString& stagingRoot)
         m_model->reconcile(available);
         profile->save(); // persist the reconciled plugin list
     }
+}
+
+void PluginListView::highlightPlugins(const QStringList& filenames) {
+    QSet<QString> set;
+    for (const QString& f : filenames) set.insert(f.toLower());
+    m_model->setHighlighted(set);
 }
 }

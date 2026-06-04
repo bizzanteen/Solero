@@ -484,9 +484,12 @@ void MainWindow::onReinstallMod(const QString& modId) {
     solero::ModEntry* existing = profile->modList().findById(modId);
     if (!existing) return;
 
-    QString archive = QFileDialog::getOpenFileName(
-        this, "Reinstall: choose the mod archive", QDir::homePath(),
-        "Mod archives (*.zip *.7z *.rar *.tar *.gz);;All files (*)");
+    QString archive = existing->sourceArchive;
+    if (archive.isEmpty() || !QFile::exists(archive))
+        archive = QFileDialog::getOpenFileName(this, "Reinstall: choose the mod archive",
+            solero::AppConfig::instance().downloadsDir().isEmpty() ? QDir::homePath()
+                : solero::AppConfig::instance().downloadsDir(),
+            "Mod archives (*.zip *.7z *.rar *.tar *.gz);;All files (*)");
     if (archive.isEmpty()) return;
 
     statusBar()->showMessage("Preparing...");
@@ -561,6 +564,7 @@ void MainWindow::onReinstallMod(const QString& modId) {
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     }
     existing->hasFomodChoices = !choiceLog.isEmpty();
+    existing->sourceArchive = archive;
     profile->save();
     m_modListView->setProfile(profile);
     if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);

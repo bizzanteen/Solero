@@ -27,6 +27,7 @@ struct InstallPrep {
     QString modName;
     InstallLayout layout;
     QString fomodConfigPath;
+    bool fullyExtracted = false;
     bool ok = false;
     QString errorMessage;
 };
@@ -45,7 +46,8 @@ public:
                                     const QList<FomodFile>& files,
                                     const QString& existingModId = {},
                                     const std::function<void(int)>& onProgress = {});
-    static void extractSubpaths(InstallPrep& prep, const QStringList& subpaths);
+    static void extractSubpaths(InstallPrep& prep, const QStringList& subpaths,
+                                const std::function<void(int)>& onProgress = {});
 private:
     static QString baseName(const QString& archivePath);
     static bool moveNormalized(const QString& extractDir,

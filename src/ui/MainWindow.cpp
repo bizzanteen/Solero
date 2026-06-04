@@ -421,7 +421,8 @@ void MainWindow::installFromArchive(const QString& archive) {
                         QString top = slash < 0 ? p : p.left(slash);
                         if (!imgDirs.contains(top, Qt::CaseInsensitive)) imgDirs << top;
                     }
-            if (!imgDirs.isEmpty()) solero::ModInstaller::extractSubpaths(prep, imgDirs);
+            if (!imgDirs.isEmpty() && !prep.fullyExtracted)
+                solero::ModInstaller::extractSubpaths(prep, imgDirs, [&](int pct){ extractProg->setProgress(pct, 100); });
             extractProg->close();
             solero::FomodWizard wizard(&engine, prep.extractDir, this);
             if (wizard.exec() != QDialog::Accepted) { statusBar()->showMessage("Install cancelled."); return; }
@@ -531,7 +532,8 @@ void MainWindow::onReinstallMod(const QString& modId) {
                         QString top = slash < 0 ? p : p.left(slash);
                         if (!imgDirs.contains(top, Qt::CaseInsensitive)) imgDirs << top;
                     }
-            if (!imgDirs.isEmpty()) solero::ModInstaller::extractSubpaths(prep, imgDirs);
+            if (!imgDirs.isEmpty() && !prep.fullyExtracted)
+                solero::ModInstaller::extractSubpaths(prep, imgDirs, [&](int pct){ extractProg->setProgress(pct, 100); });
             extractProg->close();
             solero::FomodWizard wizard(&engine, prep.extractDir, this);
             if (wizard.exec() != QDialog::Accepted) { statusBar()->showMessage("Reinstall cancelled."); return; }

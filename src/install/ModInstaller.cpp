@@ -8,8 +8,6 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QTemporaryDir>
-#include <QProcess>
-#include <QStandardPaths>
 
 namespace solero {
 
@@ -91,15 +89,19 @@ InstallPrep ModInstaller::prepare(const QString& archivePath,
     if (!prep.tempDir->isValid()) { prep.errorMessage = "No temp dir."; return prep; }
     prep.extractDir = prep.tempDir->path();
     if (prep.layout.isFomod) {
-        // Fast path: extract only the fomod/ folder (config + images) for the wizard.
-        QString bin = QStandardPaths::findExecutable("7z");
-        if (bin.isEmpty()) bin = QStandardPaths::findExecutable("7za");
-        QProcess p; p.start(bin, {"x", archivePath, "-o" + prep.extractDir, "-y", "-bd", "fomod", "-r"});
-        p.waitForFinished(120000);
-        // If that produced no ModuleConfig, fall back to full extract.
-        // (handled by the locate loop below)
+        if (ArchiveTool::isSolid(archivePath)) {
+            // Solid archive: partial extract is no cheaper than full - extract once.
+            if (!ArchiveTool::extract(archivePath, prep.extractDir, onProgress)) {
+                prep.errorMessage = "Extraction failed."; return prep;
+            }
+            prep.fullyExtracted = true;
+        } else {
+            // Non-solid: cheap responsive partial extract of just fomod/.
+            ArchiveTool::extractPaths(archivePath, prep.extractDir, {"fomod"}, true, onProgress);
+        }
     } else {
         if (!ArchiveTool::extract(archivePath, prep.extractDir, onProgress)) { prep.errorMessage = "Extraction failed."; return prep; }
+        prep.fullyExtracted = true;
     }
 
     if (prep.layout.isFomod) {
@@ -118,6 +120,7 @@ InstallPrep ModInstaller::prepare(const QString& archivePath,
         if (prep.fomodConfigPath.isEmpty()) {
             // Fast path missed it; fall back to a full extraction.
             if (!ArchiveTool::extract(archivePath, prep.extractDir)) { prep.errorMessage = "Extraction failed."; return prep; }
+            prep.fullyExtracted = true;
             locate();
         }
     }
@@ -125,19 +128,16 @@ InstallPrep ModInstaller::prepare(const QString& archivePath,
     return prep;
 }
 
-void ModInstaller::extractSubpaths(InstallPrep& prep, const QStringList& subpaths) {
+void ModInstaller::extractSubpaths(InstallPrep& prep, const QStringList& subpaths,
+                                   const std::function<void(int)>& onProgress) {
     if (subpaths.isEmpty() || prep.archivePath.isEmpty()) return;
-    QString bin = QStandardPaths::findExecutable("7z");
-    if (bin.isEmpty()) bin = QStandardPaths::findExecutable("7za");
-    if (bin.isEmpty()) return;
-    QStringList args; args << "x" << prep.archivePath << "-o" + prep.extractDir << "-y" << "-bd";
-    for (const QString& s : subpaths) args << s;
-    args << "-r";
-    QProcess p; p.start(bin, args); p.waitForFinished(120000);
+    ArchiveTool::extractPaths(prep.archivePath, prep.extractDir, subpaths, true, onProgress);
 }
 
 bool ModInstaller::extractFull(InstallPrep& prep, const std::function<void(int)>& onProgress) {
-    return ArchiveTool::extract(prep.archivePath, prep.extractDir, onProgress);
+    bool ok = ArchiveTool::extract(prep.archivePath, prep.extractDir, onProgress);
+    if (ok) prep.fullyExtracted = true;
+    return ok;
 }
 
 InstallResult ModInstaller::stageSimple(InstallPrep& prep, const QString& stagingRoot,
@@ -145,7 +145,7 @@ InstallResult ModInstaller::stageSimple(InstallPrep& prep, const QString& stagin
                                         const std::function<void(int)>& onProgress) {
     InstallResult r;
     if (!prep.ok) { r.errorMessage = prep.errorMessage; return r; }
-    if (prep.layout.isFomod) extractFull(prep, onProgress); // wizard only extracted fomod/; rare parse-fail fallback needs all files
+    if (prep.layout.isFomod && !prep.fullyExtracted) extractFull(prep, onProgress); // wizard only extracted fomod/; rare parse-fail fallback needs all files
     r.modId = existingModId.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : existingModId;
     r.modName = prep.modName;
     r.isFomod = prep.layout.isFomod;
@@ -174,7 +174,7 @@ InstallResult ModInstaller::stageFomod(InstallPrep& prep, const QString& staging
                                        const std::function<void(int)>& onProgress) {
     InstallResult r;
     if (!prep.ok) { r.errorMessage = prep.errorMessage; return r; }
-    extractFull(prep, onProgress); // wizard only extracted fomod/; now get the rest
+    if (!prep.fullyExtracted) extractFull(prep, onProgress); // wizard only extracted fomod/; now get the rest
     r.modId = existingModId.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : existingModId;
     r.modName = prep.modName;
     r.isFomod = true;

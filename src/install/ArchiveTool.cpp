@@ -73,4 +73,46 @@ bool ArchiveTool::extract(const QString& archivePath, const QString& destDir,
     return proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
 }
 
+bool ArchiveTool::isSolid(const QString& archivePath) {
+    QString bin = sevenZipBinary();
+    if (bin.isEmpty()) return false;
+    QProcess proc;
+    proc.start(bin, {"l", "-slt", archivePath});
+    if (!proc.waitForFinished(120000)) return false;
+    if (proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0) return false;
+    const QString out = QString::fromUtf8(proc.readAllStandardOutput());
+    for (const QString& line : out.split('\n')) {
+        QString t = line.trimmed();
+        if (t.startsWith("Solid = ") && t.contains('+')) return true;
+    }
+    return false;
+}
+
+bool ArchiveTool::extractPaths(const QString& archivePath, const QString& destDir,
+                               const QStringList& paths, bool recursive,
+                               const std::function<void(int)>& onProgress) {
+    QString bin = sevenZipBinary();
+    if (bin.isEmpty()) return false;
+    QDir().mkpath(destDir);
+    QProcess proc;
+    QEventLoop loop;
+    static const QRegularExpression rePct("(\\d+)%");
+    QObject::connect(&proc, &QProcess::readyReadStandardOutput, &proc, [&]{
+        QString chunk = QString::fromLatin1(proc.readAllStandardOutput());
+        auto it = rePct.globalMatch(chunk);
+        int last = -1;
+        while (it.hasNext()) last = it.next().captured(1).toInt();
+        if (last >= 0 && onProgress) onProgress(last);
+    });
+    QObject::connect(&proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                     &loop, &QEventLoop::quit);
+    QStringList args{"x", archivePath, "-o" + destDir, "-y", "-bsp1"};
+    args += paths;
+    if (recursive) args << "-r";
+    proc.start(bin, args);
+    if (!proc.waitForStarted(15000)) return false;
+    loop.exec();
+    return proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
+}
+
 } // namespace solero

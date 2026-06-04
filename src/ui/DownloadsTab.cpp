@@ -8,12 +8,16 @@
 #include <QHBoxLayout>
 #include <QPushButton>
 #include <QMenu>
+#include <QMessageBox>
+#include <QFile>
 #include <QDir>
 #include <QFileInfo>
 #include <QFileInfoList>
 #include <QDateTime>
 #include <QSet>
 #include <QColor>
+#include <QItemSelectionModel>
+#include <QModelIndex>
 
 namespace solero {
 
@@ -174,6 +178,46 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
     connect(hideNotInstalled, &QAction::toggled, this, [this](bool on){
         m_hideNotInstalled = on;
         applyFilters();
+    });
+
+    menu.addSeparator();
+
+    // Collect selected rows' real file paths (skip in-progress rows with empty path).
+    QStringList selectedPaths;
+    for (const QModelIndex& idx : m_table->selectionModel()->selectedRows()) {
+        if (auto* it = m_table->item(idx.row(), 0)) {
+            const QString path = it->data(Qt::UserRole).toString();
+            if (!path.isEmpty()) selectedPaths.append(path);
+        }
+    }
+
+    auto* deleteSelected = menu.addAction("Delete Selected");
+    deleteSelected->setEnabled(!selectedPaths.isEmpty());
+    connect(deleteSelected, &QAction::triggered, this, [this, selectedPaths]{
+        const int n = selectedPaths.size();
+        if (QMessageBox::question(this, "Delete Downloads",
+                QString("Delete %1 download(s) from disk? This removes the archive "
+                        "file(s); you can re-download them later.").arg(n))
+            != QMessageBox::Yes)
+            return;
+        for (const QString& p : selectedPaths) QFile::remove(p);
+        refresh();
+    });
+
+    auto* deleteAll = menu.addAction("Delete All Downloads");
+    connect(deleteAll, &QAction::triggered, this, [this]{
+        const QString dir = AppConfig::instance().downloadsDir();
+        QDir d(dir);
+        const QFileInfoList files = dir.isEmpty()
+            ? QFileInfoList{}
+            : d.entryInfoList({"*.zip","*.7z","*.rar","*.tar","*.gz"}, QDir::Files);
+        if (QMessageBox::question(this, "Delete All Downloads",
+                QString("Delete ALL %1 downloads in the folder? This removes every "
+                        "archive file.").arg(files.size()))
+            != QMessageBox::Yes)
+            return;
+        for (const QFileInfo& fi : files) QFile::remove(fi.absoluteFilePath());
+        refresh();
     });
 
     menu.exec(m_table->viewport()->mapToGlobal(pos));

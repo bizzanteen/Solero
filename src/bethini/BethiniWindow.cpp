@@ -324,15 +324,6 @@ void BethiniWindow::populateResolutions(const QString& aspect) {
     auto& rw = m_rows[m_resRowIndex];
 
     auto list = resolutionsFor(aspect);
-    // Include the monitor's native mode if it matches this aspect and isn't listed.
-    if (auto* scr = QGuiApplication::primaryScreen()) {
-        QSize n = scr->size();
-        QPair<int,int> nat{n.width(), n.height()};
-        double r = n.height() ? double(n.width()) / n.height() : 0;
-        bool natIs1610 = qAbs(r - 16.0/10.0) < qAbs(r - 16.0/9.0);
-        if (((aspect == "16:10") == natIs1610) && !list.contains(nat))
-            list.prepend(nat);
-    }
 
     rw.row.settingChoices.clear();
     QSignalBlocker block(m_resCombo);

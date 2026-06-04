@@ -10,6 +10,7 @@ public:
     enum Column { ColEnabled = 0, ColPriority, ColName, ColFlags, ColCount };
     explicit PluginListModel(QObject* parent = nullptr);
     void setProfile(Profile* profile);
+    void reconcile(const QStringList& available);
 
     int rowCount(const QModelIndex& = {}) const override;
     int columnCount(const QModelIndex& = {}) const override { return ColCount; }

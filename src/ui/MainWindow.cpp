@@ -165,6 +165,8 @@ void MainWindow::setupCentralWidget() {
             m_rightPane,   &solero::RightPane::onSelectionChanged);
     connect(m_modListView, &solero::ModListView::reinstallRequested,
             this, &MainWindow::onReinstallMod);
+    connect(m_modListView, &solero::ModListView::modsChanged,
+            this, &MainWindow::onModsChanged);
     m_splitter->setSizes({640, 640});
 
     m_bottomPanel = new solero::BottomPanel(outer);
@@ -244,7 +246,7 @@ void MainWindow::onDeployToggle() {
         return;
     }
 
-    if (!m_deployed) {
+    if (!m_deployed || m_deployDirty) {
         statusBar()->showMessage("Deploying...");
         qApp->processEvents();
 
@@ -259,6 +261,7 @@ void MainWindow::onDeployToggle() {
             return;
         }
         m_deployed = true;
+        m_deployDirty = false;
         statusBar()->showMessage(
             QString("Deployed %1 files. %2 conflicts. Plugins sorted by LOOT.")
                 .arg(result.filesDeployed)
@@ -277,6 +280,7 @@ void MainWindow::onDeployToggle() {
             solero::AppConfig::instance().stagingDir());
         engine.undeploy(solero::AppConfig::instance().gameDir());
         m_deployed = false;
+        m_deployDirty = false;
         statusBar()->showMessage("Undeployed.");
     }
 
@@ -285,13 +289,22 @@ void MainWindow::onDeployToggle() {
 
 void MainWindow::updateDeployButton() {
     if (!m_deployAction) return;
-    if (m_deployed) {
+    if (m_deployed && m_deployDirty) {
+        m_deployAction->setText("\xe2\x9a\xa0 Redeploy");   // ⚠
+        m_deployAction->setToolTip("Mod changes since last deploy - click to redeploy");
+    } else if (m_deployed) {
         m_deployAction->setText("\xe2\x9c\x93 Deployed");
         m_deployAction->setToolTip("Mods are deployed - click to undeploy");
     } else {
         m_deployAction->setText("\xe2\x9c\x97 Not Deployed");
         m_deployAction->setToolTip("Click to deploy mods to game directory");
     }
+}
+
+void MainWindow::onModsChanged() {
+    auto* profile = m_profileMgr->activeProfile();
+    if (profile) m_rightPane->refreshPlugins(profile);  // plugins follow enabled mods
+    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
 }
 
 void MainWindow::onInstallMod() {
@@ -366,6 +379,8 @@ void MainWindow::onInstallMod() {
     profile->save();
 
     m_modListView->setProfile(profile);
+    if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
+    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     statusBar()->showMessage(QString("Installed: %1").arg(result.modName));
 }
 
@@ -427,6 +442,8 @@ void MainWindow::onReinstallMod(const QString& modId) {
     existing->hasFomodChoices = !choiceLog.isEmpty();
     profile->save();
     m_modListView->setProfile(profile);
+    if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
+    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     statusBar()->showMessage("Reinstalled: " + existing->name);
 }
 
@@ -439,6 +456,7 @@ void MainWindow::refreshDeployState() {
             solero::AppConfig::instance().gameDir());
         m_deployed = QFile::exists(rec);
     }
+    m_deployDirty = false;
     updateDeployButton();
 }
 

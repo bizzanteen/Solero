@@ -1,5 +1,6 @@
 #include "PluginListView.h"
 #include "PluginListModel.h"
+#include "install/PluginScanner.h"
 #include <QHeaderView>
 namespace solero {
 PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
@@ -14,4 +15,13 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
     verticalHeader()->hide();
 }
 void PluginListView::setProfile(Profile* profile) { m_model->setProfile(profile); }
+
+void PluginListView::reconcileWith(Profile* profile, const QString& stagingRoot) {
+    m_model->setProfile(profile);
+    if (profile) {
+        auto available = PluginScanner::scan(profile->modList(), stagingRoot);
+        m_model->reconcile(available);
+        profile->save(); // persist the reconciled plugin list
+    }
+}
 }

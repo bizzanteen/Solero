@@ -8,6 +8,7 @@ class PluginListView : public QTableView {
 public:
     explicit PluginListView(QWidget* parent = nullptr);
     void setProfile(Profile* profile);
+    void reconcileWith(Profile* profile, const QString& stagingRoot);
 private:
     PluginListModel* m_model;
 };

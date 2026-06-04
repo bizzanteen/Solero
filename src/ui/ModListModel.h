@@ -34,6 +34,9 @@ public:
     void rebuild();  // call after any structural change
     void setDependencyWarnings(const QHash<QString,QStringList>& w);
 
+signals:
+    void modsChanged();
+
 private:
     Profile* m_profile = nullptr;
     QList<int> m_visibleRows; // raw indices into ModList, -1 = Overwrite

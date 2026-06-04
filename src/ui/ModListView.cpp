@@ -20,6 +20,7 @@ namespace solero {
 ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     m_model = new ModListModel(this);
     setModel(m_model);
+    connect(m_model, &ModListModel::modsChanged, this, &ModListView::modsChanged);
     setRootIsDecorated(false);
     setIndentation(0); // remove the empty tree-indent column before the checkbox
     setDragDropMode(QAbstractItemView::InternalMove);
@@ -160,6 +161,8 @@ void ModListView::onAddSeparatorAt(int visibleRow) {
     m_model->profile()->save();
     m_model->rebuild();
 
+    emit modsChanged();
+
     // Open edit dialog immediately so user can pick colour/icon
     onEditSeparator(m_model->rawToVisible(rawPos));
 }
@@ -191,6 +194,7 @@ void ModListView::onDeleteMod(int visibleRow) {
     m_model->profile()->modList().remove(id);
     m_model->profile()->save();
     m_model->rebuild();
+    emit modsChanged();
 }
 
 } // namespace solero

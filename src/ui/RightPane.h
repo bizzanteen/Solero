@@ -16,6 +16,7 @@ class RightPane : public QTabWidget {
 public:
     explicit RightPane(QWidget* parent = nullptr);
     void setProfile(Profile* profile);
+    void refreshPlugins(Profile* profile);
     void setConflictIndex(const ConflictIndex& index);
 
 public slots:
@@ -26,6 +27,7 @@ private:
     DataTab*        m_dataTab;
     ConflictsTab*   m_conflictsTab;
     ConflictIndex   m_conflictIndex;
+    Profile* m_currentProfile = nullptr;
 };
 
 } // namespace solero

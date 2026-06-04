@@ -8,6 +8,30 @@ void PluginListModel::setProfile(Profile* profile) {
     beginResetModel(); m_profile = profile; endResetModel();
 }
 
+void PluginListModel::reconcile(const QStringList& available) {
+    if (!m_profile) return;
+    beginResetModel();
+    PluginList& pl = m_profile->pluginList();
+    PluginList rebuilt;
+    // Keep current order for plugins that are still available.
+    for (int i = 0; i < pl.count(); ++i) {
+        const auto& p = pl.at(i);
+        if (available.contains(p.filename, Qt::CaseInsensitive)) rebuilt.append(p);
+    }
+    // Append newly-available plugins not already present.
+    for (const QString& fn : available) {
+        if (!rebuilt.findByFilename(fn)) {
+            PluginEntry pe;
+            pe.filename = fn; pe.enabled = true;
+            pe.isMaster = fn.endsWith(".esm", Qt::CaseInsensitive);
+            pe.isLight  = fn.endsWith(".esl", Qt::CaseInsensitive);
+            rebuilt.append(pe);
+        }
+    }
+    pl = rebuilt;
+    endResetModel();
+}
+
 int PluginListModel::rowCount(const QModelIndex& parent) const {
     if (parent.isValid() || !m_profile) return 0;
     return m_profile->pluginList().count();

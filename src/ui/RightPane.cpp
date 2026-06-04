@@ -2,6 +2,7 @@
 #include "PluginListView.h"
 #include "DataTab.h"
 #include "ConflictsTab.h"
+#include "core/AppConfig.h"
 
 namespace solero {
 
@@ -15,8 +16,13 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
 }
 
 void RightPane::setProfile(Profile* profile) {
-    m_pluginsTab->setProfile(profile);
+    m_currentProfile = profile;
+    m_pluginsTab->reconcileWith(profile, AppConfig::instance().stagingDir());
     m_dataTab->setProfile(profile);
+}
+
+void RightPane::refreshPlugins(Profile* profile) {
+    m_pluginsTab->reconcileWith(profile, AppConfig::instance().stagingDir());
 }
 
 void RightPane::setConflictIndex(const ConflictIndex& index) {

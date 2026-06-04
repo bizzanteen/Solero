@@ -159,6 +159,7 @@ bool ModListModel::setData(const QModelIndex& idx, const QVariant& value, int ro
             value.toInt() == Qt::Checked);
         m_profile->save();
         emit dataChanged(idx, idx, {role});
+        emit modsChanged();
         return true;
     }
     return false;
@@ -202,6 +203,7 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
     m_profile->save();
     rebuildVisibleRows();
     endMoveRows();
+    emit modsChanged();
     return true;
 }
 

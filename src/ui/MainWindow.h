@@ -51,6 +51,7 @@ private:
     void onImportMo2();
     void onInstallMod();
     void onReinstallMod(const QString& modId);
+    void onModsChanged();
     void onZoomIn();
     void onZoomOut();
     void onZoomReset();
@@ -62,6 +63,7 @@ private:
     solero::IPCServer* m_ipcServer;
 
     bool m_deployed = false;
+    bool m_deployDirty = false;
     solero::DeployMode m_deployMode = solero::DeployMode::HardLink;
     QAction* m_deployAction = nullptr;
     QComboBox* m_profileCombo = nullptr;

@@ -101,3 +101,10 @@ function(add_solero_import_test name)
 endfunction()
 
 add_solero_import_test(test_Mo2Importer)
+
+add_executable(test_PluginScanner test_PluginScanner.cpp
+  ../src/install/PluginScanner.cpp
+  ../src/core/ModList.cpp ../src/core/PluginList.cpp)
+target_include_directories(test_PluginScanner PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_PluginScanner PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_PluginScanner COMMAND test_PluginScanner)

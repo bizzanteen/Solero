@@ -10,7 +10,12 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
     m_model = new PluginListModel(this);
     m_proxy = new QSortFilterProxyModel(this);
     setModel(m_model);
+    setDragEnabled(true);
+    setAcceptDrops(true);
+    setDropIndicatorShown(true);
     setDragDropMode(QAbstractItemView::InternalMove);
+    setDragDropOverwriteMode(false);
+    setDefaultDropAction(Qt::MoveAction);
     setSelectionBehavior(QAbstractItemView::SelectRows);
     horizontalHeader()->setSectionsClickable(true);
     horizontalHeader()->setSortIndicatorShown(true);
@@ -33,6 +38,9 @@ void PluginListView::onSortChanged(int col, Qt::SortOrder order) {
         if (model() != m_model) { setModel(m_model); applyHeaderLayout(); }
         setDragDropMode(QAbstractItemView::InternalMove);
         setDragEnabled(true); setAcceptDrops(true);
+        setDropIndicatorShown(true);
+        setDragDropOverwriteMode(false);
+        setDefaultDropAction(Qt::MoveAction);
     } else {
         if (model() != m_proxy) {
             m_proxy->setSourceModel(m_model);

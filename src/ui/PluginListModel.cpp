@@ -1,5 +1,8 @@
 #include "PluginListModel.h"
 #include <QFont>
+#include <QMimeData>
+#include <QByteArray>
+#include <QStringList>
 
 namespace solero {
 
@@ -118,6 +121,40 @@ bool PluginListModel::moveRows(const QModelIndex&, int src, int, const QModelInd
     m_profile->save();
     endMoveRows();
     return true;
+}
+
+static const char* kPluginMime = "application/x-solero-plugin-row";
+
+QStringList PluginListModel::mimeTypes() const { return { QString::fromLatin1(kPluginMime) }; }
+
+QMimeData* PluginListModel::mimeData(const QModelIndexList& indexes) const {
+    auto* mime = new QMimeData;
+    int row = -1;
+    for (const auto& idx : indexes) { if (idx.isValid()) { row = idx.row(); break; } }
+    mime->setData(QString::fromLatin1(kPluginMime), QByteArray::number(row));
+    return mime;
+}
+
+bool PluginListModel::canDropMimeData(const QMimeData* data, Qt::DropAction, int, int, const QModelIndex&) const {
+    return data->hasFormat(QString::fromLatin1(kPluginMime));
+}
+
+bool PluginListModel::dropMimeData(const QMimeData* data, Qt::DropAction, int row, int, const QModelIndex& parent) {
+    if (!m_profile || !data->hasFormat(QString::fromLatin1(kPluginMime))) return false;
+    int src = data->data(QString::fromLatin1(kPluginMime)).toInt();
+    int n = m_profile->pluginList().count();
+    if (src < 0 || src >= n) return false;
+    int dst = row;
+    if (dst < 0) dst = parent.isValid() ? parent.row() : n; // dropped onto a row, or past the end
+    if (dst > n) dst = n;
+    // Account for the source being removed before re-insertion.
+    if (dst > src) dst -= 1;
+    if (dst == src) return false;
+    beginResetModel();
+    m_profile->pluginList().move(src, dst);
+    m_profile->save();
+    endResetModel();
+    return false; // we performed the move ourselves; return false so the view doesn't also removeRows
 }
 
 } // namespace solero

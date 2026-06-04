@@ -8,6 +8,18 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QDebug>
+#include <sys/stat.h>
+
+namespace {
+// Returns true if both paths exist and reside on different filesystems
+// (different st_dev). Returns false if either cannot be stat'd.
+bool onDifferentFilesystems(const QString& a, const QString& b) {
+    struct stat sa, sb;
+    if (::stat(a.toLocal8Bit().constData(), &sa) != 0) return false;
+    if (::stat(b.toLocal8Bit().constData(), &sb) != 0) return false;
+    return sa.st_dev != sb.st_dev;
+}
+}
 
 namespace solero {
 
@@ -39,10 +51,11 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     int done = 0;
     if (onProgress) onProgress(0, total);
 
+    int failures = 0;
     for (const auto& entry : profile.modList()) {
         if (entry.type != EntryType::Mod) continue;
         if (!entry.enabled) continue;
-        deployMod(entry.id, m_gameDir, linker, record, conflicts);
+        failures += deployMod(entry.id, m_gameDir, linker, record, conflicts);
         ++done;
         if (onProgress) onProgress(done, total);
     }
@@ -93,20 +106,33 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
 
     if (onProgress) onProgress(total, total);
 
-    result.success = true;
+    result.success = (failures == 0);
+    if (failures > 0)
+        result.errorMessage = QString("%1 file(s) failed to deploy; "
+                                      "the rest were deployed.").arg(failures);
+
+    // Cross-filesystem hardlinks silently degrade to copies. Warn so the user
+    // knows they're paying extra disk and not getting hardlink semantics.
+    if (mode == DeployMode::HardLink
+        && onDifferentFilesystems(m_stagingRoot, m_gameDir)) {
+        result.warning = "Staging and game dir are on different filesystems "
+                         "- deployed as copies (uses extra disk), not hardlinks.";
+    }
+
     result.conflicts = std::move(conflicts);
     result.filesDeployed = record.count();
     return result;
 }
 
-void DeployEngine::deployMod(const QString& modId,
-                              const QString& gameDir,
-                              const Linker& linker,
-                              DeployRecord& record,
-                              ConflictIndex& conflicts) {
+int DeployEngine::deployMod(const QString& modId,
+                             const QString& gameDir,
+                             const Linker& linker,
+                             DeployRecord& record,
+                             ConflictIndex& conflicts) {
     QString modRoot = m_stagingRoot + "/" + modId;
-    if (!QDir(modRoot).exists()) return;
+    if (!QDir(modRoot).exists()) return 0;
 
+    int failures = 0;
     QDirIterator it(modRoot, QDir::Files | QDir::NoDotAndDotDot,
                     QDirIterator::Subdirectories);
     while (it.hasNext()) {
@@ -123,15 +149,39 @@ void DeployEngine::deployMod(const QString& modId,
             continue;
 
         QString previousOwner = record.ownerOf(relPath);
+
+        // First Solero owner of this path and something already lives there:
+        // it's a genuine pre-existing original (deploy() ran undeploy() first,
+        // so any Solero-owned file at this path is already gone). Move it to
+        // the backup tree so undeploy can restore it later.
+        if (previousOwner.isEmpty() && QFile::exists(dstPath)) {
+            QString backupPath = gameDir + "/" + backupDirName() + "/" + relPath;
+            // Don't clobber an existing backup (e.g. from an interrupted run);
+            // the first one we saw is the true original.
+            if (!QFile::exists(backupPath)) {
+                QDir().mkpath(QFileInfo(backupPath).path());
+                if (!QFile::rename(dstPath, backupPath)) {
+                    // Cross-fs rename can fail; fall back to copy + remove.
+                    if (QFile::copy(dstPath, backupPath))
+                        QFile::remove(dstPath);
+                }
+            }
+        }
+
+        if (!linker.deploy(srcPath, dstPath)) {
+            qWarning() << "Deploy failed for" << relPath << "(mod" << modId << ")";
+            ++failures;
+            continue; // do not record a failed link as deployed
+        }
+
         if (!previousOwner.isEmpty()) {
             conflicts.recordConflict(relPath, modId, previousOwner);
         } else {
             conflicts.setWinner(relPath, modId);
         }
-
-        linker.deploy(srcPath, dstPath);
         record.add(relPath, modId);
     }
+    return failures;
 }
 
 bool DeployEngine::undeploy(const QString& gameDir, const std::function<void(int,int)>& onProgress) {
@@ -139,20 +189,51 @@ bool DeployEngine::undeploy(const QString& gameDir, const std::function<void(int
     QString recPath = recordPath(normGameDir);
     DeployRecord record = DeployRecord::loadFromFile(recPath);
 
+    const QString backupRoot = normGameDir + "/" + backupDirName();
+
     auto paths = record.allPaths();
     int total = paths.size();
     int done = 0;
     for (const auto& relPath : paths) {
         QString fullPath = normGameDir + "/" + relPath;
         QFile::remove(fullPath);
+
+        // Prune now-empty parent dirs up to (but not including) the game dir.
+        // Never descend into / prune the backup tree.
         QDir dir(QFileInfo(fullPath).path());
-        while (QDir::cleanPath(dir.path()) != normGameDir && dir.isEmpty()) {
-            QString parent = QFileInfo(dir.path()).path();
-            dir.rmdir(".");
+        while (QDir::cleanPath(dir.path()) != normGameDir
+               && !QDir::cleanPath(dir.path()).startsWith(backupRoot)
+               && dir.exists() && dir.isEmpty()) {
+            QString dirPath = dir.path();
+            QString parent = QFileInfo(dirPath).path();
+            // Remove the named dir from its parent (portable; rmdir(".") is not).
+            QDir(parent).rmdir(QFileInfo(dirPath).fileName());
             dir = QDir(parent);
         }
         ++done;
         if (onProgress && (done % 20 == 0 || done == total)) onProgress(done, total);
+    }
+
+    // Restore pre-existing originals that mods were deployed over. The backup
+    // tree mirrors relPaths, so it's self-describing - move each file back to
+    // its game-dir slot (overwriting the just-removed deployed file's place),
+    // then tear down the backup tree.
+    if (QDir(backupRoot).exists()) {
+        QDirIterator bit(backupRoot, QDir::Files | QDir::NoDotAndDotDot,
+                         QDirIterator::Subdirectories);
+        while (bit.hasNext()) {
+            QString backupPath = bit.next();
+            QString relPath = backupPath.mid(backupRoot.length() + 1);
+            QString dstPath = normGameDir + "/" + relPath;
+            QDir().mkpath(QFileInfo(dstPath).path());
+            QFile::remove(dstPath); // ensure the slot is free
+            if (!QFile::rename(backupPath, dstPath)) {
+                // Cross-fs fallback.
+                if (QFile::copy(backupPath, dstPath))
+                    QFile::remove(backupPath);
+            }
+        }
+        QDir(backupRoot).removeRecursively();
     }
 
     QFile::remove(recPath);

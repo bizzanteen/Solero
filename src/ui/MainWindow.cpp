@@ -347,10 +347,14 @@ bool MainWindow::deployCurrent() {
     prog.close();
 
     if (!result.success) {
-        QMessageBox::critical(this, "Deploy Failed", result.errorMessage);
-        return false;
+        // Partial deploy: some files failed but the rest are in place. Warn,
+        // don't pretend success, but keep whatever did deploy.
+        QMessageBox::warning(this, "Deploy Incomplete", result.errorMessage);
     }
-    m_deployed = true;
+    if (!result.warning.isEmpty())
+        QMessageBox::information(this, "Deploy Notice", result.warning);
+
+    m_deployed = result.success;
     m_deployDirty = false;
     statusBar()->showMessage(
         QString("Deployed %1 files. %2 conflicts. Plugins sorted by LOOT.")

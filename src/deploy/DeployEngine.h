@@ -13,6 +13,7 @@ namespace solero {
 struct DeployResult {
     bool success = false;
     QString errorMessage;
+    QString warning;
     ConflictIndex conflicts;
     int filesDeployed = 0;
 };
@@ -36,11 +37,17 @@ private:
     bool    m_lootEnabled = true;
     QString m_userlistPath;
 
-    void deployMod(const QString& modId,
-                   const QString& gameDir,
-                   const Linker& linker,
-                   DeployRecord& record,
-                   ConflictIndex& conflicts);
+    // Deploys one mod's files. Returns the number of files that FAILED to link.
+    // record/conflicts are only updated for files that actually deployed.
+    int deployMod(const QString& modId,
+                  const QString& gameDir,
+                  const Linker& linker,
+                  DeployRecord& record,
+                  ConflictIndex& conflicts);
+
+    // Backup dir living inside the game dir; holds pre-existing (non-Solero)
+    // originals that mods were deployed over, so undeploy can restore them.
+    static QString backupDirName() { return ".solero-backup"; }
 };
 
 } // namespace solero

@@ -88,6 +88,36 @@ private slots:
         engine.deploy(profile, DeployMode::Copy);
         QVERIFY(!QFile::exists(gameDir + "/Data/skip.nif"));
     }
+    void preExistingFile_backedUpAndRestoredOnUndeploy() {
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QDir().mkpath(gameDir);
+        // A genuine pre-existing (vanilla) file already in the game dir.
+        writeFile(gameDir + "/Data/vanilla.esm", "ORIGINAL");
+        // A mod that ships a file at the same path.
+        writeFile(stagingRoot + "/aaa/Data/vanilla.esm", "MODDED");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry m; m.type = EntryType::Mod; m.id = "aaa"; m.name = "M"; m.enabled = true;
+        profile.modList().append(m);
+
+        DeployEngine engine(gameDir, stagingRoot);
+        engine.deploy(profile, DeployMode::Copy);
+
+        // Mod file is now in place; original is preserved in the backup tree.
+        { QFile f(gameDir + "/Data/vanilla.esm"); f.open(QIODevice::ReadOnly);
+          QCOMPARE(f.readAll(), QByteArray("MODDED")); }
+        QVERIFY(QFile::exists(gameDir + "/.solero-backup/Data/vanilla.esm"));
+
+        engine.undeploy(gameDir);
+
+        // Original restored; backup tree gone.
+        QVERIFY(QFile::exists(gameDir + "/Data/vanilla.esm"));
+        { QFile f(gameDir + "/Data/vanilla.esm"); f.open(QIODevice::ReadOnly);
+          QCOMPARE(f.readAll(), QByteArray("ORIGINAL")); }
+        QVERIFY(!QDir(gameDir + "/.solero-backup").exists());
+    }
     void redeploy_removesOrphanedFiles() {
         QTemporaryDir tmp;
         QString stagingRoot = tmp.path() + "/staging";

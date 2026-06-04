@@ -88,6 +88,8 @@ set(SOLERO_SOURCES
   src/tools/ToolRunner.cpp
   src/tools/ToolCatalog.cpp
   src/tools/ToolDownloader.cpp
+  src/nexus/NxmHandler.cpp
+  src/nexus/DownloadManager.cpp
   src/ui/ToolPanel.cpp
   src/ui/ToolSetupWizard.cpp
   src/ui/ToolsManagerDialog.cpp

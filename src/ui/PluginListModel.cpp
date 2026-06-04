@@ -1,4 +1,6 @@
 #include "PluginListModel.h"
+#include "core/AppConfig.h"
+#include "install/PluginScanner.h"
 #include <QFont>
 #include <QMimeData>
 #include <QByteArray>
@@ -12,26 +14,59 @@ void PluginListModel::setProfile(Profile* profile) {
     beginResetModel(); m_profile = profile; endResetModel();
 }
 
+// Load-order band of a plugin: masters (0) sort before light masters (1),
+// which sort before regular plugins (2). Light masters take precedence over
+// the plain master flag so ESL-flagged files are grouped with other lights.
+static int pluginBand(const PluginEntry& p) {
+    if (p.isLight) return 1;
+    if (p.isMaster) return 0;
+    return 2;
+}
+
 void PluginListModel::reconcile(const QStringList& available) {
     if (!m_profile) return;
     beginResetModel();
     PluginList& pl = m_profile->pluginList();
-    PluginList rebuilt;
-    // Keep current order for plugins that are still available.
+    const QString dataDir = AppConfig::instance().gameDir() + "/Data";
+
+    // Build the rebuilt list as a vector so we can insert in the correct band.
+    QList<PluginEntry> entries;
+    // Keep current order (and enabled state) for plugins still available.
     for (int i = 0; i < pl.count(); ++i) {
         const auto& p = pl.at(i);
-        if (available.contains(p.filename, Qt::CaseInsensitive)) rebuilt.append(p);
+        if (available.contains(p.filename, Qt::CaseInsensitive)) entries.append(p);
     }
-    // Append newly-available plugins not already present.
+    // Insert newly-available plugins not already present, each into its band.
     for (const QString& fn : available) {
-        if (!rebuilt.findByFilename(fn)) {
-            PluginEntry pe;
-            pe.filename = fn; pe.enabled = true;
+        bool present = false;
+        for (const auto& e : entries)
+            if (e.filename.compare(fn, Qt::CaseInsensitive) == 0) { present = true; break; }
+        if (present) continue;
+
+        PluginEntry pe;
+        pe.filename = fn;
+        pe.enabled  = true; // freshly installed mods default to active
+        PluginFlags pf = PluginScanner::readFlags(dataDir + "/" + fn);
+        if (pf.ok) {
+            pe.isMaster = pf.isMaster;
+            pe.isLight  = pf.isLight;
+        } else {
             pe.isMaster = fn.endsWith(".esm", Qt::CaseInsensitive);
             pe.isLight  = fn.endsWith(".esl", Qt::CaseInsensitive);
-            rebuilt.append(pe);
         }
+
+        // Insert after the last existing entry whose band is <= this band, so a
+        // new master lands among masters, a light among lights, an esp at end.
+        const int band = pluginBand(pe);
+        int insertAt = entries.size();
+        for (int i = 0; i < entries.size(); ++i) {
+            if (pluginBand(entries[i]) > band) { insertAt = i; break; }
+        }
+        entries.insert(insertAt, pe);
     }
+
+    PluginList rebuilt;
+    for (const auto& e : entries) rebuilt.append(e);
     pl = rebuilt;
     endResetModel();
 }

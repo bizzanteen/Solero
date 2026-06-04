@@ -1,5 +1,6 @@
 #include "LootSorter.h"
 #include "core/AppConfig.h"
+#include "install/PluginScanner.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -73,11 +74,21 @@ LootSorter::SortResult LootSorter::sort(PluginList& pluginList,
             if (auto* existing = pluginList.findByFilename(fn)) {
                 newList.append(*existing);
             } else {
+                // Synthesized entry for a plugin LOOT returned that wasn't in our
+                // list. There's no prior state to preserve (findByFilename failed),
+                // so default to active only if the file actually exists on disk;
+                // classify via TES4 header flags, falling back to the extension.
                 PluginEntry pe;
                 pe.filename = fn;
-                pe.enabled  = true;
-                pe.isMaster = fn.endsWith(".esm", Qt::CaseInsensitive);
-                pe.isLight  = fn.endsWith(".esl", Qt::CaseInsensitive);
+                pe.enabled  = QFile::exists(dataDir + "/" + fn);
+                PluginFlags pf = PluginScanner::readFlags(dataDir + "/" + fn);
+                if (pf.ok) {
+                    pe.isMaster = pf.isMaster;
+                    pe.isLight  = pf.isLight;
+                } else {
+                    pe.isMaster = fn.endsWith(".esm", Qt::CaseInsensitive);
+                    pe.isLight  = fn.endsWith(".esl", Qt::CaseInsensitive);
+                }
                 newList.append(pe);
             }
         }

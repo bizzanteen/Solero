@@ -49,6 +49,14 @@ bool PluginList::saveToFile(const QString& path) const {
     return atomicWrite(path, toPluginsTxt().toUtf8());
 }
 
+// loadorder.txt: full load order, every plugin, no '*' prefix.
+bool PluginList::saveLoadOrderToFile(const QString& path) const {
+    QStringList lines;
+    for (const auto& p : m_plugins) lines.append(p.filename);
+    QString txt = lines.join('\n') + '\n';
+    return atomicWrite(path, txt.toUtf8());
+}
+
 PluginList PluginList::loadFromFile(const QString& path) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};

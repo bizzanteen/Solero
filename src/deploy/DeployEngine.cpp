@@ -79,6 +79,9 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     QString pluginsDir = localAppData.isEmpty() ? (m_gameDir + "/Data") : localAppData;
     QDir().mkpath(pluginsDir);
     profile.pluginList().saveToFile(pluginsDir + "/Plugins.txt");
+    // loadorder.txt records the full order (all plugins, no prefix) so the game
+    // and tools agree on the master/light/esp ordering, not just what's active.
+    profile.pluginList().saveLoadOrderToFile(pluginsDir + "/loadorder.txt");
 
     // INIs belong in the game's My Games documents folder. Fall back to gameDir.
     QString docsDir = AppConfig::instance().documentsDir();

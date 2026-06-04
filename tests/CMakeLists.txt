@@ -22,6 +22,7 @@ function(add_solero_deploy_test name)
     ../src/deploy/ConflictIndex.cpp
     ../src/deploy/DeployEngine.cpp
     ../src/loot/LootSorter.cpp
+    ../src/install/PluginScanner.cpp
     ../src/core/ModList.cpp
     ../src/core/PluginList.cpp
     ../src/core/Profile.cpp

@@ -19,6 +19,9 @@ public:
     static PluginList fromPluginsTxt(const QString& txt);
 
     bool saveToFile(const QString& path) const;
+    // Writes loadorder.txt: every plugin filename in list order, one per line,
+    // with no prefix (full order, active and inactive alike).
+    bool saveLoadOrderToFile(const QString& path) const;
     static PluginList loadFromFile(const QString& path);
 
 private:

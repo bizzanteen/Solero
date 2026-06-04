@@ -168,6 +168,8 @@ void MainWindow::setupCentralWidget() {
     m_modListView = new solero::ModListView(m_splitter);
     m_rightPane   = new solero::RightPane(m_splitter);
     m_bethiniWindow = new solero::BethiniWindow(this); // shown as a top-level modal window
+    m_bethiniWindow->setWindowFlag(Qt::Window, true);  // not an in-canvas child of MainWindow
+    m_bethiniWindow->hide();                           // stays hidden until the BethINI button
 
     m_splitter->addWidget(m_modListView);
     m_splitter->addWidget(m_rightPane);

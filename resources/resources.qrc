@@ -2,5 +2,13 @@
   <qresource prefix="/">
     <file>icons/solero-logo.svg</file>
     <file>bethini-skyrimse.json</file>
+    <file>icons/tools/xedit.png</file>
+    <file>icons/tools/xedit-qac.png</file>
+    <file>icons/tools/dyndolod.png</file>
+    <file>icons/tools/nemesis.png</file>
+    <file>icons/tools/eslifier.png</file>
+    <file>icons/tools/pgpatcher.png</file>
+    <file>icons/tools/synthesis.png</file>
+    <file>icons/tools/radium.png</file>
   </qresource>
 </RCC>

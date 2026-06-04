@@ -1,15 +1,23 @@
 #pragma once
 #include <QWidget>
-class QListWidget;
+class QTableWidget;
+class QTableWidgetItem;
+namespace solero { class Profile; }
 namespace solero {
 class DownloadsTab : public QWidget {
     Q_OBJECT
 public:
     explicit DownloadsTab(QWidget* parent = nullptr);
-    void refresh(); // re-list archives in AppConfig downloadsDir
+    void refresh();
+    void setProfile(Profile* profile); // for "installed" status
 signals:
     void installRequested(const QString& archivePath);
 private:
-    QListWidget* m_list;
+    void showContextMenu(const QPoint& pos);
+    void applyFilters();
+    QTableWidget* m_table;
+    Profile* m_profile = nullptr;
+    bool m_hideInstalled = false;
+    bool m_hideNotInstalled = false;
 };
 }

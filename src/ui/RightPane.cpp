@@ -47,6 +47,7 @@ void RightPane::setProfile(Profile* profile) {
     m_currentProfile = profile;
     m_pluginsTab->reconcileWith(profile, AppConfig::instance().stagingDir());
     m_dataTab->setProfile(profile);
+    m_downloadsTab->setProfile(profile);
 }
 
 void RightPane::refreshPlugins(Profile* profile) {

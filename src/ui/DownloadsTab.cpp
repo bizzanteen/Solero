@@ -1,41 +1,161 @@
 #include "DownloadsTab.h"
 #include "core/AppConfig.h"
+#include "core/Profile.h"
+#include <QTableWidget>
+#include <QTableWidgetItem>
+#include <QHeaderView>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QListWidget>
 #include <QPushButton>
-#include <QLabel>
+#include <QMenu>
 #include <QDir>
+#include <QFileInfo>
+#include <QFileInfoList>
+#include <QDateTime>
+#include <QSet>
+#include <QColor>
+
 namespace solero {
+
+namespace {
+
+// Sorts by the numeric value stored in Qt::UserRole rather than display text.
+class NumItem : public QTableWidgetItem {
+public:
+    explicit NumItem(const QString& text) : QTableWidgetItem(text) {}
+    bool operator<(const QTableWidgetItem& o) const override {
+        return data(Qt::UserRole).toLongLong() < o.data(Qt::UserRole).toLongLong();
+    }
+};
+
+QString humanSize(qint64 b) {
+    const double kb = 1024.0;
+    if (b < kb) return QString::number(b) + " B";
+    double v = b / kb;
+    if (v < kb) return QString::number(v, 'f', 1) + " KB";
+    v /= kb;
+    if (v < kb) return QString::number(v, 'f', 1) + " MB";
+    v /= kb;
+    return QString::number(v, 'f', 1) + " GB";
+}
+
+} // namespace
+
 DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     auto* v = new QVBoxLayout(this);
-    v->addWidget(new QLabel("Archives in your downloads folder. Select one and Install.", this));
-    m_list = new QListWidget(this);
-    v->addWidget(m_list, 1);
+
+    m_table = new QTableWidget(this);
+    m_table->setColumnCount(4);
+    m_table->setHorizontalHeaderLabels({"Name", "Status", "Size", "Downloaded"});
+    m_table->setSortingEnabled(true);
+    m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_table->verticalHeader()->hide();
+    m_table->horizontalHeader()->setStretchLastSection(false);
+    m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    m_table->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_table, &QWidget::customContextMenuRequested, this, &DownloadsTab::showContextMenu);
+    v->addWidget(m_table, 1);
+
     auto* bar = new QHBoxLayout;
     auto* refreshBtn = new QPushButton("Refresh", this);
     auto* installBtn = new QPushButton("Install Selected", this);
     bar->addWidget(refreshBtn); bar->addStretch(); bar->addWidget(installBtn);
     v->addLayout(bar);
+
     connect(refreshBtn, &QPushButton::clicked, this, &DownloadsTab::refresh);
-    connect(installBtn, &QPushButton::clicked, this, [this]{
-        auto* it = m_list->currentItem();
+
+    auto installSelected = [this]{
+        int row = m_table->currentRow();
+        if (row < 0) return;
+        auto* it = m_table->item(row, 0);
         if (it) emit installRequested(it->data(Qt::UserRole).toString());
-    });
-    connect(m_list, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it){
-        if (it) emit installRequested(it->data(Qt::UserRole).toString());
-    });
+    };
+    connect(installBtn, &QPushButton::clicked, this, installSelected);
+    connect(m_table, &QTableWidget::cellDoubleClicked, this, [installSelected](int, int){ installSelected(); });
+
     refresh();
 }
+
 void DownloadsTab::refresh() {
-    m_list->clear();
+    m_table->setSortingEnabled(false);
+    m_table->setRowCount(0);
+
+    // Collect archive paths that the active profile's mods were installed from.
+    QSet<QString> installedSet;
+    if (m_profile) {
+        for (const ModEntry& e : m_profile->modList())
+            if (!e.sourceArchive.isEmpty())
+                installedSet.insert(e.sourceArchive);
+    }
+
     QString dir = AppConfig::instance().downloadsDir();
-    if (dir.isEmpty()) return;
-    QDir d(dir);
-    const auto files = d.entryList({"*.zip","*.7z","*.rar","*.tar","*.gz"}, QDir::Files, QDir::Time);
-    for (const QString& f : files) {
-        auto* it = new QListWidgetItem(f, m_list);
-        it->setData(Qt::UserRole, d.absoluteFilePath(f));
+    if (!dir.isEmpty()) {
+        QDir d(dir);
+        const QFileInfoList files =
+            d.entryInfoList({"*.zip","*.7z","*.rar","*.tar","*.gz"}, QDir::Files);
+        for (const QFileInfo& fi : files) {
+            int row = m_table->rowCount();
+            m_table->insertRow(row);
+
+            auto* nameItem = new QTableWidgetItem(fi.fileName());
+            nameItem->setData(Qt::UserRole, fi.absoluteFilePath());
+            m_table->setItem(row, 0, nameItem);
+
+            const bool installed = installedSet.contains(fi.absoluteFilePath());
+            auto* statusItem = new QTableWidgetItem(installed ? "Installed" : "Not installed");
+            if (installed) statusItem->setForeground(QColor(0x4c, 0xaf, 0x50));
+            m_table->setItem(row, 1, statusItem);
+
+            auto* sizeItem = new NumItem(humanSize(fi.size()));
+            sizeItem->setData(Qt::UserRole, fi.size());
+            m_table->setItem(row, 2, sizeItem);
+
+            auto* dateItem = new NumItem(fi.lastModified().toString("yyyy-MM-dd hh:mm"));
+            dateItem->setData(Qt::UserRole, fi.lastModified().toSecsSinceEpoch());
+            m_table->setItem(row, 3, dateItem);
+        }
+    }
+
+    m_table->setSortingEnabled(true);
+    applyFilters();
+}
+
+void DownloadsTab::setProfile(Profile* profile) {
+    m_profile = profile;
+    refresh();
+}
+
+void DownloadsTab::showContextMenu(const QPoint& pos) {
+    QMenu menu(this);
+
+    auto* hideInstalled = menu.addAction("Hide Installed");
+    hideInstalled->setCheckable(true);
+    hideInstalled->setChecked(m_hideInstalled);
+    connect(hideInstalled, &QAction::toggled, this, [this](bool on){
+        m_hideInstalled = on;
+        applyFilters();
+    });
+
+    auto* hideNotInstalled = menu.addAction("Hide Not Installed");
+    hideNotInstalled->setCheckable(true);
+    hideNotInstalled->setChecked(m_hideNotInstalled);
+    connect(hideNotInstalled, &QAction::toggled, this, [this](bool on){
+        m_hideNotInstalled = on;
+        applyFilters();
+    });
+
+    menu.exec(m_table->viewport()->mapToGlobal(pos));
+}
+
+void DownloadsTab::applyFilters() {
+    for (int row = 0; row < m_table->rowCount(); ++row) {
+        auto* statusItem = m_table->item(row, 1);
+        const QString status = statusItem ? statusItem->text() : QString();
+        const bool hide = (m_hideInstalled && status == "Installed")
+                       || (m_hideNotInstalled && status == "Not installed");
+        m_table->setRowHidden(row, hide);
     }
 }
-}
+
+} // namespace solero

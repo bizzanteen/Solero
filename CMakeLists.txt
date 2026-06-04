@@ -44,6 +44,7 @@ set(SOLERO_SOURCES
   src/main.cpp
   src/app/Application.cpp
   src/app/SingleInstance.cpp
+  src/app/NxmRegister.cpp
   src/core/ModList.cpp
   src/core/PluginList.cpp
   src/core/Profile.cpp

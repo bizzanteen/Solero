@@ -2,9 +2,10 @@
 Type=Application
 Name=Solero
 Comment=Mod Manager for Skyrim SE/AE
-Exec=/var/home/eamon/.local/bin/solero
+Exec=/var/home/eamon/.local/bin/solero %u
 Icon=/var/home/eamon/dev/solero/resources/icons/solero-logo.svg
 Categories=Game;Utility;
 Keywords=mod;skyrim;modmanager;
 StartupWMClass=solero
 Terminal=false
+MimeType=x-scheme-handler/nxm;

@@ -2,6 +2,7 @@
 #include <QDialog>
 
 class QCheckBox;
+class QLabel;
 
 namespace solero {
 
@@ -17,6 +18,7 @@ private:
     QCheckBox* m_confirmDelete = nullptr;
     QCheckBox* m_cycleSeparatorColors = nullptr;
     QCheckBox* m_dataShowAllFiles = nullptr;
+    QLabel* m_nxmStatus = nullptr;
 };
 
 } // namespace solero

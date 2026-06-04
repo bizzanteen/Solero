@@ -1,12 +1,15 @@
 #include "SettingsDialog.h"
 #include "ui/SetupPanel.h"
 #include "core/AppConfig.h"
+#include "app/NxmRegister.h"
 #include <QTabWidget>
 #include <QDialogButtonBox>
 #include <QVBoxLayout>
 #include <QComboBox>
 #include <QCheckBox>
 #include <QLabel>
+#include <QPushButton>
+#include <QMessageBox>
 
 namespace solero {
 
@@ -42,6 +45,25 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     m_dataShowAllFiles = new QCheckBox("Data tab: show all files by default", prefs);
     m_dataShowAllFiles->setChecked(cfg.dataShowAllFiles());
     prefsLayout->addWidget(m_dataShowAllFiles);
+
+    // Nexus nxm:// handler registration (opt-in, user-initiated).
+    m_nxmStatus = new QLabel(NxmRegister::isRegistered()
+        ? "Registered as the nxm:// handler"
+        : "Not registered", prefs);
+    prefsLayout->addWidget(m_nxmStatus);
+
+    auto* nxmBtn = new QPushButton("Register as Nexus download handler (nxm://)", prefs);
+    prefsLayout->addWidget(nxmBtn);
+    connect(nxmBtn, &QPushButton::clicked, this, [this]{
+        QString msg;
+        bool ok = solero::NxmRegister::registerHandler(msg);
+        m_nxmStatus->setText(solero::NxmRegister::isRegistered()
+            ? "Registered as the nxm:// handler"
+            : "Not registered");
+        QMessageBox::information(this, "Nexus Handler", ok
+            ? "Solero is now registered for Nexus \"Mod Manager Download\" links.\n\n" + msg
+            : ("Registration failed:\n" + msg));
+    });
 
     // Disabled stub: deploy mode is not wired up yet.
     auto* deployRow = new QVBoxLayout;

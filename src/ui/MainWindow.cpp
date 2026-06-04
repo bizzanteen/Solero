@@ -504,6 +504,23 @@ void MainWindow::installFromArchive(const QString& archive) {
             if (!imgDirs.isEmpty() && !prep.fullyExtracted)
                 solero::ModInstaller::extractSubpaths(prep, imgDirs, [&](int pct){ extractProg->setProgress(pct, 100); });
             extractProg->close();
+            engine.setFilePresent([this](const QString& file) -> bool {
+                // Present if the plugin file is in the live game Data dir, or in
+                // any enabled mod's staged Data dir (case-insensitive by name).
+                QString dataDir = solero::AppConfig::instance().gameDir() + "/Data";
+                auto ciExists = [](const QString& dir, const QString& name){
+                    QDir d(dir);
+                    for (const QString& e : d.entryList(QDir::Files))
+                        if (e.compare(name, Qt::CaseInsensitive) == 0) return true;
+                    return false; };
+                if (ciExists(dataDir, file)) return true;
+                auto* p = m_profileMgr->activeProfile();
+                if (p) for (const auto& m : p->modList())
+                    if (m.type == solero::EntryType::Mod && m.enabled
+                        && ciExists(solero::AppConfig::instance().stagingDir() + "/" + m.id + "/Data", file))
+                        return true;
+                return false;
+            });
             solero::FomodWizard wizard(&engine, prep.extractDir, this);
             if (wizard.exec() != QDialog::Accepted) { statusBar()->showMessage("Install cancelled."); return; }
             solero::ProgressModal stageProg(this, "Install", "Installing files...");
@@ -618,6 +635,23 @@ void MainWindow::onReinstallMod(const QString& modId) {
             if (!imgDirs.isEmpty() && !prep.fullyExtracted)
                 solero::ModInstaller::extractSubpaths(prep, imgDirs, [&](int pct){ extractProg->setProgress(pct, 100); });
             extractProg->close();
+            engine.setFilePresent([this](const QString& file) -> bool {
+                // Present if the plugin file is in the live game Data dir, or in
+                // any enabled mod's staged Data dir (case-insensitive by name).
+                QString dataDir = solero::AppConfig::instance().gameDir() + "/Data";
+                auto ciExists = [](const QString& dir, const QString& name){
+                    QDir d(dir);
+                    for (const QString& e : d.entryList(QDir::Files))
+                        if (e.compare(name, Qt::CaseInsensitive) == 0) return true;
+                    return false; };
+                if (ciExists(dataDir, file)) return true;
+                auto* p = m_profileMgr->activeProfile();
+                if (p) for (const auto& m : p->modList())
+                    if (m.type == solero::EntryType::Mod && m.enabled
+                        && ciExists(solero::AppConfig::instance().stagingDir() + "/" + m.id + "/Data", file))
+                        return true;
+                return false;
+            });
             solero::FomodWizard wizard(&engine, prep.extractDir, this);
             if (wizard.exec() != QDialog::Accepted) { statusBar()->showMessage("Reinstall cancelled."); return; }
             solero::ProgressModal stageProg(this, "Reinstall", "Installing files...");

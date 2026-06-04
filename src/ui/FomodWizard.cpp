@@ -13,6 +13,7 @@
 #include <QDir>
 #include <QResizeEvent>
 #include <QEvent>
+#include <QMessageBox>
 
 namespace solero {
 
@@ -82,11 +83,22 @@ FomodWizard::FomodWizard(FomodEngine* engine, const QString& extractDir, QWidget
 }
 
 void FomodWizard::rebuildVisibleSteps() {
-    auto present = [](const QString&){ return false; };
     m_visibleSteps.clear();
     for (int i = 0; i < m_engine->module().steps.size(); ++i)
-        if (m_engine->isStepVisible(i, m_selection, present))
+        if (m_engine->isStepVisible(i, m_selection))
             m_visibleSteps.append(i);
+}
+
+void FomodWizard::clearHiddenStepSelections() {
+    // Remove selection entries for any step that is currently not visible so
+    // that flipping a flag off doesn't leave stale picks behind.
+    const auto& steps = m_engine->module().steps;
+    for (int si = 0; si < steps.size(); ++si) {
+        if (m_engine->isStepVisible(si, m_selection)) continue;
+        for (int gi = 0; gi < steps[si].groups.size(); ++gi)
+            for (int oi = 0; oi < steps[si].groups[gi].options.size(); ++oi)
+                m_selection.remove(FomodEngine::selKey(si, gi, oi));
+    }
 }
 
 void FomodWizard::showStep(int visibleIdx) {
@@ -99,6 +111,9 @@ void FomodWizard::showStep(int visibleIdx) {
     qDeleteAll(m_optionsHost->findChildren<QWidget*>("", Qt::FindDirectChildrenOnly));
     auto* v = new QVBoxLayout(m_optionsHost);
 
+    QString firstSelectedImg;     // image of the first checked option on this step
+    bool haveFirstSelectedImg = false;
+
     for (int gi = 0; gi < step.groups.size(); ++gi) {
         const FomodGroup& group = step.groups[gi];
         auto* box = new QGroupBox(group.name, m_optionsHost);
@@ -107,21 +122,41 @@ void FomodWizard::showStep(int visibleIdx) {
         auto* bgroup = exclusive ? new QButtonGroup(box) : nullptr;
         if (bgroup) bgroup->setExclusive(true);
 
+        // For SelectExactlyOne, guarantee exactly one is selected: track whether
+        // anything ends up checked so we can force-select the first option.
+        bool anyCheckedInGroup = false;
+        QAbstractButton* firstBtnInGroup = nullptr;
+
         for (int oi = 0; oi < group.options.size(); ++oi) {
             const FomodOption& opt = group.options[oi];
             QString key = FomodEngine::selKey(stepIdx, gi, oi);
+            // Evaluate the option's effective type against current flags/files,
+            // so conditional (dependencyType) options can become Required /
+            // NotUsable / Recommended mid-wizard.
+            OptionType type = m_engine->effectiveType(opt, m_selection);
             QAbstractButton* btn = exclusive
                 ? static_cast<QAbstractButton*>(new QRadioButton(opt.name, box))
                 : static_cast<QAbstractButton*>(new QCheckBox(opt.name, box));
             btn->setCheckable(true);
             if (bgroup) bgroup->addButton(btn);
+            if (!firstBtnInGroup) firstBtnInGroup = btn;
 
             bool checked = m_selection.value(key, false);
-            if (opt.baseType == OptionType::Required) { checked = true; btn->setEnabled(false); }
-            if (opt.baseType == OptionType::NotUsable) { checked = false; btn->setEnabled(false); }
-            if (!m_selection.contains(key) && opt.baseType == OptionType::Recommended) checked = true;
+            bool forceEnabledOff = false;
+            if (type == OptionType::Required)  { checked = true;  forceEnabledOff = true; }
+            if (type == OptionType::NotUsable) { checked = false; forceEnabledOff = true; }
+            if (!m_selection.contains(key) && type == OptionType::Recommended) checked = true;
+
+            // SelectAll: every option checked and disabled (can't deselect).
+            if (group.type == GroupType::All) { checked = true; forceEnabledOff = true; }
+
+            if (forceEnabledOff) btn->setEnabled(false);
             btn->setChecked(checked);
             m_selection.insert(key, checked);
+            if (checked) anyCheckedInGroup = true;
+            if (checked && !haveFirstSelectedImg && !opt.imagePath.isEmpty()) {
+                firstSelectedImg = opt.imagePath; haveFirstSelectedImg = true;
+            }
 
             btn->setProperty("fomodImg", opt.imagePath);
             btn->setProperty("fomodDesc", opt.description);
@@ -137,15 +172,68 @@ void FomodWizard::showStep(int visibleIdx) {
             });
             gv->addWidget(btn);
         }
+
+        // SelectExactlyOne with nothing selected (no Required/Recommended):
+        // force-select the first option to satisfy "exactly one".
+        if (group.type == GroupType::ExactlyOne && !anyCheckedInGroup && firstBtnInGroup) {
+            firstBtnInGroup->setChecked(true);
+            m_selection.insert(FomodEngine::selKey(stepIdx, gi, 0), true);
+        }
         v->addWidget(box);
     }
     v->addStretch();
+
+    // Fix #7: show the image of the first selected option for this step.
+    setImage(haveFirstSelectedImg ? firstSelectedImg : QString());
+
     updateNavButtons();
 }
 
 void FomodWizard::onOptionToggled() {
     rebuildVisibleSteps();
+    clearHiddenStepSelections();
     updateNavButtons();
+}
+
+bool FomodWizard::validateCurrentStep() {
+    int stepIdx = m_visibleSteps[m_pos];
+    const FomodStep& step = m_engine->module().steps[stepIdx];
+    for (int gi = 0; gi < step.groups.size(); ++gi) {
+        const FomodGroup& group = step.groups[gi];
+        int checkedCount = 0;
+        for (int oi = 0; oi < group.options.size(); ++oi)
+            if (m_selection.value(FomodEngine::selKey(stepIdx, gi, oi), false))
+                ++checkedCount;
+
+        const QString g = group.name.isEmpty() ? QStringLiteral("a group") : ("\"" + group.name + "\"");
+        switch (group.type) {
+            case GroupType::ExactlyOne:
+                if (checkedCount != 1) {
+                    QMessageBox::information(this, "Selection required",
+                        "Please select exactly one option in " + g + ".");
+                    return false;
+                }
+                break;
+            case GroupType::AtLeastOne:
+                if (checkedCount < 1) {
+                    QMessageBox::information(this, "Selection required",
+                        "Please select at least one option in " + g + ".");
+                    return false;
+                }
+                break;
+            case GroupType::AtMostOne:
+                if (checkedCount > 1) {
+                    QMessageBox::information(this, "Selection invalid",
+                        "Please select at most one option in " + g + ".");
+                    return false;
+                }
+                break;
+            case GroupType::All:
+            case GroupType::Any:
+                break;
+        }
+    }
+    return true;
 }
 
 void FomodWizard::updateNavButtons() {
@@ -155,6 +243,7 @@ void FomodWizard::updateNavButtons() {
 }
 
 void FomodWizard::onNext() {
+    if (!validateCurrentStep()) return;
     if (m_pos >= m_visibleSteps.size() - 1) { accept(); return; }
     showStep(m_pos + 1);
 }
@@ -164,8 +253,7 @@ void FomodWizard::onBack() {
 }
 
 QList<FomodFile> FomodWizard::result() const {
-    auto present = [](const QString&){ return false; };
-    return m_engine->collectFiles(m_selection, present);
+    return m_engine->collectFiles(m_selection);
 }
 
 void FomodWizard::setImage(const QString& imagePath) {

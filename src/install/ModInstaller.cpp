@@ -8,6 +8,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QTemporaryDir>
+#include <algorithm>
 
 namespace solero {
 
@@ -191,7 +192,14 @@ InstallResult ModInstaller::stageFomod(InstallPrep& prep, const QString& staging
     QString fomodDir = QFileInfo(prep.fomodConfigPath).dir().path(); // .../fomod
     QString fomodBase = QFileInfo(fomodDir).dir().path();            // parent of fomod
 
-    for (const FomodFile& f : files) {
+    // FOMOD spec: when two sources write the same destination, the one with the
+    // higher priority wins. We copy last-writer-wins, so stable-sort ASCENDING
+    // by priority - higher priority is copied last and overwrites lower.
+    QList<FomodFile> ordered = files;
+    std::stable_sort(ordered.begin(), ordered.end(),
+                     [](const FomodFile& a, const FomodFile& b){ return a.priority < b.priority; });
+
+    for (const FomodFile& f : ordered) {
         QString src = fomodBase + "/" + f.source;
         if (!QFileInfo::exists(src)) {
             QString found = resolveCaseInsensitive(fomodBase, f.source);

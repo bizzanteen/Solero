@@ -94,9 +94,58 @@ private slots:
     </plugins></group></optionalFileGroups></installStep>
 </installSteps></config>)");
         FomodEngine engine; QVERIFY(engine.load(cfg));
-        auto present = [](const QString&){ return false; };
-        QVERIFY(!engine.isStepVisible(1, {}, present));
-        QVERIFY(engine.isStepVisible(1, {{"0/0/0", true}}, present));
+        QVERIFY(!engine.isStepVisible(1, {}));
+        QVERIFY(engine.isStepVisible(1, {{"0/0/0", true}}));
+    }
+
+    // collectFiles must not include selections from steps that have become
+    // hidden after a flag change (stale selections).
+    void collectFilesExcludesHiddenSteps() {
+        QTemporaryDir tmp;
+        QString cfg = writeConfig(tmp, R"(<?xml version="1.0"?>
+<config><moduleName>M</moduleName><installSteps>
+  <installStep name="One"><optionalFileGroups>
+    <group name="G" type="SelectAny"><plugins>
+      <plugin name="EnableTwo"><files/>
+        <conditionFlags><flag name="two">yes</flag></conditionFlags>
+        <typeDescriptor><type name="Optional"/></typeDescriptor></plugin>
+    </plugins></group></optionalFileGroups></installStep>
+  <installStep name="Two">
+    <visible><flagDependency flag="two" value="yes"/></visible>
+    <optionalFileGroups><group name="G2" type="SelectAny"><plugins>
+      <plugin name="P"><files><file source="two/x.esp" destination="x.esp"/></files>
+        <typeDescriptor><type name="Optional"/></typeDescriptor></plugin>
+    </plugins></group></optionalFileGroups></installStep>
+</installSteps></config>)");
+        FomodEngine engine; QVERIFY(engine.load(cfg));
+        // Step Two's option selected, but flag "two" not set -> step hidden ->
+        // its file must be excluded.
+        auto hidden = engine.collectFiles({{"1/0/0", true}});
+        QCOMPARE(hidden.size(), 0);
+        // With flag set, step Two becomes visible and its file is included.
+        auto shown = engine.collectFiles({{"0/0/0", true}, {"1/0/0", true}});
+        QCOMPARE(shown.size(), 1);
+        QCOMPARE(shown[0].source, QString("two/x.esp"));
+    }
+
+    // A folder entry with no destination must leave destination empty so it
+    // installs into the Data root; a file entry defaults to its source path.
+    void folderDestinationDefaultsEmpty() {
+        QTemporaryDir tmp;
+        QString cfg = writeConfig(tmp, R"(<?xml version="1.0"?>
+<config><moduleName>M</moduleName>
+ <requiredInstallFiles>
+   <folder source="meshes"/>
+   <file source="a/b.esp"/>
+ </requiredInstallFiles>
+ <installSteps/></config>)");
+        FomodEngine engine; QVERIFY(engine.load(cfg));
+        auto files = engine.collectFiles({});
+        QCOMPARE(files.size(), 2);
+        QCOMPARE(files[0].isFolder, true);
+        QCOMPARE(files[0].destination, QString());        // folder -> empty
+        QCOMPARE(files[1].isFolder, false);
+        QCOMPARE(files[1].destination, QString("a/b.esp")); // file -> source path
     }
 };
 QTEST_MAIN(TestFomodEngine)

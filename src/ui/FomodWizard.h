@@ -27,6 +27,11 @@ private:
     void onNext();
     void onBack();
     void setImage(const QString& imagePath);
+    // Validate the group-type constraints of the currently shown step.
+    // Returns true if OK to advance; otherwise shows a message and returns false.
+    bool validateCurrentStep();
+    // Drop selections belonging to steps that are no longer visible.
+    void clearHiddenStepSelections();
 
     FomodEngine* m_engine;
     QString m_extractDir;

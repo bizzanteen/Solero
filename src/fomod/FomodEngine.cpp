@@ -27,10 +27,16 @@ static QList<FomodFile> parseFiles(const QDomElement& filesEl) {
         if (tag != "file" && tag != "folder") continue;
         FomodFile f;
         f.source = e.attribute("source");
-        f.destination = e.attribute("destination", e.attribute("source"));
+        f.isFolder = (tag == "folder");
+        // For file entries a missing destination defaults to the source path
+        // (relative to Data). For FOLDER entries, leave destination empty when
+        // the XML omits it so stageFomod's Data-root logic applies (otherwise
+        // a folder would wrongly install into Data/<source>).
+        f.destination = f.isFolder
+            ? e.attribute("destination")
+            : e.attribute("destination", e.attribute("source"));
         f.source.replace('\\', '/');
         f.destination.replace('\\', '/');
-        f.isFolder = (tag == "folder");
         f.priority = e.attribute("priority", "0").toInt();
         out.append(f);
     }
@@ -118,25 +124,63 @@ QHash<QString, QString> FomodEngine::flagsFor(const Selection& sel) const {
     return flags;
 }
 
-bool FomodEngine::isStepVisible(int stepIndex, const Selection& sel, const FilePresent& present) const {
+bool FomodEngine::isStepVisible(int stepIndex, const Selection& sel) const {
     if (stepIndex < 0 || stepIndex >= m_module.steps.size()) return false;
     const QString& xml = m_module.steps[stepIndex].visibleConditionXml;
     if (xml.isEmpty()) return true;
     QDomDocument doc; doc.setContent(xml);
     FomodCondition c = FomodCondition::parse(doc.documentElement());
-    return c.evaluate(flagsFor(sel), present);
+    return c.evaluate(flagsFor(sel),
+                      [this](const QString& f){ return filePresent(f); });
 }
 
-QList<FomodFile> FomodEngine::collectFiles(const Selection& sel, const FilePresent& present) const {
+OptionType FomodEngine::effectiveType(const FomodOption& opt, const Selection& sel) const {
+    // No conditional descriptor: the parsed base type is the effective type.
+    if (opt.conditionTypeXml.isEmpty()) return opt.baseType;
+
+    QDomDocument doc;
+    if (!doc.setContent(opt.conditionTypeXml)) return opt.baseType;
+    QDomElement dt = doc.documentElement(); // <dependencyType>
+
+    OptionType result = opt.baseType; // defaultType (parsed at load) is the fallback
+    const QHash<QString, QString> flags = flagsFor(sel);
+    auto present = [this](const QString& f){ return filePresent(f); };
+
+    // Evaluate each <pattern>; first matching pattern wins (FOMOD spec order).
+    QDomElement patterns = dt.firstChildElement("patterns");
+    for (QDomElement pat = patterns.firstChildElement("pattern"); !pat.isNull();
+         pat = pat.nextSiblingElement("pattern")) {
+        FomodCondition c = FomodCondition::parse(pat.firstChildElement("dependencies"));
+        if (c.evaluate(flags, present)) {
+            QDomElement t = pat.firstChildElement("type");
+            if (!t.isNull()) {
+                const QString n = t.attribute("name");
+                if (n == "Required")      return OptionType::Required;
+                if (n == "Recommended")   return OptionType::Recommended;
+                if (n == "NotUsable")     return OptionType::NotUsable;
+                if (n == "CouldBeUsable") return OptionType::CouldBeUsable;
+                return OptionType::Optional;
+            }
+        }
+    }
+    return result;
+}
+
+QList<FomodFile> FomodEngine::collectFiles(const Selection& sel) const {
     QList<FomodFile> out = m_module.requiredFiles;
-    for (int si = 0; si < m_module.steps.size(); ++si)
+    for (int si = 0; si < m_module.steps.size(); ++si) {
+        // Skip steps that are no longer visible under the current selection:
+        // their (stale) option selections must not be installed.
+        if (!isStepVisible(si, sel)) continue;
         for (int gi = 0; gi < m_module.steps[si].groups.size(); ++gi)
             for (int oi = 0; oi < m_module.steps[si].groups[gi].options.size(); ++oi)
                 if (sel.value(selKey(si, gi, oi)))
                     out.append(m_module.steps[si].groups[gi].options[oi].files);
+    }
 
     if (!m_module.conditionalInstallsXml.isEmpty()) {
         QHash<QString, QString> flags = flagsFor(sel);
+        auto present = [this](const QString& f){ return filePresent(f); };
         QDomDocument doc; doc.setContent(m_module.conditionalInstallsXml);
         QDomElement patterns = doc.documentElement().firstChildElement("patterns");
         for (QDomElement pat = patterns.firstChildElement("pattern"); !pat.isNull();

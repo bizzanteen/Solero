@@ -13,11 +13,11 @@ public:
                                     const std::function<void(int)>& onProgress = {});
     static bool nexusApiKeyAvailable();
     static QString extractIcon(const QString& exePath, const QString& destDir);
-private:
     static QString nexusApiKey();
     static QString nexusDownloadUrl(const ToolPreset& p);   // "" on failure
-    static QString githubDownloadUrl(const ToolPreset& p);  // "" on failure
     static bool curlDownload(const QString& url, const QString& dest,
                              const QString& header, const std::function<void(int)>& onProgress);
+private:
+    static QString githubDownloadUrl(const ToolPreset& p);  // "" on failure
 };
 }

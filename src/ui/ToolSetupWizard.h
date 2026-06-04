@@ -6,8 +6,10 @@ class ToolSetupWizard : public QDialog {
     Q_OBJECT
 public:
     static void run(QWidget* parent, ToolStore* store);
-private:
     ToolSetupWizard(QWidget* parent, ToolStore* store);
+signals:
+    void installModRequested(const QString& archivePath);
+private:
     ToolStore* m_store;
 };
 }

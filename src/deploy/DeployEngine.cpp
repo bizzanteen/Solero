@@ -22,7 +22,7 @@ QString DeployEngine::conflictIndexPath(const QString& profileDir) {
     return profileDir + "/conflicts.json";
 }
 
-DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode) {
+DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::function<void(int,int)>& onProgress) {
     DeployResult result;
 
     // Clean up any previous deployment first to avoid orphaned files
@@ -32,10 +32,19 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode) {
     DeployRecord record;
     ConflictIndex conflicts;
 
+    int total = 0;
+    for (const auto& entry : profile.modList())
+        if (entry.type == EntryType::Mod && entry.enabled) ++total;
+    total += 1; // finalize/LOOT step
+    int done = 0;
+    if (onProgress) onProgress(0, total);
+
     for (const auto& entry : profile.modList()) {
         if (entry.type != EntryType::Mod) continue;
         if (!entry.enabled) continue;
         deployMod(entry.id, m_gameDir, linker, record, conflicts);
+        ++done;
+        if (onProgress) onProgress(done, total);
     }
 
     // Sort plugins with LOOT (if enabled) before writing plugins.txt. The mod
@@ -82,6 +91,8 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode) {
     record.saveToFile(recordPath(m_gameDir));
     conflicts.saveToFile(conflictIndexPath(profile.path()));
 
+    if (onProgress) onProgress(total, total);
+
     result.success = true;
     result.conflicts = std::move(conflicts);
     result.filesDeployed = record.count();
@@ -115,12 +126,15 @@ void DeployEngine::deployMod(const QString& modId,
     }
 }
 
-bool DeployEngine::undeploy(const QString& gameDir) {
+bool DeployEngine::undeploy(const QString& gameDir, const std::function<void(int,int)>& onProgress) {
     const QString normGameDir = QDir::cleanPath(gameDir);
     QString recPath = recordPath(normGameDir);
     DeployRecord record = DeployRecord::loadFromFile(recPath);
 
-    for (const auto& relPath : record.allPaths()) {
+    auto paths = record.allPaths();
+    int total = paths.size();
+    int done = 0;
+    for (const auto& relPath : paths) {
         QString fullPath = normGameDir + "/" + relPath;
         QFile::remove(fullPath);
         QDir dir(QFileInfo(fullPath).path());
@@ -129,6 +143,8 @@ bool DeployEngine::undeploy(const QString& gameDir) {
             dir.rmdir(".");
             dir = QDir(parent);
         }
+        ++done;
+        if (onProgress && (done % 20 == 0 || done == total)) onProgress(done, total);
     }
 
     QFile::remove(recPath);

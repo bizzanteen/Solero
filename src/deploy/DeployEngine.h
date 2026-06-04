@@ -4,6 +4,7 @@
 #include "ConflictIndex.h"
 #include "Linker.h"
 #include <QString>
+#include <functional>
 
 namespace solero { class Profile; }
 
@@ -20,8 +21,8 @@ class DeployEngine {
 public:
     DeployEngine(const QString& gameDir, const QString& stagingRoot);
 
-    DeployResult deploy(Profile& profile, DeployMode mode = DeployMode::HardLink);
-    bool undeploy(const QString& gameDir);
+    DeployResult deploy(Profile& profile, DeployMode mode = DeployMode::HardLink, const std::function<void(int,int)>& onProgress = {});
+    bool undeploy(const QString& gameDir, const std::function<void(int,int)>& onProgress = {});
 
     void setLootEnabled(bool enabled) { m_lootEnabled = enabled; }
     void setUserlistPath(const QString& path) { m_userlistPath = path; }

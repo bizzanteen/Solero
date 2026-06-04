@@ -125,7 +125,10 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
             case ColVersion: return isSep ? QVariant() : entry.version;
             case ColFlags: {
                 if (isSep) return QString();
-                QString flags = entry.hasFomodChoices ? "FOMOD" : "";
+                QStringList parts;
+                if (entry.isOutputMod) parts << "Output";
+                if (entry.hasFomodChoices) parts << "FOMOD";
+                QString flags = parts.join(" ");
                 if (m_depWarnings.contains(entry.id)) flags = "\xe2\x9a\xa0 " + flags; // ⚠
                 return flags;
             }
@@ -143,6 +146,8 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
         return QColor(entry.color).lighter(170);
     if (role == Qt::ForegroundRole && isSep && !entry.color.isEmpty())
         return QColor(entry.color).darker(150);
+    if (role == Qt::ForegroundRole && !isSep && entry.isOutputMod)
+        return QColor("#7f9cc4");
     if (role == Qt::UserRole)
         return entry.id;
 

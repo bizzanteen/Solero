@@ -25,6 +25,7 @@ struct ModEntry {
     QString parentId;    // nexusModId of parent group (multi-file)
     bool enabled = true;
     bool hasFomodChoices = false;
+    bool isOutputMod = false;
     QStringList tags;
     QString sourceArchive; // archive path this mod was installed from (for Reinstall)
 

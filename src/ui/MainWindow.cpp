@@ -142,12 +142,6 @@ void MainWindow::setupToolbar() {
     m_toolsBtn->setMenu(m_toolsMenu);
     tb->addWidget(m_toolsBtn);
 
-    auto* toolsGear = new QToolButton(tb);
-    toolsGear->setText("\xe2\x9a\x99");
-    toolsGear->setToolTip("Manage tools (edit / remove)");
-    connect(toolsGear, &QToolButton::clicked, this, &MainWindow::onManageTools);
-    tb->addWidget(toolsGear);
-
     // BethINI (modal window)
     tb->addAction("BethINI", this, &MainWindow::onOpenBethini);
     tb->addSeparator();
@@ -245,7 +239,8 @@ void MainWindow::switchProfile(const QString& name) {
     if (wasDeployed && solero::AppConfig::instance().isConfigured()) {
         solero::DeployEngine engine(solero::AppConfig::instance().gameDir(),
                                     solero::AppConfig::instance().stagingDir());
-        engine.undeploy(solero::AppConfig::instance().gameDir());
+        engine.undeploy(solero::AppConfig::instance().gameDir(),
+                        [&](int d, int t){ if (prog) { prog->setProgress(d, t); prog->pump(); } });
     }
 
     if (prog) prog->setMessage("Loading " + name + "...");
@@ -270,7 +265,8 @@ void MainWindow::switchProfile(const QString& name) {
         solero::DeployEngine engine(solero::AppConfig::instance().gameDir(),
                                     solero::AppConfig::instance().stagingDir());
         engine.setUserlistPath(profile->lootUserlistPath());
-        auto result = engine.deploy(*profile, m_deployMode);
+        auto result = engine.deploy(*profile, m_deployMode,
+                                    [&](int d, int t){ if (prog) { prog->setProgress(d, t); prog->pump(); } });
         m_deployed = result.success;
         m_deployDirty = false;
         if (result.success) {
@@ -306,7 +302,7 @@ bool MainWindow::deployCurrent() {
         solero::AppConfig::instance().gameDir(),
         solero::AppConfig::instance().stagingDir());
     engine.setUserlistPath(profile->lootUserlistPath());
-    auto result = engine.deploy(*profile, m_deployMode);
+    auto result = engine.deploy(*profile, m_deployMode, [&](int d, int t){ prog.setProgress(d, t); prog.pump(); });
 
     prog.close();
 
@@ -353,7 +349,7 @@ void MainWindow::onDeployToggle() {
         solero::DeployEngine engine(
             solero::AppConfig::instance().gameDir(),
             solero::AppConfig::instance().stagingDir());
-        engine.undeploy(solero::AppConfig::instance().gameDir());
+        engine.undeploy(solero::AppConfig::instance().gameDir(), [&](int d, int t){ prog.setProgress(d, t); prog.pump(); });
 
         prog.close();
         m_deployed = false;
@@ -790,6 +786,7 @@ QString MainWindow::ensureOutputMod(const QString& name) {
     mod.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     mod.name = name;
     mod.enabled = true;
+    mod.isOutputMod = true;
 
     QDir().mkpath(solero::AppConfig::instance().stagingDir() + "/" + mod.id + "/Data");
 

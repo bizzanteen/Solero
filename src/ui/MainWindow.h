@@ -38,6 +38,7 @@ signals:
 
 protected:
     void keyPressEvent(QKeyEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     void setupToolbar();
@@ -45,6 +46,9 @@ private:
     void switchProfile(const QString& name);
     void refreshProfileCombo();
     void onDeployToggle();
+    bool deployCurrent();        // perform a deploy of the active profile; returns success
+    void showRunLock(const QString& toolName);
+    void hideRunLock();
     void refreshDeployState();   // detect an existing deployment on startup
     void updateDeployButton();   // sync the toggle's text/tooltip to m_deployed
     void updatePluginNotice();   // show/hide the Plugins-tab staleness notice
@@ -86,6 +90,9 @@ private:
     QToolButton* m_toolsBtn = nullptr;
     QMenu* m_toolsMenu = nullptr;
     solero::ToolStore* m_toolStore = nullptr;
+
+    QWidget* m_runOverlay = nullptr;
+    QLabel* m_runLockLabel = nullptr;
 
     QString profilesRoot() const;
     QString txLogPath() const;

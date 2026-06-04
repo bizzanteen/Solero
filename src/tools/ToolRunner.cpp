@@ -2,6 +2,7 @@
 #include "core/AppConfig.h"
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QEventLoop>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -27,8 +28,19 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
     if (capture) before = snapshotFiles(captureBase);
 
     QProcess proc;
-    if (!exe.workingDir.isEmpty()) proc.setWorkingDirectory(exe.workingDir);
+    // Many Windows tools (xEdit, DynDOLOD) expect cwd to be their install dir.
+    proc.setWorkingDirectory(exe.workingDir.isEmpty()
+                                 ? QFileInfo(exe.binaryPath).absolutePath()
+                                 : exe.workingDir);
+    proc.setProcessChannelMode(QProcess::MergedChannels);
     QStringList args = exe.arguments.split(' ', Qt::SkipEmptyParts);
+
+    // Wait for the process via an event loop so the GUI thread keeps pumping
+    // events (no waitForFinished blocking -> app stays responsive). Connect
+    // before starting so a fast-exiting process can't slip past the wait.
+    QEventLoop loop;
+    QObject::connect(&proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                     &loop, &QEventLoop::quit);
 
     if (exe.runtime == RuntimeType::Native) {
         if (QFile::exists(exe.binaryPath))
@@ -57,7 +69,11 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
     }
     if (!proc.waitForStarted(15000)) { r.error = "Failed to start: " + exe.binaryPath; return r; }
     r.launched = true;
-    proc.waitForFinished(-1);
+    loop.exec();
+
+    r.output = QString::fromUtf8(proc.readAll());
+    if (proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0)
+        r.output += QString("\n[exit code %1]").arg(proc.exitCode());
 
     if (capture) {
         QSet<QString> beforeSet(before.begin(), before.end());

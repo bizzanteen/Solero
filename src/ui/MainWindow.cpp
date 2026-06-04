@@ -27,9 +27,12 @@
 #include <QToolBar>
 #include <QToolButton>
 #include <QLabel>
+#include <QVBoxLayout>
 #include <QKeyEvent>
 #include <QStandardPaths>
 #include <QMessageBox>
+#include <QAbstractButton>
+#include <QPushButton>
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QMenu>
@@ -289,6 +292,42 @@ void MainWindow::refreshProfileCombo() {
     m_profileCombo->addItems(m_profileMgr->profileNames());
 }
 
+bool MainWindow::deployCurrent() {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) { statusBar()->showMessage("No active profile."); return false; }
+
+    statusBar()->showMessage("Deploying...");
+    qApp->processEvents();
+
+    solero::ProgressModal prog(this, "Deploy", "Deploying mods + sorting plugins with LOOT...");
+    prog.show(); prog.pump();
+
+    solero::DeployEngine engine(
+        solero::AppConfig::instance().gameDir(),
+        solero::AppConfig::instance().stagingDir());
+    engine.setUserlistPath(profile->lootUserlistPath());
+    auto result = engine.deploy(*profile, m_deployMode);
+
+    prog.close();
+
+    if (!result.success) {
+        QMessageBox::critical(this, "Deploy Failed", result.errorMessage);
+        return false;
+    }
+    m_deployed = true;
+    m_deployDirty = false;
+    statusBar()->showMessage(
+        QString("Deployed %1 files. %2 conflicts. Plugins sorted by LOOT.")
+            .arg(result.filesDeployed)
+            .arg(result.conflicts.conflictedPaths().size()));
+    m_rightPane->setConflictIndex(result.conflicts);
+    m_rightPane->setProfile(profile); // refresh plugin list - LOOT may have reordered it
+    emit conflictsUpdated(result.conflicts);
+    updateDeployButton();
+    updatePluginNotice();
+    return result.success;
+}
+
 void MainWindow::onDeployToggle() {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) {
@@ -301,33 +340,7 @@ void MainWindow::onDeployToggle() {
     }
 
     if (!m_deployed || m_deployDirty) {
-        statusBar()->showMessage("Deploying...");
-        qApp->processEvents();
-
-        solero::ProgressModal prog(this, "Deploy", "Deploying mods + sorting plugins with LOOT...");
-        prog.show(); prog.pump();
-
-        solero::DeployEngine engine(
-            solero::AppConfig::instance().gameDir(),
-            solero::AppConfig::instance().stagingDir());
-        engine.setUserlistPath(profile->lootUserlistPath());
-        auto result = engine.deploy(*profile, m_deployMode);
-
-        prog.close();
-
-        if (!result.success) {
-            QMessageBox::critical(this, "Deploy Failed", result.errorMessage);
-            return;
-        }
-        m_deployed = true;
-        m_deployDirty = false;
-        statusBar()->showMessage(
-            QString("Deployed %1 files. %2 conflicts. Plugins sorted by LOOT.")
-                .arg(result.filesDeployed)
-                .arg(result.conflicts.conflictedPaths().size()));
-        m_rightPane->setConflictIndex(result.conflicts);
-        m_rightPane->setProfile(profile); // refresh plugin list - LOOT may have reordered it
-        emit conflictsUpdated(result.conflicts);
+        if (!deployCurrent()) return;
     } else {
         auto ret = QMessageBox::question(this, "UnDeploy",
             "Remove all deployed mod links? Staged mods will not be affected.",
@@ -703,13 +716,63 @@ void MainWindow::onZoomOut()   { static_cast<Application*>(qApp)->setZoomFactor(
 void MainWindow::onZoomReset() { static_cast<Application*>(qApp)->setZoomFactor(1.0); }
 
 void MainWindow::onRunTool(const solero::Executable& exe) {
-    solero::ProgressModal prog(this, "Tool", "Running " + exe.name + "...");
-    prog.show(); prog.pump();
+    if (!solero::AppConfig::instance().isConfigured()) {
+        QMessageBox::warning(this, "Tool", "Configure the game first (Game Settings\xe2\x80\xa6).");
+        return;
+    }
+    // Tools operate on the live Data/ folder, so the modlist must be deployed & current.
+    if (!m_deployed || m_deployDirty) {
+        QMessageBox box(this);
+        box.setWindowTitle("Deploy required");
+        box.setIcon(QMessageBox::Warning);
+        box.setText("Modlist must be deployed first.");
+        box.setInformativeText("Tools run against the game's Data folder, so your mods need to be deployed"
+                               + QString(m_deployDirty ? " (you have undeployed changes)." : "."));
+        QAbstractButton* deployBtn = box.addButton("Deploy", QMessageBox::AcceptRole);
+        box.addButton("Cancel", QMessageBox::RejectRole);
+        box.exec();
+        if (box.clickedButton() != deployBtn) return;
+        if (!deployCurrent()) { QMessageBox::critical(this, "Deploy Failed", "Could not deploy - see status bar."); return; }
+    }
+
+    // Lock the UI (MO2-style) while the tool runs.
+    showRunLock(exe.name);
     auto res = solero::ToolRunner::run(exe, solero::AppConfig::instance().gameDir(),
                                        solero::AppConfig::instance().stagingDir());
-    prog.close();
-    if (!res.launched) QMessageBox::warning(this, "Tool", res.error);
-    if (auto* p = m_profileMgr->activeProfile()) m_modListView->setProfile(p);
+    hideRunLock();
+
+    if (!res.launched) {
+        QMessageBox::warning(this, "Tool", res.error.isEmpty() ? ("Failed to launch " + exe.name) : res.error);
+    } else if (!res.output.isEmpty()) {
+        // Surface tool output (helps diagnose e.g. wine 'Not implemented').
+        statusBar()->showMessage(exe.name + " finished.");
+    }
+    if (auto* p = m_profileMgr->activeProfile()) { m_rightPane->refreshPlugins(p); m_modListView->setProfile(p); }
+    updatePluginNotice();
+}
+
+void MainWindow::showRunLock(const QString& toolName) {
+    if (!m_runOverlay) {
+        m_runOverlay = new QWidget(this);
+        m_runOverlay->setStyleSheet("background: rgba(0,0,0,140);");
+        auto* lay = new QVBoxLayout(m_runOverlay);
+        m_runLockLabel = new QLabel(m_runOverlay);
+        m_runLockLabel->setAlignment(Qt::AlignCenter);
+        m_runLockLabel->setStyleSheet("color:white; font-size:16px; background: transparent;");
+        lay->addStretch(); lay->addWidget(m_runLockLabel); lay->addStretch();
+    }
+    m_runLockLabel->setText("\xf0\x9f\x94\x92  " + toolName + " is running.\nSolero is locked until it closes.");
+    m_runOverlay->setGeometry(rect());
+    m_runOverlay->raise();
+    m_runOverlay->show();
+    qApp->processEvents();
+}
+
+void MainWindow::hideRunLock() { if (m_runOverlay) m_runOverlay->hide(); }
+
+void MainWindow::resizeEvent(QResizeEvent* event) {
+    QMainWindow::resizeEvent(event);
+    if (m_runOverlay && m_runOverlay->isVisible()) m_runOverlay->setGeometry(rect());
 }
 
 QString MainWindow::ensureOutputMod(const QString& name) {

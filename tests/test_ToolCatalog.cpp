@@ -4,7 +4,7 @@ using namespace solero;
 class TestToolCatalog : public QObject { Q_OBJECT
 private slots:
     void hasCommonTools() {
-        QVERIFY(ToolCatalog::presets().size() >= 6);
+        QCOMPARE(ToolCatalog::presets().size(), 8);
         QVERIFY(ToolCatalog::byId("xedit") != nullptr);
         QCOMPARE(ToolCatalog::byId("xedit")->source, ToolSource::Nexus);
         QVERIFY(!ToolCatalog::byId("xedit")->author.isEmpty());
@@ -16,6 +16,31 @@ private slots:
         auto* qac = ToolCatalog::byId("xedit-qac");
         QVERIFY(qac != nullptr);
         QVERIFY(qac->needs.contains("xedit"));
+    }
+    void dyndolodMergedTexGen() {
+        auto* dd = ToolCatalog::byId("dyndolod");
+        QVERIFY(dd != nullptr);
+        QCOMPARE(dd->extraActions.size(), 1);
+        QCOMPARE(dd->extraActions[0].label, QString("Run TexGen"));
+        QCOMPARE(dd->extraActions[0].exeRelPath, QString("TexGenx64.exe"));
+        QVERIFY(ToolCatalog::byId("texgen") == nullptr);
+        QVERIFY(ToolCatalog::byId("dyndolod-res") == nullptr);
+    }
+    void nativeToolsNoProton() {
+        QVERIFY(ToolCatalog::byId("synthesis") != nullptr);
+        QCOMPARE(ToolCatalog::byId("synthesis")->proton, false);
+        QVERIFY(ToolCatalog::byId("radium") != nullptr);
+        QCOMPARE(ToolCatalog::byId("radium")->proton, false);
+        QCOMPARE(ToolCatalog::byId("xedit")->proton, true);
+    }
+    void pgpatcherRenamed() {
+        auto* pg = ToolCatalog::byId("pgpatcher");
+        QVERIFY(pg != nullptr);
+        QCOMPARE(pg->githubRepo, QString("PGPatcher"));
+    }
+    void allHaveIconResource() {
+        for (const auto& t : ToolCatalog::presets())
+            QVERIFY(t.iconResource.startsWith(":/icons/tools/"));
     }
 };
 QTEST_MAIN(TestToolCatalog)

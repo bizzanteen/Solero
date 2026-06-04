@@ -18,10 +18,16 @@ struct ToolPreset {
     QString args;
     bool proton = true;
     QStringList needs;        // other preset ids this depends on
+    QString iconResource;     // ":/icons/tools/<id>.png"
+    bool producesOutput = false;
+    QString outputModName;    // e.g. "DynDOLOD Output"
+    struct PresetAction { QString label, exeRelPath, args, outputModName; };
+    QList<PresetAction> extraActions;
 };
 class ToolCatalog {
 public:
     static const QList<ToolPreset>& presets();
     static const ToolPreset* byId(const QString& id);
+    static QString dyndolodResourcesModId();
 };
 }

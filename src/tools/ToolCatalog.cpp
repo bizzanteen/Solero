@@ -16,23 +16,67 @@ const QList<ToolPreset>& ToolCatalog::presets() {
             t.creditUrl="https://github.com/"+owner+"/"+repo;
             t.exeRelPath=exe; t.args=args; t.proton=true; return t;
         };
+
         v << nexus("xedit", "SSEEdit (xEdit)", "ElminsterAU & the xEdit Team", "164",
-                   "SSEEdit.exe", "");
-        v << nexus("xedit-qac", "xEdit - Quick Auto Clean", "ElminsterAU & the xEdit Team", "164",
-                   "SSEEditQuickAutoClean.exe", "", {"xedit"});
-        v << nexus("dyndolod", "DynDOLOD 3", "Sheson", "68518",
-                   "DynDOLODx64.exe", "", {"dyndolod-res"});
-        v << nexus("dyndolod-res", "DynDOLOD Resources SE", "Sheson", "52897", "", "");
-        v << nexus("texgen", "TexGen (DynDOLOD)", "Sheson", "68518", "TexGenx64.exe", "", {"dyndolod"});
-        v << nexus("nemesis", "Nemesis Unlimited Behavior Engine", "ShikyoKira", "60033",
-                   "Nemesis Unlimited Behavior Engine.exe", "");
-        v << nexus("eslifier", "ESLifier", "Vermunds", "119846", "ESLifier.exe", "");
-        v << github("pgpatcher", "ParallaxGen / PGPatcher", "hakasapl", "hakasapl", "ParallaxGen",
-                    ".zip", "ParallaxGen.exe", "");
-        v << github("synthesis", "Synthesis", "Mutagen-Modding", "Mutagen-Modding", "Synthesis",
-                    "Linux", "Synthesis", "");
-        v << github("radium", "Radium Textures (VRAMr alt)", "SulfurNitride",
-                    "SulfurNitride", "Radium-Textures", "linux", "radium", "");
+                   "SSEEdit.exe", "-sse");
+
+        v << nexus("xedit-qac", "xEdit Quick Auto Clean", "ElminsterAU & the xEdit Team", "164",
+                   "SSEEditQuickAutoClean.exe", "-sse -qac -autoexit", {"xedit"});
+
+        {
+            ToolPreset t = nexus("dyndolod", "DynDOLOD", "Sheson", "68518",
+                                 "DynDOLODx64.exe", "-sse");
+            t.producesOutput = true;
+            t.outputModName = "DynDOLOD Output";
+            t.extraActions = {{ "Run TexGen", "TexGenx64.exe", "-sse", "TexGen Output" }};
+            v << t;
+        }
+
+        {
+            ToolPreset t = nexus("nemesis", "Nemesis", "ShikyoKira", "60033",
+                                 "Nemesis Unlimited Behavior Engine.exe", "");
+            t.producesOutput = true;
+            t.outputModName = "Nemesis Output";
+            v << t;
+        }
+
+        {
+            ToolPreset t = nexus("eslifier", "ESLifier", "MaskPlague", "119846",
+                                 "ESLifier.exe", "");
+            t.producesOutput = true;
+            t.outputModName = "ESLifier Output";
+            v << t;
+        }
+
+        {
+            ToolPreset t = github("pgpatcher", "PGPatcher", "hakasapl", "hakasapl", "PGPatcher",
+                                  "PGPatcher-", "PGPatcher.exe", "");
+            t.proton = true;
+            t.producesOutput = true;
+            t.outputModName = "PGPatcher Output";
+            v << t;
+        }
+
+        {
+            ToolPreset t = github("synthesis", "Synthesis", "Mutagen-Modding", "Mutagen-Modding",
+                                  "Synthesis", "linux", "Synthesis", "");
+            t.proton = false;
+            t.producesOutput = true;
+            t.outputModName = "Synthesis Output";
+            v << t;
+        }
+
+        {
+            ToolPreset t = github("radium", "Radium Textures", "SulfurNitride",
+                                  "SulfurNitride", "Radium-Textures", "radium-textures-linux",
+                                  "radium-textures", "");
+            t.proton = false;
+            t.producesOutput = true;
+            t.outputModName = "Radium Output";
+            v << t;
+        }
+
+        for (auto& t : v) t.iconResource = ":/icons/tools/" + t.id + ".png";
         return v;
     }();
     return p;
@@ -41,4 +85,5 @@ const ToolPreset* ToolCatalog::byId(const QString& id) {
     for (const auto& t : presets()) if (t.id == id) return &t;
     return nullptr;
 }
+QString ToolCatalog::dyndolodResourcesModId() { return "52897"; }
 }

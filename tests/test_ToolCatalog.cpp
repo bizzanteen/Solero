@@ -41,8 +41,9 @@ private slots:
         QVERIFY(ToolCatalog::byId("dyndolod-res") == nullptr);
     }
     void nativeToolsNoProton() {
+        // Synthesis ships the Windows build (Synthesis.exe via Proton).
         QVERIFY(ToolCatalog::byId("synthesis") != nullptr);
-        QCOMPARE(ToolCatalog::byId("synthesis")->proton, false);
+        QCOMPARE(ToolCatalog::byId("synthesis")->proton, true);
         QVERIFY(ToolCatalog::byId("radium") != nullptr);
         QCOMPARE(ToolCatalog::byId("radium")->proton, false);
         QCOMPARE(ToolCatalog::byId("xedit")->proton, true);

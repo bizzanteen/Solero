@@ -1,6 +1,6 @@
 #include "PluginList.h"
+#include "FileUtil.h"
 #include <QFile>
-#include <QTextStream>
 
 namespace solero {
 
@@ -46,17 +46,13 @@ PluginList PluginList::fromPluginsTxt(const QString& txt) {
 }
 
 bool PluginList::saveToFile(const QString& path) const {
-    QFile f(path);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
-    QTextStream out(&f);
-    out << toPluginsTxt();
-    return true;
+    return atomicWrite(path, toPluginsTxt().toUtf8());
 }
 
 PluginList PluginList::loadFromFile(const QString& path) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
-    return fromPluginsTxt(QTextStream(&f).readAll());
+    return fromPluginsTxt(QString::fromUtf8(f.readAll()));
 }
 
 } // namespace solero

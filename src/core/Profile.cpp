@@ -1,4 +1,5 @@
 #include "Profile.h"
+#include "FileUtil.h"
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
@@ -50,12 +51,20 @@ bool Profile::saveExecutables() const {
         o["isPrimary"]         = e.isPrimary;
         o["isCapturingOutput"] = e.isCapturingOutput;
         o["outputModId"]       = e.outputModId;
+        o["iconPath"]          = e.iconPath;
+        QJsonArray acts;
+        for (const auto& a : e.extraActions) {
+            QJsonObject ao;
+            ao["label"]       = a.label;
+            ao["binaryPath"]  = a.binaryPath;
+            ao["arguments"]   = a.arguments;
+            ao["outputModId"] = a.outputModId;
+            acts.append(ao);
+        }
+        o["extraActions"]      = acts;
         arr.append(o);
     }
-    QFile f(executablesPath());
-    if (!f.open(QIODevice::WriteOnly)) return false;
-    f.write(QJsonDocument(arr).toJson(QJsonDocument::Indented));
-    return true;
+    return atomicWrite(executablesPath(), QJsonDocument(arr).toJson(QJsonDocument::Indented));
 }
 
 bool Profile::loadExecutables() {
@@ -72,10 +81,20 @@ bool Profile::loadExecutables() {
         e.runtime           = (o["runtime"].toString() == "proton") ? RuntimeType::Proton : RuntimeType::Native;
         e.protonVersion     = o["protonVersion"].toString();
         e.winePrefix        = o["winePrefix"].toString();
-        e.runThroughDeployer= o["runThroughDeployer"].toBool(true);
+        e.runThroughDeployer= o["runThroughDeployer"].toBool(false);
         e.isPrimary         = o["isPrimary"].toBool(false);
         e.isCapturingOutput = o["isCapturingOutput"].toBool(false);
         e.outputModId       = o["outputModId"].toString();
+        e.iconPath          = o["iconPath"].toString();
+        for (const auto& av : o["extraActions"].toArray()) {
+            auto ao = av.toObject();
+            ToolAction a;
+            a.label       = ao["label"].toString();
+            a.binaryPath  = ao["binaryPath"].toString();
+            a.arguments   = ao["arguments"].toString();
+            a.outputModId = ao["outputModId"].toString();
+            e.extraActions.append(a);
+        }
         m_executables.append(e);
     }
     return true;

@@ -1,5 +1,6 @@
 #include "ToolStore.h"
 #include "core/AppConfig.h"
+#include "core/FileUtil.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -43,7 +44,7 @@ static Executable fromJson(const QJsonObject& o) {
     e.workingDir=o["workingDir"].toString(); e.arguments=o["arguments"].toString();
     e.runtime=(o["runtime"].toString()=="proton")?RuntimeType::Proton:RuntimeType::Native;
     e.protonVersion=o["protonVersion"].toString(); e.winePrefix=o["winePrefix"].toString();
-    e.runThroughDeployer=o["runThroughDeployer"].toBool(true); e.isPrimary=o["isPrimary"].toBool(false);
+    e.runThroughDeployer=o["runThroughDeployer"].toBool(false); e.isPrimary=o["isPrimary"].toBool(false);
     e.isCapturingOutput=o["isCapturingOutput"].toBool(false); e.outputModId=o["outputModId"].toString();
     e.iconPath=o["iconPath"].toString();
     for (const auto& v : o["extraActions"].toArray()) {
@@ -66,9 +67,6 @@ bool ToolStore::load() {
 bool ToolStore::save() const {
     QJsonArray arr;
     for (const auto& t : m_tools) arr.append(toJson(t));
-    QFile f(m_path);
-    if (!f.open(QIODevice::WriteOnly)) return false;
-    f.write(QJsonDocument(arr).toJson(QJsonDocument::Indented));
-    return true;
+    return atomicWrite(m_path, QJsonDocument(arr).toJson(QJsonDocument::Indented));
 }
 }

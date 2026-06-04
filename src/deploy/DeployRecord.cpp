@@ -1,4 +1,5 @@
 #include "DeployRecord.h"
+#include "core/FileUtil.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -29,10 +30,7 @@ bool DeployRecord::saveToFile(const QString& path) const {
     QJsonObject obj;
     for (auto it = m_files.cbegin(); it != m_files.cend(); ++it)
         obj.insert(it.key(), it.value());
-    QFile f(path);
-    if (!f.open(QIODevice::WriteOnly)) return false;
-    f.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
-    return true;
+    return atomicWrite(path, QJsonDocument(obj).toJson(QJsonDocument::Indented));
 }
 
 DeployRecord DeployRecord::loadFromFile(const QString& path) {

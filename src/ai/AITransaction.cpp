@@ -1,4 +1,5 @@
 #include "AITransaction.h"
+#include "core/FileUtil.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -78,9 +79,7 @@ void AITransactionLog::persist() const {
         o["snapshots"] = snaps;
         arr.append(o);
     }
-    QFile f(m_logPath);
-    if (f.open(QIODevice::WriteOnly))
-        f.write(QJsonDocument(arr).toJson(QJsonDocument::Indented));
+    atomicWrite(m_logPath, QJsonDocument(arr).toJson(QJsonDocument::Indented));
 }
 
 void AITransactionLog::loadFromDisk() {

@@ -1,4 +1,5 @@
 #include "AppConfig.h"
+#include "FileUtil.h"
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
@@ -95,10 +96,7 @@ bool AppConfig::save() const {
     obj["cycleSeparatorColors"] = m_cycleSeparatorColors;
     obj["dataShowAllFiles"]     = m_dataShowAllFiles;
     obj["lastSeparatorColor"]   = m_lastSeparatorColor;
-    QFile f(configPath());
-    if (!f.open(QIODevice::WriteOnly)) return false;
-    f.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
-    return true;
+    return atomicWrite(configPath(), QJsonDocument(obj).toJson(QJsonDocument::Indented));
 }
 
 QString AppConfig::toolsDir() const {

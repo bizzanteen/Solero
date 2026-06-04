@@ -1,4 +1,5 @@
 #include "ConflictIndex.h"
+#include "core/FileUtil.h"
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -66,10 +67,7 @@ bool ConflictIndex::saveToFile(const QString& path) const {
         entry["losers"] = losers;
         root.insert(it.key(), entry);
     }
-    QFile f(path);
-    if (!f.open(QIODevice::WriteOnly)) return false;
-    f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
-    return true;
+    return atomicWrite(path, QJsonDocument(root).toJson(QJsonDocument::Indented));
 }
 
 ConflictIndex ConflictIndex::loadFromFile(const QString& path) {

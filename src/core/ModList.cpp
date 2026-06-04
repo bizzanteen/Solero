@@ -1,4 +1,5 @@
 #include "ModList.h"
+#include "FileUtil.h"
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QFile>
@@ -101,10 +102,7 @@ ModList ModList::fromJson(const QJsonDocument& doc) {
 }
 
 bool ModList::saveToFile(const QString& path) const {
-    QFile f(path);
-    if (!f.open(QIODevice::WriteOnly)) return false;
-    f.write(toJson().toJson(QJsonDocument::Indented));
-    return true;
+    return atomicWrite(path, toJson().toJson(QJsonDocument::Indented));
 }
 
 ModList ModList::loadFromFile(const QString& path) {

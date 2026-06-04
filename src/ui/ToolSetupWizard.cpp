@@ -20,6 +20,7 @@
 #include <QUuid>
 #include <QIcon>
 #include <QPixmap>
+#include <QPair>
 
 namespace solero {
 
@@ -39,6 +40,9 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
         auto* item = new QListWidgetItem(QIcon(p.iconResource), p.name, list);
         item->setData(Qt::UserRole, p.id);
     }
+    auto* custom = new QListWidgetItem(QIcon::fromTheme("list-add"),
+                                       "\xe2\x9e\x95 Add Custom Tool\xe2\x80\xa6", list);
+    custom->setData(Qt::UserRole, "__custom__");
     body->addWidget(list);
 
     auto* detailsW = new QWidget(this);
@@ -70,15 +74,17 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
     outer->addLayout(body);
 
     auto* btnRow = new QHBoxLayout;
-    auto* customBtn = new QPushButton("Custom Tool\xe2\x80\xa6", this);
     auto* setupBtn = new QPushButton("Set Up Tool", this);
     auto* cancelBtn = new QPushButton("Cancel", this);
-    btnRow->addWidget(customBtn);
     btnRow->addStretch();
     btnRow->addWidget(cancelBtn);
     btnRow->addWidget(setupBtn);
     outer->addLayout(btnRow);
 
+    auto selectedId = [list]() -> QString {
+        auto* item = list->currentItem();
+        return item ? item->data(Qt::UserRole).toString() : QString();
+    };
     auto selectedPreset = [list]() -> const ToolPreset* {
         auto* item = list->currentItem();
         if (!item) return nullptr;
@@ -86,6 +92,15 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
     };
 
     auto updateDetails = [=]() {
+        if (selectedId() == "__custom__") {
+            iconLbl->setPixmap(QIcon::fromTheme("list-add").pixmap(64, 64));
+            nameLbl->setText("<h3>Add a Custom Tool</h3>");
+            authorLbl->setText("Manually point Solero at any executable.");
+            creditLbl->clear();
+            openBtn->setEnabled(false);
+            endorseBtn->setEnabled(false);
+            return;
+        }
         const ToolPreset* p = selectedPreset();
         if (!p) {
             iconLbl->clear();
@@ -109,17 +124,18 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
     });
     connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
 
-    connect(customBtn, &QPushButton::clicked, this, [this]{
-        ExecutableDialog dlg({}, this);
-        if (dlg.exec() == QDialog::Accepted) {
-            Executable e = dlg.result();
-            if (e.id.isEmpty()) e.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-            m_store->update(e); m_store->save();
-            accept();
-        }
-    });
-
     connect(setupBtn, &QPushButton::clicked, this, [=]{
+        if (selectedId() == "__custom__") {
+            ExecutableDialog dlg({}, this);
+            dlg.setOutputModChoices(m_modChoices, QString());
+            if (dlg.exec() == QDialog::Accepted) {
+                auto e = dlg.result();
+                if (e.id.isEmpty()) e.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+                m_store->update(e); m_store->save();
+                accept();
+            }
+            return;
+        }
         const ToolPreset* p = selectedPreset();
         if (!p) return;
 
@@ -233,6 +249,10 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
             + " - please consider endorsing it on Nexus.");
         accept();
     });
+}
+
+void ToolSetupWizard::setModChoices(const QList<QPair<QString,QString>>& choices) {
+    m_modChoices = choices;
 }
 
 void ToolSetupWizard::run(QWidget* parent, ToolStore* store) {

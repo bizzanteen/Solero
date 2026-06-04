@@ -54,10 +54,14 @@ ExecutableDialog::ExecutableDialog(const Executable& exe, QWidget* parent)
 
     m_workdirEdit = new QLineEdit(exe.workingDir, this);
 
+    m_outputCombo = new QComboBox(this);
+    setOutputModChoices({}, exe.outputModId);
+
     layout->addRow("Name:", m_nameEdit);
     layout->addRow("Binary:", binRow);
     layout->addRow("Arguments:", m_argsEdit);
     layout->addRow("Working dir:", m_workdirEdit);
+    layout->addRow("Output mod:", m_outputCombo);
     layout->addRow("Runtime:", m_runtimeCombo);
     layout->addRow(m_protonGroup);
     layout->addRow(m_deployCheck);
@@ -80,9 +84,20 @@ ExecutableDialog::ExecutableDialog(const Executable& exe, QWidget* parent)
         m_result.winePrefix        = m_prefixEdit->text();
         m_result.runThroughDeployer= m_deployCheck->isChecked();
         m_result.isPrimary         = m_primaryCheck->isChecked();
+        m_result.outputModId       = m_outputCombo->currentData().toString();
+        m_result.isCapturingOutput = !m_result.outputModId.isEmpty();
         accept();
     });
     connect(btns, &QDialogButtonBox::rejected, this, &QDialog::reject);
+}
+
+void ExecutableDialog::setOutputModChoices(const QList<QPair<QString,QString>>& idName, const QString& currentId) {
+    m_outputCombo->clear();
+    m_outputCombo->addItem("(None - Overwrite)", QVariant(QString()));
+    for (const auto& [id, name] : idName)
+        m_outputCombo->addItem(name, id);
+    int idx = m_outputCombo->findData(currentId);
+    m_outputCombo->setCurrentIndex(idx >= 0 ? idx : 0);
 }
 
 void ExecutableDialog::browseForBinary() {

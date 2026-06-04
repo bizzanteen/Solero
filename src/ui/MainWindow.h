@@ -1,6 +1,7 @@
 #pragma once
 #include <QMainWindow>
 #include <QAction>
+#include <QPair>
 #include "core/ProfileManager.h"
 #include "ai/AITransaction.h"
 #include "ipc/IPCServer.h"
@@ -62,6 +63,8 @@ private:
     QString ensureOutputMod(const QString& name);
     void onEditTool(const QString& id);
     void onRemoveTool(const QString& id);
+    void onManageTools();
+    QList<QPair<QString,QString>> modChoices() const;
     void rebuildToolsMenu();
     void onOpenBethini();
     void onPlay();

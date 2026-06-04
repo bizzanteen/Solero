@@ -13,6 +13,7 @@
 #include "ui/ProgressModal.h"
 #include "ui/ToolSetupWizard.h"
 #include "ui/ExecutableDialog.h"
+#include "ui/ToolsManagerDialog.h"
 #include "tools/ToolRunner.h"
 #include "tools/ToolCatalog.h"
 #include "fomod/FomodEngine.h"
@@ -137,6 +138,12 @@ void MainWindow::setupToolbar() {
     m_toolsMenu = new QMenu(m_toolsBtn);
     m_toolsBtn->setMenu(m_toolsMenu);
     tb->addWidget(m_toolsBtn);
+
+    auto* toolsGear = new QToolButton(tb);
+    toolsGear->setText("\xe2\x9a\x99");
+    toolsGear->setToolTip("Manage tools (edit / remove)");
+    connect(toolsGear, &QToolButton::clicked, this, &MainWindow::onManageTools);
+    tb->addWidget(toolsGear);
 
     // BethINI (modal window)
     tb->addAction("BethINI", this, &MainWindow::onOpenBethini);
@@ -732,6 +739,7 @@ QString MainWindow::ensureOutputMod(const QString& name) {
 
 void MainWindow::onAddTool2() {
     solero::ToolSetupWizard dlg(this, m_toolStore);
+    dlg.setModChoices(modChoices());
     connect(&dlg, &solero::ToolSetupWizard::installModRequested,
             this, &MainWindow::installFromArchive);
     dlg.exec();
@@ -761,26 +769,47 @@ void MainWindow::onAddTool2() {
 void MainWindow::rebuildToolsMenu() {
     if (!m_toolsMenu) return;
     m_toolsMenu->clear();
-    m_toolsMenu->addAction("Add Tool\xe2\x80\xa6", this, &MainWindow::onAddTool2);
     const auto& tools = m_toolStore->tools();
-    if (!tools.isEmpty()) m_toolsMenu->addSeparator();
     for (const auto& exe : tools) {
-        QMenu* sub = m_toolsMenu->addMenu(QIcon(exe.iconPath), exe.name);
-        QString id = exe.id;
-        solero::Executable primary = exe;
-        sub->addAction("\xe2\x96\xb6 Run " + exe.name, this, [this, primary]{ onRunTool(primary); });
-        for (const auto& a : exe.extraActions) {
-            solero::Executable ax = primary;
-            ax.binaryPath = a.binaryPath; ax.arguments = a.arguments;
-            ax.outputModId = a.outputModId; ax.isCapturingOutput = !a.outputModId.isEmpty();
-            ax.extraActions.clear();
-            QString label = a.label;
-            sub->addAction("\xe2\x96\xb6 " + label, this, [this, ax]{ onRunTool(ax); });
+        if (exe.extraActions.isEmpty()) {
+            // Click the tool name to run it.
+            solero::Executable primary = exe;
+            m_toolsMenu->addAction(QIcon(exe.iconPath), exe.name, this, [this, primary]{ onRunTool(primary); });
+        } else {
+            // Tool with secondary actions: a submenu of run targets.
+            QMenu* sub = m_toolsMenu->addMenu(QIcon(exe.iconPath), exe.name);
+            solero::Executable primary = exe;
+            sub->addAction("\xe2\x96\xb6 Run " + exe.name, this, [this, primary]{ onRunTool(primary); });
+            for (const auto& a : exe.extraActions) {
+                solero::Executable ax = primary;
+                ax.binaryPath = a.binaryPath; ax.arguments = a.arguments;
+                ax.outputModId = a.outputModId; ax.isCapturingOutput = !a.outputModId.isEmpty();
+                ax.extraActions.clear();
+                sub->addAction("\xe2\x96\xb6 " + a.label, this, [this, ax]{ onRunTool(ax); });
+            }
         }
-        sub->addSeparator();
-        sub->addAction("Edit\xe2\x80\xa6", this, [this, id]{ onEditTool(id); });
-        sub->addAction("Remove", this, [this, id]{ onRemoveTool(id); });
     }
+    if (!tools.isEmpty()) m_toolsMenu->addSeparator();
+    m_toolsMenu->addAction("\xe2\x9e\x95 Add tool\xe2\x80\xa6", this, &MainWindow::onAddTool2);
+    m_toolsMenu->addAction("\xe2\x9a\x99 Manage tools\xe2\x80\xa6", this, &MainWindow::onManageTools);
+}
+
+QList<QPair<QString,QString>> MainWindow::modChoices() const {
+    QList<QPair<QString,QString>> out;
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return out;
+    for (const auto& m : profile->modList())
+        if (m.type == solero::EntryType::Mod)
+            out.append({m.id, m.name});
+    return out;
+}
+
+void MainWindow::onManageTools() {
+    solero::ToolsManagerDialog dlg(m_toolStore, this);
+    connect(&dlg, &solero::ToolsManagerDialog::addToolRequested, this, [this, &dlg]{ onAddTool2(); dlg.refresh(); });
+    connect(&dlg, &solero::ToolsManagerDialog::editToolRequested, this, [this, &dlg](const QString& id){ onEditTool(id); dlg.refresh(); });
+    connect(&dlg, &solero::ToolsManagerDialog::removeToolRequested, this, [this, &dlg](const QString& id){ onRemoveTool(id); dlg.refresh(); });
+    dlg.exec();
 }
 
 void MainWindow::onOpenBethini() {
@@ -804,6 +833,7 @@ void MainWindow::onPlay() {
 void MainWindow::onEditTool(const QString& id) {
     for (const auto& t : m_toolStore->tools()) if (t.id == id) {
         solero::ExecutableDialog dlg(t, this);
+        dlg.setOutputModChoices(modChoices(), t.outputModId);
         if (dlg.exec() == QDialog::Accepted) {
             auto e = dlg.result();
             e.id = id;

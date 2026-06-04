@@ -63,7 +63,7 @@ struct Executable {
     RuntimeType runtime = RuntimeType::Native;
     QString protonVersion;
     QString winePrefix;
-    bool runThroughDeployer = true;
+    bool runThroughDeployer = false;
     bool isPrimary = false;
     // Tool-mode only
     bool isCapturingOutput = false;

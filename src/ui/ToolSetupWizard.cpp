@@ -192,7 +192,7 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
             QString lad = AppConfig::instance().localAppDataDir();
             int pfx = lad.indexOf("/pfx");
             de.winePrefix = pfx > 0 ? lad.left(pfx) : QString();
-            de.runThroughDeployer = true;
+            de.runThroughDeployer = false;
             m_store->update(de);
         }
 
@@ -218,7 +218,7 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
         QString lad = AppConfig::instance().localAppDataDir();
         int pfx = lad.indexOf("/pfx");
         e.winePrefix = pfx > 0 ? lad.left(pfx) : QString();
-        e.runThroughDeployer = true;
+        e.runThroughDeployer = false;
 
         // Build extra actions: resolve each secondary exe in the same install dir.
         QString instDir = QFileInfo(res.exePath).path();

@@ -19,7 +19,8 @@ ExecutableDialog::ExecutableDialog(const Executable& exe, QWidget* parent)
 
     m_nameEdit    = new QLineEdit(exe.name, this);
     m_argsEdit    = new QLineEdit(exe.arguments, this);
-    m_deployCheck = new QCheckBox("Run through deployer", this);
+    m_deployCheck = new QCheckBox("Run on deployment", this);
+    m_deployCheck->setToolTip("Automatically run this tool after a successful deploy.");
     m_primaryCheck= new QCheckBox("Set as primary launch target", this);
     m_deployCheck->setChecked(exe.runThroughDeployer);
     m_primaryCheck->setChecked(exe.isPrimary);

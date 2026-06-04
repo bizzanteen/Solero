@@ -10,6 +10,10 @@
 #include <QInputDialog>
 #include <QUuid>
 #include <QItemSelectionModel>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QMessageBox>
+#include <QDir>
 
 namespace solero {
 
@@ -115,8 +119,13 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         menu.addSeparator();
         menu.addAction("Add Separator Below", [this, row = idx.row()]{ onAddSeparatorAt(row + 1); });
     } else {
-        menu.addAction("Open in File Manager", []{ /* Stage 2 */ });
-        menu.addAction("Reinstall (FOMOD)", []{ /* Stage 3 */ });
+        menu.addAction("Open in File Manager", [this, id = entry->id]{
+            QString dir = AppConfig::instance().stagingDir() + "/" + id;
+            QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+        });
+        menu.addAction(entry->hasFomodChoices ? "Reinstall (FOMOD)..." : "Reinstall...",
+                       [this, id = entry->id]{ emit reinstallRequested(id); });
+        menu.addAction("Delete Mod...", [this, row = idx.row()]{ onDeleteMod(row); });
         menu.addSeparator();
         menu.addAction("Add Separator Above", [this, row = idx.row()]{ onAddSeparatorAt(row); });
     }
@@ -164,6 +173,24 @@ void ModListView::onEditSeparator(int visibleRow) {
         m_model->profile()->save();
         m_model->rebuild();
     }
+}
+
+void ModListView::onDeleteMod(int visibleRow) {
+    const auto* entry = m_model->entryAt(visibleRow);
+    if (!entry || entry->type != EntryType::Mod || !m_model->profile()) return;
+    auto ret = QMessageBox::question(this, "Delete Mod",
+        QString("Delete \"%1\"? This removes it from the list and deletes its staged files. "
+                "This cannot be undone.").arg(entry->name),
+        QMessageBox::Yes | QMessageBox::No);
+    if (ret != QMessageBox::Yes) return;
+    QString id = entry->id;
+    // Remove staged files.
+    QString modDir = AppConfig::instance().stagingDir() + "/" + id;
+    QDir(modDir).removeRecursively();
+    // Remove from the profile's mod list.
+    m_model->profile()->modList().remove(id);
+    m_model->profile()->save();
+    m_model->rebuild();
 }
 
 } // namespace solero

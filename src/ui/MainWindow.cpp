@@ -163,6 +163,8 @@ void MainWindow::setupCentralWidget() {
     m_splitter->addWidget(m_rightPane);
     connect(m_modListView, &solero::ModListView::modsSelected,
             m_rightPane,   &solero::RightPane::onSelectionChanged);
+    connect(m_modListView, &solero::ModListView::reinstallRequested,
+            this, &MainWindow::onReinstallMod);
     m_splitter->setSizes({640, 640});
 
     m_bottomPanel = new solero::BottomPanel(outer);
@@ -365,6 +367,67 @@ void MainWindow::onInstallMod() {
 
     m_modListView->setProfile(profile);
     statusBar()->showMessage(QString("Installed: %1").arg(result.modName));
+}
+
+void MainWindow::onReinstallMod(const QString& modId) {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return;
+    // Find the existing entry.
+    solero::ModEntry* existing = profile->modList().findById(modId);
+    if (!existing) return;
+
+    QString archive = QFileDialog::getOpenFileName(
+        this, "Reinstall: choose the mod archive", QDir::homePath(),
+        "Mod archives (*.zip *.7z *.rar *.tar *.gz);;All files (*)");
+    if (archive.isEmpty()) return;
+
+    statusBar()->showMessage("Preparing...");
+    qApp->processEvents();
+    auto prep = solero::ModInstaller::prepare(archive);
+    if (!prep.ok) { QMessageBox::critical(this, "Reinstall Failed", prep.errorMessage); return; }
+
+    const QString staging = solero::AppConfig::instance().stagingDir();
+    solero::InstallResult result;
+    QJsonArray choiceLog;
+
+    if (prep.layout.isFomod && !prep.fomodConfigPath.isEmpty()) {
+        solero::FomodEngine engine;
+        if (!engine.load(prep.fomodConfigPath)) {
+            result = solero::ModInstaller::stageSimple(prep, staging, modId);
+        } else {
+            solero::FomodWizard wizard(&engine, prep.extractDir, this);
+            if (wizard.exec() != QDialog::Accepted) { statusBar()->showMessage("Reinstall cancelled."); return; }
+            result = solero::ModInstaller::stageFomod(prep, staging, wizard.result(), modId);
+            const auto sel = wizard.selection();
+            const auto& mod = engine.module();
+            for (int si = 0; si < mod.steps.size(); ++si) {
+                QJsonArray picks;
+                for (int gi = 0; gi < mod.steps[si].groups.size(); ++gi)
+                    for (int oi = 0; oi < mod.steps[si].groups[gi].options.size(); ++oi)
+                        if (sel.value(solero::FomodEngine::selKey(si, gi, oi)))
+                            picks.append(mod.steps[si].groups[gi].options[oi].name);
+                QJsonObject stepObj; stepObj["step"] = mod.steps[si].name; stepObj["selected"] = picks;
+                choiceLog.append(stepObj);
+            }
+        }
+    } else {
+        result = solero::ModInstaller::stageSimple(prep, staging, modId);
+    }
+
+    if (!result.success) { QMessageBox::critical(this, "Reinstall Failed", result.errorMessage); return; }
+
+    if (!choiceLog.isEmpty()) {
+        QJsonObject root;
+        root["installer_version"] = "1.0";
+        root["installed_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+        root["steps"] = choiceLog;
+        QFile f(staging + "/" + modId + "/fomod-choices.json");
+        if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    }
+    existing->hasFomodChoices = !choiceLog.isEmpty();
+    profile->save();
+    m_modListView->setProfile(profile);
+    statusBar()->showMessage("Reinstalled: " + existing->name);
 }
 
 void MainWindow::refreshDeployState() {

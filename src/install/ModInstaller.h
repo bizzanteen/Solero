@@ -35,9 +35,11 @@ public:
                                         const QString& stagingRoot);
 
     static InstallPrep prepare(const QString& archivePath);
-    static InstallResult stageSimple(InstallPrep& prep, const QString& stagingRoot);
+    static InstallResult stageSimple(InstallPrep& prep, const QString& stagingRoot,
+                                     const QString& existingModId = {});
     static InstallResult stageFomod(InstallPrep& prep, const QString& stagingRoot,
-                                    const QList<FomodFile>& files);
+                                    const QList<FomodFile>& files,
+                                    const QString& existingModId = {});
 private:
     static QString baseName(const QString& archivePath);
     static bool moveNormalized(const QString& extractDir,

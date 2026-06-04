@@ -128,14 +128,25 @@ bool ModInstaller::extractFull(InstallPrep& prep) {
     return ArchiveTool::extract(prep.archivePath, prep.extractDir);
 }
 
-InstallResult ModInstaller::stageSimple(InstallPrep& prep, const QString& stagingRoot) {
+InstallResult ModInstaller::stageSimple(InstallPrep& prep, const QString& stagingRoot,
+                                        const QString& existingModId) {
     InstallResult r;
     if (!prep.ok) { r.errorMessage = prep.errorMessage; return r; }
     if (prep.layout.isFomod) extractFull(prep); // wizard only extracted fomod/; rare parse-fail fallback needs all files
-    r.modId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    r.modId = existingModId.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : existingModId;
     r.modName = prep.modName;
     r.isFomod = prep.layout.isFomod;
     QString modDir = stagingRoot + "/" + r.modId;
+    if (!existingModId.isEmpty()) {
+        // Reinstall: wipe the previous staged files (keep the dir).
+        QDir md(modDir);
+        for (const QString& e : md.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot)) {
+            if (e == "fomod-choices.json") continue; // overwritten later by the UI
+            QString full = modDir + "/" + e;
+            if (QFileInfo(full).isDir()) QDir(full).removeRecursively();
+            else QFile::remove(full);
+        }
+    }
     QDir().mkpath(modDir);
     if (!moveNormalized(prep.extractDir, modDir, prep.layout)) {
         r.errorMessage = "Failed to stage files."; QDir(modDir).removeRecursively(); return r;
@@ -145,14 +156,25 @@ InstallResult ModInstaller::stageSimple(InstallPrep& prep, const QString& stagin
 }
 
 InstallResult ModInstaller::stageFomod(InstallPrep& prep, const QString& stagingRoot,
-                                       const QList<FomodFile>& files) {
+                                       const QList<FomodFile>& files,
+                                       const QString& existingModId) {
     InstallResult r;
     if (!prep.ok) { r.errorMessage = prep.errorMessage; return r; }
     extractFull(prep); // wizard only extracted fomod/; now get the rest
-    r.modId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    r.modId = existingModId.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : existingModId;
     r.modName = prep.modName;
     r.isFomod = true;
     QString modDir = stagingRoot + "/" + r.modId;
+    if (!existingModId.isEmpty()) {
+        // Reinstall: wipe the previous staged files (keep the dir).
+        QDir md(modDir);
+        for (const QString& e : md.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot)) {
+            if (e == "fomod-choices.json") continue; // overwritten later by the UI
+            QString full = modDir + "/" + e;
+            if (QFileInfo(full).isDir()) QDir(full).removeRecursively();
+            else QFile::remove(full);
+        }
+    }
 
     QString fomodDir = QFileInfo(prep.fomodConfigPath).dir().path(); // .../fomod
     QString fomodBase = QFileInfo(fomodDir).dir().path();            // parent of fomod

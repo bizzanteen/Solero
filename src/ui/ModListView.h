@@ -15,6 +15,7 @@ signals:
     // Emitted on selection change. Each entry is a mod id, "__overwrite__" for the
     // Overwrite row, or "__separator__" for separator rows. Empty list = nothing selected.
     void modsSelected(const QStringList& ids);
+    void reinstallRequested(const QString& modId);
 
 protected:
     void contextMenuEvent(QContextMenuEvent* event) override;
@@ -26,5 +27,6 @@ private:
     void onAddSeparator();
     void onAddSeparatorAt(int visibleRow);
     void onEditSeparator(int visibleRow);
+    void onDeleteMod(int visibleRow);
 };
 }

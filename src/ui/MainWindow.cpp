@@ -924,11 +924,15 @@ void MainWindow::onRemoveTool(const QString& id) {
         break;
     }
 
-    // DynDOLOD also installs a "DynDOLOD Resources SE" mod.
+    // DynDOLOD also installs a DynDOLOD Resources mod (named from its archive,
+    // e.g. "dyndolod-resources"), so match loosely on the name.
     if (id == "dyndolod" && profile) {
-        for (const auto& m : profile->modList())
-            if (m.type == solero::EntryType::Mod && m.name == "DynDOLOD Resources SE")
+        for (const auto& m : profile->modList()) {
+            const QString n = m.name.toLower();
+            if (m.type == solero::EntryType::Mod
+                && n.contains("dyndolod") && n.contains("resource"))
                 candidateIds << m.id;
+        }
     }
 
     // De-duplicate and keep only ids that resolve to an existing mod.

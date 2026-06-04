@@ -7,6 +7,19 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
+# Homebrew packages Qt modules in separate cellars (qtbase, qtsvg, ...). Add their
+# opt prefixes so a clean reconfigure finds Qt6 (incl. Qt6::Svg) without -D flags.
+foreach(_qtopt qtbase qtsvg mesa)
+  if(EXISTS "/home/linuxbrew/.linuxbrew/opt/${_qtopt}")
+    list(APPEND CMAKE_PREFIX_PATH "/home/linuxbrew/.linuxbrew/opt/${_qtopt}")
+  endif()
+endforeach()
+# qtsvg's cmake config lives in its own cellar; point at it directly so the Svg
+# component resolves on a clean reconfigure.
+if(NOT Qt6Svg_DIR AND EXISTS "/home/linuxbrew/.linuxbrew/opt/qtsvg/lib/cmake/Qt6Svg")
+  set(Qt6Svg_DIR "/home/linuxbrew/.linuxbrew/opt/qtsvg/lib/cmake/Qt6Svg")
+endif()
+
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network Xml Svg Test)
 
 # nlohmann/json header-only

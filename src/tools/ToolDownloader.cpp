@@ -2,7 +2,9 @@
 #include "install/ArchiveTool.h"
 #include <QFile>
 #include <QDir>
+#include <QDirIterator>
 #include <QFileInfo>
+#include <QImage>
 #include <QProcess>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -34,11 +36,14 @@ QString ToolDownloader::nexusDownloadUrl(const ToolPreset& pr) {
     if (key.isEmpty()) return {};
     QString base = "https://api.nexusmods.com/v1/games/" + pr.nexusGame + "/mods/" + pr.nexusModId;
     auto files = QJsonDocument::fromJson(curlJson(base + "/files.json", "apikey: " + key)).object();
-    int fileId = -1;
+    int fileId = -1; int bestMainId = -1;
     for (const auto& v : files["files"].toArray()) {
         auto o = v.toObject();
-        if (o["is_primary"].toBool() || o["category_name"].toString() == "MAIN") { fileId = o["file_id"].toInt(); }
+        int fid = o["file_id"].toInt();
+        if (o["is_primary"].toBool()) { fileId = fid; break; }
+        if (o["category_name"].toString() == "MAIN" && fid > bestMainId) bestMainId = fid;
     }
+    if (fileId < 0) fileId = bestMainId;
     if (fileId < 0) return {};
     auto link = QJsonDocument::fromJson(
         curlJson(base + "/files/" + QString::number(fileId) + "/download_link.json", "apikey: " + key)).array();
@@ -115,8 +120,61 @@ ToolDownloadResult ToolDownloader::fetch(const ToolPreset& preset, const QString
             for (const QString& e : dd.entryList(QDir::Files))
                 if (e.compare(preset.exeRelPath, Qt::CaseInsensitive) == 0) { r.exePath = dest + "/" + e; break; }
         }
+        if (!QFile::exists(r.exePath)) {
+            // recursive search (archives may nest one or more levels deeper)
+            QDirIterator it(dest, QDir::Files, QDirIterator::Subdirectories);
+            while (it.hasNext()) {
+                QString f = it.next();
+                if (QFileInfo(f).fileName().compare(preset.exeRelPath, Qt::CaseInsensitive) == 0) {
+                    r.exePath = f; break;
+                }
+            }
+        }
+        // Native (non-Proton) binaries download without an exec bit; set it.
+        if (!preset.proton && !r.exePath.isEmpty() && QFile::exists(r.exePath)) {
+            QFile bf(r.exePath);
+            bf.setPermissions(bf.permissions() | QFileDevice::ExeOwner | QFileDevice::ExeGroup | QFileDevice::ExeUser);
+        }
+        // Extract a real icon from Windows .exe tools.
+        if (preset.proton && !r.exePath.isEmpty() && QFile::exists(r.exePath)) {
+            r.iconPath = extractIcon(r.exePath, dest);
+        }
     }
     r.ok = true;
     return r;
+}
+
+QString ToolDownloader::extractIcon(const QString& exePath, const QString& destDir) {
+    if (exePath.isEmpty() || !QFile::exists(exePath)) return {};
+    QString ico = destDir + "/_icon.ico";
+    QProcess wr;
+    wr.start("wrestool", {"-x", "-t", "14", "-o", ico, exePath});
+    wr.waitForFinished(20000);
+    if (!QFile::exists(ico) || QFileInfo(ico).size() == 0) return {};
+    // icotool extracts one png per icon size; ask for all then pick the largest.
+    QProcess ic;
+    ic.start("icotool", {"-x", "-o", destDir, ico});
+    ic.waitForFinished(20000);
+    // icotool names files like _icon_1_32x32x32.png in destDir; find the biggest png.
+    QString best; qint64 bestArea = -1;
+    QDir d(destDir);
+    for (const QString& f : d.entryList({"_icon*.png"}, QDir::Files)) {
+        QString full = destDir + "/" + f;
+        QImage img(full);
+        qint64 area = (qint64)img.width() * img.height();
+        if (area > bestArea) { bestArea = area; best = full; }
+    }
+    if (best.isEmpty()) {
+        // fallback: imagemagick convert the .ico directly
+        QString png = destDir + "/icon.png";
+        QProcess cv; cv.start("convert", {ico + "[0]", png}); cv.waitForFinished(20000);
+        if (QFile::exists(png) && QFileInfo(png).size() > 0) return png;
+        return {};
+    }
+    // normalize to icon.png
+    QString png = destDir + "/icon.png";
+    QFile::remove(png);
+    QFile::copy(best, png);
+    return png;
 }
 }

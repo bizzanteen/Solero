@@ -3,7 +3,7 @@
 #include <QString>
 #include <functional>
 namespace solero {
-struct ToolDownloadResult { bool ok=false; QString exePath; QString error; };
+struct ToolDownloadResult { bool ok=false; QString exePath; QString error; QString iconPath; };
 class ToolDownloader {
 public:
     // Downloads + extracts the preset. onProgress(percent) for the download/extract.
@@ -12,6 +12,7 @@ public:
                                     const QString& toolsRoot,
                                     const std::function<void(int)>& onProgress = {});
     static bool nexusApiKeyAvailable();
+    static QString extractIcon(const QString& exePath, const QString& destDir);
 private:
     static QString nexusApiKey();
     static QString nexusDownloadUrl(const ToolPreset& p);   // "" on failure

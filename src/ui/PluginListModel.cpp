@@ -85,6 +85,9 @@ QVariant PluginListModel::data(const QModelIndex& idx, int role) const {
     if (!m_profile || idx.row() >= m_profile->pluginList().count()) return {};
     const auto& p = m_profile->pluginList().at(idx.row());
 
+    if (role == Qt::TextAlignmentRole && idx.column() == ColPriority)
+        return QVariant(Qt::AlignCenter);
+
     if (role == Qt::DisplayRole) {
         switch (idx.column()) {
             case ColPriority: return idx.row();

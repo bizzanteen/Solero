@@ -906,8 +906,10 @@ void MainWindow::rebuildToolsMenu() {
         }
     }
     if (!tools.isEmpty()) m_toolsMenu->addSeparator();
-    m_toolsMenu->addAction("\xe2\x9e\x95 Add tool\xe2\x80\xa6", this, &MainWindow::onAddTool2);
-    m_toolsMenu->addAction("\xe2\x9a\x99 Manage tools\xe2\x80\xa6", this, &MainWindow::onManageTools);
+    // Use real icons (in the icon column) so these align with the tool entries above.
+    m_toolsMenu->addAction(QIcon::fromTheme("list-add"), "Add tool\xe2\x80\xa6", this, &MainWindow::onAddTool2);
+    m_toolsMenu->addAction(QIcon::fromTheme("configure", QIcon::fromTheme("settings-configure")),
+                           "Manage tools\xe2\x80\xa6", this, &MainWindow::onManageTools);
 }
 
 QList<QPair<QString,QString>> MainWindow::modChoices() const {

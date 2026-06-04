@@ -91,10 +91,10 @@ const QList<ToolPreset>& ToolCatalog::presets() {
 
         {
             ToolPreset t = github("synthesis", "Synthesis", "Mutagen-Modding", "Mutagen-Modding",
-                                  "Synthesis", "linux", "Synthesis", "");
+                                  "Synthesis", "Synthesis", "Synthesis.exe", "");
             t.description = "Run automated, modular load-order patchers (Mutagen-based).";
             t.docsUrl = "https://github.com/Mutagen-Modding/Synthesis";
-            t.proton = false;
+            t.proton = true;  // ship the Windows build (Synthesis.exe via Proton)
             t.producesOutput = true;
             t.outputModName = "Synthesis Output";
             v << t;

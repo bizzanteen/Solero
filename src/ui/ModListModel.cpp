@@ -97,6 +97,9 @@ int ModListModel::rowCount(const QModelIndex& parent) const {
 QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     if (!m_profile || !idx.isValid()) return {};
 
+    if (role == Qt::TextAlignmentRole && idx.column() == ColPriority)
+        return QVariant(Qt::AlignCenter);
+
     int raw = rawIndexForRow(idx.row());
     bool isOverwrite = (raw == -1);
 

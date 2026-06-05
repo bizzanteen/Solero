@@ -85,6 +85,7 @@ bool AppConfig::load() {
     m_autoCheckUpdates     = obj["autoCheckUpdates"].toBool(true);
     m_lastUpdateCheckEpoch = static_cast<qint64>(obj["lastUpdateCheckEpoch"].toDouble(0));
     m_lastSeparatorColor   = obj["lastSeparatorColor"].toString();
+    m_jackifyEnginePath    = obj["jackifyEnginePath"].toString();
     return true;
 }
 
@@ -104,6 +105,7 @@ bool AppConfig::save() const {
     obj["autoCheckUpdates"]     = m_autoCheckUpdates;
     obj["lastUpdateCheckEpoch"] = static_cast<double>(m_lastUpdateCheckEpoch);
     obj["lastSeparatorColor"]   = m_lastSeparatorColor;
+    obj["jackifyEnginePath"]    = m_jackifyEnginePath;
     return atomicWrite(configPath(), QJsonDocument(obj).toJson(QJsonDocument::Indented));
 }
 

@@ -129,6 +129,7 @@ set(SOLERO_SOURCES
   src/install/DependencyChecker.cpp
   src/install/PluginScanner.cpp
   src/import/Mo2Importer.cpp
+  src/wabbajack/WabbajackEngine.cpp
   resources/resources.qrc
 )
 

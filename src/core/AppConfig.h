@@ -45,6 +45,8 @@ public:
     void setAutoCheckUpdates(bool v)          { m_autoCheckUpdates = v; }
     qint64 lastUpdateCheckEpoch() const       { return m_lastUpdateCheckEpoch; }
     void setLastUpdateCheckEpoch(qint64 v)    { m_lastUpdateCheckEpoch = v; }
+    QString jackifyEnginePath() const         { return m_jackifyEnginePath; }
+    void setJackifyEnginePath(const QString& v) { m_jackifyEnginePath = v; }
 
     static QString dataRoot();   // ~/.local/share/solero
     static QString configPath();
@@ -74,6 +76,7 @@ private:
     bool m_autoCheckUpdates = true;
     qint64 m_lastUpdateCheckEpoch = 0;
     QString m_lastSeparatorColor;
+    QString m_jackifyEnginePath;
 };
 
 } // namespace solero

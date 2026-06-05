@@ -115,6 +115,39 @@ target_include_directories(test_ToolCatalog PRIVATE ../src ${CMAKE_BINARY_DIR}/i
 target_link_libraries(test_ToolCatalog PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_ToolCatalog COMMAND test_ToolCatalog)
 
+# Derive the Qt plugin dir (shared by headless tests below) from the actual
+# Qt6::Core library location; fall back to qmake. See test_ModListModel notes.
+if(NOT _qt_plugins)
+  get_target_property(_qtcore_lib Qt6::Core IMPORTED_LOCATION_RELEASE)
+  if(NOT _qtcore_lib)
+    get_target_property(_qtcore_lib Qt6::Core IMPORTED_LOCATION)
+  endif()
+  get_filename_component(_qt_libdir "${_qtcore_lib}" DIRECTORY)
+  set(_qt_plugins "${_qt_libdir}/../share/qt/plugins")
+  if(NOT EXISTS "${_qt_plugins}/platforms")
+    get_target_property(_qmake_exe Qt6::qmake IMPORTED_LOCATION)
+    execute_process(COMMAND "${_qmake_exe}" -query QT_INSTALL_PLUGINS
+      OUTPUT_VARIABLE _qt_plugins OUTPUT_STRIP_TRAILING_WHITESPACE)
+  endif()
+endif()
+
+add_executable(test_WabbajackEngine test_WabbajackEngine.cpp
+  ../src/wabbajack/WabbajackEngine.cpp
+  ../src/tools/ToolDownloader.cpp
+  ../src/tools/ToolCatalog.cpp
+  ../src/install/ArchiveTool.cpp
+  ../src/core/AppConfig.cpp
+  ../src/core/ModList.cpp ../src/core/PluginList.cpp
+  ../src/core/Profile.cpp ../src/core/ProfileManager.cpp
+  ../src/ai/AITransaction.cpp)
+target_include_directories(test_WabbajackEngine PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_WabbajackEngine PRIVATE Qt6::Core Qt6::Gui Qt6::Test)
+add_test(NAME test_WabbajackEngine COMMAND test_WabbajackEngine)
+# Linking Qt6::Gui (QImage in ToolDownloader) makes QtTest spin up a
+# QGuiApplication, which needs a platform plugin; run headless like ModListModel.
+set_tests_properties(test_WabbajackEngine PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${_qt_plugins}")
+
 add_executable(test_IniFile test_IniFile.cpp ../src/bethini/IniFile.cpp)
 target_include_directories(test_IniFile PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_IniFile PRIVATE Qt6::Core Qt6::Test)

@@ -256,9 +256,12 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         });
         menu.addAction(entry->hasFomodChoices ? "Reinstall (FOMOD)..." : "Reinstall...",
                        [this, id = entry->id]{ emit reinstallRequested(id); });
-        if (!entry->nexusModId.isEmpty())
+        if (!entry->nexusModId.isEmpty()) {
+            menu.addAction("Update Mod",
+                           [this, id = entry->id]{ emit updateRequested(id); });
             menu.addAction("Endorse on Nexus",
                            [this, id = entry->id]{ emit endorseRequested(id); });
+        }
         menu.addAction("Identify on Nexus (MD5)",
                        [this, id = entry->id]{ emit identifyRequested(id); });
         menu.addAction("Delete Mod...", [this]{ deleteSelectedMods(); });

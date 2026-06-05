@@ -133,6 +133,24 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                 QString("%1 update(s) available.").arg(results.size()));
     });
 
+    // Per-mod update resolve finished: kick off the download (or report an error).
+    connect(&m_updateResolveWatcher, &QFutureWatcher<ResolvedUpdate>::finished,
+            this, [this]() {
+        const ResolvedUpdate r = m_updateResolveWatcher.result();
+        if (!r.ok) {
+            QMessageBox::warning(this, "Update Mod",
+                r.error.isEmpty() ? QString("Could not prepare an update for this mod.") : r.error);
+            statusBar()->showMessage("Ready");
+            return;
+        }
+        // Record the pending update so the download-finished handler reinstalls
+        // the existing mod in place rather than adding a new one.
+        m_pendingUpdates[r.fileName] = PendingUpdate{m_updateTargetId, r.fileId, r.version};
+        m_downloads->enqueue(r.url, r.fileName, solero::AppConfig::instance().downloadsDir());
+        m_rightPane->showDownloadsTab();
+        statusBar()->showMessage("Downloading update for " + m_updateTargetName + "\xe2\x80\xa6");
+    });
+
     switchProfile(m_profileMgr->profileNames().first());
     refreshDeployState(); // reflect any existing deployment from a previous run
 }
@@ -359,6 +377,39 @@ void MainWindow::setupCentralWidget() {
         });
     connect(m_downloads, &solero::DownloadManager::finished, this,
         [this](const QString& fn, const QString& path, bool ok, const QString& err){
+            // "Update Mod" downloads reinstall the EXISTING mod in place instead of
+            // adding a new one. Handle (and consume) those before the normal path.
+            if (m_pendingUpdates.contains(fn)) {
+                const PendingUpdate pu = m_pendingUpdates.take(fn);
+                m_rightPane->downloadsTab()->setDownloadProgress(fn, ok ? 1 : 0, ok ? 1 : 0);
+                m_rightPane->downloadsTab()->refresh();
+                if (!ok || path.isEmpty()) {
+                    statusBar()->showMessage("Update download failed: " + fn + " - " + err);
+                    return;
+                }
+                auto* profile = m_profileMgr->activeProfile();
+                solero::ModEntry* existing =
+                    profile ? profile->modList().findById(pu.modId) : nullptr;
+                if (existing) {
+                    existing->sourceArchive = path;
+                    existing->version       = pu.version;
+                    existing->nexusFileId   = pu.fileId;
+                    profile->save();
+                    onReinstallMod(pu.modId);
+                    // onReinstallMod preserves version/nexusFileId (it only touches
+                    // hasFomodChoices + sourceArchive), but re-assert the version in
+                    // case a re-prompt path changed it, then persist.
+                    if (auto* e2 = profile->modList().findById(pu.modId)) {
+                        if (e2->version != pu.version) {
+                            e2->version = pu.version;
+                            profile->save();
+                        }
+                        statusBar()->showMessage("Updated " + e2->name + " to " + pu.version + ".");
+                    }
+                    return; // do not fall through to the install-as-new path
+                }
+                // Mod no longer exists - fall through and treat as a fresh install.
+            }
             // For an nxm-originated download, persist the captured Nexus metadata as a
             // sidecar next to the archive so installFromArchive can tag the mod.
             if (ok && m_nxmMeta.contains(fn) && !path.isEmpty()) {
@@ -382,6 +433,8 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onReinstallMod);
     connect(m_modListView, &solero::ModListView::endorseRequested,
             this, &MainWindow::onEndorseMod);
+    connect(m_modListView, &solero::ModListView::updateRequested,
+            this, &MainWindow::onUpdateMod);
     connect(m_modListView, &solero::ModListView::identifyRequested,
             this, &MainWindow::onIdentifyMod);
     connect(m_modListView, &solero::ModListView::modsChanged,
@@ -1024,6 +1077,63 @@ void MainWindow::onEndorseMod(const QString& modId) {
     else
         QMessageBox::warning(this, "Endorse on Nexus",
             res.message.isEmpty() ? QString("Could not endorse this mod.") : res.message);
+}
+
+void MainWindow::onUpdateMod(const QString& modId) {
+    if (!solero::NexusApi::keyAvailable()) {
+        QMessageBox::information(this, "Update Mod",
+            "A Nexus API key is required to download updates.\n"
+            "Place your personal API key in ~/.nexus_api_key.");
+        return;
+    }
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return;
+    solero::ModEntry* mod = profile->modList().findById(modId);
+    if (!mod || mod->nexusModId.isEmpty()) return;
+
+    if (m_updateResolveWatcher.isRunning()) {
+        statusBar()->showMessage("Already preparing an update\xe2\x80\xa6");
+        return;
+    }
+
+    const QString nexusModId = mod->nexusModId;
+    m_updateTargetId   = mod->id;
+    m_updateTargetName = mod->name;
+
+    statusBar()->showMessage("Resolving latest version for " + mod->name + "\xe2\x80\xa6");
+
+    m_updateResolveWatcher.setFuture(QtConcurrent::run([nexusModId]() -> ResolvedUpdate {
+        ResolvedUpdate out;
+        const auto files = solero::NexusApi::files(nexusModId);
+        if (files.isEmpty()) { out.error = "Could not list files for this mod."; return out; }
+
+        const QString latest = solero::NexusApi::latestVersion(nexusModId);
+
+        // Pick the best file: prefer main-category files, choosing the highest
+        // version among them; otherwise the file whose version == latestVersion;
+        // else fall back to the last (roughly newest) file in the list.
+        const solero::NexusApi::NexusFile* picked = nullptr;
+        for (const auto& f : files) {
+            if (f.category.compare("MAIN", Qt::CaseInsensitive) != 0) continue;
+            if (!picked || f.version > picked->version) picked = &f;
+        }
+        if (!picked && !latest.isEmpty()) {
+            for (const auto& f : files)
+                if (f.version == latest) { picked = &f; break; }
+        }
+        if (!picked) picked = &files.last();
+
+        out.fileId   = picked->fileId;
+        out.fileName = picked->name;
+        out.version  = picked->version;
+        out.url      = solero::NexusApi::downloadUrl(nexusModId, picked->fileId);
+        if (out.url.isEmpty()) {
+            out.error = "Could not get a download link (Premium required, or file unavailable).";
+            return out;
+        }
+        out.ok = true;
+        return out;
+    }));
 }
 
 void MainWindow::onCheckUpdates() {

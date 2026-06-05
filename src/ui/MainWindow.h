@@ -84,6 +84,7 @@ private:
     void installFromArchive(const QString& archive);
     void onReinstallMod(const QString& modId);
     void onEndorseMod(const QString& modId);
+    void onUpdateMod(const QString& modId);
     void onCheckUpdates();
     // Launch the async (off-UI-thread) Nexus update check. silentIfNone=true is
     // used by the auto-check-on-profile-load path: it no-ops quietly when there's
@@ -141,6 +142,18 @@ private:
     QAction* m_checkUpdatesAction = nullptr;
     // Receives the result of the off-thread update check (local id -> {installed, latest}).
     QFutureWatcher<QHash<QString, QPair<QString,QString>>> m_updateWatcher;
+
+    // Per-mod "Update Mod" flow: resolve the latest Nexus file off the UI thread,
+    // then download it and reinstall the existing mod in place.
+    struct ResolvedUpdate { QString url, fileName, fileId, version; bool ok = false; QString error; };
+    QFutureWatcher<ResolvedUpdate> m_updateResolveWatcher;
+    // Local id + display name of the mod whose update is currently being resolved.
+    // Single-flight: guarded by m_updateResolveWatcher.isRunning().
+    QString m_updateTargetId, m_updateTargetName;
+    // In-flight update downloads, keyed by saved filename. When such a download
+    // finishes, the existing mod is reinstalled in place instead of added anew.
+    struct PendingUpdate { QString modId, fileId, version; };
+    QHash<QString, PendingUpdate> m_pendingUpdates;
     // Pending Nexus metadata for in-flight nxm downloads, keyed by saved filename.
     // Written to a <archive>.solero-nexus.json sidecar when the download finishes.
     QHash<QString, QJsonObject> m_nxmMeta;

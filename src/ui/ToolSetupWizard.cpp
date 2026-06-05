@@ -28,16 +28,11 @@
 
 namespace solero {
 
-// Install the .NET Desktop Runtime into the Skyrim Proton prefix via
-// `umu-run winetricks -q dotnetdesktop8`. Synthesis (and other framework-
-// dependent .NET apps) crash under Proton without it. Mirrors the Proton env
-// that ToolRunner builds. Returns true on a clean (exit 0) install.
-static bool installDotNetIntoPrefix(const QString& winePrefix, QWidget* parent) {
-    if (winePrefix.isEmpty()) return false; // no prefix -> nothing to do
-    if (QStandardPaths::findExecutable("umu-run").isEmpty()) return false;
-
+// Build the Proton/umu environment for running tools inside the Skyrim prefix.
+// Mirrors what ToolRunner constructs. Returns an empty environment (and the
+// caller should bail) if the prefix is unusable; check protonDir separately.
+static QProcessEnvironment dotnetPrefixEnv(const QString& winePrefix) {
     QString protonDir = AppConfig::instance().detectProtonDir();
-    if (protonDir.isEmpty()) return false;
 
     // Derive the Steam root the same way ToolRunner does (from the game dir).
     QString steamRoot = QDir(AppConfig::instance().gameDir() + "/../../..").canonicalPath();
@@ -51,7 +46,22 @@ static bool installDotNetIntoPrefix(const QString& winePrefix, QWidget* parent) 
     env.insert("GAMEID", "umu-489830");
     env.insert("STORE", "none");
     env.insert("PROTONPATH", protonDir);
-    // No PROTON_VERB needed for winetricks.
+    // No PROTON_VERB needed for winetricks / silent installers.
+    return env;
+}
+
+// Install the .NET Desktop Runtime into the Skyrim Proton prefix via
+// `umu-run winetricks -q dotnetdesktop8`. Synthesis (and other framework-
+// dependent .NET apps) crash under Proton without it. Mirrors the Proton env
+// that ToolRunner builds. Returns true on a clean (exit 0) install.
+static bool installDotNetIntoPrefix(const QString& winePrefix, QWidget* parent) {
+    if (winePrefix.isEmpty()) return false; // no prefix -> nothing to do
+    if (QStandardPaths::findExecutable("umu-run").isEmpty()) return false;
+
+    QString protonDir = AppConfig::instance().detectProtonDir();
+    if (protonDir.isEmpty()) return false;
+
+    QProcessEnvironment env = dotnetPrefixEnv(winePrefix);
 
     ProgressModal prog(parent, "Installing .NET",
         "Installing the .NET runtime into the Skyrim prefix.\nThis can take several minutes\xe2\x80\xa6");
@@ -70,6 +80,83 @@ static bool installDotNetIntoPrefix(const QString& winePrefix, QWidget* parent) 
     QObject::connect(&proc, &QProcess::readyReadStandardError,  parent, [&]{ prog.pump(); });
 
     proc.start("umu-run", QStringList{"winetricks", "-q", "dotnetdesktop8"});
+    if (!proc.waitForStarted(15000)) { prog.close(); return false; }
+    loop.exec();
+    prog.close();
+    return proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
+}
+
+// Install the full .NET SDK into the Skyrim Proton prefix. Synthesis builds
+// patchers with the .NET SDK (its BuildHost/MSBuild), so the Desktop Runtime
+// alone is not enough. winetricks has no modern-SDK verb, so we download the
+// official Windows SDK installer and run it silently through Proton. Returns
+// true on a clean (exit 0) install.
+static bool installDotNetSdkIntoPrefix(const QString& winePrefix, QWidget* parent) {
+    if (winePrefix.isEmpty()) return false; // no prefix -> nothing to do
+    if (QStandardPaths::findExecutable("umu-run").isEmpty()) return false;
+    if (AppConfig::instance().detectProtonDir().isEmpty()) return false;
+
+    // Resolve the latest 8.0 SDK version, then the win-x64 installer URL.
+    QString ver;
+    {
+        QProcess curlVer;
+        curlVer.start("curl", QStringList{"-fsSL",
+            "https://dotnetcli.blob.core.windows.net/dotnet/Sdk/8.0/latest.version"});
+        if (curlVer.waitForFinished(15000))
+            ver = QString::fromUtf8(curlVer.readAllStandardOutput()).trimmed();
+    }
+    if (ver.isEmpty()) return false; // caller handles user-facing messaging
+
+    const QString url = "https://dotnetcli.blob.core.windows.net/dotnet/Sdk/"
+        + ver + "/dotnet-sdk-" + ver + "-win-x64.exe";
+    const QString dest =
+        AppConfig::instance().downloadsDir() + "/dotnet-sdk-win-x64.exe";
+
+    ProgressModal prog(parent, "Installing .NET SDK",
+        "Downloading the .NET SDK (~220 MB)\xe2\x80\xa6");
+    prog.show(); prog.pump();
+
+    // Download the installer
+    {
+        QProcess dl;
+        dl.setProcessChannelMode(QProcess::MergedChannels);
+        QEventLoop loop;
+        QObject::connect(&dl, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                         &loop, &QEventLoop::quit);
+        QObject::connect(&dl, &QProcess::readyReadStandardOutput, parent, [&]{ prog.pump(); });
+        QObject::connect(&dl, &QProcess::readyReadStandardError,  parent, [&]{ prog.pump(); });
+
+        dl.start("curl", QStringList{"-L", "--fail", "-o", dest, url});
+        if (!dl.waitForStarted(15000)) { prog.close(); return false; }
+        loop.exec();
+
+        bool dlOk = dl.exitStatus() == QProcess::NormalExit && dl.exitCode() == 0
+                    && QFileInfo(dest).size() > 0;
+        if (!dlOk) {
+            QFile::remove(dest); // drop any partial download
+            prog.close();
+            return false;
+        }
+    }
+
+    // Run the SDK installer silently inside the prefix
+    prog.setMessage("Installing the .NET SDK into the Skyrim prefix.\n"
+                    "This can take several minutes\xe2\x80\xa6");
+    prog.pump();
+
+    QProcessEnvironment env = dotnetPrefixEnv(winePrefix);
+
+    QProcess proc;
+    proc.setProcessChannelMode(QProcess::MergedChannels);
+    proc.setProcessEnvironment(env);
+
+    QEventLoop loop;
+    QObject::connect(&proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                     &loop, &QEventLoop::quit);
+    QObject::connect(&proc, &QProcess::readyReadStandardOutput, parent, [&]{ prog.pump(); });
+    QObject::connect(&proc, &QProcess::readyReadStandardError,  parent, [&]{ prog.pump(); });
+
+    proc.start("umu-run", QStringList{dest, "/install", "/quiet", "/norestart"});
     if (!proc.waitForStarted(15000)) { prog.close(); return false; }
     loop.exec();
     prog.close();
@@ -316,22 +403,31 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
         prog.close();
 
         // Framework-dependent .NET apps (e.g. Synthesis) crash under Proton
-        // without the .NET Desktop Runtime in the prefix. Install it now.
-        bool dotNetInstalled = false;
+        // without the .NET Desktop Runtime in the prefix. Synthesis also builds
+        // patchers with the full .NET SDK (its BuildHost/MSBuild), so install
+        // both the runtime and the SDK now.
+        bool dotNetOk = false;
         if (p->needsDotNet && e.runtime == RuntimeType::Proton) {
-            if (installDotNetIntoPrefix(e.winePrefix, this)) {
-                dotNetInstalled = true;
-            } else {
+            bool runtimeOk = installDotNetIntoPrefix(e.winePrefix, this);
+            bool sdkOk = installDotNetSdkIntoPrefix(e.winePrefix, this);
+            dotNetOk = runtimeOk && sdkOk;
+            if (!dotNetOk) {
+                QString which;
+                if (!runtimeOk && !sdkOk) which = "the .NET runtime and SDK";
+                else if (!runtimeOk)      which = "the .NET runtime";
+                else                       which = "the .NET SDK";
                 QMessageBox::warning(this, "Set Up Tool",
-                    "The tool is set up, but installing the .NET runtime failed. "
-                    "Synthesis may not launch until .NET is installed in the prefix "
-                    "(e.g. `protontricks 489830 dotnetdesktop8`).");
+                    "The tool is set up, but installing " + which + " failed. "
+                    "Synthesis may not launch or build patchers until both the "
+                    ".NET runtime and SDK are installed in the prefix. Install the "
+                    "runtime with `protontricks 489830 dotnetdesktop8`, and the SDK "
+                    "by running the dotnet-sdk win-x64 installer through the prefix.");
             }
         }
 
         QMessageBox box(this);
         box.setWindowTitle("Tool Ready");
-        box.setText(p->name + " is set up." + (dotNetInstalled ? QString("\n.NET runtime installed.") : QString()));
+        box.setText(p->name + " is set up." + (dotNetOk ? QString("\n.NET runtime + SDK installed.") : QString()));
         box.setInformativeText("Thanks to " + p->author + " for making it. If you find it useful, please consider endorsing it on Nexus.");
         auto* endorseBtn = box.addButton(QString::fromUtf8("\xe2\x99\xa5  Endorse and Close"), QMessageBox::AcceptRole);
         auto* closeBtn   = box.addButton(QString::fromUtf8("\xe2\x98\xb9  Close"), QMessageBox::RejectRole);

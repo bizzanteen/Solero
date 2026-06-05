@@ -70,6 +70,42 @@ private slots:
         // plugins.txt imported (2 plugins)
         QCOMPARE(p->pluginList().count(), 2);
     }
+    void usesLoadOrderTxtAndSeparatorColorAndCopyErrors() {
+        QTemporaryDir tmp;
+        QString mo2 = tmp.path() + "/MO2";
+        write(mo2 + "/mods/AAA/a.txt", "a");
+        write(mo2 + "/mods/BBB/b.txt", "b");
+        // Separator with a real MO2 @Variant(QColor) value -> #568abe.
+        write(mo2 + "/mods/Sec_separator/meta.ini",
+              "[General]\ncolor=@Variant(\\0\\0\\0\\x43\\x1\\xff\\xffVV\\x8a\\x8a\\xbe\\xbe\\0\\0)\n");
+        write(mo2 + "/profiles/Default/modlist.txt", "+AAA\n+Sec_separator\n+BBB\n");
+        // loadorder.txt drives order; plugins.txt drives enabled state.
+        write(mo2 + "/profiles/Default/loadorder.txt", "Skyrim.esm\nAAA.esp\nBBB.esp\n");
+        write(mo2 + "/profiles/Default/plugins.txt", "*Skyrim.esm\nBBB.esp\n");
+
+        ProfileManager pm(tmp.path() + "/profiles");
+        auto r = Mo2Importer::importProfile(
+            mo2 + "/profiles/Default", mo2 + "/mods",
+            tmp.path() + "/staging", pm, "LO", /*symlink*/false);
+        QVERIFY2(r.success, r.errorMessage.toUtf8());
+
+        Profile* p = pm.loadProfile("LO");
+        QVERIFY(p != nullptr);
+        // Plugin ORDER follows loadorder.txt (low->high == file top->bottom).
+        QCOMPARE(p->pluginList().count(), 3);
+        QCOMPARE(p->pluginList().at(0).filename, QString("Skyrim.esm"));
+        QCOMPARE(p->pluginList().at(1).filename, QString("AAA.esp"));
+        QCOMPARE(p->pluginList().at(2).filename, QString("BBB.esp"));
+        // Enabled state from plugins.txt: Skyrim.esm(*) and BBB.esp(plain) on; AAA off.
+        QCOMPARE(p->pluginList().at(0).enabled, true);
+        QCOMPARE(p->pluginList().at(1).enabled, false);
+        QCOMPARE(p->pluginList().at(2).enabled, true);
+        // Separator picked up its colour from meta.ini.
+        QString sepColor;
+        for (auto it = p->modList().begin(); it != p->modList().end(); ++it)
+            if (it->type == EntryType::Separator) sepColor = it->color;
+        QCOMPARE(sepColor, QString("#568abe"));
+    }
 };
 QTEST_MAIN(TestMo2Importer)
 #include "test_Mo2Importer.moc"

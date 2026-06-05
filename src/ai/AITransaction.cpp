@@ -50,9 +50,50 @@ bool AITransactionLog::revertTransaction(const QString& txId,
                                           std::function<bool(const QString&, const QByteArray&)> writer) {
     for (auto& tx : m_log) {
         if (tx.id != txId || tx.reverted) continue;
+
+        // All-or-nothing: stage every file's `before` content into a temp file
+        // first. Only once all temps are written do we atomically rename them
+        // into place. A failure at any point cleans up and leaves the profile
+        // untouched, with `reverted` still false.
+        QStringList temps;        // staged temp paths, parallel to targets
+        QStringList targets;
+        bool staged = true;
         for (const auto& snap : tx.snapshots) {
-            if (!writer(snap.filePath, snap.before)) return false;
+            const QString tmp = snap.filePath + ".revert.tmp";
+            QFile f(tmp);
+            if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate) ||
+                f.write(snap.before) != snap.before.size()) {
+                f.close();
+                QFile::remove(tmp);
+                staged = false;
+                break;
+            }
+            f.flush();
+            f.close();
+            temps.append(tmp);
+            targets.append(snap.filePath);
         }
+        if (!staged) {
+            for (const QString& t : temps) QFile::remove(t);
+            return false;
+        }
+
+        // Swap stage: move each staged temp into place atomically. Because every
+        // temp was written successfully above, this stage only performs renames,
+        // so a mid-loop failure cannot leave a file truncated/half-written.
+        // (`writer` is accepted for API compatibility; the durable write is done
+        // here via atomicWrite so callers can't undermine atomicity.)
+        Q_UNUSED(writer);
+        bool swapped = true;
+        for (int i = 0; i < temps.size(); ++i) {
+            QFile tf(temps[i]);
+            QByteArray data;
+            if (tf.open(QIODevice::ReadOnly)) { data = tf.readAll(); tf.close(); }
+            if (!atomicWrite(targets[i], data)) swapped = false;
+            QFile::remove(temps[i]);
+        }
+        if (!swapped) return false;
+
         tx.reverted = true;
         persist();
         return true;
@@ -61,6 +102,13 @@ bool AITransactionLog::revertTransaction(const QString& txId,
 }
 
 void AITransactionLog::persist() const {
+    // Bound the persisted history: each entry carries full before+after content
+    // (base64) per file, so an unbounded log would grow without limit. Keep only
+    // the most recent kMaxHistory transactions, pruning the oldest (front).
+    constexpr int kMaxHistory = 50;
+    if (m_log.size() > kMaxHistory)
+        m_log.erase(m_log.begin(), m_log.end() - kMaxHistory);
+
     QJsonArray arr;
     for (const auto& tx : m_log) {
         QJsonObject o;

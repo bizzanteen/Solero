@@ -4,6 +4,8 @@
 #include <QProcess>
 #include <QTextStream>
 #include <QStandardPaths>
+#include <QFileInfo>
+#include <QCoreApplication>
 
 namespace solero {
 
@@ -59,18 +61,40 @@ bool NxmRegister::registerHandler(QString& outMsg) {
 
     QDir().mkpath(appsDir);
 
+    // Exec: prefer the ~/.local/bin/solero launcher (it sets QT_PLUGIN_PATH) if
+    // it exists; otherwise use the running executable's own path.
+    const QString execTarget = QFileInfo::exists(launcher)
+        ? launcher
+        : QCoreApplication::applicationFilePath();
+
+    // Icon: prefer a bundled SVG resolved relative to the executable; fall back
+    // to the legacy absolute dev path only if it actually exists. If neither
+    // resolves, omit the Icon= line entirely (a broken Icon path is worse).
+    const QString exeDir = QFileInfo(QCoreApplication::applicationFilePath()).absolutePath();
+    QString iconPath;
+    for (const QString& cand : {
+            exeDir + "/resources/icons/solero-logo.svg",
+            exeDir + "/../resources/icons/solero-logo.svg",
+            exeDir + "/../share/solero/icons/solero-logo.svg",
+            QStringLiteral("/var/home/eamon/dev/solero/resources/icons/solero-logo.svg") }) {
+        if (QFileInfo::exists(cand)) { iconPath = QFileInfo(cand).absoluteFilePath(); break; }
+    }
+    const QString iconLine = iconPath.isEmpty()
+        ? QString()
+        : QStringLiteral("Icon=%1\n").arg(iconPath);
+
     const QString contents = QStringLiteral(
         "[Desktop Entry]\n"
         "Type=Application\n"
         "Name=Solero\n"
         "Comment=Mod Manager for Skyrim SE/AE\n"
         "Exec=%1 %u\n"
-        "Icon=/var/home/eamon/dev/solero/resources/icons/solero-logo.svg\n"
+        "%2"
         "Categories=Game;Utility;\n"
         "Keywords=mod;skyrim;modmanager;\n"
         "StartupWMClass=solero\n"
         "Terminal=false\n"
-        "MimeType=x-scheme-handler/nxm;\n").arg(launcher);
+        "MimeType=x-scheme-handler/nxm;\n").arg(execTarget, iconLine);
 
     QFile f(desktopPath);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {

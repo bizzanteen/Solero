@@ -24,7 +24,8 @@ public:
 
 private:
     QString m_logPath;
-    QList<AITransaction> m_log;
+    // Mutable so persist() (const) can prune the oldest entries to bound history.
+    mutable QList<AITransaction> m_log;
     void persist() const;
     void loadFromDisk();
     static QString newUuid();

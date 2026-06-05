@@ -16,6 +16,9 @@ IPCServer::IPCServer(QObject* parent) : QObject(parent) {
 
 bool IPCServer::start(const QString& socketName) {
     QLocalServer::removeServer(socketName);
+    // Restrict the socket to the current user before listening so other local
+    // users cannot connect to the IPC channel.
+    m_server->setSocketOptions(QLocalServer::UserAccessOption);
     return m_server->listen(socketName);
 }
 
@@ -29,6 +32,15 @@ void IPCServer::onNewConnection() {
 void IPCServer::onReadyRead() {
     auto* socket = qobject_cast<QLocalSocket*>(sender());
     if (!socket) return;
+    // Guard against a peer that floods bytes without ever sending a newline:
+    // QLocalSocket would buffer those bytes unbounded. If the pending (unframed)
+    // bytes exceed the cap, drop the connection.
+    constexpr qint64 kMaxBuffered = 1 * 1024 * 1024; // 1 MiB
+    if (socket->bytesAvailable() > kMaxBuffered) {
+        socket->abort();
+        socket->deleteLater();
+        return;
+    }
     while (socket->canReadLine()) {
         QByteArray line = socket->readLine().trimmed();
         QByteArray response = handleRequest(line);

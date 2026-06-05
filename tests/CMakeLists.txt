@@ -119,3 +119,33 @@ add_executable(test_IniFile test_IniFile.cpp ../src/bethini/IniFile.cpp)
 target_include_directories(test_IniFile PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_IniFile PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_IniFile COMMAND test_IniFile)
+
+# ModListModel pulls in Qt Widgets/Svg (IconUtil) and AppConfig for its data()
+# disk scans; the drag-drop tests only exercise moveRows/dropMimeData but still
+# link the full unit.
+add_executable(test_ModListModel test_ModListModel.cpp
+  ../src/ui/ModListModel.cpp
+  ../src/core/AppConfig.cpp
+  ../src/core/ModList.cpp ../src/core/PluginList.cpp
+  ../src/core/Profile.cpp ../src/core/ProfileManager.cpp
+  ../src/ai/AITransaction.cpp)
+target_include_directories(test_ModListModel PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_ModListModel PRIVATE Qt6::Core Qt6::Widgets Qt6::Svg Qt6::Test)
+add_test(NAME test_ModListModel COMMAND test_ModListModel)
+# Widgets linkage means QApplication needs a platform plugin; run headless and
+# point Qt at the real plugin dir. qmake's QT_INSTALL_PLUGINS can report a stale
+# symlinked prefix, so derive the dir from the actual Qt6::Core library location
+# (…/lib/libQt6Core.so → …/share/qt/plugins) and fall back to qmake.
+get_target_property(_qtcore_lib Qt6::Core IMPORTED_LOCATION_RELEASE)
+if(NOT _qtcore_lib)
+  get_target_property(_qtcore_lib Qt6::Core IMPORTED_LOCATION)
+endif()
+get_filename_component(_qt_libdir "${_qtcore_lib}" DIRECTORY)
+set(_qt_plugins "${_qt_libdir}/../share/qt/plugins")
+if(NOT EXISTS "${_qt_plugins}/platforms")
+  get_target_property(_qmake_exe Qt6::qmake IMPORTED_LOCATION)
+  execute_process(COMMAND "${_qmake_exe}" -query QT_INSTALL_PLUGINS
+    OUTPUT_VARIABLE _qt_plugins OUTPUT_STRIP_TRAILING_WHITESPACE)
+endif()
+set_tests_properties(test_ModListModel PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${_qt_plugins}")

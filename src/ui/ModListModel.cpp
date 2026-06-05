@@ -3,6 +3,8 @@
 #include <QFont>
 #include <QDir>
 #include <QDirIterator>
+#include <QMimeData>
+#include <QByteArray>
 #include "core/AppConfig.h"
 #include "ui/IconUtil.h"
 
@@ -273,10 +275,17 @@ Qt::DropActions ModListModel::supportedDropActions() const {
 bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModelIndex&, int dst) {
     if (!m_profile) return false;
     int srcRaw = rawIndexForRow(src);
-    int dstRaw = rawIndexForRow(dst);
-    if (srcRaw < 0 || dstRaw < 0) return false;
+    if (srcRaw < 0) return false; // can't move the Overwrite row (-1) or an invalid one
 
     auto& list = m_profile->modList();
+
+    // Destination raw index. The Overwrite row (visible) maps to raw -1; treat a
+    // drop there as "append to the end of the real mod list" (raw == count), i.e.
+    // just above the pinned Overwrite. Any other invalid dst aborts.
+    int dstRaw = rawIndexForRow(dst);
+    if (dstRaw == -1) dstRaw = list.count();
+    else if (dstRaw < 0) return false;
+
     const bool draggingSeparator =
         list.at(srcRaw).type == EntryType::Separator;
 
@@ -304,13 +313,62 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
         return true;
     }
 
+    // QList::move() needs a valid destination index in [0, count-1]. A drop at the
+    // end (dstRaw == count, i.e. just above Overwrite) maps to the last raw slot.
+    int moveTo = dstRaw;
+    if (moveTo >= list.count()) moveTo = list.count() - 1;
+    if (moveTo == srcRaw) return false; // no-op
+
     beginMoveRows({}, src, src, {}, dst > src ? dst + 1 : dst);
-    list.move(srcRaw, dstRaw);
+    list.move(srcRaw, moveTo);
     m_profile->save();
     rebuildVisibleRows();
     endMoveRows();
     emit modsChanged();
     return true;
+}
+
+static const char* kModMime = "application/x-solero-mod-row";
+
+QStringList ModListModel::mimeTypes() const { return { QString::fromLatin1(kModMime) }; }
+
+QMimeData* ModListModel::mimeData(const QModelIndexList& indexes) const {
+    auto* mime = new QMimeData;
+    int row = -1;
+    for (const auto& idx : indexes) { if (idx.isValid()) { row = idx.row(); break; } }
+    mime->setData(QString::fromLatin1(kModMime), QByteArray::number(row));
+    return mime;
+}
+
+bool ModListModel::canDropMimeData(const QMimeData* data, Qt::DropAction,
+                                   int, int, const QModelIndex&) const {
+    if (!m_profile || !data->hasFormat(QString::fromLatin1(kModMime))) return false;
+    return true;
+}
+
+bool ModListModel::dropMimeData(const QMimeData* data, Qt::DropAction,
+                                int row, int, const QModelIndex& parent) {
+    if (!m_profile || !data->hasFormat(QString::fromLatin1(kModMime))) return false;
+    const int srcVisible = data->data(QString::fromLatin1(kModMime)).toInt();
+
+    // Never drag the pinned Overwrite row.
+    if (rawIndexForRow(srcVisible) == -1) return false;
+
+    // Destination VISIBLE insertion row.
+    int dstVisible;
+    if (row >= 0)            dstVisible = row;
+    else if (parent.isValid()) dstVisible = parent.row();
+    else                     dstVisible = rowCount();
+
+    // Clamp so nothing lands below the pinned Overwrite. rowCount()-1 is the
+    // Overwrite's visible index, which moveRows treats as "end of the mod list".
+    if (dstVisible < 0) dstVisible = 0;
+    if (dstVisible > rowCount() - 1) dstVisible = rowCount() - 1;
+
+    // moveRows performs the move, persists, refreshes, and emits modsChanged().
+    // Return false either way so the view doesn't additionally removeRows.
+    moveRows({}, srcVisible, 1, {}, dstVisible);
+    return false;
 }
 
 } // namespace solero

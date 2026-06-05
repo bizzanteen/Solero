@@ -26,6 +26,10 @@ public:
     Qt::ItemFlags flags(const QModelIndex& index) const override;
     Qt::DropActions supportedDropActions() const override;
     bool moveRows(const QModelIndex&, int src, int count, const QModelIndex&, int dst) override;
+    QStringList mimeTypes() const override;
+    QMimeData* mimeData(const QModelIndexList& indexes) const override;
+    bool canDropMimeData(const QMimeData*, Qt::DropAction, int row, int col, const QModelIndex& parent) const override;
+    bool dropMimeData(const QMimeData*, Qt::DropAction, int row, int col, const QModelIndex& parent) override;
 
     // Map from visible row index to raw ModList index (-1 = Overwrite)
     int rawIndexForRow(int visibleRow) const;

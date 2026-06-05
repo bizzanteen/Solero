@@ -47,6 +47,11 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     setRootIsDecorated(false);
     setIndentation(0); // remove the empty tree-indent column before the checkbox
     setDragDropMode(QAbstractItemView::InternalMove);
+    // InternalMove normally implies these, but set them explicitly so the reorder
+    // drag reliably starts and accepts drops.
+    setDragEnabled(true);
+    setAcceptDrops(true);
+    setDropIndicatorShown(true);
     setSelectionMode(QAbstractItemView::ExtendedSelection); // Ctrl+click multi-select
     setSelectionBehavior(QAbstractItemView::SelectRows);
     setAlternatingRowColors(true);

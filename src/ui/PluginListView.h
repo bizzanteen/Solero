@@ -11,6 +11,9 @@ public:
     void setProfile(Profile* profile);
     void reconcileWith(Profile* profile, const QString& stagingRoot);
     void highlightPlugins(const QStringList& filenames);
+signals:
+    // Forwarded from the model: the user manually reordered the load order.
+    void loadOrderChanged();
 private slots:
     void onSortChanged(int col, Qt::SortOrder order);
 protected:

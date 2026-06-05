@@ -7,6 +7,8 @@
 #include <QDir>
 #include <QLabel>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QPushButton>
 #include <QWidget>
 
 namespace solero {
@@ -25,6 +27,18 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     m_pluginNotice->setStyleSheet("background:#5a4a1e; color:#ffe08a; padding:4px;");
     m_pluginNotice->hide();
     pluginsLayout->addWidget(m_pluginNotice);
+
+    // Top row with a right-aligned "Sort Now" (LOOT) button.
+    auto* sortRow = new QHBoxLayout();
+    sortRow->setContentsMargins(4, 4, 4, 4);
+    sortRow->addStretch();
+    m_sortBtn = new QPushButton("Sort Now", pluginsContainer);
+    m_sortBtn->setToolTip("Run LOOT to auto-sort the load order");
+    m_sortBtn->setEnabled(false);
+    connect(m_sortBtn, &QPushButton::clicked, this, &RightPane::sortRequested);
+    sortRow->addWidget(m_sortBtn);
+    pluginsLayout->addLayout(sortRow);
+
     pluginsLayout->addWidget(m_pluginsTab);
 
     addTab(pluginsContainer, "Plugins");
@@ -51,6 +65,10 @@ void RightPane::showPluginNotice(const QString& text) {
 
 void RightPane::hidePluginNotice() {
     m_pluginNotice->hide();
+}
+
+void RightPane::setSortButtonEnabled(bool enabled) {
+    if (m_sortBtn) m_sortBtn->setEnabled(enabled);
 }
 
 void RightPane::invalidateModPluginCache(const QString& id) {

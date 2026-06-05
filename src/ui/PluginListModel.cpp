@@ -17,14 +17,7 @@ void PluginListModel::setProfile(Profile* profile) {
     beginResetModel(); m_profile = profile; endResetModel();
 }
 
-// Load-order band of a plugin: masters (0) sort before light masters (1),
-// which sort before regular plugins (2). Light masters take precedence over
-// the plain master flag so ESL-flagged files are grouped with other lights.
-static int pluginBand(const PluginEntry& p) {
-    if (p.isLight) return 1;
-    if (p.isMaster) return 0;
-    return 2;
-}
+// pluginBand() now lives in core/PluginList (shared with the DnD rule logic).
 
 void PluginListModel::reconcile(const QStringList& available) {
     if (!m_profile) return;
@@ -247,24 +240,47 @@ QMimeData* PluginListModel::mimeData(const QModelIndexList& indexes) const {
     return mime;
 }
 
-bool PluginListModel::canDropMimeData(const QMimeData* data, Qt::DropAction, int, int, const QModelIndex&) const {
-    return data->hasFormat(QString::fromLatin1(kPluginMime));
+// Map a drop (row/parent, in pre-removal view coords) + source row to the
+// resulting move() destination index (post-removal coords). Returns -1 for a
+// no-op or out-of-range source.
+static int resolveFinalTo(int src, int n, int row, const QModelIndex& parent) {
+    if (src < 0 || src >= n) return -1;
+    int insertion = row;
+    if (insertion < 0) insertion = parent.isValid() ? parent.row() : n;
+    if (insertion < 0) insertion = 0;
+    if (insertion > n) insertion = n;
+    const int finalTo = (insertion > src) ? insertion - 1 : insertion;
+    if (finalTo == src) return -1; // no-op
+    return finalTo;
+}
+
+bool PluginListModel::canDropMimeData(const QMimeData* data, Qt::DropAction,
+                                      int row, int, const QModelIndex& parent) const {
+    if (!m_profile || !data->hasFormat(QString::fromLatin1(kPluginMime))) return false;
+    const int src = data->data(QString::fromLatin1(kPluginMime)).toInt();
+    const int n = m_profile->pluginList().count();
+    const int finalTo = resolveFinalTo(src, n, row, parent);
+    if (finalTo < 0) return false; // no-op / invalid source -> don't show indicator
+    // Reflect the load-order rules in the drop indicator: reject illegal targets.
+    return m_profile->pluginList().isValidMove(src, finalTo);
 }
 
 bool PluginListModel::dropMimeData(const QMimeData* data, Qt::DropAction, int row, int, const QModelIndex& parent) {
     if (!m_profile || !data->hasFormat(QString::fromLatin1(kPluginMime))) return false;
     const int src = data->data(QString::fromLatin1(kPluginMime)).toInt();
     const int n = m_profile->pluginList().count();
-    if (src < 0 || src >= n) return false;
+    const int finalTo = resolveFinalTo(src, n, row, parent);
+    if (finalTo < 0) return false;
 
-    // `insertion` is the 0..n position the row is dropped before (view coords,
-    // before the source is removed). `finalTo` is the resulting index for QList::move.
-    int insertion = row;
-    if (insertion < 0) insertion = parent.isValid() ? parent.row() : n;
-    if (insertion < 0) insertion = 0;
-    if (insertion > n) insertion = n;
-    const int finalTo = (insertion > src) ? insertion - 1 : insertion;
-    if (finalTo == src) return false; // no-op
+    // Enforce valid load order: reject (no change, row snaps back) any move that
+    // would cross the locked/official block, break the master<light<esp band
+    // order, or break master-before-dependents ordering.
+    if (!m_profile->pluginList().isValidMove(src, finalTo))
+        return false;
+
+    // beginMoveRows takes the INSERTION point (pre-removal coords); reconstruct
+    // it from finalTo for the call.
+    const int insertion = (finalTo >= src) ? finalTo + 1 : finalTo;
 
     // Use beginMoveRows (not beginResetModel): resetting the model from inside the
     // view's drop event invalidates the persistent indexes the view still holds,
@@ -274,6 +290,7 @@ bool PluginListModel::dropMimeData(const QMimeData* data, Qt::DropAction, int ro
     m_profile->pluginList().move(src, finalTo);
     m_profile->save();
     endMoveRows();
+    emit loadOrderChanged(); // a successful manual reorder marks the order dirty
     return false; // we performed the move; return false so the view doesn't also removeRows
 }
 

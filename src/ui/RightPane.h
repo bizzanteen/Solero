@@ -6,6 +6,7 @@
 #include "core/Profile.h"
 
 class QLabel;
+class QPushButton;
 
 namespace solero {
 class PluginListView;
@@ -29,11 +30,19 @@ public:
     void showDownloadsTab();
     void showPluginNotice(const QString& text);
     void hidePluginNotice();
+    // Enable/disable the Plugins-tab "Sort Now" (LOOT) button.
+    void setSortButtonEnabled(bool enabled);
+    // Forwarded from the Plugins view: a manual reorder dirtied the load order.
+    PluginListView* pluginsView() const { return m_pluginsTab; }
 
     // Invalidate cached per-mod plugin-filename lists used for selection highlight.
     // Empty id clears all; a specific id removes just that mod's entry. Call only
     // when a mod's staged Data files actually change.
     void invalidateModPluginCache(const QString& id = QString());
+
+signals:
+    // Emitted when the user clicks "Sort Now" to run LOOT.
+    void sortRequested();
 
 public slots:
     void onSelectionChanged(const QStringList& ids);
@@ -42,6 +51,7 @@ public slots:
 private:
     PluginListView* m_pluginsTab;
     QLabel*         m_pluginNotice = nullptr;
+    QPushButton*    m_sortBtn = nullptr;
     DataTab*        m_dataTab;
     ConflictsTab*   m_conflictsTab;
     DownloadsTab*   m_downloadsTab;

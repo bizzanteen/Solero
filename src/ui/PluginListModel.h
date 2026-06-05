@@ -29,6 +29,11 @@ public:
     bool canDropMimeData(const QMimeData*, Qt::DropAction, int, int, const QModelIndex&) const override;
     bool dropMimeData(const QMimeData*, Qt::DropAction, int row, int col, const QModelIndex& parent) override;
 
+signals:
+    // Emitted after a SUCCESSFUL manual reorder so the load order can be marked
+    // dirty (LOOT may need to re-sort).
+    void loadOrderChanged();
+
 private:
     // Master files declared by `p` that are absent from the current plugin list.
     QStringList missingMasters(const PluginEntry& p) const;

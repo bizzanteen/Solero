@@ -26,6 +26,8 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
     verticalHeader()->hide();
     connect(horizontalHeader(), &QHeaderView::sortIndicatorChanged,
             this, &PluginListView::onSortChanged);
+    connect(m_model, &PluginListModel::loadOrderChanged,
+            this, &PluginListView::loadOrderChanged);
 }
 
 void PluginListView::applyHeaderLayout() {

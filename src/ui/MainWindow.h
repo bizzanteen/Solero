@@ -58,6 +58,9 @@ private:
     void refreshDeployState();   // detect an existing deployment on startup
     void updateDeployButton();   // sync the toggle's text/tooltip to m_deployed
     void updatePluginNotice();   // show/hide the Plugins-tab staleness notice
+    void updateSortButton();     // enable "Sort Now" only when deployed && load order dirty
+    void onLoadOrderChanged();   // user manually reordered a plugin -> mark order dirty
+    void onSortRequested();      // run LOOT on the current load order
     void onNewProfile();
     void onDeleteProfile();
     void onImportMo2();
@@ -89,6 +92,7 @@ private:
 
     bool m_deployed = false;
     bool m_deployDirty = false;
+    bool m_loadOrderDirty = false; // user manually reordered plugins since last sort/deploy
     bool m_toolRunning = false;  // guards re-entrancy while a tool runs (nested event loop)
     bool m_warnedMissingAppData = false; // one-time warning when AppData can't be located
     solero::DeployMode m_deployMode = solero::DeployMode::HardLink;

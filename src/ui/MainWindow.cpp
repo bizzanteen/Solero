@@ -19,6 +19,8 @@
 #include "tools/ToolRunner.h"
 #include "tools/ToolCatalog.h"
 #include "fomod/FomodEngine.h"
+#include "loot/LootSorter.h"
+#include "PluginListView.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -246,6 +248,12 @@ void MainWindow::setupCentralWidget() {
     connect(m_modListView, &solero::ModListView::modActivated,
             m_rightPane, &solero::RightPane::showDataFor);
 
+    // Plugins tab: manual reorder marks the load order dirty; "Sort Now" runs LOOT.
+    connect(m_rightPane->pluginsView(), &solero::PluginListView::loadOrderChanged,
+            this, &MainWindow::onLoadOrderChanged);
+    connect(m_rightPane, &solero::RightPane::sortRequested,
+            this, &MainWindow::onSortRequested);
+
     m_bottomPanel = new solero::BottomPanel(outer);
     outer->addWidget(m_splitter);
     outer->addWidget(m_bottomPanel);
@@ -350,8 +358,11 @@ void MainWindow::switchProfile(const QString& name) {
     } else {
         statusBar()->showMessage(QString("Loaded profile: %1").arg(name));
     }
+    // A profile switch starts from a clean (just-loaded or just-deployed) order.
+    m_loadOrderDirty = false;
     if (prog) prog->close();
     updatePluginNotice();
+    updateSortButton();
 }
 
 void MainWindow::refreshProfileCombo() {
@@ -412,8 +423,10 @@ bool MainWindow::deployCurrent() {
     m_rightPane->setProfile(profile); // refresh plugin list - LOOT may have reordered it
     m_modListView->invalidateModCache(); // deploy may have populated Overwrite
     emit conflictsUpdated(result.conflicts);
+    m_loadOrderDirty = false; // deploy auto-sorts via LOOT -> order is clean
     updateDeployButton();
     updatePluginNotice();
+    updateSortButton();
     return result.success;
 }
 
@@ -451,6 +464,7 @@ void MainWindow::onDeployToggle() {
         prog.close();
         m_deployed = false;
         m_deployDirty = false;
+        m_loadOrderDirty = false; // not deployed -> manual sort no longer applies
         m_modListView->invalidateModCache(); // undeploy may have cleared Overwrite
         if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
         statusBar()->showMessage("Undeployed.");
@@ -458,6 +472,7 @@ void MainWindow::onDeployToggle() {
 
     updateDeployButton();
     updatePluginNotice();
+    updateSortButton();
 }
 
 void MainWindow::updateDeployButton() {
@@ -486,6 +501,47 @@ void MainWindow::updatePluginNotice() {
         m_rightPane->showPluginNotice("\xe2\x9a\xa0 Mods aren't deployed yet - deploy to update this plugin list.");
     else
         m_rightPane->hidePluginNotice();
+}
+
+void MainWindow::updateSortButton() {
+    // LOOT reads plugin headers from the deployed Data folder, so sorting only
+    // makes sense when deployed; only offer it when the user dirtied the order.
+    m_rightPane->setSortButtonEnabled(m_deployed && m_loadOrderDirty);
+}
+
+void MainWindow::onLoadOrderChanged() {
+    m_loadOrderDirty = true;
+    updateSortButton();
+    statusBar()->showMessage("Load order changed - Sort Now (LOOT) available.");
+}
+
+void MainWindow::onSortRequested() {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) { statusBar()->showMessage("No active profile."); return; }
+    if (!m_deployed) {
+        statusBar()->showMessage("Deploy first - LOOT needs plugins in the game's Data folder.");
+        return;
+    }
+
+    solero::ProgressModal prog(this, "Sort", "Sorting plugins with LOOT\xe2\x80\xa6");
+    prog.show(); prog.pump();
+
+    auto res = solero::LootSorter::sort(profile->pluginList(),
+                                        solero::AppConfig::instance().gameDir(),
+                                        profile->lootUserlistPath());
+    prog.close();
+
+    if (!res.success) {
+        QMessageBox::warning(this, "LOOT Sort Failed",
+            res.errorMessage.isEmpty() ? "Unknown LOOT error." : res.errorMessage);
+        return;
+    }
+
+    profile->save();
+    m_rightPane->setProfile(profile); // refresh the plugins view with the sorted order
+    m_loadOrderDirty = false;
+    updateSortButton();
+    statusBar()->showMessage("Plugins sorted by LOOT.");
 }
 
 void MainWindow::onModsChanged() {
@@ -776,8 +832,10 @@ void MainWindow::refreshDeployState() {
         m_deployed = QFile::exists(rec);
     }
     m_deployDirty = false;
+    m_loadOrderDirty = false;
     updateDeployButton();
     updatePluginNotice();
+    updateSortButton();
 }
 
 void MainWindow::onNewProfile() {

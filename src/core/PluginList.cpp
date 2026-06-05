@@ -1,8 +1,15 @@
 #include "PluginList.h"
 #include "FileUtil.h"
 #include <QFile>
+#include <algorithm>
 
 namespace solero {
+
+int pluginBand(const PluginEntry& p) {
+    if (p.isLight) return 1;
+    if (p.isMaster) return 0;
+    return 2;
+}
 
 void PluginList::append(const PluginEntry& e) { m_plugins.append(e); }
 
@@ -19,6 +26,71 @@ void PluginList::setEnabled(const QString& fn, bool en) {
 PluginEntry* PluginList::findByFilename(const QString& fn) {
     for (auto& p : m_plugins) if (p.filename == fn) return &p;
     return nullptr;
+}
+
+QPair<int,int> PluginList::allowedDropRange(int src) const {
+    const int n = m_plugins.size();
+    if (src < 0 || src >= n) return {1, 0}; // invalid (lo > hi)
+
+    const PluginEntry& dragged = m_plugins.at(src);
+
+    // Build the "other" list (everything except `src`) so constraint indices are
+    // already in post-removal coordinates - directly comparable to QList::move's
+    // destination index. `to == k` means the dragged row lands before others[k]
+    // (or at the end when k == others.size()).
+    QList<const PluginEntry*> others;
+    others.reserve(n - 1);
+    for (int i = 0; i < n; ++i)
+        if (i != src) others.append(&m_plugins.at(i));
+    const int m = others.size(); // == n - 1
+
+    int lo = 0;
+    int hi = m; // valid destination indices are [0, m]
+
+    // 1. Locked/official block stays on top: a non-official plugin can't drop
+    // above the official block. (Officials never reach here - flags() blocks the
+    // drag - but clamp defensively.) lo must be >= number of officials.
+    int officialCount = 0;
+    for (const auto* p : others) if (p->isOfficial) ++officialCount;
+    if (!dragged.isOfficial) lo = std::max(lo, officialCount);
+
+    // 2. Band order: the dragged plugin must stay within the contiguous region of
+    // its own band (master=0 < light=1 < esp=2). In post-removal coordinates the
+    // valid destinations span [firstOfBand, lastOfBand + 1].
+    const int band = pluginBand(dragged);
+    int firstOfBand = -1, lastOfBand = -1;
+    for (int i = 0; i < m; ++i) {
+        if (pluginBand(*others[i]) == band) {
+            if (firstOfBand < 0) firstOfBand = i;
+            lastOfBand = i;
+        }
+    }
+    if (firstOfBand >= 0) {
+        lo = std::max(lo, firstOfBand);
+        hi = std::min(hi, lastOfBand + 1);
+    }
+
+    // 3. Master/dependency order: load after every plugin listed in our masters,
+    // and before any plugin that lists US as one of its masters.
+    auto eqCI = [](const QString& a, const QString& b) {
+        return a.compare(b, Qt::CaseInsensitive) == 0;
+    };
+    for (int i = 0; i < m; ++i) {
+        const PluginEntry& other = *others[i];
+        // `other` is a master of dragged -> dragged must land after others[i].
+        for (const QString& mn : dragged.masters)
+            if (eqCI(mn, other.filename)) { lo = std::max(lo, i + 1); break; }
+        // dragged is a master of `other` -> dragged must land before others[i].
+        for (const QString& mn : other.masters)
+            if (eqCI(mn, dragged.filename)) { hi = std::min(hi, i); break; }
+    }
+
+    return {lo, hi};
+}
+
+bool PluginList::isValidMove(int src, int to) const {
+    auto [lo, hi] = allowedDropRange(src);
+    return lo <= hi && to >= lo && to <= hi;
 }
 
 // plugins.txt format: lines starting with '*' are enabled, others disabled

@@ -57,6 +57,11 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     m_promptAfterBrowserDownload->setChecked(cfg.promptAfterBrowserDownload());
     prefsLayout->addWidget(m_promptAfterBrowserDownload);
 
+    m_autoCheckUpdates = new QCheckBox(
+        "Automatically check Nexus for mod updates (every few hours)", prefs);
+    m_autoCheckUpdates->setChecked(cfg.autoCheckUpdates());
+    prefsLayout->addWidget(m_autoCheckUpdates);
+
     // Nexus nxm:// handler registration (opt-in, user-initiated).
     m_nxmStatus = new QLabel(NxmRegister::isRegistered()
         ? "Registered as the nxm:// handler"
@@ -197,6 +202,7 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
         cfg.setCycleSeparatorColors(m_cycleSeparatorColors->isChecked());
         cfg.setDataShowAllFiles(m_dataShowAllFiles->isChecked());
         cfg.setPromptAfterBrowserDownload(m_promptAfterBrowserDownload->isChecked());
+        cfg.setAutoCheckUpdates(m_autoCheckUpdates->isChecked());
         cfg.save();
         accept();
     });

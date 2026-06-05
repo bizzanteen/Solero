@@ -82,6 +82,8 @@ bool AppConfig::load() {
     m_dataShowAllFiles     = obj["dataShowAllFiles"].toBool(false);
     m_promptAfterBrowserDownload = obj["promptAfterBrowserDownload"].toBool(true);
     m_infoPanelVisible     = obj["infoPanelVisible"].toBool(true);
+    m_autoCheckUpdates     = obj["autoCheckUpdates"].toBool(true);
+    m_lastUpdateCheckEpoch = static_cast<qint64>(obj["lastUpdateCheckEpoch"].toDouble(0));
     m_lastSeparatorColor   = obj["lastSeparatorColor"].toString();
     return true;
 }
@@ -99,6 +101,8 @@ bool AppConfig::save() const {
     obj["dataShowAllFiles"]     = m_dataShowAllFiles;
     obj["promptAfterBrowserDownload"] = m_promptAfterBrowserDownload;
     obj["infoPanelVisible"]     = m_infoPanelVisible;
+    obj["autoCheckUpdates"]     = m_autoCheckUpdates;
+    obj["lastUpdateCheckEpoch"] = static_cast<double>(m_lastUpdateCheckEpoch);
     obj["lastSeparatorColor"]   = m_lastSeparatorColor;
     return atomicWrite(configPath(), QJsonDocument(obj).toJson(QJsonDocument::Indented));
 }

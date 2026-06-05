@@ -168,7 +168,13 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
                     return QString("%1  %2").arg(arrow, entry.name);
                 }
                 return entry.name;
-            case ColVersion: return isSep ? QVariant() : entry.version;
+            case ColVersion:
+                if (isSep) return QVariant();
+                if (m_updates.contains(entry.id)) {
+                    const auto& u = m_updates.value(entry.id);
+                    return u.first + " \xe2\x86\x92 " + u.second; // installed -> latest
+                }
+                return entry.version;
             case ColFlags: {
                 if (isSep) return QString();
                 QStringList parts;
@@ -205,6 +211,10 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
         return QColor(entry.color);
     if (role == Qt::ForegroundRole && isSep && !entry.color.isEmpty())
         return solero::contrastText(QColor(entry.color));
+    // Out-of-date mods: tint the Version cell orange so they stand out.
+    if (role == Qt::ForegroundRole && !isSep && idx.column() == ColVersion
+            && m_updates.contains(entry.id))
+        return QColor("#e67e22");
     if (role == Qt::ForegroundRole && !isSep && entry.isOutputMod)
         return QColor("#7f9cc4");
     if (role == Qt::UserRole)

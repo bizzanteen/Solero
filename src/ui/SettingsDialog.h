@@ -21,6 +21,7 @@ private:
     QCheckBox* m_cycleSeparatorColors = nullptr;
     QCheckBox* m_dataShowAllFiles = nullptr;
     QCheckBox* m_promptAfterBrowserDownload = nullptr;
+    QCheckBox* m_autoCheckUpdates = nullptr;
     QLabel* m_nxmStatus = nullptr;
     QLabel* m_nexusStatus = nullptr;
     QLineEdit* m_keyEdit = nullptr;

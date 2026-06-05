@@ -28,6 +28,8 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QDateTime>
+#include <QtConcurrent/QtConcurrent>
+#include <QFutureWatcher>
 #include <QTabWidget>
 #include <QStackedWidget>
 #include <QSplitter>
@@ -113,6 +115,23 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setupToolbar();
     setupCentralWidget();
     statusBar()->showMessage("Ready");
+
+    // When the off-thread update check finishes, apply results on the UI thread.
+    connect(&m_updateWatcher,
+            &QFutureWatcher<QHash<QString, QPair<QString,QString>>>::finished,
+            this, [this]() {
+        const auto results = m_updateWatcher.result();
+        m_modListView->setUpdateInfo(results);
+        if (m_checkUpdatesAction) m_checkUpdatesAction->setEnabled(true);
+        solero::AppConfig::instance().setLastUpdateCheckEpoch(
+            QDateTime::currentSecsSinceEpoch());
+        solero::AppConfig::instance().save();
+        if (results.isEmpty())
+            statusBar()->showMessage("All mods up to date.");
+        else
+            statusBar()->showMessage(
+                QString("%1 update(s) available.").arg(results.size()));
+    });
 
     switchProfile(m_profileMgr->profileNames().first());
     refreshDeployState(); // reflect any existing deployment from a previous run
@@ -260,7 +279,8 @@ void MainWindow::setupToolbar() {
     profileMenu->addSeparator();
     profileMenu->addAction("Import MO2 Profile...", this, &MainWindow::onImportMo2);
     profileMenu->addSeparator();
-    profileMenu->addAction("Check for Mod Updates\xe2\x80\xa6", this, &MainWindow::onCheckUpdates);
+    m_checkUpdatesAction = profileMenu->addAction(
+        "Check for Mod Updates\xe2\x80\xa6", this, &MainWindow::onCheckUpdates);
     profileMenuBtn->setMenu(profileMenu);
     profileMenuBtn->setPopupMode(QToolButton::InstantPopup);
     tb->addWidget(profileMenuBtn);
@@ -503,6 +523,10 @@ void MainWindow::switchProfile(const QString& name) {
     if (prog) prog->close();
     updatePluginNotice();
     updateSortButton();
+
+    // Auto-check Nexus for mod updates after a profile loads (throttled to once
+    // every 6h, opt-out via Settings, no-op if no key / no Nexus-tagged mods).
+    maybeAutoCheckUpdates();
 }
 
 void MainWindow::refreshProfileCombo() {
@@ -1004,10 +1028,22 @@ void MainWindow::onEndorseMod(const QString& modId) {
 }
 
 void MainWindow::onCheckUpdates() {
+    runUpdateCheck(/*silentIfNone=*/false);
+}
+
+void MainWindow::runUpdateCheck(bool silentIfNone) {
+    // Never start a second check while one is in flight.
+    if (m_updateWatcher.isRunning()) {
+        if (!silentIfNone)
+            statusBar()->showMessage("An update check is already running\xe2\x80\xa6");
+        return;
+    }
+
     if (!solero::NexusApi::keyAvailable()) {
-        QMessageBox::information(this, "Check for Mod Updates",
-            "A Nexus API key is required to check for updates.\n"
-            "Place your personal API key in ~/.nexus_api_key.");
+        if (!silentIfNone)
+            QMessageBox::information(this, "Check for Mod Updates",
+                "A Nexus API key is required to check for updates.\n"
+                "Place your personal API key in ~/.nexus_api_key.");
         return;
     }
     auto* profile = m_profileMgr->activeProfile();
@@ -1023,30 +1059,41 @@ void MainWindow::onCheckUpdates() {
         items.append({e.id, e.nexusModId, e.version});
     }
     if (items.isEmpty()) {
-        QMessageBox::information(this, "Check for Mod Updates",
-            "No mods have Nexus metadata yet - install via the 'Mod Manager "
-            "Download' button or use right-click \xe2\x86\x92 Identify on Nexus.");
+        if (!silentIfNone)
+            QMessageBox::information(this, "Check for Mod Updates",
+                "No mods have Nexus metadata yet - install via the 'Mod Manager "
+                "Download' button or use right-click \xe2\x86\x92 Identify on Nexus.");
         return;
     }
 
-    solero::ProgressModal prog(this, "Check for Mod Updates",
+    // Disable the menu action so the check can't be double-run, and let the user
+    // know we're working - the UI stays responsive while the network calls run
+    // serially on a single background thread.
+    if (m_checkUpdatesAction) m_checkUpdatesAction->setEnabled(false);
+    statusBar()->showMessage(
         QString("Checking %1 mods for updates\xe2\x80\xa6").arg(items.size()));
-    QHash<QString, QPair<QString,QString>> results; // modId(local id) -> {installed, latest}
-    int i = 0;
-    for (const auto& it : items) {
-        prog.setProgress(i, items.size());
-        prog.pump();
-        QString latest = solero::NexusApi::latestVersion(it.modId);
-        if (!latest.isEmpty() && !it.version.isEmpty() && latest != it.version)
-            results.insert(it.id, qMakePair(it.version, latest));
-        ++i;
-    }
 
-    m_modListView->setUpdateInfo(results);
-    if (results.isEmpty())
-        statusBar()->showMessage("All mods up to date.");
-    else
-        statusBar()->showMessage(QString("%1 update(s) available.").arg(results.size()));
+    auto future = QtConcurrent::run([items]() {
+        QHash<QString, QPair<QString,QString>> results; // local id -> {installed, latest}
+        for (const auto& it : items) {
+            QString latest = solero::NexusApi::latestVersion(it.modId);
+            if (!latest.isEmpty() && !it.version.isEmpty() && latest != it.version)
+                results.insert(it.id, qMakePair(it.version, latest));
+        }
+        return results;
+    });
+    m_updateWatcher.setFuture(future);
+}
+
+void MainWindow::maybeAutoCheckUpdates() {
+    auto& cfg = solero::AppConfig::instance();
+    if (!cfg.autoCheckUpdates()) return;
+    if (m_updateWatcher.isRunning()) return;
+    if (!solero::NexusApi::keyAvailable()) return;
+    // Throttle: only auto-check if it's been more than 6 hours since the last one.
+    const qint64 now = QDateTime::currentSecsSinceEpoch();
+    if (now - cfg.lastUpdateCheckEpoch() <= 6 * 3600) return;
+    runUpdateCheck(/*silentIfNone=*/true);
 }
 
 void MainWindow::onIdentifyMod(const QString& modId) {

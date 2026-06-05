@@ -41,6 +41,10 @@ public:
     void setLastSeparatorColor(const QString& v) { m_lastSeparatorColor = v; }
     bool infoPanelVisible() const             { return m_infoPanelVisible; }
     void setInfoPanelVisible(bool v)          { m_infoPanelVisible = v; }
+    bool autoCheckUpdates() const             { return m_autoCheckUpdates; }
+    void setAutoCheckUpdates(bool v)          { m_autoCheckUpdates = v; }
+    qint64 lastUpdateCheckEpoch() const       { return m_lastUpdateCheckEpoch; }
+    void setLastUpdateCheckEpoch(qint64 v)    { m_lastUpdateCheckEpoch = v; }
 
     static QString dataRoot();   // ~/.local/share/solero
     static QString configPath();
@@ -67,6 +71,8 @@ private:
     bool m_dataShowAllFiles = false;
     bool m_promptAfterBrowserDownload = true;
     bool m_infoPanelVisible = true;
+    bool m_autoCheckUpdates = true;
+    qint64 m_lastUpdateCheckEpoch = 0;
     QString m_lastSeparatorColor;
 };
 

@@ -4,6 +4,7 @@
 #include <QPair>
 #include <QHash>
 #include <QJsonObject>
+#include <QFutureWatcher>
 #include "core/ProfileManager.h"
 #include "ai/AITransaction.h"
 #include "ipc/IPCServer.h"
@@ -84,6 +85,13 @@ private:
     void onReinstallMod(const QString& modId);
     void onEndorseMod(const QString& modId);
     void onCheckUpdates();
+    // Launch the async (off-UI-thread) Nexus update check. silentIfNone=true is
+    // used by the auto-check-on-profile-load path: it no-ops quietly when there's
+    // no API key, no mods with Nexus metadata, or a check is already running.
+    void runUpdateCheck(bool silentIfNone);
+    // After a profile finishes loading, fire an auto update check if enabled and
+    // not throttled (>6h since the last check) and a key is available.
+    void maybeAutoCheckUpdates();
     void onIdentifyMod(const QString& modId);
     void onModsChanged();
     void onZoomIn();
@@ -130,6 +138,9 @@ private:
     QStackedWidget* m_centralStack = nullptr;
     QWidget* m_modManagerPage = nullptr;
     QAction* m_browseAction = nullptr;
+    QAction* m_checkUpdatesAction = nullptr;
+    // Receives the result of the off-thread update check (local id -> {installed, latest}).
+    QFutureWatcher<QHash<QString, QPair<QString,QString>>> m_updateWatcher;
     // Pending Nexus metadata for in-flight nxm downloads, keyed by saved filename.
     // Written to a <archive>.solero-nexus.json sidecar when the download finishes.
     QHash<QString, QJsonObject> m_nxmMeta;

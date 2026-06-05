@@ -35,6 +35,8 @@ public:
     void setCycleSeparatorColors(bool v)      { m_cycleSeparatorColors = v; }
     bool dataShowAllFiles() const             { return m_dataShowAllFiles; }
     void setDataShowAllFiles(bool v)          { m_dataShowAllFiles = v; }
+    bool promptAfterBrowserDownload() const   { return m_promptAfterBrowserDownload; }
+    void setPromptAfterBrowserDownload(bool v){ m_promptAfterBrowserDownload = v; }
     const QString& lastSeparatorColor() const { return m_lastSeparatorColor; }
     void setLastSeparatorColor(const QString& v) { m_lastSeparatorColor = v; }
 
@@ -61,6 +63,7 @@ private:
     bool m_confirmModDeletion = true;
     bool m_cycleSeparatorColors = true;
     bool m_dataShowAllFiles = false;
+    bool m_promptAfterBrowserDownload = true;
     QString m_lastSeparatorColor;
 };
 

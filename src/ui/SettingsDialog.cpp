@@ -52,6 +52,11 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     m_dataShowAllFiles->setChecked(cfg.dataShowAllFiles());
     prefsLayout->addWidget(m_dataShowAllFiles);
 
+    m_promptAfterBrowserDownload = new QCheckBox(
+        "Ask whether to view Downloads after starting a browser download", prefs);
+    m_promptAfterBrowserDownload->setChecked(cfg.promptAfterBrowserDownload());
+    prefsLayout->addWidget(m_promptAfterBrowserDownload);
+
     // Nexus nxm:// handler registration (opt-in, user-initiated).
     m_nxmStatus = new QLabel(NxmRegister::isRegistered()
         ? "Registered as the nxm:// handler"
@@ -191,6 +196,7 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
         cfg.setConfirmModDeletion(m_confirmDelete->isChecked());
         cfg.setCycleSeparatorColors(m_cycleSeparatorColors->isChecked());
         cfg.setDataShowAllFiles(m_dataShowAllFiles->isChecked());
+        cfg.setPromptAfterBrowserDownload(m_promptAfterBrowserDownload->isChecked());
         cfg.save();
         accept();
     });

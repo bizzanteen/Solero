@@ -163,6 +163,9 @@ ToolDownloadResult ToolDownloader::fetch(const ToolPreset& preset, const QString
         r.error = "Extraction failed.";
         return r;
     }
+    // Tool archive is dead weight once extracted into the tools dir; unlike mod
+    // archives there's no reinstall/sourceArchive use for it, so reclaim the space.
+    QFile::remove(archive);
 
     // Flatten a single wrapper dir if present.
     QDir d(dest);

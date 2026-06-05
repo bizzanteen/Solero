@@ -176,7 +176,11 @@ static bool installDotNetSdkIntoPrefix(const QString& winePrefix, QWidget* paren
     prog.close();
     // Verify by the installed SDK folder, not the installer's exit code (Windows
     // installers under Proton can return non-zero on success).
-    return dirHasEntries(winePrefix + "/pfx/drive_c/Program Files/dotnet/sdk");
+    const bool installed = dirHasEntries(winePrefix + "/pfx/drive_c/Program Files/dotnet/sdk");
+    // Drop the ~220 MB installer once the SDK is verifiably in place; keep it if
+    // the install couldn't be verified so it can be retried without re-downloading.
+    if (installed) QFile::remove(dest);
+    return installed;
 }
 
 // Endorse a Nexus-sourced tool preset and report the outcome via a QMessageBox.

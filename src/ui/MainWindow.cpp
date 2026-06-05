@@ -100,20 +100,19 @@ MainWindow::~MainWindow() {
     delete m_txLog;
 }
 
-void MainWindow::handleNxmUrl(const QString& url) {
-    raise(); activateWindow();
+QString MainWindow::startNxmDownload(const QString& url) {
     if (!solero::AppConfig::instance().isConfigured()) {
         QMessageBox::warning(this, "Nexus Download", "Configure the game first (\xe2\x9a\x99 Settings).");
-        return;
+        return {};
     }
     auto link = solero::NxmHandler::parse(url);
-    if (!link.valid) { QMessageBox::warning(this, "Nexus Download", "Couldn't understand that Nexus link:\n" + url); return; }
+    if (!link.valid) { QMessageBox::warning(this, "Nexus Download", "Couldn't understand that Nexus link:\n" + url); return {}; }
     statusBar()->showMessage("Resolving Nexus download\xe2\x80\xa6"); qApp->processEvents();
     QString cdn = solero::NxmHandler::resolveDownloadUrl(link);
     if (cdn.isEmpty()) {
         QMessageBox::warning(this, "Nexus Download",
             "Could not resolve the download. The link may have expired, or a Nexus Premium API key may be required for this file.");
-        return;
+        return {};
     }
     QString fn = solero::NxmHandler::fileName(link);
     if (fn.isEmpty()) fn = "nexus-" + link.modId + "-" + link.fileId + ".archive";
@@ -126,11 +125,54 @@ void MainWindow::handleNxmUrl(const QString& url) {
     meta["version"] = solero::NexusApi::fileVersion(link.modId, link.fileId, link.game);
     m_nxmMeta[fn] = meta;
     m_downloads->enqueue(cdn, fn, solero::AppConfig::instance().downloadsDir());
-    // If the link came from the embedded Nexus browser, switch back to the mod
-    // manager so the user sees the download land in the Downloads tab.
+    return fn;
+}
+
+void MainWindow::handleNxmUrl(const QString& url) {
+    // External (OS protocol handler) path: the mod manager is the visible view,
+    // so enqueue and surface the Downloads tab.
+    raise(); activateWindow();
+    QString fn = startNxmDownload(url);
+    if (fn.isEmpty()) return;
     if (m_browseAction && m_browseAction->isChecked()) m_browseAction->setChecked(false);
     m_rightPane->showDownloadsTab();
     statusBar()->showMessage("Downloading " + fn + "\xe2\x80\xa6");
+}
+
+void MainWindow::onBrowserNxmDownload(const QString& url) {
+    // Triggered from the embedded Nexus browser. The download starts in the
+    // background; we deliberately do not force-switch away from the browser.
+    QString fn = startNxmDownload(url);
+    if (fn.isEmpty()) return;
+
+    if (!solero::AppConfig::instance().promptAfterBrowserDownload()) {
+        statusBar()->showMessage("Downloading " + fn + "\xe2\x80\xa6", 4000);
+        return;
+    }
+
+    QMessageBox box(this);
+    box.setIcon(QMessageBox::Information);
+    box.setWindowTitle("Download started");
+    box.setText("Started downloading " + fn + ".\nView it in the Downloads tab, or keep browsing?");
+    QPushButton* viewBtn = box.addButton("View Downloads", QMessageBox::AcceptRole);
+    QPushButton* keepBtn = box.addButton("Keep Browsing",  QMessageBox::RejectRole);
+    box.setDefaultButton(keepBtn);
+    QCheckBox* dontAsk = new QCheckBox("Don't ask again", &box);
+    box.setCheckBox(dontAsk);
+    box.exec();
+
+    if (dontAsk->isChecked())
+        solero::AppConfig::instance().setPromptAfterBrowserDownload(false);
+
+    if (box.clickedButton() == viewBtn) {
+        // Leave the browser and reveal the download (same path as the toggle).
+        if (m_browseAction && m_browseAction->isChecked()) m_browseAction->setChecked(false);
+        m_rightPane->showDownloadsTab();
+    }
+    // "Keep Browsing" -> stay in the browser; the download continues in the background.
+
+    if (dontAsk->isChecked())
+        solero::AppConfig::instance().save();   // persist the new preference
 }
 
 void MainWindow::onToggleNexus(bool on) {
@@ -138,7 +180,7 @@ void MainWindow::onToggleNexus(bool on) {
         m_nexusWeb = new solero::NexusWebView(this);
         m_centralStack->addWidget(m_nexusWeb);
         connect(m_nexusWeb, &solero::NexusWebView::nxmRequested,
-                this, &MainWindow::handleNxmUrl);
+                this, &MainWindow::onBrowserNxmDownload);
     }
     m_centralStack->setCurrentWidget(on && m_nexusWeb
                                      ? static_cast<QWidget*>(m_nexusWeb)

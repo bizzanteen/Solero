@@ -80,6 +80,7 @@ bool AppConfig::load() {
     m_confirmModDeletion   = obj["confirmModDeletion"].toBool(true);
     m_cycleSeparatorColors = obj["cycleSeparatorColors"].toBool(true);
     m_dataShowAllFiles     = obj["dataShowAllFiles"].toBool(false);
+    m_promptAfterBrowserDownload = obj["promptAfterBrowserDownload"].toBool(true);
     m_lastSeparatorColor   = obj["lastSeparatorColor"].toString();
     return true;
 }
@@ -95,6 +96,7 @@ bool AppConfig::save() const {
     obj["confirmModDeletion"]   = m_confirmModDeletion;
     obj["cycleSeparatorColors"] = m_cycleSeparatorColors;
     obj["dataShowAllFiles"]     = m_dataShowAllFiles;
+    obj["promptAfterBrowserDownload"] = m_promptAfterBrowserDownload;
     obj["lastSeparatorColor"]   = m_lastSeparatorColor;
     return atomicWrite(configPath(), QJsonDocument(obj).toJson(QJsonDocument::Indented));
 }

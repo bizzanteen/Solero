@@ -43,6 +43,11 @@ public:
 public slots:
     void handleNxmUrl(const QString& url);
 
+private slots:
+    // nxm from the embedded Nexus browser: enqueue without forcibly leaving the
+    // browser view; optionally prompt whether to switch to the Downloads tab.
+    void onBrowserNxmDownload(const QString& url);
+
 signals:
     void conflictsUpdated(const solero::ConflictIndex& index);
 
@@ -70,6 +75,9 @@ private:
     void onImportMo2();
     void onInstallMod();
     void onToggleNexus(bool on);
+    // Shared resolve-and-enqueue for both nxm paths. Returns the saved filename
+    // on success (for status/prompt text), or an empty string on failure.
+    QString startNxmDownload(const QString& url);
     void onNexusDownload(const QString& modId, const QString& fileId,
                          const QString& fileName, const QString& version);
     void installFromArchive(const QString& archive);

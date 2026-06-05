@@ -4,6 +4,7 @@
 #include "tools/ToolStore.h"
 #include "ui/ProgressModal.h"
 #include "ui/ExecutableDialog.h"
+#include "nexus/NexusApi.h"
 #include "core/AppConfig.h"
 #include "core/Types.h"
 #include <QListWidget>
@@ -178,6 +179,30 @@ static bool installDotNetSdkIntoPrefix(const QString& winePrefix, QWidget* paren
     return dirHasEntries(winePrefix + "/pfx/drive_c/Program Files/dotnet/sdk");
 }
 
+// Endorse a Nexus-sourced tool preset and report the outcome via a QMessageBox.
+// No-op (with a message) for GitHub tools, missing modId, or no API key.
+static void endorsePreset(const ToolPreset* p, QWidget* parent) {
+    if (!p || p->source != ToolSource::Nexus || p->nexusModId.isEmpty()) {
+        QMessageBox::information(parent, "Endorse",
+            "This tool isn't on Nexus, so there's nothing to endorse.");
+        return;
+    }
+    if (!NexusApi::keyAvailable()) {
+        QMessageBox::warning(parent, "Endorse",
+            "A Nexus API key is required to endorse mods.\n"
+            "Place your personal API key in ~/.nexus_api_key.");
+        return;
+    }
+    QString version = NexusApi::modInfo(p->nexusModId, p->nexusGame).version;
+    auto res = NexusApi::endorse(p->nexusModId, version, false, p->nexusGame);
+    if (res.ok)
+        QMessageBox::information(parent, "Endorse",
+            "Thanks - endorsed " + p->name + "!");
+    else
+        QMessageBox::warning(parent, "Endorse",
+            res.message.isEmpty() ? QString("Could not endorse this tool.") : res.message);
+}
+
 ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
     : QDialog(parent), m_store(store) {
     setWindowTitle("Set Up a Tool");
@@ -220,7 +245,7 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
     docsLbl->setTextFormat(Qt::RichText);
     docsLbl->setOpenExternalLinks(true);
     auto* openBtn = new QPushButton("Open mod page", detailsW);
-    auto* endorseBtn = new QPushButton("Endorse (coming soon)", detailsW);
+    auto* endorseBtn = new QPushButton("Endorse", detailsW);
     endorseBtn->setEnabled(false);
     details->addWidget(iconLbl);
     details->addWidget(nameLbl);
@@ -268,6 +293,7 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
             iconLbl->clear();
             nameLbl->clear(); authorLbl->clear(); descLbl->clear(); docsLbl->clear();
             openBtn->setEnabled(false);
+            endorseBtn->setEnabled(false);
             return;
         }
         iconLbl->setPixmap(QPixmap(p->iconResource));
@@ -287,6 +313,8 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
             docsLbl->show();
         }
         openBtn->setEnabled(!p->creditUrl.isEmpty());
+        // Endorse only Nexus tools that carry a mod id; GitHub/custom can't be endorsed.
+        endorseBtn->setEnabled(p->source == ToolSource::Nexus && !p->nexusModId.isEmpty());
     };
     connect(list, &QListWidget::currentItemChanged, this, [=]{ updateDetails(); });
     if (list->count() > 0) list->setCurrentRow(0);
@@ -294,6 +322,10 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
     connect(openBtn, &QPushButton::clicked, this, [=]{
         if (const ToolPreset* p = selectedPreset())
             QDesktopServices::openUrl(QUrl(p->creditUrl));
+    });
+    connect(endorseBtn, &QPushButton::clicked, this, [=]{
+        if (selectedId() == "__custom__") return;
+        endorsePreset(selectedPreset(), this);
     });
     connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
 
@@ -444,11 +476,16 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
         box.setWindowTitle("Tool Ready");
         box.setText(p->name + " is set up." + (dotNetOk ? QString("\n.NET runtime + SDK installed.") : QString()));
         box.setInformativeText("Thanks to " + p->author + " for making it. If you find it useful, please consider endorsing it on Nexus.");
-        auto* endorseBtn = box.addButton(QString::fromUtf8("\xe2\x99\xa5  Endorse and Close"), QMessageBox::AcceptRole);
+        // Only Nexus tools can be endorsed; GitHub tools just get a Close button.
+        const bool canEndorse = p->source == ToolSource::Nexus && !p->nexusModId.isEmpty();
+        QPushButton* endorseBtn = canEndorse
+            ? box.addButton(QString::fromUtf8("\xe2\x99\xa5  Endorse and Close"), QMessageBox::AcceptRole)
+            : nullptr;
         auto* closeBtn   = box.addButton(QString::fromUtf8("\xe2\x98\xb9  Close"), QMessageBox::RejectRole);
         box.exec();
-        // Endorsing isn't wired yet (deferred to the Nexus phase); both just close for now.
-        Q_UNUSED(endorseBtn); Q_UNUSED(closeBtn);
+        Q_UNUSED(closeBtn);
+        if (endorseBtn && box.clickedButton() == endorseBtn)
+            endorsePreset(p, this);
         accept();
     });
 }

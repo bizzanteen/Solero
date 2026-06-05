@@ -217,6 +217,9 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         });
         menu.addAction(entry->hasFomodChoices ? "Reinstall (FOMOD)..." : "Reinstall...",
                        [this, id = entry->id]{ emit reinstallRequested(id); });
+        if (!entry->nexusModId.isEmpty())
+            menu.addAction("Endorse on Nexus",
+                           [this, id = entry->id]{ emit endorseRequested(id); });
         menu.addAction("Delete Mod...", [this]{ deleteSelectedMods(); });
         menu.addAction("Rename", [this, row = idx.row()]{ edit(m_model->index(row, ModListModel::ColName)); });
         menu.addSeparator();

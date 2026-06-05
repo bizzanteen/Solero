@@ -69,6 +69,7 @@ private:
     void onInstallMod();
     void installFromArchive(const QString& archive);
     void onReinstallMod(const QString& modId);
+    void onEndorseMod(const QString& modId);
     void onModsChanged();
     void onZoomIn();
     void onZoomOut();

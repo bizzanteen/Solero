@@ -259,6 +259,8 @@ void MainWindow::setupCentralWidget() {
             m_rightPane, &solero::RightPane::onSelectionChanged);
     connect(m_modListView, &solero::ModListView::reinstallRequested,
             this, &MainWindow::onReinstallMod);
+    connect(m_modListView, &solero::ModListView::endorseRequested,
+            this, &MainWindow::onEndorseMod);
     connect(m_modListView, &solero::ModListView::modsChanged,
             this, &MainWindow::onModsChanged);
     connect(m_modListView, &solero::ModListView::modActivated,
@@ -848,6 +850,32 @@ void MainWindow::onReinstallMod(const QString& modId) {
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     updatePluginNotice();
     statusBar()->showMessage("Reinstalled: " + existing->name);
+}
+
+void MainWindow::onEndorseMod(const QString& modId) {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return;
+    solero::ModEntry* mod = profile->modList().findById(modId);
+    if (!mod || mod->nexusModId.isEmpty()) return;
+
+    if (!solero::NexusApi::keyAvailable()) {
+        QMessageBox::warning(this, "Endorse on Nexus",
+            "A Nexus API key is required to endorse mods.\n"
+            "Place your personal API key in ~/.nexus_api_key.");
+        return;
+    }
+
+    QString version = mod->version;
+    if (version.isEmpty())
+        version = solero::NexusApi::modInfo(mod->nexusModId).version;
+
+    auto res = solero::NexusApi::endorse(mod->nexusModId, version, false);
+    if (res.ok)
+        QMessageBox::information(this, "Endorse on Nexus",
+            "Thanks - endorsed " + mod->name + "!");
+    else
+        QMessageBox::warning(this, "Endorse on Nexus",
+            res.message.isEmpty() ? QString("Could not endorse this mod.") : res.message);
 }
 
 void MainWindow::refreshDeployState() {

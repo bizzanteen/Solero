@@ -8,6 +8,7 @@ public:
     // gameDir/stagingDir used for output capture. Blocks until the tool exits.
     static Result run(const Executable& exe, const QString& gameDir, const QString& stagingRoot);
 private:
-    static QStringList snapshotFiles(const QString& dir);
+    // Shell-style tokenizer that respects single and double quotes.
+    static QStringList tokenizeArgs(const QString& s);
 };
 }

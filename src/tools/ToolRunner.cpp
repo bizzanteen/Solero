@@ -7,15 +7,34 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
-#include <QSet>
+#include <QDateTime>
 #include <QStandardPaths>
 
 namespace solero {
 
-QStringList ToolRunner::snapshotFiles(const QString& dir) {
+QStringList ToolRunner::tokenizeArgs(const QString& s) {
     QStringList out;
-    QDirIterator it(dir, QDir::Files, QDirIterator::Subdirectories);
-    while (it.hasNext()) out << it.next();
+    QString cur;
+    bool inSingle = false, inDouble = false, hasToken = false;
+    for (int i = 0; i < s.size(); ++i) {
+        QChar c = s[i];
+        if (inSingle) {
+            if (c == '\'') inSingle = false;
+            else cur += c;
+        } else if (inDouble) {
+            if (c == '"') inDouble = false;
+            else cur += c;
+        } else if (c == '\'') {
+            inSingle = true; hasToken = true;
+        } else if (c == '"') {
+            inDouble = true; hasToken = true;
+        } else if (c.isSpace()) {
+            if (hasToken) { out << cur; cur.clear(); hasToken = false; }
+        } else {
+            cur += c; hasToken = true;
+        }
+    }
+    if (hasToken) out << cur;
     return out;
 }
 
@@ -23,9 +42,11 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
                                    const QString& stagingRoot) {
     Result r;
     QString captureBase = gameDir + "/Data";
-    QStringList before;
     bool capture = exe.isCapturingOutput;
-    if (capture) before = snapshotFiles(captureBase);
+
+    // Record the launch time so we can capture any file created OR modified
+    // during the run via a single post-run mtime walk (no giant before snapshot).
+    QDateTime runStart;
 
     QProcess proc;
     // Many Windows tools (xEdit, DynDOLOD) expect cwd to be their install dir.
@@ -33,7 +54,7 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
                                  ? QFileInfo(exe.binaryPath).absolutePath()
                                  : exe.workingDir);
     proc.setProcessChannelMode(QProcess::MergedChannels);
-    QStringList args = exe.arguments.split(' ', Qt::SkipEmptyParts);
+    QStringList args = tokenizeArgs(exe.arguments);
 
     // Wait for the process via an event loop so the GUI thread keeps pumping
     // events (no waitForFinished blocking -> app stays responsive). Connect
@@ -43,28 +64,41 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
                      &loop, &QEventLoop::quit);
 
     if (exe.runtime == RuntimeType::Native) {
-        if (QFile::exists(exe.binaryPath))
-            QFile(exe.binaryPath).setPermissions(QFile(exe.binaryPath).permissions()
-                | QFileDevice::ExeOwner | QFileDevice::ExeGroup | QFileDevice::ExeUser);
+        if (exe.binaryPath.isEmpty() || !QFile::exists(exe.binaryPath)) {
+            r.error = "Native binary not found: " + exe.binaryPath;
+            return r;
+        }
+        QFile(exe.binaryPath).setPermissions(QFile(exe.binaryPath).permissions()
+            | QFileDevice::ExeOwner | QFileDevice::ExeGroup | QFileDevice::ExeUser);
+        if (capture) runStart = QDateTime::currentDateTime();
         proc.start(exe.binaryPath, args);
     } else {
         // Windows tool via umu-run, reusing the Skyrim Proton prefix.
+        if (QStandardPaths::findExecutable("umu-run").isEmpty()) {
+            r.error = "umu-run not found - install umu-launcher to run Windows tools.";
+            return r;
+        }
         QString protonDir = AppConfig::instance().detectProtonDir();
         if (protonDir.isEmpty()) {
             r.error = "Could not find a Proton install to run this tool.";
             return r;
         }
         QString prefix = exe.winePrefix; // <steamapps>/compatdata/489830
+        // Derive the Steam root from the game dir (<steam>/steamapps/common/<Game>).
+        QString steamRoot = QDir(gameDir + "/../../..").canonicalPath();
+        if (steamRoot.isEmpty())
+            steamRoot = QDir::homePath() + "/.local/share/Steam";
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
         env.insert("WINEPREFIX", prefix + "/pfx");
         env.insert("STEAM_COMPAT_DATA_PATH", prefix);
-        env.insert("STEAM_COMPAT_CLIENT_INSTALL_PATH", QDir::homePath() + "/.local/share/Steam");
+        env.insert("STEAM_COMPAT_CLIENT_INSTALL_PATH", steamRoot);
         env.insert("GAMEID", "umu-489830");
         env.insert("STORE", "none");
         env.insert("PROTONPATH", protonDir);
         env.insert("PROTON_VERB", "waitforexitandrun");
         proc.setProcessEnvironment(env);
         QStringList pargs; pargs << exe.binaryPath; pargs += args;
+        if (capture) runStart = QDateTime::currentDateTime();
         proc.start("umu-run", pargs);
     }
     if (!proc.waitForStarted(15000)) { r.error = "Failed to start: " + exe.binaryPath; return r; }
@@ -76,17 +110,33 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
         r.output += QString("\n[exit code %1]").arg(proc.exitCode());
 
     if (capture) {
-        QSet<QString> beforeSet(before.begin(), before.end());
         QString destBase = exe.outputModId.isEmpty()
             ? (gameDir + "/.solero-overwrite")
             : (stagingRoot + "/" + exe.outputModId + "/Data");
-        for (const QString& f : snapshotFiles(captureBase)) {
-            if (beforeSet.contains(f)) continue;
-            QString relUnderData = QDir(captureBase).relativeFilePath(f);
+        QDir dataDir(captureBase);
+        int failures = 0;
+        // Single walk: capture every file touched at or after runStart. This
+        // catches both newly created files and in-place modifications (e.g.
+        // xEdit cleaning a master), which the old before/after-set approach
+        // missed. Note: a file modified through a hardlink also changes the
+        // staging master - a VFS-less limitation that's acceptable; we still
+        // capture the result to the output mod.
+        QDirIterator it(captureBase, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            QString f = it.next();
+            if (it.fileInfo().lastModified() < runStart) continue;
+            QString relUnderData = dataDir.relativeFilePath(f);
             QString dst = destBase + "/" + relUnderData;
             QDir().mkpath(QFileInfo(dst).path());
-            QFile::rename(f, dst);
+            if (QFile::rename(f, dst)) continue;
+            // rename fails across filesystems -> copy then remove, and verify.
+            if (QFile::exists(dst)) QFile::remove(dst);
+            if (QFile::copy(f, dst) && QFile::remove(f)) continue;
+            ++failures;
         }
+        if (failures > 0)
+            r.output += QString("\n[warning: %1 captured file(s) could not be moved to the output mod]")
+                            .arg(failures);
     }
     return r;
 }

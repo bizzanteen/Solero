@@ -271,6 +271,18 @@ static void seedProfileInis(solero::Profile* profile) {
 
 void MainWindow::switchProfile(const QString& name) {
     if (name.isEmpty()) return;
+    if (m_toolRunning) {
+        statusBar()->showMessage("A tool is running - please wait for it to finish.");
+        // The combo may have driven this switch; revert its text to the active
+        // profile so the displayed selection doesn't desync from reality.
+        if (m_profileCombo) {
+            if (auto* active = m_profileMgr->activeProfile()) {
+                QSignalBlocker blocker(m_profileCombo);
+                m_profileCombo->setCurrentText(active->name());
+            }
+        }
+        return;
+    }
     bool wasDeployed = m_deployed;
     std::unique_ptr<solero::ProgressModal> prog;
     if (wasDeployed && solero::AppConfig::instance().isConfigured()) {
@@ -331,6 +343,10 @@ void MainWindow::refreshProfileCombo() {
 }
 
 bool MainWindow::deployCurrent() {
+    if (m_toolRunning) {
+        statusBar()->showMessage("A tool is running - please wait for it to finish.");
+        return false;
+    }
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) { statusBar()->showMessage("No active profile."); return false; }
 
@@ -371,6 +387,10 @@ bool MainWindow::deployCurrent() {
 }
 
 void MainWindow::onDeployToggle() {
+    if (m_toolRunning) {
+        statusBar()->showMessage("A tool is running - please wait for it to finish.");
+        return;
+    }
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) {
         statusBar()->showMessage("No active profile.");
@@ -797,6 +817,10 @@ void MainWindow::onZoomOut()   { static_cast<Application*>(qApp)->setZoomFactor(
 void MainWindow::onZoomReset() { static_cast<Application*>(qApp)->setZoomFactor(1.0); }
 
 void MainWindow::onRunTool(const solero::Executable& exe) {
+    if (m_toolRunning) {
+        statusBar()->showMessage("A tool is running - please wait for it to finish.");
+        return;
+    }
     if (!solero::AppConfig::instance().isConfigured()) {
         QMessageBox::warning(this, "Tool", "Configure the game first (Game Settings\xe2\x80\xa6).");
         return;
@@ -816,11 +840,15 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
         if (!deployCurrent()) { QMessageBox::critical(this, "Deploy Failed", "Could not deploy - see status bar."); return; }
     }
 
-    // Lock the UI (MO2-style) while the tool runs.
+    // Lock the UI (MO2-style) while the tool runs. m_toolRunning stays true for
+    // the whole run - even if the user dismisses the overlay via "Unlock Solero" -
+    // so the re-entrancy guards remain active until the run actually finishes.
+    m_toolRunning = true;
     showRunLock(exe.name);
     auto res = solero::ToolRunner::run(exe, solero::AppConfig::instance().gameDir(),
                                        solero::AppConfig::instance().stagingDir());
     hideRunLock();
+    m_toolRunning = false;
 
     if (!res.launched) {
         QMessageBox::warning(this, "Tool", res.error.isEmpty() ? ("Failed to launch " + exe.name) : res.error);

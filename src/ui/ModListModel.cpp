@@ -70,13 +70,27 @@ void ModListModel::rebuildVisibleRows() {
     if (!m_profile) return;
 
     bool inCollapsed = false;
+    QString curParentId;       // id of the current top-level parent mod, if any
+    bool curParentCollapsed = false;
     for (int i = 0; i < m_profile->modList().count(); ++i) {
         const auto& e = m_profile->modList().at(i);
         if (e.type == EntryType::Separator) {
             inCollapsed = e.collapsed;
+            curParentId.clear();
             m_visibleRows.append(i); // separators always visible
-        } else if (!inCollapsed) {
-            m_visibleRows.append(i);
+        } else if (!e.parentId.isEmpty()) {
+            // Child mod: hidden inside a collapsed separator, or when its parent is
+            // collapsed (matched by parentId == the tracked top-level parent's id).
+            bool hiddenByParent = (e.parentId == curParentId && curParentCollapsed);
+            if (!inCollapsed && !hiddenByParent)
+                m_visibleRows.append(i);
+        } else {
+            // Top-level mod (possibly a group parent). Remember it so following
+            // children can be hidden when it's collapsed.
+            curParentId = e.id;
+            curParentCollapsed = e.collapsed;
+            if (!inCollapsed)
+                m_visibleRows.append(i);
         }
     }
     m_visibleRows.append(-1); // Overwrite always at bottom
@@ -108,6 +122,53 @@ void ModListModel::toggleCollapse(int visibleRow) {
     m_profile->modList().update(entry->id, updated);
     m_profile->save();
     rebuild();
+}
+
+void ModListModel::toggleModCollapse(int visibleRow) {
+    int raw = rawIndexForRow(visibleRow);
+    if (raw < 0 || !m_profile) return;
+    if (!isGroupParent(raw)) return;
+    const auto* entry = &m_profile->modList().at(raw);
+    ModEntry updated = *entry;
+    updated.collapsed = !updated.collapsed;
+    m_profile->modList().update(entry->id, updated);
+    m_profile->save();
+    rebuild();
+}
+
+bool ModListModel::isGroupParent(int raw) const {
+    if (!m_profile) return false;
+    const auto& list = m_profile->modList();
+    if (raw < 0 || raw >= list.count()) return false;
+    const auto& e = list.at(raw);
+    if (e.type != EntryType::Mod) return false;
+    int next = raw + 1;
+    if (next >= list.count()) return false;
+    const auto& n = list.at(next);
+    return n.type == EntryType::Mod && n.parentId == e.id;
+}
+
+bool ModListModel::isGroupChild(int raw) const {
+    if (!m_profile) return false;
+    const auto& list = m_profile->modList();
+    if (raw < 0 || raw >= list.count()) return false;
+    const auto& e = list.at(raw);
+    return e.type == EntryType::Mod && !e.parentId.isEmpty();
+}
+
+int ModListModel::groupChildCount(int parentRaw) const {
+    if (!m_profile) return 0;
+    const auto& list = m_profile->modList();
+    if (parentRaw < 0 || parentRaw >= list.count()) return 0;
+    const auto& parent = list.at(parentRaw);
+    if (parent.type != EntryType::Mod) return 0;
+    int count = 0;
+    for (int i = parentRaw + 1; i < list.count(); ++i) {
+        const auto& e = list.at(i);
+        if (e.type == EntryType::Mod && e.parentId == parent.id) ++count;
+        else break;
+    }
+    return count;
 }
 
 QModelIndex ModListModel::index(int row, int col, const QModelIndex&) const {
@@ -167,6 +228,12 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
                     QString arrow = entry.collapsed ? "\xe2\x96\xb6" : "\xe2\x96\xbc";
                     return QString("%1  %2").arg(arrow, entry.name);
                 }
+                if (isGroupParent(raw)) {
+                    QString arrow = entry.collapsed ? "\xe2\x96\xb6 " : "\xe2\x96\xbc "; // ▶/▼
+                    return arrow + entry.name;
+                }
+                if (isGroupChild(raw))
+                    return QString("    \xe2\x94\x94 ") + entry.name; // 4 spaces + "└ "
                 return entry.name;
             case ColVersion:
                 if (isSep) return QVariant();
@@ -273,6 +340,9 @@ Qt::ItemFlags ModListModel::flags(const QModelIndex& idx) const {
     int raw = rawIndexForRow(idx.row());
     if (raw >= 0 && m_profile) {
         const auto& entry = m_profile->modList().at(raw);
+        // Group children move only with their parent - withhold independent drag.
+        if (isGroupChild(raw))
+            f &= ~Qt::ItemIsDragEnabled;
         if (entry.type == EntryType::Mod && idx.column() == ColEnabled)
             f |= Qt::ItemIsUserCheckable;
         if (entry.type == EntryType::Mod && idx.column() == ColName)
@@ -303,6 +373,38 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
 
     const bool draggingSeparator =
         list.at(srcRaw).type == EntryType::Separator;
+
+    // Dragging a group parent moves the parent + its contiguous child block as a
+    // unit. The destination is snapped to a group boundary so the block never
+    // lands between some other parent and its children.
+    if (!draggingSeparator && isGroupParent(srcRaw)) {
+        int blockLen = 1 + groupChildCount(srcRaw);
+        // Snap dstRaw to a group boundary: if it would land on a child (i.e. just
+        // after some parent, splitting that group), push it past the last child.
+        if (dstRaw > 0 && dstRaw < list.count()) {
+            const auto& at = list.at(dstRaw);
+            if (at.type == EntryType::Mod && !at.parentId.isEmpty()) {
+                // dstRaw points at a child: advance to the end of that child run.
+                while (dstRaw < list.count()
+                       && list.at(dstRaw).type == EntryType::Mod
+                       && !list.at(dstRaw).parentId.isEmpty())
+                    ++dstRaw;
+            }
+        }
+        int destRaw = dstRaw;
+        if (destRaw > srcRaw) destRaw -= blockLen;
+        if (destRaw < 0) destRaw = 0;
+
+        if (destRaw == srcRaw) return false; // no-op
+
+        beginResetModel();
+        list.moveSection(srcRaw, blockLen, destRaw);
+        m_profile->save();
+        rebuildVisibleRows();
+        endResetModel();
+        emit modsChanged();
+        return true;
+    }
 
     if (draggingSeparator) {
         // Move the whole section: the separator plus every entry after it up to

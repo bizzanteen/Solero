@@ -22,7 +22,7 @@ struct ModEntry {
     QString version;
     QString nexusModId;  // empty if not from Nexus
     QString nexusFileId; // empty if not from Nexus
-    QString parentId;    // nexusModId of parent group (multi-file)
+    QString parentId;    // parent mod's entry id (multi-file group child)
     bool enabled = true;
     bool hasFomodChoices = false;
     bool isOutputMod = false;

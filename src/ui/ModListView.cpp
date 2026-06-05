@@ -148,6 +148,12 @@ void ModListView::mouseDoubleClickEvent(QMouseEvent* event) {
         m_model->toggleCollapse(idx.row());
         return;
     }
+    // A group-parent mod toggles collapse instead of activating Data.
+    if (entry && entry->type == EntryType::Mod
+            && m_model->isGroupParent(m_model->rawIndexForRow(idx.row()))) {
+        m_model->toggleModCollapse(idx.row());
+        return;
+    }
     // Mod (or Overwrite): activate -> right pane shows its Data.
     emit modActivated(entry ? entry->id : QString("__overwrite__"));
     QTreeView::mouseDoubleClickEvent(event);
@@ -266,6 +272,11 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
                        [this, id = entry->id]{ emit identifyRequested(id); });
         menu.addAction("Delete Mod...", [this]{ deleteSelectedMods(); });
         menu.addAction("Rename", [this, row = idx.row()]{ edit(m_model->index(row, ModListModel::ColName)); });
+        if (m_model->isGroupParent(m_model->rawIndexForRow(idx.row()))) {
+            menu.addSeparator();
+            menu.addAction(entry->collapsed ? "Expand group" : "Collapse group",
+                           [this, row = idx.row()]{ m_model->toggleModCollapse(row); });
+        }
         menu.addSeparator();
         menu.addAction("Enable selected",  [this]{ setSelectedModsEnabled(true); });
         menu.addAction("Disable selected", [this]{ setSelectedModsEnabled(false); });

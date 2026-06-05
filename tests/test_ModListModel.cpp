@@ -113,6 +113,72 @@ private slots:
         QCOMPARE(ids.join(","), QString("sepB,m2,sepA,m0,m1"));
     }
 
+    void group_collapseHidesChildren_and_helpers() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        // [parent, c0, c1, other] (+ Overwrite). Children's parentId == parent.id.
+        ModEntry parent; parent.type = EntryType::Mod; parent.id = "P0"; parent.name = "Parent";
+        ModEntry c0; c0.type = EntryType::Mod; c0.id = "c0"; c0.name = "Child0"; c0.parentId = "P0";
+        ModEntry c1; c1.type = EntryType::Mod; c1.id = "c1"; c1.name = "Child1"; c1.parentId = "P0";
+        ModEntry other; other.type = EntryType::Mod; other.id = "u0"; other.name = "Other";
+        prof.modList().append(parent);
+        prof.modList().append(c0);
+        prof.modList().append(c1);
+        prof.modList().append(other);
+        ModListModel model;
+        model.setProfile(&prof);
+
+        // Helpers.
+        QVERIFY(model.isGroupParent(0));
+        QVERIFY(!model.isGroupParent(3));   // "other" has no children
+        QVERIFY(model.isGroupChild(1));
+        QVERIFY(model.isGroupChild(2));
+        QVERIFY(!model.isGroupChild(0));
+        QVERIFY(!model.isGroupChild(3));
+        QCOMPARE(model.groupChildCount(0), 2);
+
+        // Expanded: parent, c0, c1, other, Overwrite = 5 visible rows.
+        QCOMPARE(model.rowCount(), 5);
+        QCOMPARE(model.entryAt(1)->id, QString("c0"));
+
+        // A child row's flags must lack ItemIsDragEnabled.
+        Qt::ItemFlags childFlags = model.flags(model.index(1, ModListModel::ColName));
+        QVERIFY(!(childFlags & Qt::ItemIsDragEnabled));
+        // Parent row stays draggable.
+        QVERIFY(model.flags(model.index(0, ModListModel::ColName)) & Qt::ItemIsDragEnabled);
+
+        // Collapse the parent -> children hidden. parent, other, Overwrite = 3.
+        model.toggleModCollapse(0);
+        QCOMPARE(model.rowCount(), 3);
+        QCOMPARE(model.entryAt(0)->id, QString("P0"));
+        QCOMPARE(model.entryAt(1)->id, QString("u0"));
+
+        // Expand again -> back to 5.
+        model.toggleModCollapse(0);
+        QCOMPARE(model.rowCount(), 5);
+    }
+
+    void group_dragParentMovesWholeBlock() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        // [parent, c0, c1, other] (+ Overwrite). Drag parent to the bottom.
+        ModEntry parent; parent.type = EntryType::Mod; parent.id = "P0"; parent.name = "Parent";
+        ModEntry c0; c0.type = EntryType::Mod; c0.id = "c0"; c0.name = "Child0"; c0.parentId = "P0";
+        ModEntry c1; c1.type = EntryType::Mod; c1.id = "c1"; c1.name = "Child1"; c1.parentId = "P0";
+        ModEntry other; other.type = EntryType::Mod; other.id = "u0"; other.name = "Other";
+        prof.modList().append(parent);
+        prof.modList().append(c0);
+        prof.modList().append(c1);
+        prof.modList().append(other);
+        ModListModel model;
+        model.setProfile(&prof);
+        // Visible: 0=parent,1=c0,2=c1,3=other,4=Overwrite. Drop parent at Overwrite.
+        QScopedPointer<QMimeData> mime(modMime(0));
+        QVERIFY(!model.dropMimeData(mime.data(), Qt::MoveAction, 4, 0, {}));
+        // Whole group moves below "other", children staying contiguous after parent.
+        QCOMPARE(order(prof), QString("u0,P0,c0,c1"));
+    }
+
     void moveRows_endMappingAppends() {
         // Direct moveRows: dst at the Overwrite visible row maps to end-of-list.
         QTemporaryDir tmp;

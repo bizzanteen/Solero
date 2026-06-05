@@ -36,6 +36,17 @@ public:
     int rawToVisible(int rawIndex) const;
     const ModEntry* entryAt(int visibleRow) const;
     void toggleCollapse(int visibleRow);
+    // Toggle the collapsed state of a group-PARENT mod (mirrors toggleCollapse,
+    // which is for separators). No-op if the entry isn't a group parent.
+    void toggleModCollapse(int visibleRow);
+
+    // Multi-file group helpers (operate on raw ModList indices).
+    // A parent is a Mod immediately followed by ≥1 Mod whose parentId == its id.
+    bool isGroupParent(int raw) const;
+    // A child is a Mod with a non-empty parentId.
+    bool isGroupChild(int raw) const;
+    // Count of the contiguous run of child Mods after a parent.
+    int groupChildCount(int parentRaw) const;
     void rebuild();  // call after any structural change
     void setDependencyWarnings(const QHash<QString,QStringList>& w);
     // Mark mods that have a newer version available. Key = mod id; value =

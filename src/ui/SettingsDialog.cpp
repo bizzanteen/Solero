@@ -87,7 +87,16 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     layout->addWidget(btns);
 
     connect(btns, &QDialogButtonBox::accepted, this, [this]{
-        if (m_setupPanel->isValid()) m_setupPanel->save();
+        if (m_setupPanel->isValid()) {
+            m_setupPanel->save();
+        } else {
+            // Don't silently discard the user's path edits - tell them they
+            // weren't saved, then still persist preferences and close.
+            QMessageBox::warning(this, "Game Paths Not Saved",
+                "The game/staging/downloads paths are invalid, so those changes "
+                "were not saved. Check the Setup tab.\n\n"
+                "Your other preference changes have been saved.");
+        }
         auto& cfg = AppConfig::instance();
         cfg.setConfirmModDeletion(m_confirmDelete->isChecked());
         cfg.setCycleSeparatorColors(m_cycleSeparatorColors->isChecked());

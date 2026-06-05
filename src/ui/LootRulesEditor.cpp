@@ -1,5 +1,6 @@
 #include "LootRulesEditor.h"
 #include "YamlHighlighter.h"
+#include "core/FileUtil.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QTextEdit>
@@ -8,6 +9,8 @@
 #include <QFile>
 #include <QMessageBox>
 #include <QFont>
+#include <QSignalBlocker>
+#include <QStringList>
 
 namespace solero {
 
@@ -66,29 +69,94 @@ void LootRulesEditor::load() {
     if (!m_profile) { m_editor->clear(); return; }
     QFile f(m_profile->lootUserlistPath());
     if (!f.open(QIODevice::ReadOnly)) {
+        QSignalBlocker block(m_editor);
         m_editor->clear();
         m_editor->setPlaceholderText(
             "# No userlist.yaml yet.\n# Use the snippet buttons above to add rules.\n");
         m_dirty = false;
         return;
     }
-    m_editor->setPlainText(QString::fromUtf8(f.readAll()));
+    // Block textChanged so loading a profile doesn't mark it dirty (which would
+    // trigger spurious "unsaved changes" prompts on the next profile switch).
+    {
+        QSignalBlocker block(m_editor);
+        m_editor->setPlainText(QString::fromUtf8(f.readAll()));
+    }
     m_dirty = false;
 }
 
 void LootRulesEditor::onSave() {
     if (!m_profile) return;
-    QFile f(m_profile->lootUserlistPath());
-    if (!f.open(QIODevice::WriteOnly)) {
+
+    const QString text = m_editor->toPlainText();
+
+    // Basic sanity check: LOOT rejects a file with duplicate top-level keys, so
+    // warn if there's more than one top-level `plugins:` or `groups:` line.
+    int pluginsCount = 0, groupsCount = 0;
+    for (const QString& line : text.split('\n')) {
+        if (line.startsWith("plugins:")) ++pluginsCount;
+        else if (line.startsWith("groups:")) ++groupsCount;
+    }
+    if (pluginsCount > 1 || groupsCount > 1) {
+        auto ret = QMessageBox::warning(this, "Possibly Invalid Rules",
+            QString("This file has duplicate top-level keys "
+                    "(%1 \"plugins:\", %2 \"groups:\"). LOOT may reject it.\n\n"
+                    "Save anyway?").arg(pluginsCount).arg(groupsCount),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (ret != QMessageBox::Yes) return;
+    }
+
+    if (!atomicWrite(m_profile->lootUserlistPath(), text.toUtf8())) {
         QMessageBox::warning(this, "Save Failed", "Could not write userlist.yaml.");
         return;
     }
-    f.write(m_editor->toPlainText().toUtf8());
     m_dirty = false;
 }
 
 void LootRulesEditor::insertSnippet(const QString& snippet) {
-    m_editor->insertPlainText("\n" + snippet);
+    // Each snippet is a full top-level block (e.g. starts with "plugins:" or
+    // "groups:"). If the document already has that top-level key, splice only
+    // the snippet's indented list items in after the existing header - inserting
+    // a second top-level key would produce a YAML file LOOT rejects.
+    const QStringList snippetLines = snippet.split('\n');
+    QString topKey;
+    if (!snippetLines.isEmpty()) {
+        const QString& first = snippetLines.first();
+        if (first.startsWith("plugins:")) topKey = "plugins:";
+        else if (first.startsWith("groups:")) topKey = "groups:";
+    }
+
+    const QString doc = m_editor->toPlainText();
+    const QStringList docLines = doc.split('\n');
+
+    // Find an existing top-level header line (starts at column 0) for this key.
+    int headerIdx = -1;
+    if (!topKey.isEmpty()) {
+        for (int i = 0; i < docLines.size(); ++i) {
+            if (docLines.at(i).startsWith(topKey)) { headerIdx = i; break; }
+        }
+    }
+
+    if (headerIdx < 0) {
+        // No existing block - insert the whole snippet.
+        m_editor->insertPlainText("\n" + snippet);
+        return;
+    }
+
+    // Strip the snippet's own top-level header, keep the indented list items.
+    QStringList items;
+    for (int i = 1; i < snippetLines.size(); ++i) {
+        const QString& l = snippetLines.at(i);
+        if (l.isEmpty()) continue;       // drop the trailing blank line
+        items << l;
+    }
+    if (items.isEmpty()) return;
+
+    // Rebuild the document with the items spliced in right after the header.
+    QStringList out = docLines;
+    out.insert(headerIdx + 1, items.join('\n'));
+    m_editor->setPlainText(out.join('\n'));
+    m_dirty = true;
 }
 
 } // namespace solero

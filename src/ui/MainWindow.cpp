@@ -367,6 +367,18 @@ bool MainWindow::deployCurrent() {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) { statusBar()->showMessage("No active profile."); return false; }
 
+    // If Skyrim's AppData/Documents (inside the Proton prefix) couldn't be
+    // located, deploy falls back to writing Plugins.txt into Data/, where
+    // Skyrim SE will not read it - plugins silently won't load. Warn once.
+    if (!m_warnedMissingAppData &&
+        solero::AppConfig::instance().localAppDataDir().isEmpty()) {
+        m_warnedMissingAppData = true;
+        QMessageBox::warning(this, "Skyrim AppData Not Found",
+            "Couldn't locate Skyrim's AppData/Documents (Proton prefix) - "
+            "Plugins.txt/INIs may not reach the game. "
+            "Check the game path in Settings.");
+    }
+
     statusBar()->showMessage("Deploying...");
     qApp->processEvents();
 

@@ -8,6 +8,8 @@
 #include <QPushButton>
 #include <QFileDialog>
 #include <QDir>
+#include <QFile>
+#include <QMessageBox>
 
 namespace solero {
 
@@ -75,14 +77,37 @@ ExecutableDialog::ExecutableDialog(const Executable& exe, QWidget* parent)
     connect(m_runtimeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &ExecutableDialog::onRuntimeChanged);
     connect(btns, &QDialogButtonBox::accepted, this, [this]{
-        m_result.name              = m_nameEdit->text();
-        m_result.binaryPath        = m_binaryEdit->text();
+        const QString name = m_nameEdit->text().trimmed();
+        const QString binary = m_binaryEdit->text().trimmed();
+        if (name.isEmpty()) {
+            QMessageBox::warning(this, "Invalid Executable",
+                "Please enter a name for this executable.");
+            return; // keep the dialog open
+        }
+        if (binary.isEmpty() || !QFile::exists(binary)) {
+            QMessageBox::warning(this, "Invalid Executable",
+                "The binary path is empty or does not exist:\n" + binary);
+            return; // keep the dialog open
+        }
+
+        const bool isProton = m_runtimeCombo->currentIndex() == 1;
+
+        m_result.name              = name;
+        m_result.binaryPath        = binary;
         m_result.arguments         = m_argsEdit->text();
         m_result.workingDir        = m_workdirEdit->text();
-        m_result.runtime           = m_runtimeCombo->currentIndex() == 1
-                                     ? RuntimeType::Proton : RuntimeType::Native;
-        m_result.protonVersion     = m_protonCombo->currentText();
-        m_result.winePrefix        = m_prefixEdit->text();
+        m_result.runtime           = isProton ? RuntimeType::Proton
+                                              : RuntimeType::Native;
+        if (isProton) {
+            // Treat the "(select version)" placeholder as no version chosen.
+            const QString ver = m_protonCombo->currentText();
+            m_result.protonVersion = ver == "(select version)" ? QString() : ver;
+            m_result.winePrefix    = m_prefixEdit->text();
+        } else {
+            // Native: don't carry Proton-only fields.
+            m_result.protonVersion.clear();
+            m_result.winePrefix.clear();
+        }
         m_result.runThroughDeployer= m_deployCheck->isChecked();
         m_result.isPrimary         = m_primaryCheck->isChecked();
         m_result.outputModId       = m_outputCombo->currentData().toString();

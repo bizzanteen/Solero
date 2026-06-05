@@ -95,6 +95,32 @@ void ThemeAdapter::apply(QApplication& app) {
     setDisabled(QPalette::Text, "Colors:View", "ForegroundNormal");
     setDisabled(QPalette::ButtonText, "Colors:Button", "ForegroundNormal");
 
+    // Fusion uses the Light/Midlight/Mid/Dark/Shadow shade roles to draw
+    // borders, bevels and etched text. KDE doesn't supply these, so derive them
+    // from the resolved Window/Button colors - otherwise light/non-default
+    // themes get mismatched borders and unreadable etched text.
+    if (windowBg.isValid()) {
+        pal.setColor(QPalette::Light,    windowBg.lighter(150));
+        pal.setColor(QPalette::Midlight, windowBg.lighter(125));
+        pal.setColor(QPalette::Mid,      windowBg.darker(130));
+        pal.setColor(QPalette::Dark,     windowBg.darker(160));
+        pal.setColor(QPalette::Shadow,   windowBg.darker(200));
+        // BrightText is the contrasting bright color (Fusion default: white,
+        // falling back to red on already-light themes).
+        pal.setColor(QPalette::BrightText,
+                     windowBg.lightness() < 128 ? QColor(Qt::white)
+                                                : QColor(Qt::red));
+    }
+
+    // Dim the Base/Button backgrounds for disabled widgets so they read as
+    // inactive (in addition to the disabled text roles above).
+    const QColor base = get("Colors:View", "BackgroundNormal");
+    if (base.isValid())
+        pal.setColor(QPalette::Disabled, QPalette::Base, blend(base, windowBg));
+    const QColor button = get("Colors:Button", "BackgroundNormal");
+    if (button.isValid())
+        pal.setColor(QPalette::Disabled, QPalette::Button, blend(button, windowBg));
+
     app.setPalette(pal);
 }
 

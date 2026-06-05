@@ -9,9 +9,30 @@
 #include <QFileDialog>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QGroupBox>
+#include <QTemporaryFile>
 
 namespace solero {
+
+namespace {
+// True if `child` is the same dir as, or nested inside, `parent`.
+bool isInsideOrEqual(const QString& child, const QString& parent) {
+    if (child.isEmpty() || parent.isEmpty()) return false;
+    const QString c = QDir::cleanPath(QDir(child).absolutePath());
+    const QString p = QDir::cleanPath(QDir(parent).absolutePath());
+    if (c == p) return true;
+    return c.startsWith(p + "/");
+}
+
+// True if `dir` can be created (if needed) and a temp file written into it.
+bool dirIsWritable(const QString& dir) {
+    if (dir.isEmpty()) return false;
+    if (!QDir().mkpath(dir)) return false;
+    QTemporaryFile probe(dir + "/.solero-write-test-XXXXXX");
+    return probe.open();
+}
+}
 
 SetupPanel::SetupPanel(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
@@ -115,6 +136,7 @@ SetupPanel::SetupPanel(QWidget* parent) : QWidget(parent) {
     connect(downloadsBrowse,&QPushButton::clicked, this, &SetupPanel::browseDownloadsDir);
     connect(m_gameDirEdit,   &QLineEdit::textChanged, this, &SetupPanel::refreshValidity);
     connect(m_stagingDirEdit,&QLineEdit::textChanged, this, &SetupPanel::refreshValidity);
+    connect(m_downloadsEdit, &QLineEdit::textChanged, this, &SetupPanel::refreshValidity);
 
     refreshValidity();
 }
@@ -146,18 +168,32 @@ void SetupPanel::browseDownloadsDir() {
 bool SetupPanel::isValid() const {
     QString gameDir = m_gameDirEdit->text().trimmed();
     bool gameOk = !gameDir.isEmpty() && QFile::exists(gameDir + "/SkyrimSE.exe");
-    return gameOk && !m_stagingDirEdit->text().trimmed().isEmpty();
+    const QString stagingDir = m_stagingDirEdit->text().trimmed();
+    if (!gameOk || stagingDir.isEmpty()) return false;
+    // Staging must not be the game dir or live inside it (would deploy into
+    // itself).
+    if (isInsideOrEqual(stagingDir, gameDir)) return false;
+    // Downloads dir must be writable.
+    if (!dirIsWritable(m_downloadsEdit->text().trimmed())) return false;
+    return true;
 }
 
 void SetupPanel::refreshValidity() {
     QString gameDir = m_gameDirEdit->text().trimmed();
     bool gameOk = !gameDir.isEmpty() && QFile::exists(gameDir + "/SkyrimSE.exe");
+    const QString stagingDir = m_stagingDirEdit->text().trimmed();
 
     if (gameDir.isEmpty()) {
         m_statusLabel->setText("");
         m_statusLabel->setStyleSheet("color: red;");
     } else if (!gameOk) {
         m_statusLabel->setText("⚠ SkyrimSE.exe not found in that directory.");
+        m_statusLabel->setStyleSheet("color: red;");
+    } else if (isInsideOrEqual(stagingDir, gameDir)) {
+        m_statusLabel->setText("⚠ Staging directory cannot be inside the game directory.");
+        m_statusLabel->setStyleSheet("color: red;");
+    } else if (!dirIsWritable(m_downloadsEdit->text().trimmed())) {
+        m_statusLabel->setText("⚠ Downloads directory is not writable.");
         m_statusLabel->setStyleSheet("color: red;");
     } else {
         m_statusLabel->setText("✓ Skyrim SE found.");

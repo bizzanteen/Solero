@@ -86,6 +86,7 @@ private:
     bool m_deployed = false;
     bool m_deployDirty = false;
     bool m_toolRunning = false;  // guards re-entrancy while a tool runs (nested event loop)
+    bool m_warnedMissingAppData = false; // one-time warning when AppData can't be located
     solero::DeployMode m_deployMode = solero::DeployMode::HardLink;
     QAction* m_deployAction = nullptr;
     QComboBox* m_profileCombo = nullptr;

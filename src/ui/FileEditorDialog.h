@@ -1,5 +1,6 @@
 #pragma once
 #include <QDialog>
+#include <QStringConverter>
 
 class QPlainTextEdit;
 class QLabel;
@@ -24,6 +25,9 @@ private:
     QPlainTextEdit* m_edit;
     QLabel*         m_statusLabel;
     bool            m_binary = false;
+    // Encoding the file was decoded with; re-used on save so e.g. Latin-1 INIs
+    // round-trip without corruption.
+    QStringConverter::Encoding m_encoding = QStringConverter::Utf8;
 };
 
 } // namespace solero

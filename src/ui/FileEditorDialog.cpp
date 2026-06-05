@@ -1,4 +1,5 @@
 #include "FileEditorDialog.h"
+#include "core/FileUtil.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPlainTextEdit>
@@ -8,6 +9,12 @@
 #include <QFileInfo>
 #include <QFont>
 #include <QMessageBox>
+#include <QStringConverter>
+
+namespace {
+// Refuse to load files larger than this into the editor.
+constexpr qint64 kMaxEditBytes = 8 * 1024 * 1024; // ~8 MB
+}
 
 namespace solero {
 
@@ -34,7 +41,17 @@ FileEditorDialog::FileEditorDialog(const QString& filePath, QWidget* parent)
 
     // Load the file
     QFile f(filePath);
-    if (!f.open(QIODevice::ReadOnly)) {
+    const qint64 fileSize = QFileInfo(filePath).size();
+    if (fileSize > kMaxEditBytes) {
+        // Too large to load into a text editor; refuse and disable editing.
+        m_binary = true; // reuse the read-only path (no Save button)
+        const double mb = static_cast<double>(fileSize) / (1024.0 * 1024.0);
+        m_edit->setPlainText(
+            QString("File too large to edit in Solero (%1 MB).").arg(mb, 0, 'f', 1));
+        m_edit->setReadOnly(true);
+        m_statusLabel->setText(filePath + "  -  too large, not loaded");
+        m_statusLabel->setStyleSheet("color: #c0392b;");
+    } else if (!f.open(QIODevice::ReadOnly)) {
         m_edit->setPlainText("(could not open file)");
         m_edit->setReadOnly(true);
         m_binary = true;
@@ -48,7 +65,18 @@ FileEditorDialog::FileEditorDialog(const QString& filePath, QWidget* parent)
             m_statusLabel->setText(filePath + "  -  binary, read-only");
             m_statusLabel->setStyleSheet("color: #c0392b;");
         } else {
-            m_edit->setPlainText(QString::fromUtf8(data));
+            // Try UTF-8 with error detection; fall back to Latin-1. Remember the
+            // chosen encoding so we re-encode the same way on save.
+            QStringDecoder utf8(QStringConverter::Utf8);
+            QString text = utf8.decode(data);
+            if (utf8.hasError()) {
+                QStringDecoder latin1(QStringConverter::Latin1);
+                text = latin1.decode(data);
+                m_encoding = QStringConverter::Latin1;
+            } else {
+                m_encoding = QStringConverter::Utf8;
+            }
+            m_edit->setPlainText(text);
         }
     }
 
@@ -77,14 +105,17 @@ bool FileEditorDialog::looksBinary(const QByteArray& data) {
 
 void FileEditorDialog::save() {
     if (m_binary) return;
-    QFile f(m_filePath);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    // Re-encode using the encoding the file was loaded with, so Latin-1 INIs
+    // round-trip without corruption.
+    QStringEncoder enc(m_encoding);
+    const QByteArray data = enc.encode(m_edit->toPlainText());
+    if (!atomicWrite(m_filePath, data)) {
         QMessageBox::warning(this, "Save Failed",
             "Could not write to:\n" + m_filePath);
+        m_statusLabel->setText(m_filePath + "  -  save failed");
+        m_statusLabel->setStyleSheet("color: #c0392b;");
         return;
     }
-    f.write(m_edit->toPlainText().toUtf8());
-    f.close();
     m_statusLabel->setText(m_filePath + "  -  saved");
     m_statusLabel->setStyleSheet("color: #27ae60;");
     emit fileSaved(m_filePath);

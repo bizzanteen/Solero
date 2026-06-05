@@ -11,6 +11,7 @@
 #include "core/ModList.h"
 #include "install/ModInstaller.h"
 #include "import/Mo2Importer.h"
+#include "ui/WabbajackDialog.h"
 #include "ui/FomodWizard.h"
 #include "ui/ProgressModal.h"
 #include "ui/ToolSetupWizard.h"
@@ -310,6 +311,7 @@ void MainWindow::setupToolbar() {
     profileMenu->addAction("Delete Current Profile", this, &MainWindow::onDeleteProfile);
     profileMenu->addSeparator();
     profileMenu->addAction("Import MO2 Profile...", this, &MainWindow::onImportMo2);
+    profileMenu->addAction("Install Wabbajack Modlist\xe2\x80\xa6", this, &MainWindow::onInstallWabbajack);
     profileMenu->addSeparator();
     m_checkUpdatesAction = profileMenu->addAction(
         "Check for Mod Updates\xe2\x80\xa6", this, &MainWindow::onCheckUpdates);
@@ -1383,9 +1385,24 @@ void MainWindow::onImportMo2() {
         solero::AppConfig::instance().stagingDir(), *m_profileMgr, name.trimmed(), symlink);
     if (!r.success) { QMessageBox::critical(this, "Import Failed", r.errorMessage); return; }
 
-    refreshProfileCombo();
-    m_profileCombo->setCurrentText(r.profileName);
+    selectImportedProfile(r.profileName);
     statusBar()->showMessage(QString("Imported '%1' - %2 mods staged.").arg(r.profileName).arg(r.modsStaged));
+}
+
+void MainWindow::selectImportedProfile(const QString& name) {
+    refreshProfileCombo();
+    // setCurrentText fires currentTextChanged -> switchProfile, which loads it.
+    m_profileCombo->setCurrentText(name);
+}
+
+void MainWindow::onInstallWabbajack() {
+    solero::WabbajackDialog dlg(m_profileMgr, this);
+    connect(&dlg, &solero::WabbajackDialog::profileImported, this,
+            [this](const QString& name) {
+        selectImportedProfile(name);
+        statusBar()->showMessage(QString("Imported Wabbajack modlist '%1'.").arg(name));
+    });
+    dlg.exec();
 }
 
 void MainWindow::keyPressEvent(QKeyEvent* event) {

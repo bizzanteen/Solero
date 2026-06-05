@@ -26,6 +26,7 @@ private:
     QLabel* m_nexusStatus = nullptr;
     QLineEdit* m_keyEdit = nullptr;
     QPushButton* m_signOutBtn = nullptr;
+    QLineEdit* m_jackifyEdit = nullptr;
 };
 
 } // namespace solero

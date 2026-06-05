@@ -89,6 +89,7 @@ set(SOLERO_SOURCES
   src/ui/SetupWizard.cpp
   src/ui/SetupPanel.cpp
   src/ui/SettingsDialog.cpp
+  src/ui/WabbajackDialog.cpp
   src/core/AppConfig.cpp
   src/deploy/Linker.cpp
   src/deploy/DeployRecord.cpp

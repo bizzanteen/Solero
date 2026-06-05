@@ -3,6 +3,9 @@
 #include "core/AppConfig.h"
 #include "app/NxmRegister.h"
 #include "nexus/NexusApi.h"
+#include "wabbajack/WabbajackEngine.h"
+#include <QGroupBox>
+#include <QFileDialog>
 #include <QTabWidget>
 #include <QDialogButtonBox>
 #include <QVBoxLayout>
@@ -16,6 +19,7 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QFile>
+#include <QDir>
 
 namespace solero {
 
@@ -91,6 +95,32 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     deployRow->addWidget(deployLabel);
     deployRow->addWidget(deployCombo);
     prefsLayout->addLayout(deployRow);
+
+    // Wabbajack group
+    auto* wjGroup = new QGroupBox("Wabbajack", prefs);
+    auto* wjLayout = new QVBoxLayout(wjGroup);
+    wjLayout->addWidget(new QLabel("jackify-engine path", wjGroup));
+    auto* wjRow = new QHBoxLayout;
+    m_jackifyEdit = new QLineEdit(cfg.jackifyEnginePath(), wjGroup);
+    m_jackifyEdit->setPlaceholderText("(auto-detect)");
+    auto* wjBrowse = new QPushButton("Browse\xe2\x80\xa6", wjGroup);
+    wjRow->addWidget(m_jackifyEdit, 1);
+    wjRow->addWidget(wjBrowse);
+    wjLayout->addLayout(wjRow);
+    const QString detected = WabbajackEngine::findEngine();
+    auto* wjDetected = new QLabel(
+        detected.isEmpty() ? "(not found)" : ("(auto-detected: " + detected + ")"), wjGroup);
+    wjDetected->setStyleSheet("color:#888;");
+    wjDetected->setVisible(cfg.jackifyEnginePath().isEmpty());
+    wjLayout->addWidget(wjDetected);
+    connect(wjBrowse, &QPushButton::clicked, this, [this, wjDetected]{
+        const QString p = QFileDialog::getOpenFileName(this, "Locate jackify-engine", QDir::homePath());
+        if (!p.isEmpty()) { m_jackifyEdit->setText(p); wjDetected->setVisible(false); }
+    });
+    connect(m_jackifyEdit, &QLineEdit::textChanged, this, [wjDetected](const QString& t){
+        wjDetected->setVisible(t.trimmed().isEmpty());
+    });
+    prefsLayout->addWidget(wjGroup);
 
     prefsLayout->addStretch();
 
@@ -203,6 +233,7 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
         cfg.setDataShowAllFiles(m_dataShowAllFiles->isChecked());
         cfg.setPromptAfterBrowserDownload(m_promptAfterBrowserDownload->isChecked());
         cfg.setAutoCheckUpdates(m_autoCheckUpdates->isChecked());
+        cfg.setJackifyEnginePath(m_jackifyEdit->text().trimmed());
         cfg.save();
         accept();
     });

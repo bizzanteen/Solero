@@ -74,6 +74,8 @@ private:
     void onNewProfile();
     void onDeleteProfile();
     void onImportMo2();
+    void onInstallWabbajack();
+    void selectImportedProfile(const QString& name); // refresh combo + switch to it
     void onInstallMod();
     void onToggleNexus(bool on);
     // Shared resolve-and-enqueue for both nxm paths. Returns the saved filename

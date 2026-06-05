@@ -219,9 +219,15 @@ Qt::ItemFlags PluginListModel::flags(const QModelIndex& idx) const {
     if (m_profile && idx.row() >= 0 && idx.row() < m_profile->pluginList().count())
         official = m_profile->pluginList().at(idx.row()).isOfficial;
     if (!official) {
-        // Official plugins can't be reordered or toggled.
         f |= Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled;
         if (idx.column() == ColEnabled) f |= Qt::ItemIsUserCheckable;
+    } else {
+        // Official plugins are locked. Let the drag START (so the user gets a
+        // "no-drop" cursor as feedback - allowedDropRange rejects every target),
+        // but they aren't drop targets and aren't user-checkable. Render the
+        // always-on checkbox greyed by disabling just that cell.
+        f |= Qt::ItemIsDragEnabled;
+        if (idx.column() == ColEnabled) f &= ~Qt::ItemIsEnabled;
     }
     return f;
 }

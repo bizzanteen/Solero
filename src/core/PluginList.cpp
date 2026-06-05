@@ -31,6 +31,9 @@ PluginEntry* PluginList::findByFilename(const QString& fn) {
 QPair<int,int> PluginList::allowedDropRange(int src) const {
     const int n = m_plugins.size();
     if (src < 0 || src >= n) return {1, 0}; // invalid (lo > hi)
+    // Official/vanilla plugins are locked in place: no destination is valid, so the
+    // view shows a "no-drop" cursor and the row snaps back if the user drags one.
+    if (m_plugins.at(src).isOfficial) return {1, 0};
 
     const PluginEntry& dragged = m_plugins.at(src);
 

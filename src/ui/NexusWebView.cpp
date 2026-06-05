@@ -1,6 +1,7 @@
 #include "NexusWebView.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QTabWidget>
 #include <QToolButton>
 #include <QLineEdit>
 #include <QUrl>
@@ -8,6 +9,9 @@
 #include <QWebEnginePage>
 #include <QWebEngineProfile>
 #include <QWebEngineHistory>
+#include <QFileInfo>
+#include <QDir>
+#include <QIcon>
 #include <functional>
 
 namespace solero {
@@ -32,6 +36,34 @@ private:
     std::function<void(const QString&)> m_onNxm;
 };
 
+QUrl NexusWebView::homepageUrl() {
+    return QUrl(QStringLiteral("https://www.nexusmods.com/skyrimspecialedition"));
+}
+
+QUrl NexusWebView::signInUrl() {
+    return QUrl(QStringLiteral(
+        "https://users.nexusmods.com/auth/sign_in?redirect_url=https://www.nexusmods.com/skyrimspecialedition"));
+}
+
+bool NexusWebView::looksLoggedIn() const {
+    if (!m_profile) return false;
+    const QString base = m_profile->persistentStoragePath();
+    if (base.isEmpty()) return false;
+
+    // The Cookies file may live directly in the storage path…
+    QFileInfo direct(QDir(base).filePath(QStringLiteral("Cookies")));
+    if (direct.exists() && direct.size() > 100) return true;
+
+    // …or one level down in a subdirectory.
+    QDir d(base);
+    const auto subs = d.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QString& sub : subs) {
+        QFileInfo fi(d.filePath(sub + QStringLiteral("/Cookies")));
+        if (fi.exists() && fi.size() > 100) return true;
+    }
+    return false;
+}
+
 NexusWebView::NexusWebView(QWidget* parent) : QWidget(parent) {
     auto* v = new QVBoxLayout(this);
     v->setContentsMargins(0, 0, 0, 0);
@@ -54,39 +86,106 @@ NexusWebView::NexusWebView(QWidget* parent) : QWidget(parent) {
     bar->addWidget(m_addr, 1);
     v->addLayout(bar);
 
-    // Web view (persistent profile so the Nexus login survives)
-    auto* profile = new QWebEngineProfile(QStringLiteral("solero-nexus"), this);
-    profile->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
+    // Shared persistent profile (Nexus login survives across tabs/restarts)
+    m_profile = new QWebEngineProfile(QStringLiteral("solero-nexus"), this);
+    m_profile->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
 
-    m_view = new QWebEngineView(this);
-    auto* page = new NxmPage(profile, m_view,
-                             [this](const QString& url){ emit nxmRequested(url); });
-    m_view->setPage(page);
-    v->addWidget(m_view, 1);
+    // Tabs
+    m_tabs = new QTabWidget(this);
+    m_tabs->setTabsClosable(true);
+    m_tabs->setMovable(true);
+    m_tabs->setDocumentMode(true);
+    v->addWidget(m_tabs, 1);
 
-    connect(m_back, &QToolButton::clicked, m_view, &QWebEngineView::back);
-    connect(m_fwd,  &QToolButton::clicked, m_view, &QWebEngineView::forward);
-    connect(reload, &QToolButton::clicked, m_view, &QWebEngineView::reload);
-    connect(home,   &QToolButton::clicked, this, [this]{
-        m_view->load(QUrl(QStringLiteral("https://www.nexusmods.com/skyrimspecialedition")));
+    auto* newTabBtn = new QToolButton(this);
+    newTabBtn->setText(QStringLiteral("+"));
+    newTabBtn->setToolTip(QStringLiteral("New tab"));
+    m_tabs->setCornerWidget(newTabBtn);
+    connect(newTabBtn, &QToolButton::clicked, this, [this]{ addTab(homepageUrl()); });
+
+    connect(m_tabs, &QTabWidget::tabCloseRequested, this, [this](int index){
+        QWidget* w = m_tabs->widget(index);
+        if (m_tabs->count() <= 1) {
+            // Don't leave zero tabs - open a fresh homepage tab, then close this one.
+            addTab(homepageUrl());
+        }
+        m_tabs->removeTab(m_tabs->indexOf(w));
+        delete w;
     });
+
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this](int){ refreshNav(); });
+
+    // Nav bar drives the current view
+    connect(m_back, &QToolButton::clicked, this, [this]{ if (auto* vw = currentView()) vw->back(); });
+    connect(m_fwd,  &QToolButton::clicked, this, [this]{ if (auto* vw = currentView()) vw->forward(); });
+    connect(reload, &QToolButton::clicked, this, [this]{ if (auto* vw = currentView()) vw->reload(); });
+    connect(home,   &QToolButton::clicked, this, [this]{ if (auto* vw = currentView()) vw->load(homepageUrl()); });
     connect(m_addr, &QLineEdit::returnPressed, this, &NexusWebView::loadAddress);
-    connect(m_view, &QWebEngineView::urlChanged, this, [this](const QUrl& u){
-        if (!m_addr->hasFocus()) m_addr->setText(u.toString());
-        m_back->setEnabled(m_view->history()->canGoBack());
-        m_fwd->setEnabled(m_view->history()->canGoForward());
-    });
 
     m_back->setEnabled(false);
     m_fwd->setEnabled(false);
-    m_view->load(QUrl(QStringLiteral("https://www.nexusmods.com/skyrimspecialedition")));
+
+    // First tab: sign-in if we don't look logged in, else the homepage.
+    addTab(looksLoggedIn() ? homepageUrl() : signInUrl());
+}
+
+QWebEngineView* NexusWebView::currentView() const {
+    return qobject_cast<QWebEngineView*>(m_tabs->currentWidget());
+}
+
+QWebEngineView* NexusWebView::addTab(const QUrl& url) {
+    auto* view = new QWebEngineView(m_tabs);
+    auto* page = new NxmPage(m_profile, view,
+                             [this](const QString& u){ emit nxmRequested(u); });
+    view->setPage(page);
+
+    connect(view, &QWebEngineView::urlChanged, this, [this, view](const QUrl& u){
+        if (view == currentView()) {
+            if (!m_addr->hasFocus()) m_addr->setText(u.toString());
+            m_back->setEnabled(view->history()->canGoBack());
+            m_fwd->setEnabled(view->history()->canGoForward());
+        }
+    });
+
+    connect(view, &QWebEngineView::titleChanged, this, [this, view](const QString& title){
+        int idx = m_tabs->indexOf(view);
+        if (idx < 0) return;
+        QString t = title.trimmed();
+        if (t.isEmpty()) t = QStringLiteral("Nexus");
+        if (t.size() > 20) t = t.left(19) + QStringLiteral("\xe2\x80\xa6");
+        m_tabs->setTabText(idx, t);
+    });
+
+    connect(view->page(), &QWebEnginePage::iconChanged, this, [this, view](const QIcon& icon){
+        int idx = m_tabs->indexOf(view);
+        if (idx >= 0) m_tabs->setTabIcon(idx, icon);
+    });
+
+    int idx = m_tabs->addTab(view, QStringLiteral("Nexus"));
+    view->load(url);
+    m_tabs->setCurrentIndex(idx);
+    return view;
+}
+
+void NexusWebView::refreshNav() {
+    auto* vw = currentView();
+    if (!vw) {
+        m_back->setEnabled(false);
+        m_fwd->setEnabled(false);
+        return;
+    }
+    if (!m_addr->hasFocus()) m_addr->setText(vw->url().toString());
+    m_back->setEnabled(vw->history()->canGoBack());
+    m_fwd->setEnabled(vw->history()->canGoForward());
 }
 
 void NexusWebView::loadAddress() {
+    auto* vw = currentView();
+    if (!vw) return;
     QString t = m_addr->text().trimmed();
     if (t.isEmpty()) return;
     if (!t.contains("://")) t = "https://" + t;
-    m_view->load(QUrl::fromUserInput(t));
+    vw->load(QUrl::fromUserInput(t));
 }
 
 } // namespace solero

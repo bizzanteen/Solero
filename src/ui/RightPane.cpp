@@ -28,10 +28,14 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     m_pluginNotice->hide();
     pluginsLayout->addWidget(m_pluginNotice);
 
-    // Top row with a right-aligned "Sort Now" (LOOT) button.
+    // Top row with right-aligned "LOOT Rules" + "Sort Now" (LOOT) buttons.
     auto* sortRow = new QHBoxLayout();
     sortRow->setContentsMargins(4, 4, 4, 4);
     sortRow->addStretch();
+    auto* lootRulesBtn = new QPushButton("LOOT Rules", pluginsContainer);
+    lootRulesBtn->setToolTip("Edit custom LOOT sorting rules");
+    connect(lootRulesBtn, &QPushButton::clicked, this, &RightPane::lootRulesRequested);
+    sortRow->addWidget(lootRulesBtn);
     m_sortBtn = new QPushButton("Sort Now", pluginsContainer);
     m_sortBtn->setToolTip("Run LOOT to auto-sort the load order");
     m_sortBtn->setEnabled(false);

@@ -43,6 +43,8 @@ public:
 signals:
     // Emitted when the user clicks "Sort Now" to run LOOT.
     void sortRequested();
+    // Emitted when the user clicks "LOOT Rules" to open the rules editor.
+    void lootRulesRequested();
 
 public slots:
     void onSelectionChanged(const QStringList& ids);

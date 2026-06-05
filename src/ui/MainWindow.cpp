@@ -302,9 +302,6 @@ void MainWindow::setupToolbar() {
     m_toolsBtn->setMenu(m_toolsMenu);
     tb->addWidget(m_toolsBtn);
 
-    // LOOT Rules (modal editor)
-    tb->addAction("LOOT Rules", this, &MainWindow::onOpenLootRules);
-
     // BethINI (modal window)
     tb->addAction("BethINI", this, &MainWindow::onOpenBethini);
     tb->addSeparator();
@@ -397,6 +394,8 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onLoadOrderChanged);
     connect(m_rightPane, &solero::RightPane::sortRequested,
             this, &MainWindow::onSortRequested);
+    connect(m_rightPane, &solero::RightPane::lootRulesRequested,
+            this, &MainWindow::onOpenLootRules);
 
     m_bottomPanel = new solero::BottomPanel(outer);
     connect(m_modListView, &solero::ModListView::modsSelected,

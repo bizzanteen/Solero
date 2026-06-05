@@ -408,6 +408,10 @@ void MainWindow::setupCentralWidget() {
                     existing->sourceArchive = path;
                     existing->version       = pu.version;
                     existing->nexusFileId   = pu.fileId;
+                    // Re-clean the name in case it still carries the Nexus
+                    // id/version/timestamp tail (e.g. installed before the
+                    // name-cleaning fix). No-op for already-clean/custom names.
+                    existing->name = cleanModName(existing->name, existing->nexusModId);
                     profile->save();
                     onReinstallMod(pu.modId);
                     // onReinstallMod preserves version/nexusFileId (it only touches

@@ -158,29 +158,27 @@ void DataTab::updateCollapseText() {
 }
 
 void DataTab::refresh() {
+    // Partition the selection: separators are ignored for counting; mods + overwrite count.
+    QStringList modIds;
+    for (const auto& id : m_selection) {
+        if (id == "__separator__") continue;
+        modIds << id;
+    }
+    const bool hasMods = !modIds.isEmpty();
+
+    // With no mod selected there's nothing to show but the live game dir, so lock
+    // the toggle to "Showing all files" (disabled) until a mod is selected.
+    m_showAllBtn->setEnabled(hasMods);
+    if (!hasMods) m_showAllBtn->setText("Showing all files");
+    else          updateShowAllText();
+
+    if (!hasMods) {
+        showGameDirectory(); // all files (game dir), regardless of the toggle
+        return;
+    }
     if (m_showAllFiles) {
         showGameDirectory();
         applyFilter();
-        return;
-    }
-
-    // Partition the selection: separators are ignored for counting; mods + overwrite count.
-    QStringList modIds;
-    int separatorCount = 0;
-    for (const auto& id : m_selection) {
-        if (id == "__separator__") { ++separatorCount; continue; }
-        modIds << id;
-    }
-
-    if (modIds.isEmpty()) {
-        if (separatorCount > 0) {
-            // Only separator(s) selected
-            m_placeholder->setText("Nothing to see here");
-            m_stack->setCurrentWidget(m_placeholder);
-        } else {
-            // Nothing selected -> show live game directory
-            showGameDirectory();
-        }
         return;
     }
     if (modIds.size() == 1) {

@@ -47,9 +47,19 @@ void RightPane::hidePluginNotice() {
     m_pluginNotice->hide();
 }
 
-void RightPane::setProfile(Profile* profile) {
+void RightPane::invalidateModPluginCache(const QString& id) {
+    if (id.isEmpty()) m_modPluginCache.clear();
+    else              m_modPluginCache.remove(id);
+}
+
+void RightPane::setProfile(Profile* profile, bool reconcilePlugins) {
     m_currentProfile = profile;
-    m_pluginsTab->reconcileWith(profile, AppConfig::instance().stagingDir());
+    // New profile -> different mods; drop the per-mod plugin highlight cache.
+    m_modPluginCache.clear();
+    if (reconcilePlugins)
+        m_pluginsTab->reconcileWith(profile, AppConfig::instance().stagingDir());
+    else
+        m_pluginsTab->setProfile(profile); // bind model without the disk scan+save
     m_dataTab->setProfile(profile);
     m_downloadsTab->setProfile(profile);
 }
@@ -78,15 +88,20 @@ void RightPane::onSelectionChanged(const QStringList& ids) {
         if (id != "__separator__") modIds << id;
     m_conflictsTab->showMod(modIds.size() == 1 ? modIds.first() : QString());
 
-    // Highlight selected mods' plugins in the Plugins tab.
+    // Highlight selected mods' plugins in the Plugins tab. Cache each mod's Data
+    // plugin filenames so repeated selections don't re-scan disk every time.
     QStringList pluginFiles;
     if (m_currentProfile) {
         for (const QString& id : ids) {
             if (id == "__separator__" || id == "__overwrite__") continue;
-            QString data = AppConfig::instance().stagingDir() + "/" + id + "/Data";
-            QDir d(data);
-            for (const QString& f : d.entryList({"*.esp","*.esm","*.esl"}, QDir::Files))
-                pluginFiles << f;
+            auto it = m_modPluginCache.constFind(id);
+            if (it == m_modPluginCache.constEnd()) {
+                QString data = AppConfig::instance().stagingDir() + "/" + id + "/Data";
+                QDir d(data);
+                QStringList files = d.entryList({"*.esp","*.esm","*.esl"}, QDir::Files);
+                it = m_modPluginCache.insert(id, files);
+            }
+            pluginFiles << it.value();
         }
     }
     m_pluginsTab->highlightPlugins(pluginFiles);

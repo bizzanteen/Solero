@@ -302,7 +302,11 @@ void MainWindow::switchProfile(const QString& name) {
     seedProfileInis(profile);
     m_ipcServer->setActiveProfile(profile);
     m_modListView->setProfile(profile);
-    m_rightPane->setProfile(profile);
+    // If we're about to redeploy (profile was deployed), defer the expensive
+    // game-data plugin reconcile+save to the post-deploy setProfile below so it
+    // runs exactly once. Otherwise reconcile now.
+    const bool willRedeploy = wasDeployed && solero::AppConfig::instance().isConfigured();
+    m_rightPane->setProfile(profile, /*reconcilePlugins=*/!willRedeploy);
     m_bottomPanel->setProfile(profile);
     m_bethiniWindow->setProfile(profile);
     // Self-review fix: load previously-computed ConflictIndex if it exists
@@ -380,6 +384,7 @@ bool MainWindow::deployCurrent() {
             .arg(result.conflicts.conflictedPaths().size()));
     m_rightPane->setConflictIndex(result.conflicts);
     m_rightPane->setProfile(profile); // refresh plugin list - LOOT may have reordered it
+    m_modListView->invalidateModCache(); // deploy may have populated Overwrite
     emit conflictsUpdated(result.conflicts);
     updateDeployButton();
     updatePluginNotice();
@@ -420,6 +425,7 @@ void MainWindow::onDeployToggle() {
         prog.close();
         m_deployed = false;
         m_deployDirty = false;
+        m_modListView->invalidateModCache(); // undeploy may have cleared Overwrite
         if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
         statusBar()->showMessage("Undeployed.");
     }
@@ -597,6 +603,10 @@ void MainWindow::installFromArchive(const QString& archive) {
     profile->modList().append(mod);
     profile->save();
 
+    // Newly staged files for this mod - drop its cached empty/plugin scans.
+    m_modListView->invalidateModCache(result.modId);
+    m_rightPane->invalidateModPluginCache(result.modId);
+
     m_modListView->setProfile(profile);
     if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
@@ -718,6 +728,11 @@ void MainWindow::onReinstallMod(const QString& modId) {
     existing->hasFomodChoices = !choiceLog.isEmpty();
     existing->sourceArchive = archive;
     profile->save();
+
+    // Restaged files for this mod - drop its cached empty/plugin scans.
+    m_modListView->invalidateModCache(modId);
+    m_rightPane->invalidateModPluginCache(modId);
+
     m_modListView->setProfile(profile);
     if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
@@ -856,6 +871,10 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
         // Surface tool output (helps diagnose e.g. wine 'Not implemented').
         statusBar()->showMessage(exe.name + " finished.");
     }
+    // A tool may have captured output into an output mod, changing staged files -
+    // invalidate all cached scans so empties/highlights re-read fresh.
+    m_modListView->invalidateModCache();
+    m_rightPane->invalidateModPluginCache();
     if (auto* p = m_profileMgr->activeProfile()) { m_rightPane->refreshPlugins(p); m_modListView->setProfile(p); }
     updatePluginNotice();
 }

@@ -34,6 +34,11 @@ public:
     void rebuild();  // call after any structural change
     void setDependencyWarnings(const QHash<QString,QStringList>& w);
 
+    // Invalidate cached disk scans (empty-mod / Overwrite "has files"). Call only
+    // when a mod's staged files actually change. Empty id clears the whole cache
+    // (and the Overwrite cache); a specific id removes just that entry.
+    void invalidateModCache(const QString& id = QString());
+
 signals:
     void modsChanged();
 
@@ -42,6 +47,7 @@ private:
     QList<int> m_visibleRows; // raw indices into ModList, -1 = Overwrite
     QHash<QString,QStringList> m_depWarnings;
     mutable QHash<QString,bool> m_emptyCache;
+    mutable int m_overwriteHasFiles = -1; // tri-state cache: -1 unknown, 0 no, 1 yes
 
     void rebuildVisibleRows();
     bool isModEmpty(const QString& id) const;

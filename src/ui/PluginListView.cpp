@@ -59,8 +59,21 @@ void PluginListView::reconcileWith(Profile* profile, const QString& stagingRoot)
     m_model->setProfile(profile);
     if (profile) {
         auto available = PluginScanner::scanGameData(AppConfig::instance().gameDir());
+        // Snapshot the plugin list (filename + enabled + order) before reconcile so
+        // we only pay for a profile save when the list actually changed.
+        const auto snapshot = [&] {
+            QStringList s;
+            const PluginList& pl = profile->pluginList();
+            for (int i = 0; i < pl.count(); ++i) {
+                const auto& p = pl.at(i);
+                s << (p.filename + (p.enabled ? "\t1" : "\t0"));
+            }
+            return s;
+        };
+        QStringList before = snapshot();
         m_model->reconcile(available);
-        profile->save(); // persist the reconciled plugin list
+        if (snapshot() != before)
+            profile->save(); // persist the reconciled plugin list only if it changed
     }
 }
 

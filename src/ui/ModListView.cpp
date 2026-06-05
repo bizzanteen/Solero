@@ -93,6 +93,10 @@ void ModListView::setProfile(Profile* profile) {
     }
 }
 
+void ModListView::invalidateModCache(const QString& id) {
+    m_model->invalidateModCache(id);
+}
+
 void ModListView::mouseDoubleClickEvent(QMouseEvent* event) {
     auto idx = indexAt(event->pos());
     if (!idx.isValid()) { QTreeView::mouseDoubleClickEvent(event); return; }
@@ -315,6 +319,7 @@ void ModListView::deleteSelectedMods() {
     for (const QString& id : ids) {
         QDir(stagingDir + "/" + id).removeRecursively();
         m_model->profile()->modList().remove(id);
+        m_model->invalidateModCache(id); // its staged files are now gone
     }
     m_model->profile()->save();
     m_model->rebuild();

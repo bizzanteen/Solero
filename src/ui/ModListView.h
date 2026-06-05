@@ -11,6 +11,9 @@ public:
     explicit ModListView(QWidget* parent = nullptr);
     void setProfile(Profile* profile);
     void deleteSelectedMods();
+    // Pass-through to the underlying model's cache invalidation. Call only when a
+    // mod's staged files change. Empty id clears the whole empty/Overwrite cache.
+    void invalidateModCache(const QString& id = QString());
 
 signals:
     // Emitted on selection change. Each entry is a mod id, "__overwrite__" for the

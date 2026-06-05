@@ -13,8 +13,22 @@ ModListModel::ModListModel(QObject* parent) : QAbstractItemModel(parent) {}
 void ModListModel::setProfile(Profile* profile) {
     beginResetModel();
     m_profile = profile;
+    // A new profile means entirely different staging contents - drop all caches.
+    m_emptyCache.clear();
+    m_overwriteHasFiles = -1;
     rebuildVisibleRows();
     endResetModel();
+}
+
+void ModListModel::invalidateModCache(const QString& id) {
+    if (id.isEmpty()) {
+        m_emptyCache.clear();
+        m_overwriteHasFiles = -1;
+    } else {
+        m_emptyCache.remove(id);
+    }
+    // Next repaint reads fresh; affected rows aren't cheaply known here so we
+    // rely on the imminent refresh that callers already trigger.
 }
 
 void ModListModel::rebuild() {
@@ -41,7 +55,9 @@ bool ModListModel::isModEmpty(const QString& id) const {
 
 void ModListModel::rebuildVisibleRows() {
     m_visibleRows.clear();
-    m_emptyCache.clear();
+    // Keep m_emptyCache / m_overwriteHasFiles persistent: rebuild() is called on
+    // enable/move/rename/collapse - none of which change staged files. Caches are
+    // only dropped in setProfile() or via invalidateModCache().
     if (!m_profile) return;
 
     bool inCollapsed = false;
@@ -108,17 +124,15 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
             if (idx.column() == ColName)     return "[Overwrite]";
             if (idx.column() == ColPriority) return QVariant();
         }
-        if (role == Qt::ForegroundRole) {
-            // Red if overwrite dir has files, muted yellow if empty
-            QString owDir = AppConfig::dataRoot() + "/overwrite";
-            QDirIterator it(owDir, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
-            bool hasFiles = it.hasNext();
-            return hasFiles ? QColor(Qt::red) : QColor(Qt::darkYellow);
-        }
-        if (role == Qt::FontRole) {
-            QString owDir = AppConfig::dataRoot() + "/overwrite";
-            QDirIterator it(owDir, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
-            bool hasFiles = it.hasNext();
+        if (role == Qt::ForegroundRole || role == Qt::FontRole) {
+            if (m_overwriteHasFiles < 0) {
+                QString owDir = AppConfig::dataRoot() + "/overwrite";
+                QDirIterator it(owDir, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+                m_overwriteHasFiles = it.hasNext() ? 1 : 0;
+            }
+            bool hasFiles = (m_overwriteHasFiles == 1);
+            if (role == Qt::ForegroundRole)
+                return hasFiles ? QColor(Qt::red) : QColor(Qt::darkYellow);
             QFont f; f.setBold(hasFiles); return f;
         }
         return {};

@@ -25,6 +25,8 @@
 #include <QStyledItemDelegate>
 #include <QLineEdit>
 #include <QShowEvent>
+#include <QPaintEvent>
+#include <QPainter>
 #include <QTimer>
 #include <algorithm>
 
@@ -130,6 +132,21 @@ void ModListView::showEvent(QShowEvent* event) {
     if (!m_didAutoSize) {
         m_didAutoSize = true;
         QTimer::singleShot(0, this, [this]{ autoSizeColumns(); });
+    }
+}
+
+void ModListView::paintEvent(QPaintEvent* event) {
+    QTreeView::paintEvent(event);
+    // When the list holds only the Overwrite row (a fresh profile), draw a
+    // centered hint over the viewport so the empty list isn't bewildering.
+    if (model() && model()->rowCount() <= 1) {
+        QPainter painter(viewport());
+        painter.setPen(palette().color(QPalette::Disabled, QPalette::Text));
+        const QRect r = viewport()->rect().adjusted(40, 40, -40, -40);
+        painter.drawText(r, Qt::AlignCenter | Qt::TextWordWrap,
+            QStringLiteral("No mods yet.\n\nAdd mods via the Downloads tab, "
+                           "\xe2\x86\x92 Browse Nexus, or Install Wabbajack "
+                           "Modlist\xe2\x80\xa6 (\xe2\x9a\x99 menu)."));
     }
 }
 

@@ -43,6 +43,7 @@
 #include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QKeyEvent>
+#include <QKeySequence>
 #include <QStandardPaths>
 #include <QMessageBox>
 #include <QAbstractButton>
@@ -324,6 +325,8 @@ void MainWindow::setupToolbar() {
     profileMenu->addSeparator();
     m_checkUpdatesAction = profileMenu->addAction(
         "Check for Mod Updates\xe2\x80\xa6", this, &MainWindow::onCheckUpdates);
+    m_checkUpdatesAction->setShortcut(QKeySequence(Qt::Key_F5));
+    m_checkUpdatesAction->setToolTip("Check for Mod Updates (F5)");
     profileMenuBtn->setMenu(profileMenu);
     profileMenuBtn->setPopupMode(QToolButton::InstantPopup);
     tb->addWidget(profileMenuBtn);
@@ -351,7 +354,8 @@ void MainWindow::setupToolbar() {
 
     // Deploy toggle
     m_deployAction = tb->addAction("\xe2\x9c\x97 Not Deployed", this, &MainWindow::onDeployToggle);
-    m_deployAction->setToolTip("Click to deploy mods to game directory");
+    m_deployAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
+    m_deployAction->setToolTip("Click to deploy mods to game directory (Ctrl+D)");
     tb->addSeparator();
 
     // Play (launch Skyrim via Steam)
@@ -724,13 +728,13 @@ void MainWindow::updateDeployButton() {
     if (!m_deployAction) return;
     if (m_deployed && m_deployDirty) {
         m_deployAction->setText("\xe2\x9a\xa0 Redeploy");   // ⚠
-        m_deployAction->setToolTip("Mod changes since last deploy - click to redeploy");
+        m_deployAction->setToolTip("Mod changes since last deploy - click to redeploy (Ctrl+D)");
     } else if (m_deployed) {
         m_deployAction->setText("\xe2\x9c\x93 Deployed");
-        m_deployAction->setToolTip("Mods are deployed - click to undeploy");
+        m_deployAction->setToolTip("Mods are deployed - click to undeploy (Ctrl+D)");
     } else {
         m_deployAction->setText("\xe2\x9c\x97 Not Deployed");
-        m_deployAction->setToolTip("Click to deploy mods to game directory");
+        m_deployAction->setToolTip("Click to deploy mods to game directory (Ctrl+D)");
     }
 }
 

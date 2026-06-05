@@ -85,9 +85,41 @@ void ModInfoWidget::clear() {
     if (m_image) m_image->setPixmap(QPixmap());
 }
 
-static QString stripBBCode(const QString& in) {
-    QString s = in;
+// Convert common Nexus BBCode to safe HTML for QTextBrowser. The raw text is
+// HTML-escaped first so author content can't inject markup; then a small set of
+// BBCode tags is mapped to HTML. Unrecognised tags are stripped (inner text
+// kept) and remaining newlines become <br>.
+static QString bbcodeToHtml(const QString& in) {
+    QString s = in.toHtmlEscaped();
+    const auto ci = QRegularExpression::CaseInsensitiveOption;
+
+    // Inline formatting.
+    s.replace(QRegularExpression("\\[b\\](.*?)\\[/b\\]", ci | QRegularExpression::DotMatchesEverythingOption), "<b>\\1</b>");
+    s.replace(QRegularExpression("\\[i\\](.*?)\\[/i\\]", ci | QRegularExpression::DotMatchesEverythingOption), "<i>\\1</i>");
+    s.replace(QRegularExpression("\\[u\\](.*?)\\[/u\\]", ci | QRegularExpression::DotMatchesEverythingOption), "<u>\\1</u>");
+
+    // Links: [url=HREF]text[/url] and [url]HREF[/url].
+    s.replace(QRegularExpression("\\[url=([^\\]]+)\\](.*?)\\[/url\\]", ci | QRegularExpression::DotMatchesEverythingOption),
+              "<a href=\"\\1\">\\2</a>");
+    s.replace(QRegularExpression("\\[url\\](.*?)\\[/url\\]", ci | QRegularExpression::DotMatchesEverythingOption),
+              "<a href=\"\\1\">\\1</a>");
+
+    // Drop images entirely (tag + URL).
+    s.replace(QRegularExpression("\\[img\\].*?\\[/img\\]", ci | QRegularExpression::DotMatchesEverythingOption), "");
+
+    // Lists: turn [*] items into <li>, wrap a [list]…[/list] block in <ul>.
+    s.replace(QRegularExpression("\\[\\*\\]\\s*", ci), "<li>");
+    s.replace(QRegularExpression("\\[list[^\\]]*\\]", ci), "<ul>");
+    s.replace(QRegularExpression("\\[/list\\]", ci), "</ul>");
+
+    // Strip remaining container/decoration tags, keeping inner text.
+    s.replace(QRegularExpression("\\[/?(size|color|quote)[^\\]]*\\]", ci), "");
+
+    // Any leftover BBCode-style tags.
     s.replace(QRegularExpression("\\[/?[^\\]]*\\]"), "");
+
+    // Newlines -> <br>.
+    s.replace(QRegularExpression("\\r?\\n"), "<br>");
     return s.trimmed();
 }
 
@@ -262,10 +294,9 @@ void ModInfoWidget::applyDetails(const NexusApi::ModDetails& d) {
     if (!bits.isEmpty())
         m_meta->setText(bits.join("  \xe2\x80\xa2  "));
 
-    QString body = d.summary.isEmpty() ? d.description : d.summary;
-    body = stripBBCode(body);
+    const QString body = d.summary.isEmpty() ? d.description : d.summary;
     if (!body.isEmpty())
-        m_desc->setPlainText(body);
+        m_desc->setHtml(bbcodeToHtml(body));
 
     // Image goes through the shared disk-cached loader (it may already be on disk).
     loadThumbnailFor(d.modId, d.pictureUrl);

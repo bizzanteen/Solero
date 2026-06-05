@@ -32,6 +32,7 @@ set(_solero_qt_dirs
   "Qt6QmlModels=opt/qtdeclarative/lib/cmake/Qt6QmlModels"
   "Qt6QmlIntegration=opt/qtdeclarative/lib/cmake/Qt6QmlIntegration"
   "Qt6OpenGL=opt/qtbase/lib/cmake/Qt6OpenGL"
+  "Qt6Concurrent=opt/qtbase/lib/cmake/Qt6Concurrent"
   "Qt6WebChannel=opt/qtwebchannel/lib/cmake/Qt6WebChannel"
   "Qt6Positioning=opt/qtpositioning/lib/cmake/Qt6Positioning"
   "Qt6WebEngineCore=opt/qtwebengine/lib/cmake/Qt6WebEngineCore"
@@ -45,7 +46,7 @@ foreach(_pair IN LISTS _solero_qt_dirs)
   endif()
 endforeach()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network Xml Svg Test WebEngineWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network Xml Svg Test Concurrent WebEngineWidgets)
 
 # nlohmann/json header-only
 include(FetchContent)
@@ -82,6 +83,7 @@ set(SOLERO_SOURCES
   src/ui/PluginListModel.cpp
   src/ui/PluginListView.cpp
   src/ui/BottomPanel.cpp
+  src/ui/ModInfoWidget.cpp
   src/ui/SeparatorDialog.cpp
   src/ui/ExecutableDialog.cpp
   src/ui/SetupWizard.cpp
@@ -132,7 +134,7 @@ set(SOLERO_SOURCES
 
 add_executable(solero ${SOLERO_SOURCES})
 target_include_directories(solero PRIVATE src ${CMAKE_BINARY_DIR}/include)
-target_link_libraries(solero PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::Xml Qt6::Svg Qt6::WebEngineWidgets libloot::libloot)
+target_link_libraries(solero PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::Xml Qt6::Svg Qt6::Concurrent Qt6::WebEngineWidgets libloot::libloot)
 
 enable_testing()
 add_subdirectory(tests)

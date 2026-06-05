@@ -382,6 +382,8 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onSortRequested);
 
     m_bottomPanel = new solero::BottomPanel(outer);
+    connect(m_modListView, &solero::ModListView::modsSelected,
+            m_bottomPanel, &solero::BottomPanel::onModsSelected);
     outer->addWidget(m_splitter);
     outer->addWidget(m_bottomPanel);
     outer->setSizes({580, 200});

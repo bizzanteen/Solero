@@ -55,6 +55,7 @@
 #include <QTimer>
 #include <QRegularExpression>
 #include <QCoreApplication>
+#include <QApplication>
 #include <QFile>
 #include <QCryptographicHash>
 #include <QDir>
@@ -182,6 +183,14 @@ QString MainWindow::startNxmDownload(const QString& url) {
     }
     auto link = solero::NxmHandler::parse(url);
     if (!link.valid) { QMessageBox::warning(this, "Nexus Download", "Couldn't understand that Nexus link:\n" + url); return {}; }
+
+    // The resolve below does blocking network I/O on the UI thread (we keep the
+    // working synchronous flow). Give the user a busy state and make sure the
+    // cursor is always restored on every return path.
+    struct CursorGuard {
+        CursorGuard() { QApplication::setOverrideCursor(Qt::WaitCursor); }
+        ~CursorGuard() { QApplication::restoreOverrideCursor(); }
+    } cursorGuard;
     statusBar()->showMessage("Resolving Nexus download\xe2\x80\xa6"); qApp->processEvents();
     QString cdn = solero::NxmHandler::resolveDownloadUrl(link);
     if (cdn.isEmpty()) {
@@ -940,13 +949,26 @@ void MainWindow::installFromArchive(const QString& archive) {
     // it's already a child, we nest under its parent). Children are stored
     // contiguously right after the parent - groupUnder handles the repositioning.
     if (!mod.nexusModId.isEmpty()) {
-        QString parentId;
         const auto& list = profile->modList();
+        // The new mod was appended at the END, so it lives in the trailing
+        // separator section (after the last separator). Only auto-group it under
+        // a candidate that lives in that same section; grouping across a separator
+        // would pull the child out of its section and break the "children are
+        // contiguous with their parent in the same section" invariant.
+        int lastSeparatorRaw = -1;
+        for (int i = 0; i < list.count(); ++i)
+            if (list.at(i).type == solero::EntryType::Separator)
+                lastSeparatorRaw = i;
+
+        QString parentId;
         for (int i = 0; i < list.count(); ++i) {
             const auto& e = list.at(i);
             if (e.type != solero::EntryType::Mod) continue;
             if (e.id == mod.id) continue;
             if (e.nexusModId != mod.nexusModId) continue;
+            // Same trailing section only (a candidate in the trailing section has
+            // its parent, if any, in that same section too).
+            if (i <= lastSeparatorRaw) continue;
             // Group head = the existing mod's parent if it's a child, else itself.
             parentId = e.parentId.isEmpty() ? e.id : e.parentId;
             break;
@@ -1131,8 +1153,12 @@ void MainWindow::onUpdateMod(const QString& modId) {
     solero::ModEntry* mod = profile->modList().findById(modId);
     if (!mod || mod->nexusModId.isEmpty()) return;
 
-    if (m_updateResolveWatcher.isRunning()) {
-        statusBar()->showMessage("Already preparing an update\xe2\x80\xa6");
+    // Single-flight end-to-end (resolve -> download -> reinstall). Guarding on
+    // both the resolve watcher and any in-flight pending download removes the
+    // m_pendingUpdates filename-key collision and the m_updateTargetId/Name
+    // clobber that two overlapping updates would otherwise cause.
+    if (m_updateResolveWatcher.isRunning() || !m_pendingUpdates.isEmpty()) {
+        statusBar()->showMessage("An update is already in progress\xe2\x80\xa6");
         return;
     }
 

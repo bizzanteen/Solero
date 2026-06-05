@@ -31,6 +31,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QCloseEvent>
 
 namespace solero {
 
@@ -204,11 +205,7 @@ void WabbajackDialog::buildProgressPage() {
     btnRow->addStretch();
     m_cancelBtn = new QPushButton("Cancel", m_progressPage);
     connect(m_cancelBtn, &QPushButton::clicked, this, [this] {
-        if (QMessageBox::question(this, "Cancel install",
-                "Cancel the running install? Partially downloaded files are kept.")
-            == QMessageBox::Yes) {
-            m_engine->cancel();
-        }
+        confirmCloseWhileInstalling();
     });
     btnRow->addWidget(m_cancelBtn);
     l->addLayout(btnRow);
@@ -437,7 +434,9 @@ void WabbajackDialog::triggerInstall(const QString& target, bool isLocalFile,
     auto* dv = new QVBoxLayout(&dirDlg);
     auto* form = new QFormLayout;
 
-    const QString defName = sanitize(isLocalFile ? displayName : displayName);
+    // displayName is already the file's base name for a local .wabbajack file
+    // (see the file-picker call site) and the modlist title for a gallery entry.
+    const QString defName = sanitize(displayName);
     QString defInstall = QDir::homePath() + "/Modding/Solero/Wabbajack/" +
                          (defName.isEmpty() ? "modlist" : defName);
 
@@ -611,6 +610,30 @@ void WabbajackDialog::doImport() {
             .arg(r.profileName).arg(r.modsStaged).arg(m_installDir));
     emit profileImported(r.profileName);
     accept();
+}
+
+bool WabbajackDialog::confirmCloseWhileInstalling() {
+    if (!m_installing) return true;
+    if (QMessageBox::question(this, "Cancel install",
+            "Cancel the in-progress install? Partially downloaded files are kept.")
+        != QMessageBox::Yes) {
+        return false;
+    }
+    m_engine->cancel();
+    return true;
+}
+
+void WabbajackDialog::closeEvent(QCloseEvent* e) {
+    if (!confirmCloseWhileInstalling()) {
+        e->ignore();
+        return;
+    }
+    QDialog::closeEvent(e);
+}
+
+void WabbajackDialog::reject() {
+    if (!confirmCloseWhileInstalling()) return;
+    QDialog::reject();
 }
 
 QString WabbajackDialog::sanitize(const QString& s) {

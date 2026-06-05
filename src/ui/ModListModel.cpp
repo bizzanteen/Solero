@@ -64,6 +64,7 @@ bool ModListModel::isModEmpty(const QString& id) const {
 
 void ModListModel::rebuildVisibleRows() {
     m_visibleRows.clear();
+    m_priorityByRaw.clear();
     // Keep m_emptyCache / m_overwriteHasFiles persistent: rebuild() is called on
     // enable/move/rename/collapse - none of which change staged files. Caches are
     // only dropped in setProfile() or via invalidateModCache().
@@ -72,8 +73,11 @@ void ModListModel::rebuildVisibleRows() {
     bool inCollapsed = false;
     QString curParentId;       // id of the current top-level parent mod, if any
     bool curParentCollapsed = false;
+    int modPos = 0;            // running 1-based Mod position, raw order
     for (int i = 0; i < m_profile->modList().count(); ++i) {
         const auto& e = m_profile->modList().at(i);
+        if (e.type == EntryType::Mod)
+            m_priorityByRaw.insert(i, ++modPos);
         if (e.type == EntryType::Separator) {
             inCollapsed = e.collapsed;
             curParentId.clear();
@@ -216,12 +220,9 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
         switch (idx.column()) {
             case ColPriority: {
                 if (isSep) return QVariant();
-                // Contiguous position among mod-type entries only (1-based),
-                // ignoring separators and hidden mods so the column reads 1..N.
-                int pos = 0;
-                for (int i = 0; i < raw; ++i)
-                    if (m_profile->modList().at(i).type == EntryType::Mod) ++pos;
-                return pos + 1;
+                // Precomputed in rebuildVisibleRows(): 1-based contiguous position
+                // among mod-type entries (raw order, children included). O(1).
+                return m_priorityByRaw.value(raw, 0);
             }
             case ColName:
                 if (isSep) {

@@ -64,6 +64,10 @@ signals:
 private:
     Profile* m_profile = nullptr;
     QList<int> m_visibleRows; // raw indices into ModList, -1 = Overwrite
+    // Precomputed Priority column: raw index of a Mod -> its 1-based contiguous
+    // position among Mod-type entries (children included), in raw order. Rebuilt
+    // in rebuildVisibleRows() so the Priority cell is O(1) instead of O(n).
+    QHash<int,int> m_priorityByRaw;
     QHash<QString,QStringList> m_depWarnings;
     QHash<QString, QPair<QString,QString>> m_updates; // modId -> {installed, latest}
     mutable QHash<QString,bool> m_emptyCache;

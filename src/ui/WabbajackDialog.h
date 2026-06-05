@@ -29,6 +29,10 @@ class WabbajackDialog : public QDialog {
 public:
     explicit WabbajackDialog(ProfileManager* profiles, QWidget* parent = nullptr);
 
+protected:
+    void closeEvent(QCloseEvent* e) override;
+    void reject() override;
+
 signals:
     void profileImported(const QString& profileName);
 
@@ -50,6 +54,9 @@ private:
     void loadThumb(QListWidgetItem* item, const QString& url);
     void triggerInstall(const QString& target, bool isLocalFile, const QString& displayName);
     void doImport();
+    // Returns true if it's OK to close/reject (not installing, or user confirmed
+    // cancelling the in-progress install - in which case the engine is cancelled).
+    bool confirmCloseWhileInstalling();
 
     static QString sanitize(const QString& s);
 

@@ -1,5 +1,6 @@
 #pragma once
 #include <QString>
+#include <QList>
 
 namespace solero {
 
@@ -24,6 +25,23 @@ public:
 
     static QString fileVersion(const QString& modId, const QString& fileId,
                                const QString& game = kDefaultGame);
+
+    // Browsing: search (v2 GraphQL) + curated lists / details / files (v1)
+    struct ModSummary { QString modId, name, summary, author, pictureUrl; int endorsements = 0; bool adult = false; };
+    static QList<ModSummary> search(const QString& query, int count = 25, const QString& game = kDefaultGame);
+    static QList<ModSummary> trending(const QString& game = kDefaultGame);
+    static QList<ModSummary> latestAdded(const QString& game = kDefaultGame);
+    static QList<ModSummary> latestUpdated(const QString& game = kDefaultGame);
+
+    struct ModDetails { bool ok = false; QString modId, name, summary, description, pictureUrl, author, version, endorseStatus; int endorsements = 0; bool adult = false; };
+    static ModDetails modDetails(const QString& modId, const QString& game = kDefaultGame);
+
+    struct NexusFile { QString fileId, name, version, category, description; qint64 sizeKb = 0; };
+    static QList<NexusFile> files(const QString& modId, const QString& game = kDefaultGame);
+
+    // First mirror URI from v1 download_link.json. Premium accounts get this
+    // without an nxm key/expires; non-premium returns "" (caller handles).
+    static QString downloadUrl(const QString& modId, const QString& fileId, const QString& game = kDefaultGame);
 
     static bool keyAvailable();
 

@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QIcon>
+#include <QRegularExpression>
 #include <functional>
 
 namespace solero {
@@ -89,6 +90,13 @@ NexusWebView::NexusWebView(QWidget* parent) : QWidget(parent) {
     // Shared persistent profile (Nexus login survives across tabs/restarts)
     m_profile = new QWebEngineProfile(QStringLiteral("solero-nexus"), this);
     m_profile->setPersistentCookiesPolicy(QWebEngineProfile::ForcePersistentCookies);
+
+    // Nexus's CDN serves anti-bot challenge pages (broken JS chunks, blocked GraphQL
+    // search) to the default QtWebEngine UA because of its "QtWebEngine/x.y.z" token.
+    // Drop that token so we present as the plain Chrome the engine is built on.
+    QString ua = m_profile->httpUserAgent();
+    ua.remove(QRegularExpression(QStringLiteral("\\s*QtWebEngine/\\S+")));
+    m_profile->setHttpUserAgent(ua);
 
     // Tabs
     m_tabs = new QTabWidget(this);

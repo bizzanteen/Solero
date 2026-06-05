@@ -31,6 +31,14 @@ namespace solero {
 // Build the Proton/umu environment for running tools inside the Skyrim prefix.
 // Mirrors what ToolRunner constructs. Returns an empty environment (and the
 // caller should bail) if the prefix is unusable; check protonDir separately.
+// True if `path` exists and contains at least one entry. Used to VERIFY a .NET
+// install actually landed, since umu-run/winetricks (and Windows installers under
+// Proton) frequently exit non-zero even on success.
+static bool dirHasEntries(const QString& path) {
+    QDir d(path);
+    return d.exists() && !d.entryList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot).isEmpty();
+}
+
 static QProcessEnvironment dotnetPrefixEnv(const QString& winePrefix) {
     QString protonDir = AppConfig::instance().detectProtonDir();
 
@@ -82,8 +90,13 @@ static bool installDotNetIntoPrefix(const QString& winePrefix, QWidget* parent) 
     proc.start("umu-run", QStringList{"winetricks", "-q", "dotnetdesktop8"});
     if (!proc.waitForStarted(15000)) { prog.close(); return false; }
     loop.exec();
+    const QString out = QString::fromUtf8(proc.readAll());
     prog.close();
-    return proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
+    // Don't trust the exit code: umu-run/winetricks exit non-zero even on success
+    // (and exit 1 with "already installed"). Verify the runtime actually landed.
+    return proc.exitCode() == 0
+        || out.contains("already installed", Qt::CaseInsensitive)
+        || dirHasEntries(winePrefix + "/pfx/drive_c/Program Files/dotnet/shared/Microsoft.WindowsDesktop.App");
 }
 
 // Install the full .NET SDK into the Skyrim Proton prefix. Synthesis builds
@@ -160,7 +173,9 @@ static bool installDotNetSdkIntoPrefix(const QString& winePrefix, QWidget* paren
     if (!proc.waitForStarted(15000)) { prog.close(); return false; }
     loop.exec();
     prog.close();
-    return proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
+    // Verify by the installed SDK folder, not the installer's exit code (Windows
+    // installers under Proton can return non-zero on success).
+    return dirHasEntries(winePrefix + "/pfx/drive_c/Program Files/dotnet/sdk");
 }
 
 ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)

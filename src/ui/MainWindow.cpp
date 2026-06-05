@@ -8,6 +8,7 @@
 #include "bethini/BethiniWindow.h"
 #include "app/Application.h"
 #include "core/AppConfig.h"
+#include "core/ModList.h"
 #include "install/ModInstaller.h"
 #include "import/Mo2Importer.h"
 #include "ui/FomodWizard.h"
@@ -1071,6 +1072,33 @@ void MainWindow::onEditTool(const QString& id) {
     }
 }
 
+QString MainWindow::modNameAnywhere(const QString& id) const {
+    if (auto* a = m_profileMgr->activeProfile())
+        if (const auto* m = a->modList().findById(id)) return m->name;
+    for (const QString& name : m_profileMgr->profileNames()) {
+        solero::ModList ml = solero::ModList::loadFromFile(profilesRoot() + "/" + name + "/modlist.json");
+        if (const auto* m = ml.findById(id)) return m->name;
+    }
+    return {};
+}
+
+void MainWindow::removeModEverywhere(const QString& id) {
+    // Staged files are profile-independent - delete them once.
+    QDir(solero::AppConfig::instance().stagingDir() + "/" + id).removeRecursively();
+    auto* active = m_profileMgr->activeProfile();
+    for (const QString& name : m_profileMgr->profileNames()) {
+        if (active && name == active->name()) {
+            active->modList().remove(id);
+            active->save();
+        } else {
+            QString path = profilesRoot() + "/" + name + "/modlist.json";
+            solero::ModList ml = solero::ModList::loadFromFile(path);
+            ml.remove(id);
+            ml.saveToFile(path);
+        }
+    }
+}
+
 void MainWindow::onRemoveTool(const QString& id) {
     auto* profile = m_profileMgr->activeProfile();
 
@@ -1097,15 +1125,16 @@ void MainWindow::onRemoveTool(const QString& id) {
         }
     }
 
-    // De-duplicate and keep only ids that resolve to an existing mod.
+    // De-duplicate and keep only ids that resolve to an existing mod - searching
+    // all profiles, since an output mod may live in a non-active profile.
     QStringList modIds;
     QStringList modNames;
     for (const QString& mid : candidateIds) {
         if (modIds.contains(mid)) continue;
-        const solero::ModEntry* m = profile ? profile->modList().findById(mid) : nullptr;
-        if (!m) continue;
+        QString name = modNameAnywhere(mid);
+        if (name.isEmpty()) continue;
         modIds   << mid;
-        modNames << m->name;
+        modNames << name;
     }
 
     QList<QCheckBox*> boxes;
@@ -1138,13 +1167,10 @@ void MainWindow::onRemoveTool(const QString& id) {
     bool removedAny = false;
     for (int i = 0; i < modIds.size(); ++i) {
         if (i < boxes.size() && !boxes[i]->isChecked()) continue;
-        if (!profile) break;
-        profile->modList().remove(modIds[i]);
-        QDir(solero::AppConfig::instance().stagingDir() + "/" + modIds[i]).removeRecursively();
+        removeModEverywhere(modIds[i]);   // deletes staging + removes from whichever profile holds it
         removedAny = true;
     }
     if (removedAny && profile) {
-        profile->save();
         m_modListView->setProfile(profile);
     }
     rebuildToolsMenu();

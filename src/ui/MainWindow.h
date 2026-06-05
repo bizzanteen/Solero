@@ -71,6 +71,10 @@ private:
     void onRunTool(const solero::Executable& exe);
     void onAddTool2();
     QString ensureOutputMod(const QString& name);
+    // Tools are global but their output mods live in whichever profile was active
+    // at setup - so resolve/remove a mod across all profiles, not just the active one.
+    QString modNameAnywhere(const QString& id) const;
+    void removeModEverywhere(const QString& id);
     void onEditTool(const QString& id);
     void onRemoveTool(const QString& id);
     void onManageTools();

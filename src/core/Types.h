@@ -42,6 +42,8 @@ struct PluginEntry {
     bool enabled = true;
     bool isMaster = false;   // .esm
     bool isLight = false;    // .esl
+    QStringList masters;     // master files this plugin depends on (TES4 MAST)
+    bool isOfficial = false; // base game / Creation Club content - locked
 };
 
 // Executable / tool

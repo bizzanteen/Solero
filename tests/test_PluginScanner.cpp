@@ -88,6 +88,74 @@ private slots:
         QCOMPARE(order, expected);
     }
 
+    void readMasters_parsesMastSubrecords() {
+        QTemporaryDir tmp; QString s = tmp.path();
+        // Build a TES4 record: 24-byte header + two MAST subrecords (each
+        // followed by a DATA subrecord that must be ignored).
+        auto mast = [](const QByteArray& name) {
+            QByteArray nul = name; nul.append('\0');
+            QByteArray sub("MAST", 4);
+            quint16 sz = quint16(nul.size());
+            sub.append(char(sz & 0xFF)); sub.append(char((sz >> 8) & 0xFF));
+            sub.append(nul);
+            return sub;
+        };
+        auto data8 = []() {
+            QByteArray sub("DATA", 4);
+            quint16 sz = 8;
+            sub.append(char(sz & 0xFF)); sub.append(char((sz >> 8) & 0xFF));
+            sub.append(QByteArray(8, '\0'));
+            return sub;
+        };
+        QByteArray body;
+        body += mast("Skyrim.esm"); body += data8();
+        body += mast("Update.esm"); body += data8();
+
+        QByteArray rec(24, '\0');
+        rec[0]='T'; rec[1]='E'; rec[2]='S'; rec[3]='4';
+        quint32 ds = quint32(body.size());
+        rec[4]=char(ds & 0xFF); rec[5]=char((ds>>8)&0xFF);
+        rec[6]=char((ds>>16)&0xFF); rec[7]=char((ds>>24)&0xFF);
+        rec += body;
+
+        QString path = s + "/dep.esp";
+        { QFile f(path); f.open(QIODevice::WriteOnly); f.write(rec); }
+        auto m = PluginScanner::readMasters(path);
+        QCOMPARE(m.size(), 2);
+        QCOMPARE(m[0], QString("Skyrim.esm"));
+        QCOMPARE(m[1], QString("Update.esm"));
+
+        // No-master plugin yields empty.
+        writeTes4(s + "/plain.esp", 0x00000000); // dataSize 0 in 12-byte header... use 24
+        QByteArray plain(24, '\0');
+        plain[0]='T';plain[1]='E';plain[2]='S';plain[3]='4';
+        { QFile f(s + "/plain24.esp"); f.open(QIODevice::WriteOnly); f.write(plain); }
+        QVERIFY(PluginScanner::readMasters(s + "/plain24.esp").isEmpty());
+        // Non-TES4 file -> empty.
+        touch(s + "/junk.esp");
+        QVERIFY(PluginScanner::readMasters(s + "/junk.esp").isEmpty());
+    }
+
+    void officialPlugins_baseAndCcc() {
+        QTemporaryDir tmp; QString g = tmp.path();
+        // No .ccc -> just the 5 base masters in order.
+        auto base = PluginScanner::officialPlugins(g);
+        QStringList expectedBase = {
+            "Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm"
+        };
+        QCOMPARE(base, expectedBase);
+
+        // With Skyrim.ccc, base masters first then ccc lines (blanks skipped).
+        {
+            QFile f(g + "/Skyrim.ccc"); f.open(QIODevice::WriteOnly);
+            f.write("ccBGSSSE001-Fish.esm\n\n  ccQDRSSE001-SurvivalMode.esl  \n");
+        }
+        auto full = PluginScanner::officialPlugins(g);
+        QStringList expectedFull = expectedBase;
+        expectedFull << "ccBGSSSE001-Fish.esm" << "ccQDRSSE001-SurvivalMode.esl";
+        QCOMPARE(full, expectedFull);
+    }
+
     void scanGameData_classifiesByHeaderNotExtension() {
         QTemporaryDir tmp; QString g = tmp.path();
         QString data = g + "/Data";

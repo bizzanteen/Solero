@@ -1,10 +1,13 @@
 #include "PluginListModel.h"
 #include "core/AppConfig.h"
 #include "install/PluginScanner.h"
+#include "IconUtil.h"
 #include <QFont>
 #include <QMimeData>
 #include <QByteArray>
 #include <QStringList>
+#include <QSet>
+#include <algorithm>
 
 namespace solero {
 
@@ -27,14 +30,31 @@ void PluginListModel::reconcile(const QStringList& available) {
     if (!m_profile) return;
     beginResetModel();
     PluginList& pl = m_profile->pluginList();
-    const QString dataDir = AppConfig::instance().gameDir() + "/Data";
+    const QString gameDir = AppConfig::instance().gameDir();
+    const QString dataDir = gameDir + "/Data";
+
+    // Official load order (base masters + Skyrim.ccc) computed once per reconcile.
+    const QStringList official = PluginScanner::officialPlugins(gameDir);
+    auto officialRank = [&](const QString& fn) -> int {
+        for (int i = 0; i < official.size(); ++i)
+            if (fn.compare(official[i], Qt::CaseInsensitive) == 0) return i;
+        return -1;
+    };
+    // Refresh masters + isOfficial on an entry from disk + the official set.
+    auto refreshMeta = [&](PluginEntry& pe) {
+        pe.masters    = PluginScanner::readMasters(dataDir + "/" + pe.filename);
+        pe.isOfficial = officialRank(pe.filename) >= 0;
+    };
 
     // Build the rebuilt list as a vector so we can insert in the correct band.
     QList<PluginEntry> entries;
     // Keep current order (and enabled state) for plugins still available.
     for (int i = 0; i < pl.count(); ++i) {
-        const auto& p = pl.at(i);
-        if (available.contains(p.filename, Qt::CaseInsensitive)) entries.append(p);
+        auto p = pl.at(i);
+        if (available.contains(p.filename, Qt::CaseInsensitive)) {
+            refreshMeta(p); // cheap refresh of masters/isOfficial for kept entries
+            entries.append(p);
+        }
     }
     // Insert newly-available plugins not already present, each into its band.
     for (const QString& fn : available) {
@@ -54,6 +74,7 @@ void PluginListModel::reconcile(const QStringList& available) {
             pe.isMaster = fn.endsWith(".esm", Qt::CaseInsensitive);
             pe.isLight  = fn.endsWith(".esl", Qt::CaseInsensitive);
         }
+        refreshMeta(pe);
 
         // Insert after the last existing entry whose band is <= this band, so a
         // new master lands among masters, a light among lights, an esp at end.
@@ -65,8 +86,21 @@ void PluginListModel::reconcile(const QStringList& available) {
         entries.insert(insertAt, pe);
     }
 
+    // Force official plugins to the top block, in official-list order; the rest
+    // keep their relative order below.
+    QList<PluginEntry> officials, rest;
+    for (const auto& e : entries) {
+        if (e.isOfficial) officials.append(e);
+        else rest.append(e);
+    }
+    std::stable_sort(officials.begin(), officials.end(),
+        [&](const PluginEntry& a, const PluginEntry& b) {
+            return officialRank(a.filename) < officialRank(b.filename);
+        });
+
     PluginList rebuilt;
-    for (const auto& e : entries) rebuilt.append(e);
+    for (const auto& e : officials) rebuilt.append(e);
+    for (const auto& e : rest)      rebuilt.append(e);
     pl = rebuilt;
     endResetModel();
 }
@@ -91,12 +125,44 @@ int PluginListModel::rowCount(const QModelIndex& parent) const {
     return m_profile->pluginList().count();
 }
 
+// Master filenames (lowercased) declared by `p` that are not present in the
+// current plugin list - i.e. missing dependencies.
+QStringList PluginListModel::missingMasters(const PluginEntry& p) const {
+    if (p.masters.isEmpty() || !m_profile) return {};
+    QSet<QString> present;
+    const PluginList& pl = m_profile->pluginList();
+    for (int i = 0; i < pl.count(); ++i) present.insert(pl.at(i).filename.toLower());
+    QStringList missing;
+    for (const QString& m : p.masters)
+        if (!present.contains(m.toLower())) missing << m;
+    return missing;
+}
+
 QVariant PluginListModel::data(const QModelIndex& idx, int role) const {
     if (!m_profile || idx.row() >= m_profile->pluginList().count()) return {};
     const auto& p = m_profile->pluginList().at(idx.row());
 
     if (role == Qt::TextAlignmentRole && idx.column() == ColPriority)
         return QVariant(Qt::AlignCenter);
+
+    if (role == Qt::DecorationRole && idx.column() == ColName) {
+        if (!missingMasters(p).isEmpty()) return redBangIcon();
+        return {};
+    }
+    if (role == Qt::ToolTipRole) {
+        const QStringList missing = missingMasters(p);
+        if (!missing.isEmpty()) {
+            QString t = QStringLiteral("Missing masters:");
+            for (const QString& m : missing) t += "\n - " + m;
+            return t;
+        }
+        if (!p.masters.isEmpty()) {
+            QString t = QStringLiteral("Masters:");
+            for (const QString& m : p.masters) t += "\n - " + m;
+            return t;
+        }
+        return QString();
+    }
 
     if (role == Qt::DisplayRole) {
         switch (idx.column()) {
@@ -113,7 +179,7 @@ QVariant PluginListModel::data(const QModelIndex& idx, int role) const {
         }
     }
     if (role == Qt::CheckStateRole && idx.column() == ColEnabled)
-        return p.enabled ? Qt::Checked : Qt::Unchecked;
+        return (p.isOfficial || p.enabled) ? Qt::Checked : Qt::Unchecked;
     if (role == Qt::FontRole && idx.row() < m_profile->pluginList().count()) {
         const auto& fp = m_profile->pluginList().at(idx.row());
         QFont f;
@@ -155,9 +221,15 @@ QVariant PluginListModel::headerData(int s, Qt::Orientation, int role) const {
 }
 
 Qt::ItemFlags PluginListModel::flags(const QModelIndex& idx) const {
-    Qt::ItemFlags f = Qt::ItemIsSelectable | Qt::ItemIsEnabled |
-                      Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled;
-    if (idx.column() == ColEnabled) f |= Qt::ItemIsUserCheckable;
+    Qt::ItemFlags f = Qt::ItemIsSelectable | Qt::ItemIsEnabled;
+    bool official = false;
+    if (m_profile && idx.row() >= 0 && idx.row() < m_profile->pluginList().count())
+        official = m_profile->pluginList().at(idx.row()).isOfficial;
+    if (!official) {
+        // Official plugins can't be reordered or toggled.
+        f |= Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled;
+        if (idx.column() == ColEnabled) f |= Qt::ItemIsUserCheckable;
+    }
     return f;
 }
 

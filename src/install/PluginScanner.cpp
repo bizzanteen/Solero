@@ -45,6 +45,59 @@ PluginFlags PluginScanner::readFlags(const QString& pluginPath) {
     return pf;
 }
 
+QStringList PluginScanner::readMasters(const QString& pluginPath) {
+    QStringList out;
+    QFile f(pluginPath);
+    if (!f.open(QIODevice::ReadOnly)) return out;
+    const QByteArray head = f.read(24); // TES4 record header
+    if (head.size() < 24) return out;
+    if (head[0] != 'T' || head[1] != 'E' || head[2] != 'S' || head[3] != '4')
+        return out;
+    auto u32 = [](const QByteArray& b, int o) -> quint32 {
+        return (static_cast<quint8>(b[o]))
+             | (static_cast<quint8>(b[o + 1]) << 8)
+             | (static_cast<quint8>(b[o + 2]) << 16)
+             | (static_cast<quint8>(b[o + 3]) << 24);
+    };
+    const quint32 dataSize = u32(head, 4); // size of subrecord block
+    const QByteArray body = f.read(dataSize);
+    if (static_cast<quint32>(body.size()) < dataSize) return out;
+
+    int pos = 0;
+    const int n = body.size();
+    while (pos + 6 <= n) { // 4-byte type + 2-byte size
+        const char* t = body.constData() + pos;
+        const quint16 size =
+              static_cast<quint8>(body[pos + 4])
+            | (static_cast<quint8>(body[pos + 5]) << 8);
+        pos += 6;
+        if (pos + size > n) break; // bounds check - truncated/corrupt
+        if (t[0] == 'M' && t[1] == 'A' && t[2] == 'S' && t[3] == 'T') {
+            QByteArray name = body.mid(pos, size);
+            int z = name.indexOf('\0');
+            if (z >= 0) name.truncate(z);
+            if (!name.isEmpty()) out << QString::fromLatin1(name);
+        }
+        pos += size;
+    }
+    return out;
+}
+
+QStringList PluginScanner::officialPlugins(const QString& gameDir) {
+    static const QStringList kBase = {
+        "Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm"
+    };
+    QStringList out = kBase;
+    QFile ccc(gameDir + "/Skyrim.ccc");
+    if (ccc.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!ccc.atEnd()) {
+            const QString line = QString::fromUtf8(ccc.readLine()).trimmed();
+            if (!line.isEmpty()) out << line;
+        }
+    }
+    return out;
+}
+
 QStringList PluginScanner::scanGameData(const QString& gameDir) {
     const QString dataPath = gameDir + "/Data";
     QDir d(dataPath);
@@ -70,25 +123,39 @@ QStringList PluginScanner::scanGameData(const QString& gameDir) {
         }
     }
 
-    // Base-game masters take a fixed canonical order at the very top.
-    static const QStringList kBaseOrder = {
-        "Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm"
+    // Official plugins (base masters + Skyrim.ccc) take a fixed canonical order
+    // at the very top, only those actually present in Data.
+    const QStringList official = officialPlugins(gameDir);
+    auto isOfficial = [&](const QString& fn) {
+        for (const QString& o : official)
+            if (fn.compare(o, Qt::CaseInsensitive) == 0) return true;
+        return false;
     };
-    QStringList baseMasters, otherMasters;
-    for (const QString& m : masters) {
-        bool isBase = false;
-        for (const QString& b : kBaseOrder)
-            if (m.compare(b, Qt::CaseInsensitive) == 0) { isBase = true; break; }
-        if (!isBase) otherMasters << m;
-    }
-    QStringList orderedBase;
-    for (const QString& b : kBaseOrder)
-        for (const QString& m : masters)
-            if (m.compare(b, Qt::CaseInsensitive) == 0) { orderedBase << m; break; }
 
-    otherMasters.sort(Qt::CaseInsensitive);
+    // Drop officials from the per-band buckets - they are emitted first.
+    auto stripOfficials = [&](QStringList& bucket) {
+        QStringList kept;
+        for (const QString& p : bucket) if (!isOfficial(p)) kept << p;
+        bucket = kept;
+    };
+    stripOfficials(masters);
+    stripOfficials(lights);
+    stripOfficials(esps);
+
+    // Officials in official-list order, only those present in Data.
+    QStringList orderedOfficial;
+    {
+        QDir dd(dataPath);
+        const auto allFiles = dd.entryList({"*.esp","*.esm","*.esl","*.ESP","*.ESM","*.ESL"},
+                                           QDir::Files, QDir::Name);
+        for (const QString& o : official)
+            for (const QString& f : allFiles)
+                if (f.compare(o, Qt::CaseInsensitive) == 0) { orderedOfficial << f; break; }
+    }
+
+    masters.sort(Qt::CaseInsensitive);
     lights.sort(Qt::CaseInsensitive);
     esps.sort(Qt::CaseInsensitive);
-    return orderedBase + otherMasters + lights + esps;
+    return orderedOfficial + masters + lights + esps;
 }
 }

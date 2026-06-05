@@ -30,6 +30,9 @@ public:
     bool dropMimeData(const QMimeData*, Qt::DropAction, int row, int col, const QModelIndex& parent) override;
 
 private:
+    // Master files declared by `p` that are absent from the current plugin list.
+    QStringList missingMasters(const PluginEntry& p) const;
+
     Profile* m_profile = nullptr;
     QSet<QString> m_highlight;
 };

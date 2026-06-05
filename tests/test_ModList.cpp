@@ -55,6 +55,91 @@ private slots:
         QCOMPARE(list.at(2).id, "m0");
         QCOMPARE(list.at(3).id, "m1");
     }
+    // --- Multi-file grouping (Stage M2) ---------------------------------------
+    static QString rawOrder(const ModList& list) {
+        QStringList ids;
+        for (int i = 0; i < list.count(); ++i) ids << list.at(i).id;
+        return ids.join(",");
+    }
+    static ModEntry makeMod(const QString& id, const QString& nexusId = QString()) {
+        ModEntry m; m.type = EntryType::Mod; m.id = id; m.name = "Mod " + id;
+        m.enabled = true; m.nexusModId = nexusId; return m;
+    }
+
+    void autoGroup_secondSameNexus_becomesContiguousChild() {
+        // Simulate install auto-group: two mods share nexusModId "100"; the second
+        // nests under the first. A third with the same id becomes a 2nd child after
+        // the first child. A mod with a unique id stays top-level.
+        ModList list;
+        list.append(makeMod("a", "100"));
+        list.append(makeMod("u", "999")); // unique, stays top-level
+        list.append(makeMod("b", "100"));
+        // b shares 100 with a -> group under a.
+        list.groupUnder("b", "a");
+        QCOMPARE(rawOrder(list), QString("a,b,u")); // child contiguous after parent
+        QCOMPARE(list.findById("b")->parentId, QString("a"));
+        QCOMPARE(list.childRunCount(0), 1);
+
+        // Third file for the same Nexus mod -> second child, after the first child.
+        list.append(makeMod("c", "100"));
+        list.groupUnder("c", "a");
+        QCOMPARE(rawOrder(list), QString("a,b,c,u"));
+        QCOMPARE(list.findById("c")->parentId, QString("a"));
+        QCOMPARE(list.childRunCount(0), 2);
+
+        // The unique mod is untouched / not a child.
+        QVERIFY(list.findById("u")->parentId.isEmpty());
+    }
+
+    void ungroup_clearsParent_andPlacesAfterBlock() {
+        // [a, b(child of a), c(child of a), u]. Ungroup b -> it loses parentId and
+        // moves to just after the remaining group block (after c).
+        ModList list;
+        list.append(makeMod("a", "100"));
+        list.append(makeMod("b", "100"));
+        list.append(makeMod("c", "100"));
+        list.append(makeMod("u", "999"));
+        list.groupUnder("b", "a");
+        list.groupUnder("c", "a");
+        QCOMPARE(rawOrder(list), QString("a,b,c,u"));
+
+        list.ungroup("b");
+        QVERIFY(list.findById("b")->parentId.isEmpty());
+        QCOMPARE(rawOrder(list), QString("a,c,b,u")); // b sits right after the block
+        QCOMPARE(list.childRunCount(0), 1); // only c remains a child
+
+        // Ungroup the last remaining child -> parent is no longer a group head.
+        list.ungroup("c");
+        QVERIFY(list.findById("c")->parentId.isEmpty());
+        QCOMPARE(list.childRunCount(0), 0);
+        QCOMPARE(rawOrder(list), QString("a,c,b,u"));
+    }
+
+    void groupSelected_firstIsParent_restContiguousChildren() {
+        // Group 3 mods scattered in the list: a (first) parent, then d and b as
+        // contiguous children right after a, in the given order.
+        ModList list;
+        list.append(makeMod("a"));
+        list.append(makeMod("x")); // bystander
+        list.append(makeMod("b"));
+        list.append(makeMod("y")); // bystander
+        list.append(makeMod("d"));
+        // First selected = a (parent); group d then b under it.
+        list.groupUnder("d", "a");
+        list.groupUnder("b", "a");
+        // a + its children contiguous; bystanders x,y preserved (order may shift as
+        // children are pulled forward, but x and y stay top-level).
+        QCOMPARE(list.findById("d")->parentId, QString("a"));
+        QCOMPARE(list.findById("b")->parentId, QString("a"));
+        QCOMPARE(list.childRunCount(0), 2);
+        // Children stored contiguously immediately after a, in selection order.
+        QCOMPARE(list.at(0).id, QString("a"));
+        QCOMPARE(list.at(1).id, QString("d"));
+        QCOMPARE(list.at(2).id, QString("b"));
+        QVERIFY(list.findById("x")->parentId.isEmpty());
+        QVERIFY(list.findById("y")->parentId.isEmpty());
+    }
+
     void roundtripJson_preservesData() {
         ModList list;
         ModEntry sep; sep.type = EntryType::Separator; sep.id = "s1"; sep.name = "Weapons"; sep.color = "#ff0000"; sep.icon = "⚔";

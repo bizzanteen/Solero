@@ -932,6 +932,26 @@ void MainWindow::installFromArchive(const QString& archive) {
     // archive names, now that mod.nexusModId is known from the sidecar above.
     mod.name = cleanModName(mod.name, mod.nexusModId);
     profile->modList().append(mod);
+
+    // Auto-group: if another installed mod shares this Nexus mod id, nest the new
+    // file under that mod's group (the existing mod becomes the group head, or, if
+    // it's already a child, we nest under its parent). Children are stored
+    // contiguously right after the parent - groupUnder handles the repositioning.
+    if (!mod.nexusModId.isEmpty()) {
+        QString parentId;
+        const auto& list = profile->modList();
+        for (int i = 0; i < list.count(); ++i) {
+            const auto& e = list.at(i);
+            if (e.type != solero::EntryType::Mod) continue;
+            if (e.id == mod.id) continue;
+            if (e.nexusModId != mod.nexusModId) continue;
+            // Group head = the existing mod's parent if it's a child, else itself.
+            parentId = e.parentId.isEmpty() ? e.id : e.parentId;
+            break;
+        }
+        if (!parentId.isEmpty())
+            profile->modList().groupUnder(mod.id, parentId);
+    }
     profile->save();
 
     // Newly staged files for this mod - drop its cached empty/plugin scans.

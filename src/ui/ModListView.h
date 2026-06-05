@@ -50,6 +50,12 @@ private:
     bool m_didAutoSize = false;
     void autoSizeColumns();
     void applyFilter();
+    // Selected mod-row ids in list (raw) order; separators/Overwrite excluded.
+    QStringList selectedModIds() const;
+    // Group the selected mods: first (topmost) becomes parent, rest nested under.
+    void groupSelectedMods();
+    // Ungroup a child mod: clear its parentId and move it below the group block.
+    void ungroupMod(const QString& id);
     void onAddSeparator();
     void onAddSeparatorAt(int visibleRow);
     void onEditSeparator(int visibleRow);

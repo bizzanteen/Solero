@@ -26,6 +26,7 @@
 #include <QLineEdit>
 #include <QShowEvent>
 #include <QTimer>
+#include <algorithm>
 
 namespace solero {
 
@@ -277,6 +278,19 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
             menu.addAction(entry->collapsed ? "Expand group" : "Collapse group",
                            [this, row = idx.row()]{ m_model->toggleModCollapse(row); });
         }
+        // Group / Ungroup actions.
+        {
+            int raw = m_model->rawIndexForRow(idx.row());
+            QStringList selModIds = selectedModIds();
+            if (selModIds.size() >= 2) {
+                menu.addSeparator();
+                menu.addAction("Group selected mods", [this]{ groupSelectedMods(); });
+            }
+            if (m_model->isGroupChild(raw)) {
+                menu.addSeparator();
+                menu.addAction("Ungroup", [this, id = entry->id]{ ungroupMod(id); });
+            }
+        }
         menu.addSeparator();
         menu.addAction("Enable selected",  [this]{ setSelectedModsEnabled(true); });
         menu.addAction("Disable selected", [this]{ setSelectedModsEnabled(false); });
@@ -425,6 +439,47 @@ void ModListView::setSelectedModsEnabled(bool enabled) {
     if (ids.isEmpty()) return;
     for (const QString& id : ids)
         m_model->profile()->modList().setEnabled(id, enabled);
+    m_model->profile()->save();
+    m_model->rebuild();
+    applyFilter();
+    emit modsChanged();
+}
+
+QStringList ModListView::selectedModIds() const {
+    // Selected mod rows in LIST (raw) order; separators / Overwrite excluded.
+    QList<QPair<int,QString>> picked;
+    const auto rows = selectionModel()->selectedRows();
+    for (const auto& idx : rows) {
+        const auto* entry = m_model->entryAt(idx.row());
+        if (!entry || entry->type != EntryType::Mod) continue;
+        picked.append({m_model->rawIndexForRow(idx.row()), entry->id});
+    }
+    std::sort(picked.begin(), picked.end(),
+              [](const auto& a, const auto& b){ return a.first < b.first; });
+    QStringList ids;
+    for (const auto& p : picked) ids << p.second;
+    return ids;
+}
+
+void ModListView::groupSelectedMods() {
+    if (!m_model->profile()) return;
+    QStringList ids = selectedModIds();
+    if (ids.size() < 2) return;
+    // First (topmost in list order) becomes the parent; the rest are nested under
+    // it contiguously, in their selection order, via groupUnder.
+    const QString parentId = ids.first();
+    auto& list = m_model->profile()->modList();
+    for (int i = 1; i < ids.size(); ++i)
+        list.groupUnder(ids.at(i), parentId);
+    m_model->profile()->save();
+    m_model->rebuild();
+    applyFilter();
+    emit modsChanged();
+}
+
+void ModListView::ungroupMod(const QString& id) {
+    if (!m_model->profile()) return;
+    m_model->profile()->modList().ungroup(id);
     m_model->profile()->save();
     m_model->rebuild();
     applyFilter();

@@ -17,6 +17,22 @@ public:
     void setEnabled(const QString& id, bool enabled);
     void update(const QString& id, const ModEntry& updated);
 
+    // Multi-file grouping (Stage M2). The storage invariant is: a group PARENT is
+    // a Mod immediately followed by a CONTIGUOUS run of child Mods whose parentId
+    // == the parent's id.
+    //
+    // groupUnder: set child.parentId = parentId and reposition the child so it
+    // sits at the END of the parent's existing contiguous child run (i.e. right
+    // after the parent + any current children). No-op if either id is missing,
+    // they're the same, or parentId refers to a non-Mod.
+    void groupUnder(const QString& childId, const QString& parentId);
+    // ungroup: clear child.parentId and move it to just after its former parent's
+    // group block, so it becomes a top-level mod directly below the group.
+    void ungroup(const QString& childId);
+    // Count of the contiguous run of child Mods stored after the mod at rawIndex
+    // (children = Mod entries whose parentId == that mod's id).
+    int childRunCount(int parentRaw) const;
+
     int count() const { return m_entries.size(); }
     const ModEntry& at(int index) const { return m_entries.at(index); }
     ModEntry* findById(const QString& id);

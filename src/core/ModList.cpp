@@ -42,6 +42,84 @@ void ModList::setEnabled(const QString& id, bool enabled) {
     propagateEnabled(id, enabled);
 }
 
+int ModList::childRunCount(int parentRaw) const {
+    if (parentRaw < 0 || parentRaw >= m_entries.size()) return 0;
+    const auto& parent = m_entries.at(parentRaw);
+    if (parent.type != EntryType::Mod) return 0;
+    int count = 0;
+    for (int i = parentRaw + 1; i < m_entries.size(); ++i) {
+        const auto& e = m_entries.at(i);
+        if (e.type == EntryType::Mod && e.parentId == parent.id) ++count;
+        else break;
+    }
+    return count;
+}
+
+void ModList::groupUnder(const QString& childId, const QString& parentId) {
+    if (childId.isEmpty() || parentId.isEmpty() || childId == parentId) return;
+    int parentRaw = -1, childRaw = -1;
+    for (int i = 0; i < m_entries.size(); ++i) {
+        if (m_entries.at(i).id == parentId) parentRaw = i;
+        if (m_entries.at(i).id == childId)  childRaw  = i;
+    }
+    if (parentRaw < 0 || childRaw < 0) return;
+    if (m_entries.at(parentRaw).type != EntryType::Mod) return;
+
+    // Re-parent. (childRunCount uses parentId, so set this first.)
+    m_entries[childRaw].parentId = parentId;
+
+    // Target raw index: end of the parent's contiguous child run. childRunCount
+    // already counts the just-re-parented child if it happens to sit in the run,
+    // so compute the run EXCLUDING childRaw to find the insertion slot.
+    int runEnd = parentRaw + 1;
+    while (runEnd < m_entries.size()) {
+        if (runEnd == childRaw) { ++runEnd; continue; }
+        const auto& e = m_entries.at(runEnd);
+        if (e.type == EntryType::Mod && e.parentId == parentId) ++runEnd;
+        else break;
+    }
+    // `runEnd` is the slot just past the last existing child (and the parent).
+    // Insert the child there. move() inserts at the destination index after
+    // removal, so adjust when the child currently sits before the target.
+    int dest = runEnd;
+    if (childRaw < dest) dest -= 1;
+    if (dest != childRaw) m_entries.move(childRaw, dest);
+}
+
+void ModList::ungroup(const QString& childId) {
+    if (childId.isEmpty()) return;
+    int childRaw = -1;
+    for (int i = 0; i < m_entries.size(); ++i)
+        if (m_entries.at(i).id == childId) { childRaw = i; break; }
+    if (childRaw < 0) return;
+    const QString parentId = m_entries.at(childRaw).parentId;
+    if (parentId.isEmpty()) return; // not a child
+
+    // Locate the (former) parent and the end of its contiguous child block.
+    int parentRaw = -1;
+    for (int i = 0; i < m_entries.size(); ++i)
+        if (m_entries.at(i).id == parentId) { parentRaw = i; break; }
+
+    m_entries[childRaw].parentId.clear();
+
+    if (parentRaw < 0) return; // dangling parent: just drop the parentId in place.
+
+    // End of the parent's contiguous child run. The just-cleared child still sits
+    // physically inside the run, so skip over it (childRaw) when scanning; the run
+    // ends at the first non-child that isn't childRaw.
+    int blockEnd = parentRaw + 1;
+    while (blockEnd < m_entries.size()) {
+        if (blockEnd == childRaw) { ++blockEnd; continue; }
+        const auto& e = m_entries.at(blockEnd);
+        if (e.type == EntryType::Mod && e.parentId == parentId) ++blockEnd;
+        else break;
+    }
+    // Place the now-top-level mod just after the block.
+    int dest = blockEnd;
+    if (childRaw < dest) dest -= 1;
+    if (dest != childRaw) m_entries.move(childRaw, dest);
+}
+
 void ModList::propagateEnabled(const QString& parentId, bool enabled) {
     for (auto& e : m_entries) {
         if (e.parentId == parentId) {

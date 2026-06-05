@@ -186,7 +186,7 @@ void MainWindow::onToggleNexus(bool on) {
                                      ? static_cast<QWidget*>(m_nexusWeb)
                                      : m_modManagerPage);
     if (m_browseAction)
-        m_browseAction->setText(on ? "\xe2\x86\x90 Mod Manager" : "Browse Nexus");
+        m_browseAction->setText(on ? "\xe2\x86\x90 Mod Manager" : "\xe2\x86\x92 Browse Nexus");
 }
 
 void MainWindow::onNexusDownload(const QString& modId, const QString& fileId,
@@ -252,7 +252,7 @@ void MainWindow::setupToolbar() {
 
     // Install Mod action
     tb->addAction("Install Mod...", this, &MainWindow::onInstallMod);
-    m_browseAction = tb->addAction("Browse Nexus");
+    m_browseAction = tb->addAction("\xe2\x86\x92 Browse Nexus");
     m_browseAction->setCheckable(true);
     m_browseAction->setToolTip("Toggle a full nexusmods.com browser in the main view");
     connect(m_browseAction, &QAction::toggled, this, &MainWindow::onToggleNexus);

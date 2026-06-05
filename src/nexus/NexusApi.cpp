@@ -1,10 +1,13 @@
 #include "NexusApi.h"
 #include "tools/ToolDownloader.h"
+#include "core/FileUtil.h"
 #include <QProcess>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QUrlQuery>
+#include <QDir>
+#include <QFile>
 
 namespace solero {
 
@@ -116,6 +119,42 @@ QString NexusApi::fileVersion(const QString& modId, const QString& fileId, const
     auto doc = QJsonDocument::fromJson(body);
     if (!doc.isObject()) return {};
     return doc.object()["version"].toString();
+}
+
+QString NexusApi::apiKeyPath() {
+    return QDir::homePath() + "/.nexus_api_key";
+}
+
+NexusApi::UserInfo NexusApi::validateUser(const QString& key) {
+    UserInfo r;
+    const QString useKey = key.isEmpty() ? ToolDownloader::nexusApiKey() : key;
+    if (useKey.isEmpty()) return r;
+    // Explicit curl call (not curlRun, which uses the stored key) with a short
+    // timeout so the Settings dialog can't hang on open.
+    QProcess p;
+    QStringList args;
+    args << "-s" << "--max-time" << "10"
+         << "-H" << ("apikey: " + useKey)
+         << "https://api.nexusmods.com/v1/users/validate.json";
+    p.start("curl", args);
+    p.waitForFinished(15000);
+    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) return r;
+    QByteArray body = p.readAllStandardOutput();
+    auto doc = QJsonDocument::fromJson(body);
+    if (!doc.isObject()) return r;
+    auto o = doc.object();
+    r.name = o["name"].toString();
+    r.premium = o["is_premium"].toBool();
+    r.ok = !r.name.isEmpty();
+    return r;
+}
+
+bool NexusApi::setApiKey(const QString& key) {
+    return atomicWrite(apiKeyPath(), key.trimmed().toUtf8());
+}
+
+void NexusApi::clearApiKey() {
+    QFile::remove(apiKeyPath());
 }
 
 } // namespace solero

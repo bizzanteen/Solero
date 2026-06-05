@@ -26,6 +26,14 @@ public:
                                const QString& game = kDefaultGame);
 
     static bool keyAvailable();
+
+    // Nexus account sign-in. The key is stored in ~/.nexus_api_key, which
+    // ToolDownloader/NexusApi/NxmHandler all read for the apikey header.
+    struct UserInfo { bool ok = false; QString name; bool premium = false; };
+    static UserInfo validateUser(const QString& key = QString()); // GET /v1/users/validate.json
+    static bool setApiKey(const QString& key);   // write ~/.nexus_api_key (trimmed) atomically
+    static void clearApiKey();                    // remove ~/.nexus_api_key
+    static QString apiKeyPath();                  // ~/.nexus_api_key
 };
 
 } // namespace solero

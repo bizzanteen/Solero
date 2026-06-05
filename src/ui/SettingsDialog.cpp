@@ -2,14 +2,20 @@
 #include "ui/SetupPanel.h"
 #include "core/AppConfig.h"
 #include "app/NxmRegister.h"
+#include "nexus/NexusApi.h"
 #include <QTabWidget>
 #include <QDialogButtonBox>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QComboBox>
 #include <QCheckBox>
 #include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QMessageBox>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QFile>
 
 namespace solero {
 
@@ -79,6 +85,90 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     prefsLayout->addStretch();
 
     tabs->addTab(prefs, "Preferences");
+
+    // Nexus Account tab
+    auto* nexus = new QWidget(tabs);
+    auto* nexusLayout = new QVBoxLayout(nexus);
+
+    auto* nexusHeading = new QLabel("<h3>Nexus Account</h3>", nexus);
+    nexusLayout->addWidget(nexusHeading);
+
+    auto* nexusHelp = new QLabel(
+        "Sign in with your Nexus personal API key. Click \"Get API Key\" to open "
+        "your Nexus account page, copy the Personal API Key, and paste it below.",
+        nexus);
+    nexusHelp->setWordWrap(true);
+    nexusLayout->addWidget(nexusHelp);
+
+    m_nexusStatus = new QLabel(nexus);
+    nexusLayout->addWidget(m_nexusStatus);
+
+    auto applyStatus = [this](const NexusApi::UserInfo& info) {
+        if (info.ok) {
+            const QString tier = info.premium ? "Premium" : "Supporter/Free";
+            m_nexusStatus->setText(QString("<span style=\"color:green;\">Signed in as %1  (%2)</span>")
+                                       .arg(info.name.toHtmlEscaped(), tier));
+            if (m_signOutBtn) m_signOutBtn->setEnabled(true);
+        } else {
+            m_nexusStatus->setText("Not signed in.");
+            if (m_signOutBtn) m_signOutBtn->setEnabled(false);
+        }
+    };
+
+    m_keyEdit = new QLineEdit(nexus);
+    m_keyEdit->setEchoMode(QLineEdit::Password);
+    m_keyEdit->setPlaceholderText("Paste your Nexus API key…");
+    nexusLayout->addWidget(m_keyEdit);
+
+    auto* nexusBtnRow = new QHBoxLayout;
+    auto* getKeyBtn = new QPushButton("Get API Key", nexus);
+    auto* signInBtn = new QPushButton("Sign In", nexus);
+    m_signOutBtn = new QPushButton("Sign Out", nexus);
+    nexusBtnRow->addWidget(getKeyBtn);
+    nexusBtnRow->addWidget(signInBtn);
+    nexusBtnRow->addWidget(m_signOutBtn);
+    nexusBtnRow->addStretch();
+    nexusLayout->addLayout(nexusBtnRow);
+
+    nexusLayout->addStretch();
+
+    // Only validate on open if a key file already exists, to avoid any blocking
+    // network call when the user has never signed in.
+    if (QFile::exists(NexusApi::apiKeyPath()))
+        applyStatus(NexusApi::validateUser());
+    else
+        applyStatus({});
+
+    connect(getKeyBtn, &QPushButton::clicked, this, []{
+        QDesktopServices::openUrl(QUrl("https://www.nexusmods.com/users/myaccount?tab=api"));
+    });
+
+    connect(signInBtn, &QPushButton::clicked, this, [this, applyStatus]{
+        const QString key = m_keyEdit->text().trimmed();
+        if (key.isEmpty()) {
+            QMessageBox::warning(this, "Nexus Account", "Paste your Nexus API key first.");
+            return;
+        }
+        const auto info = NexusApi::validateUser(key);
+        if (info.ok) {
+            NexusApi::setApiKey(key);
+            applyStatus(info);
+            m_keyEdit->clear();
+            QMessageBox::information(this, "Nexus Account",
+                                     QString("Signed in as %1.").arg(info.name));
+        } else {
+            QMessageBox::warning(this, "Nexus Account",
+                "That API key didn't validate - check you copied the Personal API Key correctly.");
+        }
+    });
+
+    connect(m_signOutBtn, &QPushButton::clicked, this, [this, applyStatus]{
+        NexusApi::clearApiKey();
+        applyStatus({});
+        QMessageBox::information(this, "Nexus Account", "Signed out.");
+    });
+
+    tabs->addTab(nexus, "Nexus Account");
 
     layout->addWidget(tabs);
 

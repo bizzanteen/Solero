@@ -3,6 +3,8 @@
 
 class QCheckBox;
 class QLabel;
+class QLineEdit;
+class QPushButton;
 
 namespace solero {
 
@@ -19,6 +21,9 @@ private:
     QCheckBox* m_cycleSeparatorColors = nullptr;
     QCheckBox* m_dataShowAllFiles = nullptr;
     QLabel* m_nxmStatus = nullptr;
+    QLabel* m_nexusStatus = nullptr;
+    QLineEdit* m_keyEdit = nullptr;
+    QPushButton* m_signOutBtn = nullptr;
 };
 
 } // namespace solero

@@ -17,6 +17,7 @@
 #include "ui/ExecutableDialog.h"
 #include "ui/ToolsManagerDialog.h"
 #include "ui/NexusWebView.h"
+#include "ui/LootRulesEditor.h"
 #include "tools/ToolRunner.h"
 #include "tools/ToolCatalog.h"
 #include "fomod/FomodEngine.h"
@@ -198,15 +199,8 @@ void MainWindow::onBrowserNxmDownload(const QString& url) {
 }
 
 void MainWindow::onToggleNexus(bool on) {
-    if (on && !m_nexusWeb) {
-        m_nexusWeb = new solero::NexusWebView(this);
-        m_centralStack->addWidget(m_nexusWeb);
-        connect(m_nexusWeb, &solero::NexusWebView::nxmRequested,
-                this, &MainWindow::onBrowserNxmDownload);
-    }
-    m_centralStack->setCurrentWidget(on && m_nexusWeb
-                                     ? static_cast<QWidget*>(m_nexusWeb)
-                                     : m_modManagerPage);
+    m_centralStack->setCurrentWidget(on ? static_cast<QWidget*>(m_nexusWeb)
+                                        : m_modManagerPage);
     if (m_browseAction)
         m_browseAction->setText(on ? "\xe2\x86\x90 Mod Manager" : "\xe2\x86\x92 Browse Nexus");
 }
@@ -288,6 +282,9 @@ void MainWindow::setupToolbar() {
     m_toolsBtn->setMenu(m_toolsMenu);
     tb->addWidget(m_toolsBtn);
 
+    // LOOT Rules (modal editor)
+    tb->addAction("LOOT Rules", this, &MainWindow::onOpenLootRules);
+
     // BethINI (modal window)
     tb->addAction("BethINI", this, &MainWindow::onOpenBethini);
     tb->addSeparator();
@@ -307,24 +304,6 @@ void MainWindow::setupToolbar() {
         if (dlg.exec() == QDialog::Accepted)
             statusBar()->showMessage("Settings updated.");
     });
-
-    // Trailing stretch so the info-panel toggle sits at the far right.
-    auto* tbSpacer = new QWidget(tb);
-    tbSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    tb->addWidget(tbSpacer);
-
-    // Show/Hide info (bottom) panel toggle. Down arrow = visible (click to collapse),
-    // up arrow = hidden (click to show). State applied in setupCentralWidget once the
-    // panel exists.
-    m_infoPanelAction = tb->addAction("\xe2\x96\xbc", this, [this]{
-        bool on = m_infoPanelAction->isChecked();
-        if (m_bottomPanel) m_bottomPanel->setVisible(on);
-        m_infoPanelAction->setText(on ? "\xe2\x96\xbc" : "\xe2\x96\xb2");
-        solero::AppConfig::instance().setInfoPanelVisible(on);
-        solero::AppConfig::instance().save();
-    });
-    m_infoPanelAction->setCheckable(true);
-    m_infoPanelAction->setToolTip("Show/Hide info panel");
 
     rebuildToolsMenu();
 }
@@ -406,20 +385,20 @@ void MainWindow::setupCentralWidget() {
     outer->addWidget(m_bottomPanel);
     outer->setSizes({580, 200});
 
-    // Apply the persisted info-panel visibility to the panel + toolbar toggle.
-    bool infoVisible = solero::AppConfig::instance().infoPanelVisible();
-    m_bottomPanel->setVisible(infoVisible);
-    if (m_infoPanelAction) {
-        m_infoPanelAction->setChecked(infoVisible);
-        m_infoPanelAction->setText(infoVisible ? "\xe2\x96\xbc" : "\xe2\x96\xb2");
-    }
-
-    // The central area is a stack: page 0 = the mod-manager view, page 1 (lazy) =
+    // The central area is a stack: page 0 = the mod-manager view, page 1 =
     // the embedded Nexus web browser, toggled from the toolbar.
     m_modManagerPage = outer;
     m_centralStack = new QStackedWidget(this);
     m_centralStack->addWidget(outer);
     setCentralWidget(m_centralStack);
+
+    // Construct the Nexus web view EAGERLY (before the window is shown). The first
+    // QWebEngineView forces the top-level native handle to be recreated; doing it
+    // here during startup avoids the window appearing to close+reopen on first use.
+    m_nexusWeb = new solero::NexusWebView(this);
+    m_centralStack->addWidget(m_nexusWeb);
+    connect(m_nexusWeb, &solero::NexusWebView::nxmRequested,
+            this, &MainWindow::onBrowserNxmDownload);
 }
 
 // Find a file in dir case-insensitively (Skyrim's custom ini ships as
@@ -1415,6 +1394,24 @@ void MainWindow::onOpenBethini() {
     m_bethiniWindow->show();
     m_bethiniWindow->raise();
     m_bethiniWindow->activateWindow();
+}
+
+void MainWindow::onOpenLootRules() {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) { statusBar()->showMessage("No active profile."); return; }
+
+    QDialog dlg(this);
+    dlg.setWindowTitle("LOOT Rules");
+    dlg.resize(700, 500);
+    auto* layout = new QVBoxLayout(&dlg);
+    auto* editor = new solero::LootRulesEditor(&dlg);
+    editor->setProfile(profile);
+    layout->addWidget(editor);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dlg);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    layout->addWidget(buttons);
+    dlg.exec();
 }
 
 void MainWindow::onPlay() {

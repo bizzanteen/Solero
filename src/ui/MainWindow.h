@@ -154,6 +154,8 @@ private:
     // finishes, the existing mod is reinstalled in place instead of added anew.
     struct PendingUpdate { QString modId, fileId, version; };
     QHash<QString, PendingUpdate> m_pendingUpdates;
+    // Whether the once-per-launch update check has run yet (bypasses the 6h throttle).
+    bool m_didLaunchUpdateCheck = false;
     // Pending Nexus metadata for in-flight nxm downloads, keyed by saved filename.
     // Written to a <archive>.solero-nexus.json sidecar when the download finishes.
     QHash<QString, QJsonObject> m_nxmMeta;

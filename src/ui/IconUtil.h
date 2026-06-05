@@ -3,6 +3,7 @@
 #include <QPixmap>
 #include <QPainter>
 #include <QPen>
+#include <QPainterPath>
 #include <QPointF>
 #include <QRectF>
 #include <QColor>
@@ -36,6 +37,24 @@ inline QIcon redBangIcon(int px = 26) {
     p.setBrush(Qt::white);
     p.setPen(Qt::NoPen);
     p.drawEllipse(QPointF(cx, px * 0.76), px * 0.07, px * 0.07);
+    return QIcon(pm);
+}
+inline QIcon yellowUpArrowIcon(int px = 16) {
+    QPixmap pm(px, px); pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const QColor yellow("#f1c40f");
+    p.setPen(Qt::NoPen);
+    p.setBrush(yellow);
+    // Filled upward-pointing triangle head spanning the top ~55%.
+    QPainterPath head;
+    head.moveTo(px * 0.50, px * 0.12);          // apex
+    head.lineTo(px * 0.88, px * 0.55);          // bottom-right
+    head.lineTo(px * 0.12, px * 0.55);          // bottom-left
+    head.closeSubpath();
+    p.drawPath(head);
+    // Short stem below the head.
+    p.drawRect(QRectF(px * 0.36, px * 0.55, px * 0.28, px * 0.33));
     return QIcon(pm);
 }
 inline QIcon renderSvgIcon(const QString& resPath, const QColor& tint, int px = 20) {

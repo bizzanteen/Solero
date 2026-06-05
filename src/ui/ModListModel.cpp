@@ -201,6 +201,11 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     if (role == Qt::DecorationRole && isSep && idx.column() == ColName && !entry.icon.isEmpty()) {
         return renderSvgIcon(entry.icon, solero::contrastText(QColor(entry.color)), 20);
     }
+    // Out-of-date mod entries: a yellow up-arrow next to the name.
+    if (role == Qt::DecorationRole && !isSep && idx.column() == ColName
+            && entry.type == EntryType::Mod && m_updates.contains(entry.id)) {
+        return solero::yellowUpArrowIcon();
+    }
     if (role == Qt::FontRole && isSep) {
         QFont f; f.setBold(true); return f;
     }

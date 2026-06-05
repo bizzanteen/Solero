@@ -143,6 +143,20 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             statusBar()->showMessage("Ready");
             return;
         }
+        // If the resolved version matches what's already installed, there's nothing
+        // to do - don't download/install. Compare case-insensitively, trimmed.
+        if (auto* profile = m_profileMgr->activeProfile()) {
+            if (solero::ModEntry* target = profile->modList().findById(m_updateTargetId)) {
+                const QString resolvedV = r.version.trimmed();
+                const QString currentV  = target->version.trimmed();
+                if (!resolvedV.isEmpty() &&
+                    resolvedV.compare(currentV, Qt::CaseInsensitive) == 0) {
+                    statusBar()->showMessage(
+                        m_updateTargetName + " is already up to date (version " + resolvedV + ").");
+                    return;
+                }
+            }
+        }
         // Record the pending update so the download-finished handler reinstalls
         // the existing mod in place rather than adding a new one.
         m_pendingUpdates[r.fileName] = PendingUpdate{m_updateTargetId, r.fileId, r.version};
@@ -1199,9 +1213,15 @@ void MainWindow::maybeAutoCheckUpdates() {
     if (!cfg.autoCheckUpdates()) return;
     if (m_updateWatcher.isRunning()) return;
     if (!solero::NexusApi::keyAvailable()) return;
-    // Throttle: only auto-check if it's been more than 6 hours since the last one.
-    const qint64 now = QDateTime::currentSecsSinceEpoch();
-    if (now - cfg.lastUpdateCheckEpoch() <= 6 * 3600) return;
+    // Always run one check at app launch (switchProfile runs once at startup for
+    // the initial profile); later mid-session profile switches stay throttled.
+    if (!m_didLaunchUpdateCheck) {
+        m_didLaunchUpdateCheck = true;
+    } else {
+        // Throttle: only auto-check if it's been more than 6 hours since the last one.
+        const qint64 now = QDateTime::currentSecsSinceEpoch();
+        if (now - cfg.lastUpdateCheckEpoch() <= 6 * 3600) return;
+    }
     runUpdateCheck(/*silentIfNone=*/true);
 }
 

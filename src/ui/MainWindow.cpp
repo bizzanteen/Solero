@@ -129,6 +129,40 @@ void MainWindow::handleNxmUrl(const QString& url) {
     statusBar()->showMessage("Downloading " + fn + "\xe2\x80\xa6");
 }
 
+void MainWindow::onBrowseNexus() {
+    if (!solero::NexusApi::keyAvailable()) {
+        QMessageBox::information(this, "Nexus",
+            "Sign in to Nexus first: \xe2\x9a\x99 Settings \xe2\x86\x92 Nexus Account.");
+        return;
+    }
+    if (!m_nexusBrowser) {
+        m_nexusBrowser = new solero::NexusBrowser(this);
+        connect(m_nexusBrowser, &solero::NexusBrowser::downloadRequested,
+                this, &MainWindow::onNexusDownload);
+    }
+    m_nexusBrowser->show();
+    m_nexusBrowser->raise();
+    m_nexusBrowser->activateWindow();
+}
+
+void MainWindow::onNexusDownload(const QString& modId, const QString& fileId,
+                                 const QString& fileName, const QString& version) {
+    QString url = solero::NexusApi::downloadUrl(modId, fileId);
+    if (url.isEmpty()) {
+        QMessageBox::information(this, "Download",
+            "In-app download needs Nexus Premium. Use the mod page's "
+            "'Mod Manager Download' (nxm) button on the website instead.");
+        return;
+    }
+    // Record metadata so the sidecar + update-checker work, exactly like the nxm path.
+    m_nxmMeta[fileName] = QJsonObject{
+        {"game", "skyrimspecialedition"}, {"modId", modId},
+        {"fileId", fileId}, {"version", version}};
+    m_downloads->enqueue(url, fileName, solero::AppConfig::instance().downloadsDir());
+    m_rightPane->showDownloadsTab();
+    statusBar()->showMessage("Downloading " + fileName + "\xe2\x80\xa6");
+}
+
 QString MainWindow::profilesRoot() const {
     return solero::AppConfig::dataRoot() + "/profiles";
 }
@@ -174,6 +208,7 @@ void MainWindow::setupToolbar() {
 
     // Install Mod action
     tb->addAction("Install Mod...", this, &MainWindow::onInstallMod);
+    tb->addAction("Browse Nexus", this, &MainWindow::onBrowseNexus);
     tb->addSeparator();
 
     // Tools dropdown

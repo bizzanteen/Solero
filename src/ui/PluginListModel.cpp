@@ -132,6 +132,7 @@ QVariant PluginListModel::data(const QModelIndex& idx, int role) const {
 
 bool PluginListModel::setData(const QModelIndex& idx, const QVariant& value, int role) {
     if (!m_profile) return false;
+    if (idx.row() < 0 || idx.row() >= m_profile->pluginList().count()) return false;
     if (role == Qt::CheckStateRole && idx.column() == ColEnabled) {
         const auto& p = m_profile->pluginList().at(idx.row());
         m_profile->pluginList().setEnabled(p.filename, value.toInt() == Qt::Checked);
@@ -162,15 +163,6 @@ Qt::ItemFlags PluginListModel::flags(const QModelIndex& idx) const {
 
 Qt::DropActions PluginListModel::supportedDropActions() const { return Qt::MoveAction; }
 
-bool PluginListModel::moveRows(const QModelIndex&, int src, int, const QModelIndex&, int dst) {
-    if (!m_profile) return false;
-    beginMoveRows({}, src, src, {}, dst > src ? dst + 1 : dst);
-    m_profile->pluginList().move(src, dst);
-    m_profile->save();
-    endMoveRows();
-    return true;
-}
-
 static const char* kPluginMime = "application/x-solero-plugin-row";
 
 QStringList PluginListModel::mimeTypes() const { return { QString::fromLatin1(kPluginMime) }; }
@@ -189,20 +181,28 @@ bool PluginListModel::canDropMimeData(const QMimeData* data, Qt::DropAction, int
 
 bool PluginListModel::dropMimeData(const QMimeData* data, Qt::DropAction, int row, int, const QModelIndex& parent) {
     if (!m_profile || !data->hasFormat(QString::fromLatin1(kPluginMime))) return false;
-    int src = data->data(QString::fromLatin1(kPluginMime)).toInt();
-    int n = m_profile->pluginList().count();
+    const int src = data->data(QString::fromLatin1(kPluginMime)).toInt();
+    const int n = m_profile->pluginList().count();
     if (src < 0 || src >= n) return false;
-    int dst = row;
-    if (dst < 0) dst = parent.isValid() ? parent.row() : n; // dropped onto a row, or past the end
-    if (dst > n) dst = n;
-    // Account for the source being removed before re-insertion.
-    if (dst > src) dst -= 1;
-    if (dst == src) return false;
-    beginResetModel();
-    m_profile->pluginList().move(src, dst);
+
+    // `insertion` is the 0..n position the row is dropped before (view coords,
+    // before the source is removed). `finalTo` is the resulting index for QList::move.
+    int insertion = row;
+    if (insertion < 0) insertion = parent.isValid() ? parent.row() : n;
+    if (insertion < 0) insertion = 0;
+    if (insertion > n) insertion = n;
+    const int finalTo = (insertion > src) ? insertion - 1 : insertion;
+    if (finalTo == src) return false; // no-op
+
+    // Use beginMoveRows (not beginResetModel): resetting the model from inside the
+    // view's drop event invalidates the persistent indexes the view still holds,
+    // which crashes on the next move. moveRows updates them correctly.
+    if (!beginMoveRows(QModelIndex(), src, src, QModelIndex(), insertion))
+        return false;
+    m_profile->pluginList().move(src, finalTo);
     m_profile->save();
-    endResetModel();
-    return false; // we performed the move ourselves; return false so the view doesn't also removeRows
+    endMoveRows();
+    return false; // we performed the move; return false so the view doesn't also removeRows
 }
 
 } // namespace solero

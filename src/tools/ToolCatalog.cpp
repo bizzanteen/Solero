@@ -95,6 +95,7 @@ const QList<ToolPreset>& ToolCatalog::presets() {
             t.description = "Run automated, modular load-order patchers (Mutagen-based).";
             t.docsUrl = "https://github.com/Mutagen-Modding/Synthesis";
             t.proton = true;  // ship the Windows build (Synthesis.exe via Proton)
+            t.needsDotNet = true; // framework-dependent .NET app - needs the .NET Desktop Runtime in the prefix
             t.producesOutput = true;
             t.outputModName = "Synthesis Output";
             v << t;

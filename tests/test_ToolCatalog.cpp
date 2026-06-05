@@ -44,6 +44,7 @@ private slots:
         // Synthesis ships the Windows build (Synthesis.exe via Proton).
         QVERIFY(ToolCatalog::byId("synthesis") != nullptr);
         QCOMPARE(ToolCatalog::byId("synthesis")->proton, true);
+        QCOMPARE(ToolCatalog::byId("synthesis")->needsDotNet, true);
         QVERIFY(ToolCatalog::byId("radium") != nullptr);
         QCOMPARE(ToolCatalog::byId("radium")->proton, false);
         QCOMPARE(ToolCatalog::byId("xedit")->proton, true);

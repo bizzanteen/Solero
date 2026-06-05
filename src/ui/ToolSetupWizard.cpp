@@ -21,8 +21,60 @@
 #include <QIcon>
 #include <QPixmap>
 #include <QPair>
+#include <QProcess>
+#include <QProcessEnvironment>
+#include <QEventLoop>
+#include <QStandardPaths>
 
 namespace solero {
+
+// Install the .NET Desktop Runtime into the Skyrim Proton prefix via
+// `umu-run winetricks -q dotnetdesktop8`. Synthesis (and other framework-
+// dependent .NET apps) crash under Proton without it. Mirrors the Proton env
+// that ToolRunner builds. Returns true on a clean (exit 0) install.
+static bool installDotNetIntoPrefix(const QString& winePrefix, QWidget* parent) {
+    if (winePrefix.isEmpty()) return false; // no prefix -> nothing to do
+    if (QStandardPaths::findExecutable("umu-run").isEmpty()) return false;
+
+    QString protonDir = AppConfig::instance().detectProtonDir();
+    if (protonDir.isEmpty()) return false;
+
+    // Derive the Steam root the same way ToolRunner does (from the game dir).
+    QString steamRoot = QDir(AppConfig::instance().gameDir() + "/../../..").canonicalPath();
+    if (steamRoot.isEmpty())
+        steamRoot = QDir::homePath() + "/.local/share/Steam";
+
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert("WINEPREFIX", winePrefix + "/pfx");
+    env.insert("STEAM_COMPAT_DATA_PATH", winePrefix);
+    env.insert("STEAM_COMPAT_CLIENT_INSTALL_PATH", steamRoot);
+    env.insert("GAMEID", "umu-489830");
+    env.insert("STORE", "none");
+    env.insert("PROTONPATH", protonDir);
+    // No PROTON_VERB needed for winetricks.
+
+    ProgressModal prog(parent, "Installing .NET",
+        "Installing the .NET runtime into the Skyrim prefix.\nThis can take several minutes\xe2\x80\xa6");
+    prog.show(); prog.pump();
+
+    QProcess proc;
+    proc.setProcessChannelMode(QProcess::MergedChannels);
+    proc.setProcessEnvironment(env);
+
+    // Wait via an event loop so the modal stays responsive; rely on the
+    // finished signal (this is long) rather than a hard kill.
+    QEventLoop loop;
+    QObject::connect(&proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                     &loop, &QEventLoop::quit);
+    QObject::connect(&proc, &QProcess::readyReadStandardOutput, parent, [&]{ prog.pump(); });
+    QObject::connect(&proc, &QProcess::readyReadStandardError,  parent, [&]{ prog.pump(); });
+
+    proc.start("umu-run", QStringList{"winetricks", "-q", "dotnetdesktop8"});
+    if (!proc.waitForStarted(15000)) { prog.close(); return false; }
+    loop.exec();
+    prog.close();
+    return proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
+}
 
 ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
     : QDialog(parent), m_store(store) {
@@ -263,9 +315,23 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
 
         prog.close();
 
+        // Framework-dependent .NET apps (e.g. Synthesis) crash under Proton
+        // without the .NET Desktop Runtime in the prefix. Install it now.
+        bool dotNetInstalled = false;
+        if (p->needsDotNet && e.runtime == RuntimeType::Proton) {
+            if (installDotNetIntoPrefix(e.winePrefix, this)) {
+                dotNetInstalled = true;
+            } else {
+                QMessageBox::warning(this, "Set Up Tool",
+                    "The tool is set up, but installing the .NET runtime failed. "
+                    "Synthesis may not launch until .NET is installed in the prefix "
+                    "(e.g. `protontricks 489830 dotnetdesktop8`).");
+            }
+        }
+
         QMessageBox box(this);
         box.setWindowTitle("Tool Ready");
-        box.setText(p->name + " is set up.");
+        box.setText(p->name + " is set up." + (dotNetInstalled ? QString("\n.NET runtime installed.") : QString()));
         box.setInformativeText("Thanks to " + p->author + " for making it. If you find it useful, please consider endorsing it on Nexus.");
         auto* endorseBtn = box.addButton(QString::fromUtf8("\xe2\x99\xa5  Endorse and Close"), QMessageBox::AcceptRole);
         auto* closeBtn   = box.addButton(QString::fromUtf8("\xe2\x98\xb9  Close"), QMessageBox::RejectRole);

@@ -22,6 +22,7 @@ struct ToolPreset {
     QString iconResource;     // ":/icons/tools/<id>.png"
     bool producesOutput = false;
     QString outputModName;    // e.g. "DynDOLOD Output"
+    bool needsDotNet = false; // install .NET Desktop Runtime into the prefix (framework-dependent .NET app)
     struct PresetAction { QString label, exeRelPath, args, outputModName; };
     QList<PresetAction> extraActions;
 };

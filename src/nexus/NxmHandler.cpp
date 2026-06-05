@@ -1,4 +1,5 @@
 #include "NxmHandler.h"
+#include "NexusApi.h"
 #include "tools/ToolDownloader.h"
 #include <QUrl>
 #include <QUrlQuery>
@@ -75,6 +76,11 @@ QString NxmHandler::fileName(const NxmLink& link) {
     if (body.isEmpty()) return {};
     auto obj = QJsonDocument::fromJson(body).object();
     return obj["file_name"].toString();
+}
+
+QString NxmHandler::fileVersion(const NxmLink& link) {
+    if (!link.valid) return {};
+    return NexusApi::fileVersion(link.modId, link.fileId, link.game);
 }
 
 }

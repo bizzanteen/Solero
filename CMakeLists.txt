@@ -91,6 +91,7 @@ set(SOLERO_SOURCES
   src/tools/ToolCatalog.cpp
   src/tools/ToolDownloader.cpp
   src/nexus/NxmHandler.cpp
+  src/nexus/NexusApi.cpp
   src/nexus/DownloadManager.cpp
   src/ui/ToolPanel.cpp
   src/ui/ToolSetupWizard.cpp

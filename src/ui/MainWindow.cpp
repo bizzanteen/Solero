@@ -21,6 +21,7 @@
 #include "fomod/FomodEngine.h"
 #include "loot/LootSorter.h"
 #include "PluginListView.h"
+#include "nexus/NexusApi.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -113,6 +114,14 @@ void MainWindow::handleNxmUrl(const QString& url) {
     }
     QString fn = solero::NxmHandler::fileName(link);
     if (fn.isEmpty()) fn = "nexus-" + link.modId + "-" + link.fileId + ".archive";
+    // Record Nexus metadata keyed by the saved filename; a sidecar is written when
+    // the download finishes so the installed mod can carry mod/file/version ids.
+    QJsonObject meta;
+    meta["game"] = link.game;
+    meta["modId"] = link.modId;
+    meta["fileId"] = link.fileId;
+    meta["version"] = solero::NexusApi::fileVersion(link.modId, link.fileId, link.game);
+    m_nxmMeta[fn] = meta;
     m_downloads->enqueue(cdn, fn, solero::AppConfig::instance().downloadsDir());
     // Show the Downloads tab so the user sees progress.
     m_rightPane->showDownloadsTab();
@@ -229,7 +238,14 @@ void MainWindow::setupCentralWidget() {
         });
     connect(m_downloads, &solero::DownloadManager::finished, this,
         [this](const QString& fn, const QString& path, bool ok, const QString& err){
-            Q_UNUSED(path);
+            // For an nxm-originated download, persist the captured Nexus metadata as a
+            // sidecar next to the archive so installFromArchive can tag the mod.
+            if (ok && m_nxmMeta.contains(fn) && !path.isEmpty()) {
+                QFile sf(path + ".solero-nexus.json");
+                if (sf.open(QIODevice::WriteOnly))
+                    sf.write(QJsonDocument(m_nxmMeta.value(fn)).toJson(QJsonDocument::Indented));
+            }
+            m_nxmMeta.remove(fn);
             m_rightPane->downloadsTab()->setDownloadProgress(fn, ok ? 1 : 0, ok ? 1 : 0); // mark complete
             m_rightPane->downloadsTab()->refresh();
             statusBar()->showMessage(ok ? ("Downloaded: " + fn) : ("Download failed: " + fn + " - " + err));
@@ -682,6 +698,18 @@ void MainWindow::installFromArchive(const QString& archive) {
     mod.enabled = true;
     mod.hasFomodChoices = !choiceLog.isEmpty();
     mod.sourceArchive = archive;
+    // If an nxm download left a Nexus sidecar next to the archive, tag the mod with
+    // its mod/file/version ids (used by endorse + the update checker).
+    {
+        QFile sf(archive + ".solero-nexus.json");
+        if (sf.open(QIODevice::ReadOnly)) {
+            auto meta = QJsonDocument::fromJson(sf.readAll()).object();
+            mod.nexusModId = meta["modId"].toString();
+            mod.nexusFileId = meta["fileId"].toString();
+            const QString v = meta["version"].toString();
+            if (!v.isEmpty()) mod.version = v;
+        }
+    }
     profile->modList().append(mod);
     profile->save();
 

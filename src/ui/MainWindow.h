@@ -2,6 +2,8 @@
 #include <QMainWindow>
 #include <QAction>
 #include <QPair>
+#include <QHash>
+#include <QJsonObject>
 #include "core/ProfileManager.h"
 #include "ai/AITransaction.h"
 #include "ipc/IPCServer.h"
@@ -107,6 +109,9 @@ private:
     QMenu* m_toolsMenu = nullptr;
     solero::ToolStore* m_toolStore = nullptr;
     solero::DownloadManager* m_downloads = nullptr;
+    // Pending Nexus metadata for in-flight nxm downloads, keyed by saved filename.
+    // Written to a <archive>.solero-nexus.json sidecar when the download finishes.
+    QHash<QString, QJsonObject> m_nxmMeta;
 
     QWidget* m_runOverlay = nullptr;
     QLabel* m_runLockLabel = nullptr;

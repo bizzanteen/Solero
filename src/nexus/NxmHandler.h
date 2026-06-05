@@ -13,5 +13,7 @@ public:
     static QString resolveDownloadUrl(const NxmLink& link);
     // The mod file's display name (for the saved filename); "" on failure.
     static QString fileName(const NxmLink& link);
+    // The mod file's version (from the Nexus files/<fid>.json); "" on failure.
+    static QString fileVersion(const NxmLink& link);
 };
 }

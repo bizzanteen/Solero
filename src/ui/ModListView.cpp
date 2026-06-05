@@ -9,6 +9,7 @@
 #include <QContextMenuEvent>
 #include <QHeaderView>
 #include <QMouseEvent>
+#include <QKeyEvent>
 #include <QInputDialog>
 #include <QUuid>
 #include <QItemSelectionModel>
@@ -64,8 +65,10 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     hdr->resizeSection(ModListModel::ColPriority, 40);
     hdr->resizeSection(ModListModel::ColVersion,  80);
     hdr->resizeSection(ModListModel::ColFlags,    60);
-    setSortingEnabled(true);
-    sortByColumn(ModListModel::ColPriority, Qt::AscendingOrder);
+    // The list is manually ordered (drag-reorder); there's no real sort(), so
+    // clickable headers would only flip a lying sort indicator. Disable sorting.
+    setSortingEnabled(false);
+    header()->setSectionsClickable(false);
 
     connect(selectionModel(), &QItemSelectionModel::selectionChanged,
             this, [this](const QItemSelection&, const QItemSelection&) {
@@ -91,6 +94,7 @@ void ModListView::setProfile(Profile* profile) {
                         AppConfig::instance().stagingDir());
         m_model->setDependencyWarnings(warns);
     }
+    applyFilter(); // model rebuilt -> re-apply any active filter
 }
 
 void ModListView::invalidateModCache(const QString& id) {
@@ -187,7 +191,11 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
     const auto* entry = m_model->entryAt(idx.row());
     if (!entry) {
         // Overwrite row
-        menu.addAction("Open Overwrite Folder", []{ /* Stage 2 */ });
+        menu.addAction("Open Overwrite Folder", []{
+            QString ow = AppConfig::dataRoot() + "/overwrite";
+            QDir().mkpath(ow);
+            QDesktopServices::openUrl(QUrl::fromLocalFile(ow));
+        });
     } else if (entry->type == EntryType::Separator) {
         menu.addAction("Edit Separator", [this, row = idx.row()]{ onEditSeparator(row); });
         menu.addAction(entry->collapsed ? "Expand" : "Collapse",
@@ -211,6 +219,9 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
                        [this, id = entry->id]{ emit reinstallRequested(id); });
         menu.addAction("Delete Mod...", [this]{ deleteSelectedMods(); });
         menu.addAction("Rename", [this, row = idx.row()]{ edit(m_model->index(row, ModListModel::ColName)); });
+        menu.addSeparator();
+        menu.addAction("Enable selected",  [this]{ setSelectedModsEnabled(true); });
+        menu.addAction("Disable selected", [this]{ setSelectedModsEnabled(false); });
         menu.addSeparator();
         menu.addAction("Add Separator Above", [this, row = idx.row()]{ onAddSeparatorAt(row); });
     }
@@ -324,6 +335,50 @@ void ModListView::deleteSelectedMods() {
     m_model->profile()->save();
     m_model->rebuild();
     emit modsChanged();
+}
+
+void ModListView::setFilter(const QString& text) {
+    m_filter = text.trimmed();
+    applyFilter();
+}
+
+void ModListView::applyFilter() {
+    // Hide Mod rows whose name doesn't contain the filter text. Separators and
+    // the Overwrite row remain visible. rebuild() clears hidden state, so callers
+    // that rebuild the model should re-apply the filter afterwards.
+    const QModelIndex root;
+    for (int row = 0; row < m_model->rowCount(); ++row) {
+        const auto* entry = m_model->entryAt(row);
+        bool hide = false;
+        if (entry && entry->type == EntryType::Mod && !m_filter.isEmpty())
+            hide = !entry->name.contains(m_filter, Qt::CaseInsensitive);
+        setRowHidden(row, root, hide);
+    }
+}
+
+void ModListView::setSelectedModsEnabled(bool enabled) {
+    if (!m_model->profile()) return;
+    QStringList ids;
+    const auto rows = selectionModel()->selectedRows();
+    for (const auto& idx : rows) {
+        const auto* entry = m_model->entryAt(idx.row());
+        if (entry && entry->type == EntryType::Mod) ids << entry->id;
+    }
+    if (ids.isEmpty()) return;
+    for (const QString& id : ids)
+        m_model->profile()->modList().setEnabled(id, enabled);
+    m_model->profile()->save();
+    m_model->rebuild();
+    applyFilter();
+    emit modsChanged();
+}
+
+void ModListView::keyPressEvent(QKeyEvent* event) {
+    if (event->key() == Qt::Key_Delete) {
+        deleteSelectedMods();
+        return;
+    }
+    QTreeView::keyPressEvent(event);
 }
 
 } // namespace solero

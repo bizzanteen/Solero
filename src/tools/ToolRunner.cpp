@@ -111,7 +111,7 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
 
     if (capture) {
         QString destBase = exe.outputModId.isEmpty()
-            ? (gameDir + "/.solero-overwrite")
+            ? (AppConfig::dataRoot() + "/overwrite") // canonical Overwrite location
             : (stagingRoot + "/" + exe.outputModId + "/Data");
         QDir dataDir(captureBase);
         int failures = 0;

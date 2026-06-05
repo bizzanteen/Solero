@@ -18,6 +18,19 @@ void ModList::move(int from, int to) {
     m_entries.move(from, to);
 }
 
+void ModList::moveSection(int from, int count, int to) {
+    if (count <= 0 || from < 0 || from + count > m_entries.size()) return;
+    // Extract the block.
+    QList<ModEntry> block;
+    block.reserve(count);
+    for (int i = 0; i < count; ++i) block.append(m_entries.at(from + i));
+    m_entries.remove(from, count);
+    // `to` is relative to the list with the block already removed; clamp it.
+    if (to < 0) to = 0;
+    if (to > m_entries.size()) to = m_entries.size();
+    for (int i = 0; i < count; ++i) m_entries.insert(to + i, block.at(i));
+}
+
 void ModList::update(const QString& id, const ModEntry& updated) {
     for (auto& e : m_entries) if (e.id == id) { e = updated; return; }
 }

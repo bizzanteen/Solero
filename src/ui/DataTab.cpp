@@ -112,7 +112,7 @@ QColor DataTab::accentColor() const {
 
 QString DataTab::stagingRootFor(const QString& modId) const {
     if (modId == "__overwrite__")
-        return AppConfig::instance().gameDir() + "/.solero-overwrite";
+        return AppConfig::dataRoot() + "/overwrite"; // canonical Overwrite location
     return AppConfig::instance().stagingDir() + "/" + modId;
 }
 

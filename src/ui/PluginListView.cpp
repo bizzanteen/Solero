@@ -5,6 +5,8 @@
 #include <QHeaderView>
 #include <QSortFilterProxyModel>
 #include <QSet>
+#include <QMenu>
+#include <QContextMenuEvent>
 namespace solero {
 PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
     m_model = new PluginListModel(this);
@@ -75,6 +77,17 @@ void PluginListView::reconcileWith(Profile* profile, const QString& stagingRoot)
         if (snapshot() != before)
             profile->save(); // persist the reconciled plugin list only if it changed
     }
+}
+
+void PluginListView::contextMenuEvent(QContextMenuEvent* event) {
+    QMenu menu(this);
+    menu.addAction("Enable all",  [this]{ setAllEnabled(true); });
+    menu.addAction("Disable all", [this]{ setAllEnabled(false); });
+    menu.exec(event->globalPos());
+}
+
+void PluginListView::setAllEnabled(bool enabled) {
+    m_model->setAllEnabled(enabled);
 }
 
 void PluginListView::highlightPlugins(const QStringList& filenames) {

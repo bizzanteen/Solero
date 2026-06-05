@@ -144,7 +144,15 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
 
     if (role == Qt::DisplayRole) {
         switch (idx.column()) {
-            case ColPriority: return isSep ? QVariant() : QVariant(raw);
+            case ColPriority: {
+                if (isSep) return QVariant();
+                // Contiguous position among mod-type entries only (1-based),
+                // ignoring separators and hidden mods so the column reads 1..N.
+                int pos = 0;
+                for (int i = 0; i < raw; ++i)
+                    if (m_profile->modList().at(i).type == EntryType::Mod) ++pos;
+                return pos + 1;
+            }
             case ColName:
                 if (isSep) {
                     QString arrow = entry.collapsed ? "\xe2\x96\xb6" : "\xe2\x96\xbc";
@@ -255,8 +263,37 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
     int srcRaw = rawIndexForRow(src);
     int dstRaw = rawIndexForRow(dst);
     if (srcRaw < 0 || dstRaw < 0) return false;
+
+    auto& list = m_profile->modList();
+    const bool draggingSeparator =
+        list.at(srcRaw).type == EntryType::Separator;
+
+    if (draggingSeparator) {
+        // Move the whole section: the separator plus every entry after it up to
+        // (but excluding) the next separator or the end of the list. Reordering a
+        // section changes deploy order, so we reset + persist + emit modsChanged.
+        int blockLen = 1;
+        for (int i = srcRaw + 1; i < list.count(); ++i) {
+            if (list.at(i).type == EntryType::Separator) break;
+            ++blockLen;
+        }
+        // Destination in raw-index terms, adjusted for the block's removal so the
+        // section lands where the user dropped it.
+        int destRaw = dstRaw;
+        if (destRaw > srcRaw) destRaw -= blockLen;
+        if (destRaw < 0) destRaw = 0;
+
+        beginResetModel();
+        list.moveSection(srcRaw, blockLen, destRaw);
+        m_profile->save();
+        rebuildVisibleRows();
+        endResetModel();
+        emit modsChanged();
+        return true;
+    }
+
     beginMoveRows({}, src, src, {}, dst > src ? dst + 1 : dst);
-    m_profile->modList().move(srcRaw, dstRaw);
+    list.move(srcRaw, dstRaw);
     m_profile->save();
     rebuildVisibleRows();
     endMoveRows();

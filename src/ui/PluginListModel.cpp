@@ -71,6 +71,16 @@ void PluginListModel::reconcile(const QStringList& available) {
     endResetModel();
 }
 
+void PluginListModel::setAllEnabled(bool enabled) {
+    if (!m_profile) return;
+    PluginList& pl = m_profile->pluginList();
+    if (pl.count() == 0) return;
+    for (int i = 0; i < pl.count(); ++i)
+        pl.setEnabled(pl.at(i).filename, enabled);
+    m_profile->save();
+    emit dataChanged(index(0, 0), index(pl.count() - 1, ColCount - 1));
+}
+
 void PluginListModel::setHighlighted(const QSet<QString>& lowerFilenames) {
     m_highlight = lowerFilenames;
     if (rowCount() > 0) emit dataChanged(index(0, 0), index(rowCount() - 1, ColCount - 1));

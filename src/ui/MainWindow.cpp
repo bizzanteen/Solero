@@ -196,13 +196,26 @@ void MainWindow::setupCentralWidget() {
     auto* outer = new QSplitter(Qt::Vertical, this);
     m_splitter = new QSplitter(Qt::Horizontal, outer);
 
-    m_modListView = new solero::ModListView(m_splitter);
+    // Left pane: a small filter box above the mod list.
+    auto* leftContainer = new QWidget(m_splitter);
+    auto* leftLayout = new QVBoxLayout(leftContainer);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setSpacing(2);
+    auto* modFilter = new QLineEdit(leftContainer);
+    modFilter->setPlaceholderText("Filter mods\xe2\x80\xa6");
+    modFilter->setClearButtonEnabled(true);
+    m_modListView = new solero::ModListView(leftContainer);
+    connect(modFilter, &QLineEdit::textChanged, m_modListView,
+            &solero::ModListView::setFilter);
+    leftLayout->addWidget(modFilter);
+    leftLayout->addWidget(m_modListView);
+
     m_rightPane   = new solero::RightPane(m_splitter);
     m_bethiniWindow = new solero::BethiniWindow(this); // shown as a top-level modal window
     m_bethiniWindow->setWindowFlag(Qt::Window, true);  // not an in-canvas child of MainWindow
     m_bethiniWindow->hide();                           // stays hidden until the BethINI button
 
-    m_splitter->addWidget(m_modListView);
+    m_splitter->addWidget(leftContainer);
     m_splitter->addWidget(m_rightPane);
     m_splitter->setSizes({640, 640});
 

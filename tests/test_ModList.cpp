@@ -35,6 +35,26 @@ private slots:
         list.setEnabled("p", false);
         QCOMPARE(list.findById("c")->enabled, false);
     }
+    void moveSection_carriesSeparatorAndItsMods() {
+        // Layout: [sep1, m0, m1, sep2]. Dragging the first separator below the
+        // second must carry its two mods along, giving [sep2, sep1, m0, m1].
+        ModList list;
+        ModEntry sep1; sep1.type = EntryType::Separator; sep1.id = "sep1"; sep1.name = "A";
+        ModEntry m0;   m0.type   = EntryType::Mod;       m0.id   = "m0";   m0.name   = "Mod0";
+        ModEntry m1;   m1.type   = EntryType::Mod;       m1.id   = "m1";   m1.name   = "Mod1";
+        ModEntry sep2; sep2.type = EntryType::Separator; sep2.id = "sep2"; sep2.name = "B";
+        list.append(sep1); list.append(m0); list.append(m1); list.append(sep2);
+
+        // Block = sep1 + its 2 mods (raw 0, length 3). Drop after sep2: with the
+        // block removed the list is [sep2], so the insertion index is 1.
+        list.moveSection(0, 3, 1);
+
+        QCOMPARE(list.count(), 4);
+        QCOMPARE(list.at(0).id, "sep2");
+        QCOMPARE(list.at(1).id, "sep1");
+        QCOMPARE(list.at(2).id, "m0");
+        QCOMPARE(list.at(3).id, "m1");
+    }
     void roundtripJson_preservesData() {
         ModList list;
         ModEntry sep; sep.type = EntryType::Separator; sep.id = "s1"; sep.name = "Weapons"; sep.color = "#ff0000"; sep.icon = "⚔";

@@ -14,6 +14,8 @@ public:
     void setProfile(Profile* profile);
     void reconcile(const QStringList& available);
     void setHighlighted(const QSet<QString>& lowerFilenames);
+    // Enable or disable every plugin at once (save + refresh).
+    void setAllEnabled(bool enabled);
 
     int rowCount(const QModelIndex& = {}) const override;
     int columnCount(const QModelIndex& = {}) const override { return ColCount; }

@@ -32,6 +32,12 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     addTab(m_conflictsTab, "Conflicts");
     m_downloadsTab = new DownloadsTab(this);
     addTab(m_downloadsTab, "Downloads");
+
+    // Double-clicking a conflict row jumps to that mod's Data view.
+    connect(m_conflictsTab, &ConflictsTab::fileActivated, this,
+            [this](const QString& modId, const QString& /*relPath*/) {
+        showDataFor(modId);
+    });
 }
 
 void RightPane::showDownloadsTab() {
@@ -61,6 +67,7 @@ void RightPane::setProfile(Profile* profile, bool reconcilePlugins) {
     else
         m_pluginsTab->setProfile(profile); // bind model without the disk scan+save
     m_dataTab->setProfile(profile);
+    m_conflictsTab->setProfile(profile); // for mod-id -> name resolution
     m_downloadsTab->setProfile(profile);
 }
 

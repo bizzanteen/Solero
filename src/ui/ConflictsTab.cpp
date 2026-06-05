@@ -1,5 +1,6 @@
 #include "ConflictsTab.h"
 #include <QVBoxLayout>
+#include <QLineEdit>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QHeaderView>
@@ -8,15 +9,42 @@
 
 namespace solero {
 
+// Roles stashed on each file row so a double-click can navigate to it.
+static constexpr int kRoleModId   = Qt::UserRole + 1;
+static constexpr int kRoleRelPath = Qt::UserRole + 2;
+
 ConflictsTab::ConflictsTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(2);
+
+    m_filter = new QLineEdit(this);
+    m_filter->setPlaceholderText("Filter conflicts\xe2\x80\xa6");
+    m_filter->setClearButtonEnabled(true);
+    connect(m_filter, &QLineEdit::textChanged, this, [this](const QString& t){
+        m_filterText = t.trimmed();
+        applyFilter();
+    });
+    layout->addWidget(m_filter);
+
     m_tree = new QTreeWidget(this);
     m_tree->setHeaderLabels({"File", "Detail"});
     m_tree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     m_tree->header()->resizeSection(1, 200);
     m_tree->setRootIsDecorated(true);
+    connect(m_tree, &QTreeWidget::itemDoubleClicked, this,
+            [this](QTreeWidgetItem* item, int) {
+        QString modId = item->data(0, kRoleModId).toString();
+        if (modId.isEmpty()) return; // group header or placeholder
+        emit fileActivated(modId, item->data(0, kRoleRelPath).toString());
+    });
     layout->addWidget(m_tree);
+}
+
+QString ConflictsTab::modDisplayName(const QString& modId) const {
+    if (!m_profile) return modId;
+    if (const auto* e = m_profile->modList().findById(modId)) return e->name;
+    return modId;
 }
 
 void ConflictsTab::setConflictIndex(const ConflictIndex& index) { m_conflicts = index; refresh(); }
@@ -44,9 +72,12 @@ void ConflictsTab::refresh() {
         winRoot->setExpanded(true);
         for (const auto& path : winning) {
             auto losers = m_conflicts.losersOf(path);
-            QStringList loserNames(losers.begin(), losers.end());
+            QStringList loserNames;
+            for (const auto& id : losers) loserNames << modDisplayName(id);
             auto* item = new QTreeWidgetItem(winRoot, {path, QString("beats: %1").arg(loserNames.join(", "))});
             item->setForeground(1, QColor("#27ae60"));
+            item->setData(0, kRoleModId, m_currentModId);
+            item->setData(0, kRoleRelPath, path);
         }
     }
 
@@ -56,9 +87,29 @@ void ConflictsTab::refresh() {
         loseRoot->setForeground(0, QColor("#c0392b"));
         loseRoot->setExpanded(true);
         for (const auto& path : losing) {
-            auto* item = new QTreeWidgetItem(loseRoot, {path, QString("won by: %1").arg(m_conflicts.winnerOf(path))});
+            auto* item = new QTreeWidgetItem(loseRoot, {path, QString("won by: %1").arg(modDisplayName(m_conflicts.winnerOf(path)))});
             item->setForeground(1, QColor("#c0392b"));
+            item->setData(0, kRoleModId, m_currentModId);
+            item->setData(0, kRoleRelPath, path);
         }
+    }
+
+    applyFilter();
+}
+
+void ConflictsTab::applyFilter() {
+    for (int i = 0; i < m_tree->topLevelItemCount(); ++i) {
+        QTreeWidgetItem* root = m_tree->topLevelItem(i);
+        int visibleChildren = 0;
+        for (int c = 0; c < root->childCount(); ++c) {
+            QTreeWidgetItem* child = root->child(c);
+            bool hide = !m_filterText.isEmpty()
+                        && !child->text(0).contains(m_filterText, Qt::CaseInsensitive);
+            child->setHidden(hide);
+            if (!hide) ++visibleChildren;
+        }
+        // Hide a group header whose children are all filtered out.
+        root->setHidden(root->childCount() > 0 && visibleChildren == 0);
     }
 }
 

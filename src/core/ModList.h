@@ -9,6 +9,11 @@ public:
     void append(const ModEntry& entry);
     void remove(const QString& id);
     void move(int from, int to);
+    // Move a contiguous block of `count` entries starting at raw index `from` so
+    // that the block's first element lands at raw index `to` (interpreted against
+    // the list with the block removed). Used to drag a separator together with
+    // every mod in its section.
+    void moveSection(int from, int count, int to);
     void setEnabled(const QString& id, bool enabled);
     void update(const QString& id, const ModEntry& updated);
 

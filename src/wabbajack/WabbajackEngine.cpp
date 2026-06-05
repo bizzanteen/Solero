@@ -75,6 +75,9 @@ QList<WabbajackModlist> WabbajackEngine::parseModlistsJson(const QByteArray& std
         m.description = o.value("description").toString();
         m.author      = o.value("author").toString();
         m.machineUrl  = o.value("machineURL").toString();
+        // The engine's `install -m` wants the namespaced "Author/ListName" form
+        // (its "machineURL"), not the bare machineURL field in this JSON.
+        m.namespacedName = o.value("namespacedName").toString();
         m.game        = o.value("game").toString();
         m.gameHuman   = o.value("gameHumanFriendly").toString();
         m.version     = o.value("version").toString();

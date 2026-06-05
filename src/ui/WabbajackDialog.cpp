@@ -153,7 +153,9 @@ void WabbajackDialog::buildGalleryPage() {
         int row = m_list->currentRow();
         if (row < 0 || row >= m_filtered.size()) return;
         const auto& ml = m_filtered.at(row);
-        triggerInstall(ml.machineUrl, false, ml.title);
+        // install -m needs the namespaced "Author/ListName" id, not the bare machineURL.
+        const QString id = ml.namespacedName.isEmpty() ? ml.machineUrl : ml.namespacedName;
+        triggerInstall(id, false, ml.title);
     });
     connect(m_readmeBtn, &QPushButton::clicked, this, [this] {
         int row = m_list->currentRow();

@@ -160,7 +160,7 @@ QWebEngineView* NexusWebView::addTab(const QUrl& url) {
         if (idx < 0) return;
         QString t = title.trimmed();
         if (t.isEmpty()) t = QStringLiteral("Nexus");
-        if (t.size() > 20) t = t.left(19) + QStringLiteral("\xe2\x80\xa6");
+        if (t.size() > 20) t = t.left(19) + QChar(0x2026); // U+2026 HORIZONTAL ELLIPSIS
         m_tabs->setTabText(idx, t);
     });
 

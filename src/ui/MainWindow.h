@@ -15,7 +15,6 @@
 #include "ui/ExecutableDialog.h"
 #include "nexus/DownloadManager.h"
 #include "nexus/NxmHandler.h"
-#include "ui/NexusBrowser.h"
 
 class QSplitter;
 class QComboBox;
@@ -24,8 +23,10 @@ class QLabel;
 class QTabWidget;
 class QMenu;
 class QPushButton;
+class QStackedWidget;
 
 namespace solero {
+class NexusWebView;
 class ModListView;
 class PluginListView;
 class RightPane;
@@ -68,7 +69,7 @@ private:
     void onDeleteProfile();
     void onImportMo2();
     void onInstallMod();
-    void onBrowseNexus();
+    void onToggleNexus(bool on);
     void onNexusDownload(const QString& modId, const QString& fileId,
                          const QString& fileName, const QString& version);
     void installFromArchive(const QString& archive);
@@ -116,7 +117,10 @@ private:
     QMenu* m_toolsMenu = nullptr;
     solero::ToolStore* m_toolStore = nullptr;
     solero::DownloadManager* m_downloads = nullptr;
-    solero::NexusBrowser* m_nexusBrowser = nullptr;
+    solero::NexusWebView* m_nexusWeb = nullptr;
+    QStackedWidget* m_centralStack = nullptr;
+    QWidget* m_modManagerPage = nullptr;
+    QAction* m_browseAction = nullptr;
     // Pending Nexus metadata for in-flight nxm downloads, keyed by saved filename.
     // Written to a <archive>.solero-nexus.json sidecar when the download finishes.
     QHash<QString, QJsonObject> m_nxmMeta;

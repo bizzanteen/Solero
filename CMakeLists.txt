@@ -9,7 +9,10 @@ set(CMAKE_AUTOUIC ON)
 
 # Homebrew packages Qt modules in separate cellars (qtbase, qtsvg, ...). Add their
 # opt prefixes so a clean reconfigure finds Qt6 (incl. Qt6::Svg) without -D flags.
-foreach(_qtopt qtbase qtsvg mesa)
+# qtbase first (it provides moc/rcc tools). WebEngineWidgets pulls in Quick
+# (qtdeclarative), WebChannel and Positioning, so add those cellars too. (The
+# umbrella opt/qt is NOT used - its CoreTools target references a missing syncqt.)
+foreach(_qtopt qtbase qtsvg qtwebengine qtdeclarative qtwebchannel qtpositioning mesa)
   if(EXISTS "/home/linuxbrew/.linuxbrew/opt/${_qtopt}")
     list(APPEND CMAKE_PREFIX_PATH "/home/linuxbrew/.linuxbrew/opt/${_qtopt}")
   endif()
@@ -19,8 +22,30 @@ endforeach()
 if(NOT Qt6Svg_DIR AND EXISTS "/home/linuxbrew/.linuxbrew/opt/qtsvg/lib/cmake/Qt6Svg")
   set(Qt6Svg_DIR "/home/linuxbrew/.linuxbrew/opt/qtsvg/lib/cmake/Qt6Svg")
 endif()
+# WebEngineWidgets + its deps each keep their cmake config in their own cellar
+# (the keg-linked lib/cmake/Qt6Quick is incomplete). Point each _DIR at the cellar
+# path that actually contains the Config.cmake so a clean reconfigure resolves them.
+set(_solero_qt_dirs
+  "Qt6Quick=opt/qtdeclarative/lib/cmake/Qt6Quick"
+  "Qt6QuickWidgets=opt/qtdeclarative/lib/cmake/Qt6QuickWidgets"
+  "Qt6Qml=opt/qtdeclarative/lib/cmake/Qt6Qml"
+  "Qt6QmlModels=opt/qtdeclarative/lib/cmake/Qt6QmlModels"
+  "Qt6QmlIntegration=opt/qtdeclarative/lib/cmake/Qt6QmlIntegration"
+  "Qt6OpenGL=opt/qtbase/lib/cmake/Qt6OpenGL"
+  "Qt6WebChannel=opt/qtwebchannel/lib/cmake/Qt6WebChannel"
+  "Qt6Positioning=opt/qtpositioning/lib/cmake/Qt6Positioning"
+  "Qt6WebEngineCore=opt/qtwebengine/lib/cmake/Qt6WebEngineCore"
+  "Qt6WebEngineWidgets=opt/qtwebengine/lib/cmake/Qt6WebEngineWidgets")
+foreach(_pair IN LISTS _solero_qt_dirs)
+  string(REPLACE "=" ";" _kv "${_pair}")
+  list(GET _kv 0 _mod)
+  list(GET _kv 1 _rel)
+  if(NOT ${_mod}_DIR AND EXISTS "/home/linuxbrew/.linuxbrew/${_rel}")
+    set(${_mod}_DIR "/home/linuxbrew/.linuxbrew/${_rel}")
+  endif()
+endforeach()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network Xml Svg Test)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network Xml Svg Test WebEngineWidgets)
 
 # nlohmann/json header-only
 include(FetchContent)
@@ -93,7 +118,7 @@ set(SOLERO_SOURCES
   src/nexus/NxmHandler.cpp
   src/nexus/NexusApi.cpp
   src/nexus/DownloadManager.cpp
-  src/ui/NexusBrowser.cpp
+  src/ui/NexusWebView.cpp
   src/ui/ToolPanel.cpp
   src/ui/ToolSetupWizard.cpp
   src/ui/ToolsManagerDialog.cpp
@@ -107,7 +132,7 @@ set(SOLERO_SOURCES
 
 add_executable(solero ${SOLERO_SOURCES})
 target_include_directories(solero PRIVATE src ${CMAKE_BINARY_DIR}/include)
-target_link_libraries(solero PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::Xml Qt6::Svg libloot::libloot)
+target_link_libraries(solero PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::Xml Qt6::Svg Qt6::WebEngineWidgets libloot::libloot)
 
 enable_testing()
 add_subdirectory(tests)

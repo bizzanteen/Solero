@@ -16,6 +16,7 @@
 #include "ui/ToolSetupWizard.h"
 #include "ui/ExecutableDialog.h"
 #include "ui/ToolsManagerDialog.h"
+#include "ui/NexusWebView.h"
 #include "tools/ToolRunner.h"
 #include "tools/ToolCatalog.h"
 #include "fomod/FomodEngine.h"
@@ -27,6 +28,7 @@
 #include <QJsonArray>
 #include <QDateTime>
 #include <QTabWidget>
+#include <QStackedWidget>
 #include <QSplitter>
 #include <QComboBox>
 #include <QToolBar>
@@ -124,25 +126,25 @@ void MainWindow::handleNxmUrl(const QString& url) {
     meta["version"] = solero::NexusApi::fileVersion(link.modId, link.fileId, link.game);
     m_nxmMeta[fn] = meta;
     m_downloads->enqueue(cdn, fn, solero::AppConfig::instance().downloadsDir());
-    // Show the Downloads tab so the user sees progress.
+    // If the link came from the embedded Nexus browser, switch back to the mod
+    // manager so the user sees the download land in the Downloads tab.
+    if (m_browseAction && m_browseAction->isChecked()) m_browseAction->setChecked(false);
     m_rightPane->showDownloadsTab();
     statusBar()->showMessage("Downloading " + fn + "\xe2\x80\xa6");
 }
 
-void MainWindow::onBrowseNexus() {
-    if (!solero::NexusApi::keyAvailable()) {
-        QMessageBox::information(this, "Nexus",
-            "Sign in to Nexus first: \xe2\x9a\x99 Settings \xe2\x86\x92 Nexus Account.");
-        return;
+void MainWindow::onToggleNexus(bool on) {
+    if (on && !m_nexusWeb) {
+        m_nexusWeb = new solero::NexusWebView(this);
+        m_centralStack->addWidget(m_nexusWeb);
+        connect(m_nexusWeb, &solero::NexusWebView::nxmRequested,
+                this, &MainWindow::handleNxmUrl);
     }
-    if (!m_nexusBrowser) {
-        m_nexusBrowser = new solero::NexusBrowser(this);
-        connect(m_nexusBrowser, &solero::NexusBrowser::downloadRequested,
-                this, &MainWindow::onNexusDownload);
-    }
-    m_nexusBrowser->show();
-    m_nexusBrowser->raise();
-    m_nexusBrowser->activateWindow();
+    m_centralStack->setCurrentWidget(on && m_nexusWeb
+                                     ? static_cast<QWidget*>(m_nexusWeb)
+                                     : m_modManagerPage);
+    if (m_browseAction)
+        m_browseAction->setText(on ? "\xe2\x86\x90 Mod Manager" : "Browse Nexus");
 }
 
 void MainWindow::onNexusDownload(const QString& modId, const QString& fileId,
@@ -208,7 +210,10 @@ void MainWindow::setupToolbar() {
 
     // Install Mod action
     tb->addAction("Install Mod...", this, &MainWindow::onInstallMod);
-    tb->addAction("Browse Nexus", this, &MainWindow::onBrowseNexus);
+    m_browseAction = tb->addAction("Browse Nexus");
+    m_browseAction->setCheckable(true);
+    m_browseAction->setToolTip("Toggle a full nexusmods.com browser in the main view");
+    connect(m_browseAction, &QAction::toggled, this, &MainWindow::onToggleNexus);
     tb->addSeparator();
 
     // Tools dropdown
@@ -316,7 +321,13 @@ void MainWindow::setupCentralWidget() {
     outer->addWidget(m_splitter);
     outer->addWidget(m_bottomPanel);
     outer->setSizes({580, 200});
-    setCentralWidget(outer);
+
+    // The central area is a stack: page 0 = the mod-manager view, page 1 (lazy) =
+    // the embedded Nexus web browser, toggled from the toolbar.
+    m_modManagerPage = outer;
+    m_centralStack = new QStackedWidget(this);
+    m_centralStack->addWidget(outer);
+    setCentralWidget(m_centralStack);
 }
 
 // Find a file in dir case-insensitively (Skyrim's custom ini ships as

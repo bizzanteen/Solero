@@ -3,8 +3,11 @@
 #include "ui/MainWindow.h"
 #include "ui/ThemeAdapter.h"
 #include <QTimer>
+#include <QCoreApplication>
 
 int main(int argc, char* argv[]) {
+    // QtWebEngine widgets require shared OpenGL contexts set before QApplication.
+    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
     Application app(argc, argv);
     solero::ThemeAdapter::apply(app);
 

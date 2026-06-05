@@ -41,10 +41,13 @@ protected:
     void mouseDoubleClickEvent(QMouseEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
+    void showEvent(QShowEvent* event) override;
 
 private:
     ModListModel* m_model;
     QString m_filter;
+    bool m_didAutoSize = false;
+    void autoSizeColumns();
     void applyFilter();
     void onAddSeparator();
     void onAddSeparatorAt(int visibleRow);

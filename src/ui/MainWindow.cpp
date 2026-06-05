@@ -49,6 +49,7 @@
 #include <QIcon>
 #include <QStatusBar>
 #include <QTimer>
+#include <QRegularExpression>
 #include <QCoreApplication>
 #include <QFile>
 #include <QCryptographicHash>
@@ -59,6 +60,27 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <memory>
+
+namespace {
+// Nexus archive names look like "<name>-<modId>-<version-parts>-<timestamp>"
+// (e.g. "SkyUI_5_2_SE-12604-5-2-SE-1462810437"). When we know the exact modId
+// from the Nexus sidecar, strip everything from that "-<modId>" boundary on so
+// the displayed name reads just "<name>". For manually-added archives (no
+// sidecar / empty modId) leave the name untouched - guessing would be too risky.
+QString cleanModName(const QString& raw, const QString& nexusModId) {
+    if (nexusModId.isEmpty())
+        return raw;
+    QRegularExpression re("-" + QRegularExpression::escape(nexusModId) + "(?:-|$)");
+    QRegularExpressionMatch m = re.match(raw);
+    if (!m.hasMatch())
+        return raw;
+    QString cut = raw.left(m.capturedStart());
+    // Trim a trailing run of separators/whitespace left behind by the cut.
+    cut.replace(QRegularExpression("[-_\\s]+$"), QString());
+    cut = cut.trimmed();
+    return cut.isEmpty() ? raw : cut;
+}
+} // namespace
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("Solero");
@@ -805,6 +827,9 @@ void MainWindow::installFromArchive(const QString& archive) {
             if (!v.isEmpty()) mod.version = v;
         }
     }
+    // Strip the trailing "-<modId>-<version>-<timestamp>" tail Nexus appends to
+    // archive names, now that mod.nexusModId is known from the sidecar above.
+    mod.name = cleanModName(mod.name, mod.nexusModId);
     profile->modList().append(mod);
     profile->save();
 

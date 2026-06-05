@@ -7,6 +7,8 @@
 #include <QSet>
 #include <QMenu>
 #include <QContextMenuEvent>
+#include <QShowEvent>
+#include <QTimer>
 namespace solero {
 PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
     m_model = new PluginListModel(this);
@@ -31,10 +33,33 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
 }
 
 void PluginListView::applyHeaderLayout() {
-    horizontalHeader()->setSectionResizeMode(PluginListModel::ColName, QHeaderView::Stretch);
+    // All columns Interactive (no middle Stretch) so manual resizes behave
+    // predictably; the Plugin column is auto-fitted on first show instead.
+    horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     horizontalHeader()->resizeSection(PluginListModel::ColEnabled, 28);
     horizontalHeader()->resizeSection(PluginListModel::ColPriority, 40);
     horizontalHeader()->resizeSection(PluginListModel::ColFlags, 50);
+}
+
+void PluginListView::autoSizeColumns() {
+    horizontalHeader()->resizeSections(QHeaderView::ResizeToContents);
+    const int vw = viewport()->width();
+    if (vw <= 0) return; // not laid out yet - keep the ResizeToContents result
+    int other = 0;
+    for (int c = 0; c < model()->columnCount(); ++c)
+        if (c != PluginListModel::ColName) other += horizontalHeader()->sectionSize(c);
+    constexpr int kMinName = 160;
+    const int target = qMax(kMinName, vw - other);
+    if (target > horizontalHeader()->sectionSize(PluginListModel::ColName))
+        horizontalHeader()->resizeSection(PluginListModel::ColName, target);
+}
+
+void PluginListView::showEvent(QShowEvent* event) {
+    QTableView::showEvent(event);
+    if (!m_didAutoSize) {
+        m_didAutoSize = true;
+        QTimer::singleShot(0, this, [this]{ autoSizeColumns(); });
+    }
 }
 
 void PluginListView::onSortChanged(int col, Qt::SortOrder order) {
@@ -56,7 +81,12 @@ void PluginListView::onSortChanged(int col, Qt::SortOrder order) {
         setDragEnabled(false); setAcceptDrops(false);
     }
 }
-void PluginListView::setProfile(Profile* profile) { m_model->setProfile(profile); }
+void PluginListView::setProfile(Profile* profile) {
+    m_model->setProfile(profile);
+    // Re-fit columns once the profile's plugins first populate. The viewport-width
+    // guard in autoSizeColumns() makes this a no-op if the view isn't shown yet.
+    QTimer::singleShot(0, this, [this]{ autoSizeColumns(); });
+}
 
 void PluginListView::reconcileWith(Profile* profile, const QString& stagingRoot) {
     Q_UNUSED(stagingRoot);

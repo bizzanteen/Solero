@@ -24,6 +24,8 @@
 #include <QWidgetAction>
 #include <QStyledItemDelegate>
 #include <QLineEdit>
+#include <QShowEvent>
+#include <QTimer>
 
 namespace solero {
 
@@ -58,11 +60,12 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     setIconSize(QSize(20, 20));
     setEditTriggers(QAbstractItemView::SelectedClicked | QAbstractItemView::EditKeyPressed);
     setItemDelegateForColumn(ModListModel::ColName, new RenameDelegate(this));
-    // Name stretches to fill slack; all other columns are user-resizable.
+    // Every column is user-resizable (Interactive). A middle Stretch section makes
+    // manual resizes feel inverted, so we instead auto-fit on first show.
     auto* hdr = header();
     hdr->setSectionResizeMode(ModListModel::ColEnabled,  QHeaderView::Interactive);
     hdr->setSectionResizeMode(ModListModel::ColPriority, QHeaderView::Interactive);
-    hdr->setSectionResizeMode(ModListModel::ColName,     QHeaderView::Stretch);
+    hdr->setSectionResizeMode(ModListModel::ColName,     QHeaderView::Interactive);
     hdr->setSectionResizeMode(ModListModel::ColVersion,  QHeaderView::Interactive);
     hdr->setSectionResizeMode(ModListModel::ColFlags,    QHeaderView::Interactive);
     hdr->setStretchLastSection(false);
@@ -100,6 +103,33 @@ void ModListView::setProfile(Profile* profile) {
         m_model->setDependencyWarnings(warns);
     }
     applyFilter(); // model rebuilt -> re-apply any active filter
+    // Re-fit columns once the profile's data first populates. The viewport-width
+    // guard in autoSizeColumns() makes this a no-op if the view isn't shown yet.
+    QTimer::singleShot(0, this, [this]{ autoSizeColumns(); });
+}
+
+void ModListView::autoSizeColumns() {
+    // Fit every column to header + cell contents (leaves sections Interactive).
+    header()->resizeSections(QHeaderView::ResizeToContents);
+    const int vw = viewport()->width();
+    if (vw <= 0) return; // not laid out yet - keep the ResizeToContents result
+    int other = 0;
+    for (int c = 0; c < m_model->columnCount(); ++c)
+        if (c != ModListModel::ColName) other += header()->sectionSize(c);
+    constexpr int kMinName = 160;
+    const int target = qMax(kMinName, vw - other);
+    // Only widen the Name column up to the available slack; if contents are
+    // already wider, leave them (a horizontal scrollbar is fine).
+    if (target > header()->sectionSize(ModListModel::ColName))
+        header()->resizeSection(ModListModel::ColName, target);
+}
+
+void ModListView::showEvent(QShowEvent* event) {
+    QTreeView::showEvent(event);
+    if (!m_didAutoSize) {
+        m_didAutoSize = true;
+        QTimer::singleShot(0, this, [this]{ autoSizeColumns(); });
+    }
 }
 
 void ModListView::invalidateModCache(const QString& id) {

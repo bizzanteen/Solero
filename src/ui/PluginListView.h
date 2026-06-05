@@ -18,10 +18,13 @@ private slots:
     void onSortChanged(int col, Qt::SortOrder order);
 protected:
     void contextMenuEvent(QContextMenuEvent* event) override;
+    void showEvent(QShowEvent* event) override;
 private:
     void applyHeaderLayout();
+    void autoSizeColumns();
     void setAllEnabled(bool enabled);
     PluginListModel* m_model;
     QSortFilterProxyModel* m_proxy;
+    bool m_didAutoSize = false;
 };
 }

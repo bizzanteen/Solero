@@ -19,12 +19,17 @@ static constexpr int RoleRelPath  = Qt::UserRole + 1;
 static const char* kMime = "application/x-solero-file";
 
 ModFileTree::ModFileTree(QWidget* parent) : QTreeWidget(parent) {
-    setHeaderLabels({"File", "Status"});
+    setHeaderLabels({"File", "Type", "Status"});
     header()->setSectionResizeMode(0, QHeaderView::Interactive);
     header()->setSectionResizeMode(1, QHeaderView::Interactive);
+    header()->setSectionResizeMode(2, QHeaderView::Interactive);
     header()->setStretchLastSection(true);
+    header()->setSectionsClickable(true);
     setColumnWidth(0, 320);
-    setColumnWidth(1, 160);
+    setColumnWidth(1, 70);
+    setColumnWidth(2, 160);
+    setSortingEnabled(true);
+    sortByColumn(0, Qt::AscendingOrder);
     setRootIsDecorated(true);
     setAlternatingRowColors(true);
     setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -43,6 +48,11 @@ ModFileTree::ModFileTree(QWidget* parent) : QTreeWidget(parent) {
 void ModFileTree::buildTree(const QString& rootDir,
                             const std::function<void(QTreeWidgetItem*, const QString&)>& decorate) {
     clear();
+    // Disable sorting while building so inserts stay O(n) and the existing
+    // insertion/nesting logic isn't disturbed; re-enable after so the user's
+    // chosen sort re-applies once.
+    const bool wasSorting = isSortingEnabled();
+    setSortingEnabled(false);
     QMap<QString, QTreeWidgetItem*> dirItems;
     QDirIterator it(rootDir, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
     while (it.hasNext()) {
@@ -57,8 +67,8 @@ void ModFileTree::buildTree(const QString& rootDir,
             accumulated += (i > 0 ? "/" : "") + parts[i];
             if (!dirItems.contains(accumulated)) {
                 auto* dirItem = parent
-                    ? new QTreeWidgetItem(parent, {parts[i], ""})
-                    : new QTreeWidgetItem(this, {parts[i], ""});
+                    ? new QTreeWidgetItem(parent, {parts[i], "", ""})
+                    : new QTreeWidgetItem(this, {parts[i], "", ""});
                 dirItem->setIcon(0, style()->standardIcon(QStyle::SP_DirIcon));
                 dirItem->setExpanded(true);
                 dirItems[accumulated] = dirItem;
@@ -69,14 +79,16 @@ void ModFileTree::buildTree(const QString& rootDir,
         }
 
         QString filename = parts.last();
+        QString type = QFileInfo(filename).suffix().toLower();
         auto* item = parent
-            ? new QTreeWidgetItem(parent, {filename, ""})
-            : new QTreeWidgetItem(this, {filename, ""});
+            ? new QTreeWidgetItem(parent, {filename, type, ""})
+            : new QTreeWidgetItem(this, {filename, type, ""});
         item->setIcon(0, style()->standardIcon(QStyle::SP_FileIcon));
         item->setData(0, RoleFullPath, fullPath);
         item->setData(0, RoleRelPath,  relPath);
         decorate(item, relPath);
     }
+    setSortingEnabled(wasSorting);
 }
 
 void ModFileTree::showModFiles(const QString& stagingRoot,
@@ -107,11 +119,11 @@ void ModFileTree::showModFiles(const QString& stagingRoot,
         if (edited)
             status = status.isEmpty() ? QStringLiteral("edited")
                                       : QStringLiteral("edited \xE2\x80\xA2 ") + status;
-        item->setText(1, status);
-        if (color.isValid()) item->setForeground(1, color);
+        item->setText(2, status);
+        if (color.isValid()) item->setForeground(2, color);
         if (edited) {
             QFont f = item->font(0); f.setItalic(true); item->setFont(0, f);
-            item->setForeground(1, QColor("#e67e22"));
+            item->setForeground(2, QColor("#e67e22"));
         }
         Q_UNUSED(accent);
     });
@@ -125,9 +137,9 @@ void ModFileTree::showGameDir(const QString& gameDir,
     buildTree(gameDir, [&](QTreeWidgetItem* item, const QString& relPath) {
         auto owner = ownerByRelPath.value(relPath);
         if (!owner.isEmpty()) {
-            item->setText(1, "from: " + owner);
+            item->setText(2, "from: " + owner);
             item->setForeground(0, accent);
-            item->setForeground(1, accent);
+            item->setForeground(2, accent);
             QFont f = item->font(0); f.setBold(true); item->setFont(0, f);
         }
     });

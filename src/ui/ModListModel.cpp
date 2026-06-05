@@ -16,8 +16,15 @@ void ModListModel::setProfile(Profile* profile) {
     // A new profile means entirely different staging contents - drop all caches.
     m_emptyCache.clear();
     m_overwriteHasFiles = -1;
+    m_updates.clear();
     rebuildVisibleRows();
     endResetModel();
+}
+
+void ModListModel::setUpdateInfo(const QHash<QString, QPair<QString,QString>>& info) {
+    m_updates = info;
+    if (rowCount() > 0)
+        emit dataChanged(index(0,0), index(rowCount()-1, ColCount-1));
 }
 
 void ModListModel::invalidateModCache(const QString& id) {
@@ -165,12 +172,17 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
                 QStringList parts;
                 if (entry.isOutputMod) parts << "Output";
                 if (entry.hasFomodChoices) parts << "FOMOD";
+                if (m_updates.contains(entry.id)) parts << "\xe2\xac\x86 Update"; // ⬆ Update
                 QString flags = parts.join(" ");
                 if (m_depWarnings.contains(entry.id)) flags = "\xe2\x9a\xa0 " + flags; // ⚠
                 return flags;
             }
             default: return {};
         }
+    }
+    if (role == Qt::ToolTipRole && !isSep && m_updates.contains(entry.id)) {
+        const auto& u = m_updates.value(entry.id);
+        return QString("Update available: %1 \xe2\x86\x92 %2").arg(u.first, u.second); // installed -> latest
     }
     if (role == Qt::ToolTipRole && !isSep && m_depWarnings.contains(entry.id))
         return m_depWarnings.value(entry.id).join("\n");

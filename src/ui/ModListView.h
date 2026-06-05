@@ -1,5 +1,7 @@
 #pragma once
 #include <QTreeView>
+#include <QHash>
+#include <QPair>
 #include "core/Profile.h"
 
 namespace solero {
@@ -20,6 +22,9 @@ public:
     // Pass-through to the underlying model's cache invalidation. Call only when a
     // mod's staged files change. Empty id clears the whole empty/Overwrite cache.
     void invalidateModCache(const QString& id = QString());
+    // Pass-through to the underlying model's update-available indicator.
+    // Key = mod id; value = {installedVersion, latestVersion} (mods with updates).
+    void setUpdateInfo(const QHash<QString, QPair<QString,QString>>& info);
 
 signals:
     // Emitted on selection change. Each entry is a mod id, "__overwrite__" for the
@@ -27,6 +32,7 @@ signals:
     void modsSelected(const QStringList& ids);
     void reinstallRequested(const QString& modId);
     void endorseRequested(const QString& modId);
+    void identifyRequested(const QString& modId);
     void modsChanged();
     void modActivated(const QString& modId);
 

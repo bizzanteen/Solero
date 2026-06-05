@@ -49,6 +49,7 @@
 #include <QTimer>
 #include <QCoreApplication>
 #include <QFile>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFileInfo>
 #include <QFileDialog>
@@ -164,6 +165,8 @@ void MainWindow::setupToolbar() {
     profileMenu->addAction("Delete Current Profile", this, &MainWindow::onDeleteProfile);
     profileMenu->addSeparator();
     profileMenu->addAction("Import MO2 Profile...", this, &MainWindow::onImportMo2);
+    profileMenu->addSeparator();
+    profileMenu->addAction("Check for Mod Updates\xe2\x80\xa6", this, &MainWindow::onCheckUpdates);
     profileMenuBtn->setMenu(profileMenu);
     profileMenuBtn->setPopupMode(QToolButton::InstantPopup);
     tb->addWidget(profileMenuBtn);
@@ -261,6 +264,8 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onReinstallMod);
     connect(m_modListView, &solero::ModListView::endorseRequested,
             this, &MainWindow::onEndorseMod);
+    connect(m_modListView, &solero::ModListView::identifyRequested,
+            this, &MainWindow::onIdentifyMod);
     connect(m_modListView, &solero::ModListView::modsChanged,
             this, &MainWindow::onModsChanged);
     connect(m_modListView, &solero::ModListView::modActivated,
@@ -876,6 +881,112 @@ void MainWindow::onEndorseMod(const QString& modId) {
     else
         QMessageBox::warning(this, "Endorse on Nexus",
             res.message.isEmpty() ? QString("Could not endorse this mod.") : res.message);
+}
+
+void MainWindow::onCheckUpdates() {
+    if (!solero::NexusApi::keyAvailable()) {
+        QMessageBox::information(this, "Check for Mod Updates",
+            "A Nexus API key is required to check for updates.\n"
+            "Place your personal API key in ~/.nexus_api_key.");
+        return;
+    }
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return;
+
+    // Collect mods that have Nexus metadata: {id, nexusModId, current version}.
+    struct Item { QString id, modId, version; };
+    QList<Item> items;
+    const auto& list = profile->modList();
+    for (int i = 0; i < list.count(); ++i) {
+        const auto& e = list.at(i);
+        if (e.type != solero::EntryType::Mod || e.nexusModId.isEmpty()) continue;
+        items.append({e.id, e.nexusModId, e.version});
+    }
+    if (items.isEmpty()) {
+        QMessageBox::information(this, "Check for Mod Updates",
+            "No mods have Nexus metadata yet - install via the 'Mod Manager "
+            "Download' button or use right-click \xe2\x86\x92 Identify on Nexus.");
+        return;
+    }
+
+    solero::ProgressModal prog(this, "Check for Mod Updates",
+        QString("Checking %1 mods for updates\xe2\x80\xa6").arg(items.size()));
+    QHash<QString, QPair<QString,QString>> results; // modId(local id) -> {installed, latest}
+    int i = 0;
+    for (const auto& it : items) {
+        prog.setProgress(i, items.size());
+        prog.pump();
+        QString latest = solero::NexusApi::latestVersion(it.modId);
+        if (!latest.isEmpty() && !it.version.isEmpty() && latest != it.version)
+            results.insert(it.id, qMakePair(it.version, latest));
+        ++i;
+    }
+
+    m_modListView->setUpdateInfo(results);
+    if (results.isEmpty())
+        statusBar()->showMessage("All mods up to date.");
+    else
+        statusBar()->showMessage(QString("%1 update(s) available.").arg(results.size()));
+}
+
+void MainWindow::onIdentifyMod(const QString& modId) {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return;
+    solero::ModEntry* mod = profile->modList().findById(modId);
+    if (!mod) return;
+
+    if (!solero::NexusApi::keyAvailable()) {
+        QMessageBox::information(this, "Identify on Nexus",
+            "A Nexus API key is required to identify mods.\n"
+            "Place your personal API key in ~/.nexus_api_key.");
+        return;
+    }
+
+    // Nexus md5_search matches the uploaded ARCHIVE's md5, so we need the original
+    // source archive. Imported mods without one can't be matched.
+    if (mod->sourceArchive.isEmpty() || !QFile::exists(mod->sourceArchive)) {
+        QMessageBox::information(this, "Identify on Nexus",
+            "Identification needs the original archive this mod was installed from.\n"
+            "This mod has no source archive on disk, so it can't be matched.");
+        return;
+    }
+
+    QString md5;
+    {
+        solero::ProgressModal prog(this, "Identify on Nexus", "Hashing\xe2\x80\xa6");
+        prog.pump();
+        QFile f(mod->sourceArchive);
+        if (!f.open(QIODevice::ReadOnly)) {
+            QMessageBox::warning(this, "Identify on Nexus",
+                "Could not open the source archive for hashing.");
+            return;
+        }
+        QCryptographicHash hash(QCryptographicHash::Md5);
+        constexpr qint64 kChunk = 1 << 20; // 1 MiB
+        while (!f.atEnd()) {
+            QByteArray chunk = f.read(kChunk);
+            if (chunk.isEmpty()) break;
+            hash.addData(chunk);
+            prog.pump();
+        }
+        md5 = QString::fromLatin1(hash.result().toHex());
+    }
+
+    auto m = solero::NexusApi::md5Search(md5);
+    if (!m.ok) {
+        QMessageBox::information(this, "Identify on Nexus",
+            "No Nexus match found for this archive.");
+        return;
+    }
+
+    mod->nexusModId = m.modId;
+    mod->nexusFileId = m.fileId;
+    if (!m.version.isEmpty()) mod->version = m.version;
+    profile->save();
+    m_modListView->setProfile(profile);
+    QMessageBox::information(this, "Identify on Nexus",
+        QString("Identified as '%1' (Nexus mod %2).")
+            .arg(m.modName.isEmpty() ? mod->name : m.modName, m.modId));
 }
 
 void MainWindow::refreshDeployState() {

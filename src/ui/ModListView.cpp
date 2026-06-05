@@ -101,6 +101,10 @@ void ModListView::invalidateModCache(const QString& id) {
     m_model->invalidateModCache(id);
 }
 
+void ModListView::setUpdateInfo(const QHash<QString, QPair<QString,QString>>& info) {
+    m_model->setUpdateInfo(info);
+}
+
 void ModListView::mouseDoubleClickEvent(QMouseEvent* event) {
     auto idx = indexAt(event->pos());
     if (!idx.isValid()) { QTreeView::mouseDoubleClickEvent(event); return; }
@@ -220,6 +224,8 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         if (!entry->nexusModId.isEmpty())
             menu.addAction("Endorse on Nexus",
                            [this, id = entry->id]{ emit endorseRequested(id); });
+        menu.addAction("Identify on Nexus (MD5)",
+                       [this, id = entry->id]{ emit identifyRequested(id); });
         menu.addAction("Delete Mod...", [this]{ deleteSelectedMods(); });
         menu.addAction("Rename", [this, row = idx.row()]{ edit(m_model->index(row, ModListModel::ColName)); });
         menu.addSeparator();

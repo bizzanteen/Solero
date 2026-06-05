@@ -3,6 +3,7 @@
 #include "DataTab.h"
 #include "ConflictsTab.h"
 #include "DownloadsTab.h"
+#include "LootRulesEditor.h"
 #include "core/AppConfig.h"
 #include <QDir>
 #include <QLabel>
@@ -43,6 +44,8 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
 
     addTab(pluginsContainer, "Plugins");
     addTab(m_dataTab,      "Data");
+    m_lootRulesTab = new LootRulesEditor(this);
+    addTab(m_lootRulesTab, "LOOT Rules");
     addTab(m_conflictsTab, "Conflicts");
     m_downloadsTab = new DownloadsTab(this);
     addTab(m_downloadsTab, "Downloads");
@@ -85,6 +88,7 @@ void RightPane::setProfile(Profile* profile, bool reconcilePlugins) {
     else
         m_pluginsTab->setProfile(profile); // bind model without the disk scan+save
     m_dataTab->setProfile(profile);
+    m_lootRulesTab->setProfile(profile);
     m_conflictsTab->setProfile(profile); // for mod-id -> name resolution
     m_downloadsTab->setProfile(profile);
 }

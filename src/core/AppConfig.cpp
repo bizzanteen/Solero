@@ -81,6 +81,7 @@ bool AppConfig::load() {
     m_cycleSeparatorColors = obj["cycleSeparatorColors"].toBool(true);
     m_dataShowAllFiles     = obj["dataShowAllFiles"].toBool(false);
     m_promptAfterBrowserDownload = obj["promptAfterBrowserDownload"].toBool(true);
+    m_infoPanelVisible     = obj["infoPanelVisible"].toBool(true);
     m_lastSeparatorColor   = obj["lastSeparatorColor"].toString();
     return true;
 }
@@ -97,6 +98,7 @@ bool AppConfig::save() const {
     obj["cycleSeparatorColors"] = m_cycleSeparatorColors;
     obj["dataShowAllFiles"]     = m_dataShowAllFiles;
     obj["promptAfterBrowserDownload"] = m_promptAfterBrowserDownload;
+    obj["infoPanelVisible"]     = m_infoPanelVisible;
     obj["lastSeparatorColor"]   = m_lastSeparatorColor;
     return atomicWrite(configPath(), QJsonDocument(obj).toJson(QJsonDocument::Indented));
 }

@@ -39,6 +39,8 @@ public:
     void setPromptAfterBrowserDownload(bool v){ m_promptAfterBrowserDownload = v; }
     const QString& lastSeparatorColor() const { return m_lastSeparatorColor; }
     void setLastSeparatorColor(const QString& v) { m_lastSeparatorColor = v; }
+    bool infoPanelVisible() const             { return m_infoPanelVisible; }
+    void setInfoPanelVisible(bool v)          { m_infoPanelVisible = v; }
 
     static QString dataRoot();   // ~/.local/share/solero
     static QString configPath();
@@ -64,6 +66,7 @@ private:
     bool m_cycleSeparatorColors = true;
     bool m_dataShowAllFiles = false;
     bool m_promptAfterBrowserDownload = true;
+    bool m_infoPanelVisible = true;
     QString m_lastSeparatorColor;
 };
 

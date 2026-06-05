@@ -4,7 +4,6 @@
 
 namespace solero {
 class Profile;
-class LootRulesEditor;
 class ModInfoWidget;
 
 class BottomPanel : public QTabWidget {
@@ -18,7 +17,6 @@ public slots:
     void onModsSelected(const QStringList& ids);
 
 private:
-    LootRulesEditor* m_lootEditor = nullptr;
     ModInfoWidget*   m_modInfo    = nullptr;
     Profile*         m_profile    = nullptr;
 };

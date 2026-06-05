@@ -115,6 +115,7 @@ private:
     bool m_warnedMissingAppData = false; // one-time warning when AppData can't be located
     solero::DeployMode m_deployMode = solero::DeployMode::HardLink;
     QAction* m_deployAction = nullptr;
+    QAction* m_infoPanelAction = nullptr;
     QComboBox* m_profileCombo = nullptr;
     QSplitter* m_splitter = nullptr;
     solero::ModListView*    m_modListView = nullptr;

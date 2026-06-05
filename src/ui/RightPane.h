@@ -13,6 +13,7 @@ class PluginListView;
 class DataTab;
 class ConflictsTab;
 class DownloadsTab;
+class LootRulesEditor;
 }
 
 namespace solero {
@@ -53,6 +54,7 @@ private:
     QLabel*         m_pluginNotice = nullptr;
     QPushButton*    m_sortBtn = nullptr;
     DataTab*        m_dataTab;
+    LootRulesEditor* m_lootRulesTab;
     ConflictsTab*   m_conflictsTab;
     DownloadsTab*   m_downloadsTab;
     ConflictIndex   m_conflictIndex;

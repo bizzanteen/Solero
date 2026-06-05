@@ -308,6 +308,24 @@ void MainWindow::setupToolbar() {
             statusBar()->showMessage("Settings updated.");
     });
 
+    // Trailing stretch so the info-panel toggle sits at the far right.
+    auto* tbSpacer = new QWidget(tb);
+    tbSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    tb->addWidget(tbSpacer);
+
+    // Show/Hide info (bottom) panel toggle. Down arrow = visible (click to collapse),
+    // up arrow = hidden (click to show). State applied in setupCentralWidget once the
+    // panel exists.
+    m_infoPanelAction = tb->addAction("\xe2\x96\xbc", this, [this]{
+        bool on = m_infoPanelAction->isChecked();
+        if (m_bottomPanel) m_bottomPanel->setVisible(on);
+        m_infoPanelAction->setText(on ? "\xe2\x96\xbc" : "\xe2\x96\xb2");
+        solero::AppConfig::instance().setInfoPanelVisible(on);
+        solero::AppConfig::instance().save();
+    });
+    m_infoPanelAction->setCheckable(true);
+    m_infoPanelAction->setToolTip("Show/Hide info panel");
+
     rebuildToolsMenu();
 }
 
@@ -387,6 +405,14 @@ void MainWindow::setupCentralWidget() {
     outer->addWidget(m_splitter);
     outer->addWidget(m_bottomPanel);
     outer->setSizes({580, 200});
+
+    // Apply the persisted info-panel visibility to the panel + toolbar toggle.
+    bool infoVisible = solero::AppConfig::instance().infoPanelVisible();
+    m_bottomPanel->setVisible(infoVisible);
+    if (m_infoPanelAction) {
+        m_infoPanelAction->setChecked(infoVisible);
+        m_infoPanelAction->setText(infoVisible ? "\xe2\x96\xbc" : "\xe2\x96\xb2");
+    }
 
     // The central area is a stack: page 0 = the mod-manager view, page 1 (lazy) =
     // the embedded Nexus web browser, toggled from the toolbar.

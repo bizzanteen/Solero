@@ -6,6 +6,7 @@
 #include <QMimeData>
 #include <QByteArray>
 #include "core/AppConfig.h"
+#include "core/VersionUtil.h"
 #include "ui/IconUtil.h"
 
 namespace solero {
@@ -244,9 +245,10 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
                 if (isSep) return QVariant();
                 if (m_updates.contains(entry.id)) {
                     const auto& u = m_updates.value(entry.id);
-                    return u.first + " \xe2\x86\x92 " + u.second; // installed -> latest
+                    return u.first + " \xe2\x86\x92 " + u.second; // installed -> latest (already normalized)
                 }
-                return entry.version;
+                // Display a clean version (strip MO2's ".0" padding / variant tails).
+                return normalizeVersion(entry.version);
             case ColFlags: {
                 if (isSep) return QString();
                 QStringList parts;

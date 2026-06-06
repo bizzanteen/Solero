@@ -2,6 +2,7 @@
 #include "core/ProfileManager.h"
 #include "core/Profile.h"
 #include "core/PluginList.h"
+#include "core/VersionUtil.h"
 #include <QStringList>
 #include <QUuid>
 #include <QDir>
@@ -185,22 +186,6 @@ static bool isMo2Artifact(const QString& modName) {
 // Sets e.nexusModId only when modid is a positive integer and repository is
 // empty or "Nexus". Sets e.version from the General/version key. Robust to a
 // missing file (most mods have one; some won't).
-// MO2 meta.ini stores 4-component versions like "1.7.1.0" where Nexus reports
-// "1.7.1". Strip trailing all-zero components (keeping at least one component)
-// so the Version column matches Nexus: 1.7.1.0->1.7.1, 2.0.0.0->2, 1.0.1->1.0.1.
-static QString normalizeVersion(const QString& v) {
-    const QString t = v.trimmed();
-    if (t.isEmpty()) return t;
-    QStringList parts = t.split('.');
-    while (parts.size() > 1) {
-        bool ok = false;
-        const int n = parts.last().toInt(&ok);
-        if (ok && n == 0) parts.removeLast();
-        else break;
-    }
-    return parts.join('.');
-}
-
 static void applyModMeta(const QString& modDir, ModEntry& e) {
     const QString metaIni = modDir + "/meta.ini";
     if (!QFileInfo::exists(metaIni)) return;

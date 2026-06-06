@@ -12,6 +12,7 @@ function(add_solero_test name)
 endfunction()
 
 add_solero_test(test_ModList)
+add_solero_test(test_VersionUtil)
 add_solero_test(test_PluginList)
 add_solero_test(test_Profile)
 

@@ -70,6 +70,26 @@
 #include <memory>
 
 namespace {
+// True only if `latest` is a strictly newer version than `installed`. Compares
+// dotted components numerically and tolerates trailing ".0" padding - MO2's
+// meta.ini often stores "1.0.1.0" where Nexus reports "1.0.1", which a plain
+// string `!=` wrongly flags as an available update.
+bool isNewerVersion(const QString& installed, const QString& latest) {
+    const QStringList a = installed.trimmed().split('.', Qt::SkipEmptyParts);
+    const QStringList b = latest.trimmed().split('.', Qt::SkipEmptyParts);
+    const int n = a.size() > b.size() ? a.size() : b.size();
+    for (int i = 0; i < n; ++i) {
+        const QString sa = i < a.size() ? a[i] : QStringLiteral("0");
+        const QString sb = i < b.size() ? b[i] : QStringLiteral("0");
+        bool oka = false, okb = false;
+        const int ia = sa.toInt(&oka), ib = sb.toInt(&okb);
+        if (oka && okb) { if (ia != ib) return ib > ia; }      // numeric components
+        else { const int c = QString::compare(sa, sb, Qt::CaseInsensitive);
+               if (c != 0) return c < 0; }                     // non-numeric fallback
+    }
+    return false; // all components equal (incl. trailing-zero padding)
+}
+
 // Nexus archive names look like "<name>-<modId>-<version-parts>-<timestamp>"
 // (e.g. "SkyUI_5_2_SE-12604-5-2-SE-1462810437"). When we know the exact modId
 // from the Nexus sidecar, strip everything from that "-<modId>" boundary on so
@@ -154,10 +174,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             if (solero::ModEntry* target = profile->modList().findById(m_updateTargetId)) {
                 const QString resolvedV = r.version.trimmed();
                 const QString currentV  = target->version.trimmed();
-                if (!resolvedV.isEmpty() &&
-                    resolvedV.compare(currentV, Qt::CaseInsensitive) == 0) {
+                // Skip if the resolved version isn't actually newer (handles exact
+                // matches and trailing-zero padding like 1.0.1.0 vs 1.0.1).
+                if (!resolvedV.isEmpty() && !currentV.isEmpty() &&
+                    !isNewerVersion(currentV, resolvedV)) {
                     statusBar()->showMessage(
-                        m_updateTargetName + " is already up to date (version " + resolvedV + ").");
+                        m_updateTargetName + " is already up to date (version " + currentV + ").");
                     return;
                 }
             }
@@ -1401,7 +1423,7 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
         QHash<QString, QPair<QString,QString>> results; // local id -> {installed, latest}
         for (const auto& it : items) {
             QString latest = solero::NexusApi::latestVersion(it.modId);
-            if (!latest.isEmpty() && !it.version.isEmpty() && latest != it.version)
+            if (!latest.isEmpty() && !it.version.isEmpty() && isNewerVersion(it.version, latest))
                 results.insert(it.id, qMakePair(it.version, latest));
         }
         return results;

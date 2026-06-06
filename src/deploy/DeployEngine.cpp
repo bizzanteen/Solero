@@ -104,6 +104,16 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
         }
     }
 
+    // JContainers compatibility: it crashes at load (boost::filesystem
+    // directory_iterator::construct) if Data/SKSE/Plugins/JCData/Domains is
+    // missing. MO2's VFS provides that folder virtually, but the mod doesn't ship
+    // it and a file-only deploy can't create an empty directory - so create it
+    // when JContainers is present. (ryobg/JContainers#38.)
+    {
+        const QString jcData = m_gameDir + "/Data/SKSE/Plugins/JCData";
+        if (QDir(jcData).exists()) QDir().mkpath(jcData + "/Domains");
+    }
+
     record.saveToFile(recordPath(m_gameDir));
     conflicts.saveToFile(conflictIndexPath(profile.path()));
 

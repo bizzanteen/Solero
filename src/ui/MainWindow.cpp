@@ -1722,6 +1722,55 @@ QString MainWindow::ensureOutputMod(const QString& name) {
     return mod.id;
 }
 
+QString MainWindow::chooseOutputMod(const QString& defaultName, const QString& toolName) {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return {};
+
+    // Exact-name match -> reuse silently (e.g. a mod we created before).
+    for (const auto& m : profile->modList())
+        if (m.type == solero::EntryType::Mod && m.name == defaultName)
+            return m.id;
+
+    // Fuzzy: an imported/Wabbajack list usually ships the tool's output mod under
+    // a slightly different name. Suggest mods that share the tool's keyword and
+    // look like an output target (excluding the tool's *Resources* mod).
+    QString key = defaultName; key.remove(" Output", Qt::CaseInsensitive); key = key.trimmed();
+    QList<QPair<QString,QString>> matches; // (name, id)
+    for (const auto& m : profile->modList()) {
+        if (m.type != solero::EntryType::Mod) continue;
+        if (key.isEmpty() || !m.name.contains(key, Qt::CaseInsensitive)) continue;
+        if (m.name.contains("Resource", Qt::CaseInsensitive)) continue; // resources != output
+        const bool looksOutput = m.isOutputMod
+            || m.name.contains("Output", Qt::CaseInsensitive)
+            || m.name.compare(key, Qt::CaseInsensitive) == 0;
+        if (looksOutput) matches << qMakePair(m.name, m.id);
+    }
+    if (matches.isEmpty())
+        return ensureOutputMod(defaultName); // nothing to suggest -> create ours
+
+    QStringList items;
+    for (const auto& mp : matches) items << mp.first;
+    const QString createLabel = QString("\xe2\x9e\x95 Create new \"%1\"").arg(defaultName);
+    items << createLabel;
+    bool ok = false;
+    const QString chosen = QInputDialog::getItem(this, "Output mod for " + toolName,
+        QString("Solero found an existing mod that looks like %1's output.\n"
+                "Use it as the output target, or create a new one?").arg(toolName),
+        items, 0, /*editable=*/false, &ok);
+    if (!ok || chosen == createLabel)
+        return ensureOutputMod(defaultName);
+    for (const auto& mp : matches)
+        if (mp.first == chosen) {
+            // Tag the chosen mod as an output mod (colour + capture semantics).
+            if (auto* e = profile->modList().findById(mp.second); e && !e->isOutputMod) {
+                solero::ModEntry up = *e; up.isOutputMod = true;
+                profile->modList().update(up.id, up); profile->save();
+            }
+            return mp.second;
+        }
+    return ensureOutputMod(defaultName);
+}
+
 void MainWindow::onAddTool2() {
     solero::ToolSetupWizard dlg(this, m_toolStore);
     dlg.setModChoices(modChoices());
@@ -1734,7 +1783,7 @@ void MainWindow::onAddTool2() {
         if (!preset) continue;
         bool changed = false;
         if (preset->producesOutput && exe.outputModId.isEmpty()) {
-            exe.outputModId = ensureOutputMod(preset->outputModName);
+            exe.outputModId = chooseOutputMod(preset->outputModName, preset->name);
             exe.isCapturingOutput = true;
             changed = true;
         }
@@ -1742,7 +1791,8 @@ void MainWindow::onAddTool2() {
         for (int i = 0; i < exe.extraActions.size() && i < preset->extraActions.size(); ++i) {
             if (exe.extraActions[i].outputModId.isEmpty()
                 && !preset->extraActions[i].outputModName.isEmpty()) {
-                exe.extraActions[i].outputModId = ensureOutputMod(preset->extraActions[i].outputModName);
+                exe.extraActions[i].outputModId = chooseOutputMod(
+                    preset->extraActions[i].outputModName, preset->name + " (" + preset->extraActions[i].label + ")");
                 changed = true;
             }
         }

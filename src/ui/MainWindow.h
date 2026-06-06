@@ -115,6 +115,9 @@ private:
     void onRunTool(const solero::Executable& exe);
     void onAddTool2();
     QString ensureOutputMod(const QString& name);
+    // Pick a tool's output mod: suggest an existing load-order mod whose name
+    // matches (so imported lists' output mods are reused), else create one.
+    QString chooseOutputMod(const QString& defaultName, const QString& toolName);
     // Tools are global but their output mods live in whichever profile was active
     // at setup - so resolve/remove a mod across all profiles, not just the active one.
     QString modNameAnywhere(const QString& id) const;

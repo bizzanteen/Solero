@@ -136,6 +136,7 @@ private:
     bool m_deployDirty = false;
     bool m_loadOrderDirty = false; // user manually reordered plugins since last sort/deploy
     bool m_toolRunning = false;  // guards re-entrancy while a tool runs (nested event loop)
+    bool m_switchingProfile = false; // guards re-entrant switchProfile (pumps re-dispatch combo changes)
     bool m_warnedMissingAppData = false; // one-time warning when AppData can't be located
     solero::DeployMode m_deployMode = solero::DeployMode::HardLink;
     QAction* m_deployAction = nullptr;

@@ -613,6 +613,12 @@ static void seedProfileInis(solero::Profile* profile) {
 
 void MainWindow::switchProfile(const QString& name) {
     if (name.isEmpty()) return;
+    // Re-entrancy guard: this method pumps the event loop (ProgressModal) during
+    // deploy/undeploy, which can re-dispatch a combo change and re-enter here -
+    // a nested loadProfile would free the profile this call is mid-switch on.
+    if (m_switchingProfile) return;
+    m_switchingProfile = true;
+    struct Reset { bool& b; ~Reset() { b = false; } } reset{m_switchingProfile};
     if (m_toolRunning) {
         statusBar()->showMessage("A tool is running - please wait for it to finish.");
         // The combo may have driven this switch; revert its text to the active
@@ -1587,9 +1593,14 @@ void MainWindow::onImportMo2() {
 }
 
 void MainWindow::selectImportedProfile(const QString& name) {
+    // The importer loaded the new profile into the ProfileManager (m_active), which
+    // FREED the previously-active Profile - but the view models still hold that raw
+    // pointer. Detach them now so a paint during switchProfile's deploy/undeploy
+    // pump can't deref the dangling old profile.
+    detachProfileFromViews();
     refreshProfileCombo();
-    // setCurrentText fires currentTextChanged -> switchProfile, which loads it.
-    m_profileCombo->setCurrentText(name);
+    { QSignalBlocker b(m_profileCombo); m_profileCombo->setCurrentText(name); }
+    switchProfile(name); // explicit - don't depend on the combo's change signal
 }
 
 void MainWindow::onInstallWabbajack() {

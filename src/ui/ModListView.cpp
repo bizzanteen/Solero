@@ -27,6 +27,8 @@
 #include <QShowEvent>
 #include <QPaintEvent>
 #include <QPainter>
+#include <QFont>
+#include <QFontMetrics>
 #include <QTimer>
 #include <algorithm>
 
@@ -237,16 +239,31 @@ void ModListView::mousePressEvent(QMouseEvent* event) {
     auto idx = indexAt(event->pos());
     if (idx.isValid()) {
         const auto* entry = m_model->entryAt(idx.row());
-        if (entry && entry->type == EntryType::Separator
-            && selectionModel()->isSelected(idx)) {
-            // The separator's icon lives in the spanned column 0, at the left of
-            // the (full-width) row rect.
+        if (entry && entry->type == EntryType::Separator) {
+            // A separator renders full-width in the spanned column 0; its content
+            // is laid out left-to-right as: [optional icon] [▶/▼ arrow] [name].
             QModelIndex spanIdx = m_model->index(idx.row(), ModListModel::ColEnabled);
             QRect r = visualRect(spanIdx);
-            QRect iconRect(r.left() + 2, r.top(), iconSize().width() + 6, r.height());
-            if (iconRect.contains(event->pos())) {
-                showIconPicker(idx.row(), event->globalPosition().toPoint());
+            // The ▶/▼ disclosure arrow follows the optional icon. A single click on
+            // it collapses/expands the section, mirroring the group-parent arrow
+            // (the double-click / context-menu toggles still work as before).
+            int arrowLeft = r.left() + 2;
+            if (!entry->icon.isEmpty()) arrowLeft += iconSize().width() + 6;
+            QFont f = font(); f.setBold(true); // separators render bold (see model)
+            int arrowW = QFontMetrics(f).horizontalAdvance(QStringLiteral("\xe2\x96\xbc  ")) + 4;
+            QRect arrowRect(arrowLeft, r.top(), arrowW, r.height());
+            if (arrowRect.contains(event->pos())) {
+                m_model->toggleCollapse(idx.row());
                 return; // consume
+            }
+            // The separator's icon lives at the left of the (full-width) row rect;
+            // clicking it (once the row is selected) opens the icon picker.
+            if (selectionModel()->isSelected(idx)) {
+                QRect iconRect(r.left() + 2, r.top(), iconSize().width() + 6, r.height());
+                if (iconRect.contains(event->pos())) {
+                    showIconPicker(idx.row(), event->globalPosition().toPoint());
+                    return; // consume
+                }
             }
         }
     }

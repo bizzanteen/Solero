@@ -352,12 +352,6 @@ void MainWindow::setupToolbar() {
     tb->setMovable(false);
     tb->setIconSize({24, 24});
 
-    // Logo (emoji fallback, SVG not available)
-    QLabel* logo = new QLabel("☀", tb);
-    logo->setStyleSheet("font-size: 20px; padding: 4px;");
-    tb->addWidget(logo);
-    tb->addSeparator();
-
     // Profile selector
     tb->addWidget(new QLabel("Profile: "));
     m_profileCombo = new QComboBox(tb);

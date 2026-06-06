@@ -9,6 +9,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSet>
+#include <QHash>
+#include <QSettings>
 #include <QRegularExpression>
 #include <cctype>
 
@@ -67,6 +69,21 @@ static int stageModFolder(const QString& srcDir, const QString& modDir, bool sym
         if (!QFile::copy(f, dst)) ++failed;
     }
     return failed; // empty mod folder is a valid (empty) mod -> 0 failures
+}
+
+// Stage a single MO2 mod by name into stagingRoot, returning a ModEntry that
+// references the staged copy (fresh UUID + name). On copy mode, copyFailures is
+// incremented by the number of files that failed to copy. The source folder is
+// assumed to exist (callers check QDir(src).exists() first).
+static ModEntry stageMod(const QString& modName, const QString& mo2ModsDir,
+                         const QString& stagingRoot, bool symlink, int& copyFailures) {
+    ModEntry e;
+    e.type = EntryType::Mod;
+    e.name = modName;
+    e.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QString src = mo2ModsDir + "/" + modName;
+    copyFailures += stageModFolder(src, stagingRoot + "/" + e.id, symlink);
+    return e;
 }
 
 // Read a separator colour from <modsDir>/<sepFolder>_separator/meta.ini.
@@ -148,45 +165,12 @@ static QString readSeparatorColor(const QString& metaIniPath) {
     return QString::asprintf("#%02x%02x%02x", r, g, b);
 }
 
-Mo2ImportResult Mo2Importer::importProfile(const QString& mo2ProfileDir,
-                                           const QString& mo2ModsDir,
-                                           const QString& stagingRoot,
-                                           ProfileManager& profiles,
-                                           const QString& newProfileName,
-                                           bool symlinkMods) {
-    Mo2ImportResult r;
-    QFile ml(mo2ProfileDir + "/modlist.txt");
-    if (!ml.open(QIODevice::ReadOnly)) { r.errorMessage = "modlist.txt not found."; return r; }
-    QList<ModEntry> entries = parseModlist(QString::fromUtf8(ml.readAll()));
-
-    if (!profiles.createProfile(newProfileName)) {
-        r.errorMessage = "Profile '" + newProfileName + "' already exists."; return r;
-    }
-    Profile* p = profiles.loadProfile(newProfileName);
-    if (!p) { r.errorMessage = "Could not create profile."; return r; }
-
-    int staged = 0;
-    int copyFailures = 0;
-    for (ModEntry& e : entries) {
-        if (e.type == EntryType::Mod) {
-            QString src = mo2ModsDir + "/" + e.name;
-            if (QDir(src).exists()) {
-                copyFailures += stageModFolder(src, stagingRoot + "/" + e.id, symlinkMods);
-                ++staged;
-            }
-        } else if (e.type == EntryType::Separator) {
-            // Pull the real separator colour from its meta.ini if present.
-            const QString metaIni = mo2ModsDir + "/" + e.name + "_separator/meta.ini";
-            const QString col = readSeparatorColor(metaIni);
-            if (!col.isEmpty()) e.color = col;
-        }
-        p->modList().append(e);
-    }
-
-    // Plugins. MO2 stores the full load order in loadorder.txt (one plugin per
-    // line, top = first to load) and the active set in plugins.txt. We use
-    // loadorder.txt for order and plugins.txt only to decide enabled state.
-    // If loadorder.txt is missing, fall back to plugins.txt order.
+// Apply an MO2 profile's plugin load order + enabled state onto a Solero
+// profile. MO2 stores the full load order in loadorder.txt (one plugin per
+// line, top = first to load) and the active set in plugins.txt. We use
+// loadorder.txt for order and plugins.txt only to decide enabled state. If
+// loadorder.txt is missing, fall back to plugins.txt order ('*' = enabled).
+static void applyPlugins(const QString& mo2ProfileDir, Profile* p) {
     auto baseName = [](QString line) -> QString {
         line = line.trimmed();
         if (line.startsWith('*')) line = line.mid(1); // MO2 active-prefix form
@@ -227,7 +211,7 @@ Mo2ImportResult Mo2Importer::importProfile(const QString& mo2ProfileDir,
             bool enabled = havePlugins ? enabledSet.contains(name.toLower()) : true;
             appendPlugin(name, enabled);
         }
-    } else if (pl.isOpen() || havePlugins) {
+    } else if (havePlugins) {
         // Fallback: no loadorder.txt - use plugins.txt order, '*' = enabled.
         pl.seek(0);
         for (const QString& raw : QString::fromUtf8(pl.readAll()).split('\n')) {
@@ -237,6 +221,44 @@ Mo2ImportResult Mo2Importer::importProfile(const QString& mo2ProfileDir,
             appendPlugin(baseName(line), enabled);
         }
     }
+}
+
+Mo2ImportResult Mo2Importer::importProfile(const QString& mo2ProfileDir,
+                                           const QString& mo2ModsDir,
+                                           const QString& stagingRoot,
+                                           ProfileManager& profiles,
+                                           const QString& newProfileName,
+                                           bool symlinkMods) {
+    Mo2ImportResult r;
+    QFile ml(mo2ProfileDir + "/modlist.txt");
+    if (!ml.open(QIODevice::ReadOnly)) { r.errorMessage = "modlist.txt not found."; return r; }
+    QList<ModEntry> entries = parseModlist(QString::fromUtf8(ml.readAll()));
+
+    if (!profiles.createProfile(newProfileName)) {
+        r.errorMessage = "Profile '" + newProfileName + "' already exists."; return r;
+    }
+    Profile* p = profiles.loadProfile(newProfileName);
+    if (!p) { r.errorMessage = "Could not create profile."; return r; }
+
+    int staged = 0;
+    int copyFailures = 0;
+    for (ModEntry& e : entries) {
+        if (e.type == EntryType::Mod) {
+            QString src = mo2ModsDir + "/" + e.name;
+            if (QDir(src).exists()) {
+                copyFailures += stageModFolder(src, stagingRoot + "/" + e.id, symlinkMods);
+                ++staged;
+            }
+        } else if (e.type == EntryType::Separator) {
+            // Pull the real separator colour from its meta.ini if present.
+            const QString metaIni = mo2ModsDir + "/" + e.name + "_separator/meta.ini";
+            const QString col = readSeparatorColor(metaIni);
+            if (!col.isEmpty()) e.color = col;
+        }
+        p->modList().append(e);
+    }
+
+    applyPlugins(mo2ProfileDir, p);
 
     p->save();
     r.success = (copyFailures == 0);
@@ -245,6 +267,147 @@ Mo2ImportResult Mo2Importer::importProfile(const QString& mo2ProfileDir,
     if (copyFailures > 0) {
         r.errorMessage = QString("%1 file(s) failed to copy during import; "
                                  "the imported profile may be incomplete.").arg(copyFailures);
+    }
+    return r;
+}
+
+Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDir,
+                                                    const QString& stagingRoot,
+                                                    ProfileManager& profiles,
+                                                    const QString& listTitle,
+                                                    bool symlinkMods) {
+    Mo2InstanceImportResult r;
+    const QString modsDir = mo2InstanceDir + "/mods";
+    const QString profilesDir = mo2InstanceDir + "/profiles";
+
+    // Enumerate MO2 profile subdirs (each must carry a modlist.txt).
+    QStringList mo2Profiles;
+    for (const QString& sub : QDir(profilesDir).entryList(QDir::Dirs | QDir::NoDotAndDotDot,
+                                                          QDir::Name)) {
+        if (QFileInfo::exists(profilesDir + "/" + sub + "/modlist.txt"))
+            mo2Profiles << sub;
+    }
+    if (mo2Profiles.isEmpty()) {
+        r.errorMessage = "No MO2 profiles (with modlist.txt) found under\n" + profilesDir;
+        return r;
+    }
+
+    // Parse every profile's modlist.txt once, building the UNION of real mod
+    // names referenced across all of them.
+    QHash<QString, QList<ModEntry>> parsedByProfile; // mo2 name -> Solero-ordered entries
+    QStringList uniqueOrder;                          // first-seen order of unique mod names
+    QSet<QString> seen;                               // lowercased names already queued
+    for (const QString& mp : mo2Profiles) {
+        QFile ml(profilesDir + "/" + mp + "/modlist.txt");
+        if (!ml.open(QIODevice::ReadOnly)) continue;
+        QList<ModEntry> entries = parseModlist(QString::fromUtf8(ml.readAll()));
+        for (const ModEntry& e : entries) {
+            if (e.type != EntryType::Mod) continue;
+            const QString key = e.name.toLower();
+            if (seen.contains(key)) continue;
+            if (!QDir(modsDir + "/" + e.name).exists()) continue; // only real folders
+            seen.insert(key);
+            uniqueOrder << e.name;
+        }
+        parsedByProfile.insert(mp, entries);
+    }
+
+    // Stage each unique mod EXACTLY once; share id+name across all profiles.
+    QHash<QString, ModEntry> sharedMods; // lowercased name -> staged ModEntry
+    int copyFailures = 0;
+    for (const QString& name : uniqueOrder) {
+        ModEntry staged = stageMod(name, modsDir, stagingRoot, symlinkMods, copyFailures);
+        sharedMods.insert(name.toLower(), staged);
+    }
+    r.modsStaged = sharedMods.size();
+
+    // Resolve MO2 selected_profile -> the MO2 profile name we should map primary to.
+    QString selectedMo2;
+    const QString iniPath = mo2InstanceDir + "/ModOrganizer.ini";
+    if (QFileInfo::exists(iniPath)) {
+        QSettings ini(iniPath, QSettings::IniFormat);
+        // NOTE: QSettings folds the INI's special [General] section into the
+        // top level, so read without a "General/" group prefix (a beginGroup
+        // ("General") lookup would return empty for these keys).
+        selectedMo2 = ini.value("selected_profile").toString();
+        // MO2 sometimes wraps values in @ByteArray(...) / quotes; strip both.
+        if (selectedMo2.startsWith("@ByteArray(", Qt::CaseInsensitive)) {
+            int open = selectedMo2.indexOf('(');
+            int close = selectedMo2.lastIndexOf(')');
+            if (open >= 0 && close > open)
+                selectedMo2 = selectedMo2.mid(open + 1, close - open - 1);
+        }
+        selectedMo2.remove('"');
+        selectedMo2 = selectedMo2.trimmed();
+    }
+
+    // Build a Solero profile per MO2 profile, referencing the shared staged mods.
+    QHash<QString, QString> mo2ToSolero; // MO2 profile name -> created Solero name
+    for (const QString& mp : mo2Profiles) {
+        const QList<ModEntry>& entries = parsedByProfile.value(mp);
+
+        // Disambiguate the Solero profile name against existing profiles.
+        QString soleroName = mp;
+        const QStringList existing = profiles.profileNames();
+        auto taken = [&](const QString& n) { return existing.contains(n); };
+        if (taken(soleroName)) {
+            soleroName = mp + " (" + listTitle + ")";
+            QString base = soleroName;
+            int n = 2;
+            while (taken(soleroName)) {
+                soleroName = base + " " + QString::number(n);
+                ++n;
+            }
+        }
+
+        if (!profiles.createProfile(soleroName)) {
+            r.errorMessage = "Could not create profile '" + soleroName + "'.";
+            r.success = false;
+            return r;
+        }
+        Profile* p = profiles.loadProfile(soleroName);
+        if (!p) {
+            r.errorMessage = "Could not load created profile '" + soleroName + "'.";
+            r.success = false;
+            return r;
+        }
+
+        for (const ModEntry& e : entries) {
+            if (e.type == EntryType::Separator) {
+                // Separators are per-profile UI entries (fresh UUID, kept from parse).
+                ModEntry sep = e;
+                const QString metaIni = modsDir + "/" + e.name + "_separator/meta.ini";
+                const QString col = readSeparatorColor(metaIni);
+                if (!col.isEmpty()) sep.color = col;
+                p->modList().append(sep);
+            } else {
+                // Reference the SHARED staged mod (same id + name); preserve this
+                // profile's enabled state. Skip mods not staged (missing folder).
+                auto it = sharedMods.constFind(e.name.toLower());
+                if (it == sharedMods.constEnd()) continue;
+                ModEntry m = it.value();
+                m.enabled = e.enabled;
+                p->modList().append(m);
+            }
+        }
+
+        applyPlugins(profilesDir + "/" + mp, p);
+        p->save();
+
+        r.profileNames << soleroName;
+        mo2ToSolero.insert(mp, soleroName);
+    }
+
+    // primaryProfile = the Solero name for MO2 selected_profile, else first created.
+    if (!selectedMo2.isEmpty() && mo2ToSolero.contains(selectedMo2))
+        r.primaryProfile = mo2ToSolero.value(selectedMo2);
+    else
+        r.primaryProfile = r.profileNames.isEmpty() ? QString() : r.profileNames.first();
+
+    r.success = (copyFailures == 0) && !r.profileNames.isEmpty();
+    if (copyFailures > 0) {
+        r.errorMessage = QString("%1 file(s) failed to copy during import; "
+                                 "the imported profiles may be incomplete.").arg(copyFailures);
     }
     return r;
 }

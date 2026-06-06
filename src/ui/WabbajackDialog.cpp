@@ -562,41 +562,14 @@ void WabbajackDialog::doImport() {
         return;
     }
 
-    // Determine the profile name: ModOrganizer.ini selected_profile, else first subdir.
-    QString profileName;
-    const QString iniPath = m_installDir + "/ModOrganizer.ini";
-    if (QFileInfo::exists(iniPath)) {
-        QSettings ini(iniPath, QSettings::IniFormat);
-        ini.beginGroup("General");
-        profileName = ini.value("selected_profile").toString();
-        ini.endGroup();
-        // MO2 sometimes wraps values in @ByteArray(...) / quotes; trim quotes.
-        profileName.remove('"');
-    }
-    if (profileName.isEmpty()) {
-        const auto subs = QDir(profilesDir).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
-        if (!subs.isEmpty()) profileName = subs.first();
-    }
-    if (profileName.isEmpty()) {
-        m_backBtn->setVisible(true);
-        QMessageBox::warning(this, "Import",
-            "Install completed but no MO2 profile was found under\n" + profilesDir);
-        return;
-    }
-
-    const QString mo2ProfileDir = profilesDir + "/" + profileName;
-    if (!QDir(mo2ProfileDir).exists()) {
-        m_backBtn->setVisible(true);
-        QMessageBox::warning(this, "Import",
-            "Install completed but the profile folder wasn't found at\n" + mo2ProfileDir);
-        return;
-    }
-
-    const QString newName = sanitize(m_installTitle);
+    // Import every MO2 profile in the instance as its own Solero profile, sharing
+    // the staged mods so they aren't duplicated. listTitle disambiguates names.
+    const QString listTitle = sanitize(m_installTitle);
     QApplication::setOverrideCursor(Qt::WaitCursor);
-    auto r = Mo2Importer::importProfile(mo2ProfileDir, modsDir,
+    auto r = Mo2Importer::importInstance(m_installDir,
         AppConfig::instance().stagingDir(), *m_profiles,
-        newName.isEmpty() ? QStringLiteral("Wabbajack") : newName, /*symlinkMods=*/true);
+        listTitle.isEmpty() ? QStringLiteral("Wabbajack") : listTitle,
+        /*symlinkMods=*/true);
     QApplication::restoreOverrideCursor();
 
     if (!r.success) {
@@ -606,11 +579,17 @@ void WabbajackDialog::doImport() {
         return;
     }
 
+    const QString titleForMsg = listTitle.isEmpty() ? m_installTitle : listTitle;
     QMessageBox::information(this, "Imported",
-        QString("Imported '%1' - %2 mods.\n\n"
-                "Mods are symlinked from %3 - keep that folder.")
-            .arg(r.profileName).arg(r.modsStaged).arg(m_installDir));
-    emit profileImported(r.profileName);
+        QString("Imported '%1' - %2 profile%3 (%4), %5 mods.\n\n"
+                "Mods are symlinked from %6 - keep that folder.")
+            .arg(titleForMsg)
+            .arg(r.profileNames.size())
+            .arg(r.profileNames.size() == 1 ? "" : "s")
+            .arg(r.profileNames.join(", "))
+            .arg(r.modsStaged)
+            .arg(m_installDir));
+    emit profileImported(r.primaryProfile);
     accept();
 }
 

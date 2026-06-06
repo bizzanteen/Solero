@@ -1,9 +1,11 @@
 #pragma once
 #include "core/Types.h"
 #include <QString>
+#include <QStringList>
 #include <QList>
+#include <QHash>
 
-namespace solero { class ProfileManager; }
+namespace solero { class ProfileManager; class Profile; }
 
 namespace solero {
 
@@ -11,6 +13,14 @@ struct Mo2ImportResult {
     bool success = false;
     QString profileName;
     int modsStaged = 0;
+    QString errorMessage;
+};
+
+struct Mo2InstanceImportResult {
+    bool success = false;
+    QStringList profileNames;   // created Solero profile names, in instance order
+    QString primaryProfile;     // the one to switch to (MO2 selected_profile if found, else first)
+    int modsStaged = 0;         // unique mods staged
     QString errorMessage;
 };
 
@@ -27,6 +37,18 @@ public:
                                          ProfileManager& profiles,
                                          const QString& newProfileName,
                                          bool symlinkMods);
+
+    // Import an ENTIRE installed MO2/Wabbajack instance: create one Solero profile
+    // per MO2 profile (each has its own load order / enabled set / separators),
+    // while staging each unique referenced mod folder exactly once and sharing it
+    // (same Solero mod id) across all created profiles.
+    //   mo2InstanceDir : dir containing mods/ + profiles/ + ModOrganizer.ini
+    //   listTitle      : used to disambiguate Solero profile names on collision
+    static Mo2InstanceImportResult importInstance(const QString& mo2InstanceDir,
+                                                  const QString& stagingRoot,
+                                                  ProfileManager& profiles,
+                                                  const QString& listTitle,
+                                                  bool symlinkMods);
 };
 
 } // namespace solero

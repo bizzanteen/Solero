@@ -106,6 +106,99 @@ private slots:
             if (it->type == EntryType::Separator) sepColor = it->color;
         QCOMPARE(sepColor, QString("#568abe"));
     }
+    void importInstanceSharesModsAcrossProfiles() {
+        QTemporaryDir tmp;
+        QString mo2 = tmp.path() + "/MO2";
+        // 3 unique mod folders (each with a dummy file).
+        write(mo2 + "/mods/ModA/a.txt", "a");
+        write(mo2 + "/mods/ModB/b.txt", "b");
+        write(mo2 + "/mods/ModC/c.txt", "c");
+        // P1: ModA, separator, ModB. (top=high)
+        write(mo2 + "/profiles/P1/modlist.txt",
+              "+ModB\n+Core_separator\n+ModA\n");
+        write(mo2 + "/profiles/P1/plugins.txt", "*ModA.esp\n");
+        // P2: ModC, ModB(disabled), ModA - different subset/order.
+        write(mo2 + "/profiles/P2/modlist.txt",
+              "+ModA\n-ModB\n+ModC\n");
+        write(mo2 + "/profiles/P2/plugins.txt", "*ModC.esp\n");
+        // selected_profile = P2.
+        write(mo2 + "/ModOrganizer.ini",
+              "[General]\nselected_profile=P2\n");
+
+        QString staging = tmp.path() + "/staging";
+        ProfileManager pm(tmp.path() + "/profiles");
+
+        auto r = Mo2Importer::importInstance(mo2, staging, pm, "MyList", /*symlink*/false);
+        QVERIFY2(r.success, r.errorMessage.toUtf8());
+
+        // 2 Solero profiles created with the MO2 names.
+        QCOMPARE(r.profileNames.size(), 2);
+        QVERIFY(r.profileNames.contains("P1"));
+        QVERIFY(r.profileNames.contains("P2"));
+        // primaryProfile maps to selected_profile P2.
+        QCOMPARE(r.primaryProfile, QString("P2"));
+        // 3 unique mods staged, not 5.
+        QCOMPARE(r.modsStaged, 3);
+
+        // ProfileManager keeps a SINGLE active profile, so capture everything we
+        // need from P1 before loading P2 (which would invalidate the P1 pointer).
+        QString p1ModA;
+        {
+            // P1: Solero order (low->high): ModA, Core sep, ModB.
+            Profile* p1 = pm.loadProfile("P1");
+            QVERIFY(p1 != nullptr);
+            QCOMPARE(p1->modList().count(), 3);
+            QCOMPARE(p1->modList().at(0).name, QString("ModA"));
+            QCOMPARE(p1->modList().at(0).type, EntryType::Mod);
+            QCOMPARE(p1->modList().at(1).type, EntryType::Separator);
+            QCOMPARE(p1->modList().at(1).name, QString("Core"));
+            QCOMPARE(p1->modList().at(2).name, QString("ModB"));
+            p1ModA = p1->modList().at(0).id;
+            // Plugins applied per-profile.
+            QCOMPARE(p1->pluginList().count(), 1);
+            QCOMPARE(p1->pluginList().at(0).filename, QString("ModA.esp"));
+        }
+
+        QString p2ModA;
+        {
+            // P2: Solero order (low->high): ModC, ModB(disabled), ModA.
+            Profile* p2 = pm.loadProfile("P2");
+            QVERIFY(p2 != nullptr);
+            QCOMPARE(p2->modList().count(), 3);
+            QCOMPARE(p2->modList().at(0).name, QString("ModC"));
+            QCOMPARE(p2->modList().at(1).name, QString("ModB"));
+            QCOMPARE(p2->modList().at(1).enabled, false);
+            QCOMPARE(p2->modList().at(2).name, QString("ModA"));
+            p2ModA = p2->modList().at(2).id;
+            QCOMPARE(p2->pluginList().count(), 1);
+            QCOMPARE(p2->pluginList().at(0).filename, QString("ModC.esp"));
+        }
+
+        // Shared staging: ModA has the same Solero id in both profiles.
+        QVERIFY(!p1ModA.isEmpty());
+        QCOMPARE(p1ModA, p2ModA);
+        QVERIFY(QFile::exists(staging + "/" + p1ModA + "/Data/a.txt"));
+        // Staged exactly once: only 3 dirs under staging.
+        QCOMPARE(QDir(staging).entryList(QDir::Dirs | QDir::NoDotAndDotDot).size(), 3);
+    }
+    void importInstanceDisambiguatesNames() {
+        QTemporaryDir tmp;
+        QString mo2 = tmp.path() + "/MO2";
+        write(mo2 + "/mods/ModA/a.txt", "a");
+        write(mo2 + "/profiles/P1/modlist.txt", "+ModA\n");
+        write(mo2 + "/ModOrganizer.ini", "[General]\nselected_profile=P1\n");
+
+        ProfileManager pm(tmp.path() + "/profiles");
+        // Pre-create a Solero profile named "P1" to force disambiguation.
+        QVERIFY(pm.createProfile("P1"));
+
+        auto r = Mo2Importer::importInstance(mo2, tmp.path() + "/staging", pm,
+                                             "MyList", /*symlink*/false);
+        QVERIFY2(r.success, r.errorMessage.toUtf8());
+        QCOMPARE(r.profileNames.size(), 1);
+        QCOMPARE(r.profileNames.first(), QString("P1 (MyList)"));
+        QCOMPARE(r.primaryProfile, QString("P1 (MyList)"));
+    }
 };
 QTEST_MAIN(TestMo2Importer)
 #include "test_Mo2Importer.moc"

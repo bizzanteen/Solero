@@ -301,8 +301,8 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     if (role == Qt::BackgroundRole && !isSep && entry.type == EntryType::Mod) {
         auto ci = m_conflictHi.constFind(entry.id);
         if (ci != m_conflictHi.constEnd())
-            return ci.value() == 1 ? QColor(0x2e, 0x5d, 0x34)   // green: overwrites selected
-                                   : QColor(0x6b, 0x2e, 0x2e);  // red: overwritten by selected
+            return ci.value() == 1 ? QColor(0x6b, 0x2e, 0x2e)   // red: overwrites selected
+                                   : QColor(0x2e, 0x5d, 0x34);  // green: overwritten by selected
     }
     if (role == Qt::BackgroundRole && isSep && !entry.color.isEmpty())
         return QColor(entry.color);

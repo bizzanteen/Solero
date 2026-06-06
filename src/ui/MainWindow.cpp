@@ -45,6 +45,9 @@
 #include <QDialogButtonBox>
 #include <QKeyEvent>
 #include <QCloseEvent>
+#include <QElapsedTimer>
+#include <QThread>
+#include <QProcess>
 #include <QKeySequence>
 #include <QStandardPaths>
 #include <QMessageBox>
@@ -1930,15 +1933,35 @@ void MainWindow::onPlay() {
         return;
     }
 
-    // Steam DRM: launching the game's exe directly through Proton (not via the
-    // Steam client UI) needs steam_appid.txt in the game dir so steam_api can
-    // attach to the already-running Steam client. Without it the game exits
-    // immediately ("doesn't launch"). Create it once if missing.
+    // Steam DRM: launching the game's exe directly through Proton needs (a)
+    // steam_appid.txt so steam_api knows the appid, and (b) the Steam CLIENT
+    // running so steam_api can authenticate. Without the client, the game exits
+    // instantly (diagnosed: "steam-runtime-steam-remote: Steam is not running").
     {
         QFile appid(gameDir + "/steam_appid.txt");
         if (!appid.exists() && appid.open(QIODevice::WriteOnly)) {
             appid.write("489830"); appid.close();
         }
+    }
+    auto steamRunning = [] {
+        QProcess p; p.start("pgrep", {"-x", "steam"}); p.waitForFinished(2000);
+        return p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0;
+    };
+    if (!steamRunning()) {
+        statusBar()->showMessage("Starting Steam (needed for the game's DRM)\xe2\x80\xa6");
+        qApp->processEvents();
+        QProcess::startDetached("steam", {"-silent"});
+        QElapsedTimer t; t.start();
+        while (!steamRunning() && t.elapsed() < 30000) { QThread::msleep(400); qApp->processEvents(); }
+        if (!steamRunning()) {
+            QMessageBox::warning(this, "Play",
+                "Steam must be running to launch the game (it handles Skyrim's DRM).\n"
+                "Please start Steam, then click Play again.");
+            return;
+        }
+        // Give the freshly-started client a moment to finish initializing.
+        QElapsedTimer g; g.start();
+        while (g.elapsed() < 5000) { QThread::msleep(200); qApp->processEvents(); }
     }
 
     solero::Executable exe;
@@ -1953,15 +1976,32 @@ void MainWindow::onPlay() {
     m_toolRunning = true;
     showRunLock(exe.name);
     statusBar()->showMessage("Launching " + exe.name + "\xe2\x80\xa6");
+    QElapsedTimer runTimer; runTimer.start();
     auto res = solero::ToolRunner::run(exe, gameDir, solero::AppConfig::instance().stagingDir());
+    const qint64 ranMs = runTimer.elapsed();
     hideRunLock();
     m_toolRunning = false;
 
-    if (!res.launched)
+    // Always log the launch output for diagnosis.
+    {
+        QFile lg(solero::AppConfig::dataRoot() + "/play.log");
+        if (lg.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            lg.write(("exit=" + QString::number(res.launched) + " ranMs=" + QString::number(ranMs)
+                      + "\n" + res.output).toUtf8());
+        }
+    }
+    if (!res.launched) {
         QMessageBox::warning(this, "Play",
             res.error.isEmpty() ? "Failed to launch the game." : res.error);
-    else
+    } else if (ranMs < 8000) {
+        // The game exited almost immediately - almost always a launch problem.
+        QMessageBox::warning(this, "Play",
+            "The game exited almost immediately - it likely failed to start "
+            "(e.g. Steam DRM, a missing dependency, or a crashing plugin).\n\n"
+            "See ~/.local/share/solero/play.log for the launch output.");
+    } else {
         statusBar()->showMessage("Game closed.");
+    }
 }
 
 void MainWindow::onEditTool(const QString& id) {

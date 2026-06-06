@@ -29,7 +29,11 @@ private slots:
     void onAdvancedFileChanged();
     void onAdvancedSave();
 
+protected:
+    void closeEvent(QCloseEvent* event) override; // prompt to save unsaved changes
+
 private:
+    bool hasUnsavedChanges() const;
     struct RowWidget {
         BethiniRow row;
         QWidget*   widget = nullptr;  // editor widget (combo/spin/check/edit)

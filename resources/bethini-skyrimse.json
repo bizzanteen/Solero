@@ -309,29 +309,6 @@
         "JAPANESE",
         "Manual..."
        ]
-      },
-      {
-       "label": "Freebies Seen",
-       "type": "Checkbutton",
-       "tooltip": "Toggles the pop-up to download the Creation Club Content.",
-       "iniKeys": [
-        {
-         "key": "bFreebiesSeen",
-         "section": "General",
-         "file": "SkyrimPrefs.ini",
-         "presets": {}
-        }
-       ],
-       "onValues": [
-        [
-         "1"
-        ]
-       ],
-       "offValues": [
-        [
-         "0"
-        ]
-       ]
       }
      ]
     }

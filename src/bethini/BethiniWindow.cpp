@@ -1,4 +1,5 @@
 #include "BethiniWindow.h"
+#include <QCloseEvent>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QTabWidget>
@@ -577,6 +578,27 @@ void BethiniWindow::onSave() {
     for (auto& rw : m_rows)
         if (rowDiffersFromIni(rw)) saveRow(rw);
     saveAllInis();
+    if (m_advEdit) m_advEdit->document()->setModified(false);
+    showStatus(QStringLiteral("\xe2\x9c\x93 Saved to profile"));
+}
+
+bool BethiniWindow::hasUnsavedChanges() const {
+    for (const auto& rw : m_rows)
+        if (rowDiffersFromIni(rw)) return true;
+    if (m_advEdit && m_advEdit->document()->isModified()) return true;
+    return false;
+}
+
+void BethiniWindow::closeEvent(QCloseEvent* event) {
+    if (m_profile && hasUnsavedChanges()) {
+        const auto r = QMessageBox::question(this, "Unsaved changes",
+            "You have unsaved BethINI changes. Save them to the profile before closing?",
+            QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel,
+            QMessageBox::Save);
+        if (r == QMessageBox::Cancel) { event->ignore(); return; }
+        if (r == QMessageBox::Save)   onSave();
+    }
+    QWidget::closeEvent(event);
 }
 
 void BethiniWindow::onSearch(const QString& filter) {

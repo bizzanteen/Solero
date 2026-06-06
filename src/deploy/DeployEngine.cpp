@@ -171,7 +171,13 @@ int DeployEngine::deployMod(const QString& modId,
             }
         }
 
-        if (!linker.deploy(srcPath, dstPath)) {
+        // Resolve symlinks so we hardlink/copy the real file. Symlink-staged mods
+        // (and the StockGame overlay) point back into their source; deploying the
+        // symlink itself makes executables like skse64_loader.exe run FROM that
+        // source dir and launch the wrong game instance (StockGame's vanilla copy).
+        QString realSrc = QFileInfo(srcPath).canonicalFilePath();
+        if (realSrc.isEmpty()) realSrc = srcPath;
+        if (!linker.deploy(realSrc, dstPath)) {
             qWarning() << "Deploy failed for" << relPath << "(mod" << modId << ")";
             ++failures;
             continue; // do not record a failed link as deployed

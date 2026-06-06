@@ -41,6 +41,27 @@ add_solero_deploy_test(test_DeployRecord)
 add_solero_deploy_test(test_ConflictIndex)
 add_solero_deploy_test(test_DeployEngine)
 
+# ToolRunner's capture helper depends on the deploy record/engine, so reuse the
+# deploy source/link set plus ToolRunner.cpp itself.
+add_executable(test_ToolRunner test_ToolRunner.cpp
+  ../src/tools/ToolRunner.cpp
+  ../src/deploy/Linker.cpp
+  ../src/deploy/DeployRecord.cpp
+  ../src/deploy/ConflictIndex.cpp
+  ../src/deploy/DeployEngine.cpp
+  ../src/loot/LootSorter.cpp
+  ../src/install/PluginScanner.cpp
+  ../src/core/ModList.cpp
+  ../src/core/PluginList.cpp
+  ../src/core/Profile.cpp
+  ../src/core/ProfileManager.cpp
+  ../src/ai/AITransaction.cpp
+  ../src/core/AppConfig.cpp
+)
+target_include_directories(test_ToolRunner PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_ToolRunner PRIVATE Qt6::Core Qt6::Test libloot::libloot)
+add_test(NAME test_ToolRunner COMMAND test_ToolRunner)
+
 function(add_solero_install_test name)
   add_executable(${name} ${name}.cpp
     ../src/install/ArchiveTool.cpp

@@ -1991,12 +1991,18 @@ void MainWindow::onPlay() {
     exe.workingDir = gameDir;
     exe.runtime    = solero::RuntimeType::Proton;          // launch through the Skyrim Proton prefix
     exe.winePrefix = QDir(gameDir + "/../..").canonicalPath() + "/compatdata/489830";
+    // No VFS: files the game writes at runtime (e.g. Community Shaders' shader
+    // cache) land in the real Data folder. Capture them after the session into
+    // the Overwrite folder (empty outputModId) so they don't pollute the game
+    // dir; the capture skips files owned by the deploy record.
+    exe.isCapturingOutput = true;
 
     // Lock the UI (MO2-style) while the game runs; ToolRunner blocks via an event
     // loop until the process exits, then we unlock.
     m_toolRunning = true;
     showRunLock(exe.name);
-    statusBar()->showMessage("Launching " + exe.name + "\xe2\x80\xa6");
+    statusBar()->showMessage("Launching " + exe.name
+        + " - new files created during play move to Overwrite\xe2\x80\xa6");
     QElapsedTimer runTimer; runTimer.start();
     auto res = solero::ToolRunner::run(exe, gameDir, solero::AppConfig::instance().stagingDir());
     const qint64 ranMs = runTimer.elapsed();
@@ -2023,6 +2029,14 @@ void MainWindow::onPlay() {
     } else {
         statusBar()->showMessage("Game closed.");
     }
+
+    // Runtime files written during play were captured into Overwrite - invalidate
+    // cached scans and rebuild so the Overwrite entry reflects the new files
+    // (mirrors the post-run refresh in onRunTool).
+    m_modListView->invalidateModCache();
+    m_rightPane->invalidateModPluginCache();
+    if (auto* p = m_profileMgr->activeProfile()) { m_rightPane->refreshPlugins(p); m_modListView->setProfile(p); }
+    updatePluginNotice();
 }
 
 void MainWindow::onEditTool(const QString& id) {

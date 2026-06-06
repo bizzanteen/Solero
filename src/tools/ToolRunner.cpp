@@ -1,5 +1,7 @@
 #include "ToolRunner.h"
 #include "core/AppConfig.h"
+#include "deploy/DeployEngine.h"
+#include "deploy/DeployRecord.h"
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QEventLoop>
@@ -113,32 +115,48 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
         QString destBase = exe.outputModId.isEmpty()
             ? (AppConfig::dataRoot() + "/overwrite") // canonical Overwrite location
             : (stagingRoot + "/" + exe.outputModId + "/Data");
-        QDir dataDir(captureBase);
-        int failures = 0;
-        // Single walk: capture every file touched at or after runStart. This
-        // catches both newly created files and in-place modifications (e.g.
-        // xEdit cleaning a master), which the old before/after-set approach
-        // missed. Note: a file modified through a hardlink also changes the
-        // staging master - a VFS-less limitation that's acceptable; we still
-        // capture the result to the output mod.
-        QDirIterator it(captureBase, QDir::Files, QDirIterator::Subdirectories);
-        while (it.hasNext()) {
-            QString f = it.next();
-            if (it.fileInfo().lastModified() < runStart) continue;
-            QString relUnderData = dataDir.relativeFilePath(f);
-            QString dst = destBase + "/" + relUnderData;
-            QDir().mkpath(QFileInfo(dst).path());
-            if (QFile::rename(f, dst)) continue;
-            // rename fails across filesystems -> copy then remove, and verify.
-            if (QFile::exists(dst)) QFile::remove(dst);
-            if (QFile::copy(f, dst) && QFile::remove(f)) continue;
-            ++failures;
-        }
-        if (failures > 0)
-            r.output += QString("\n[warning: %1 captured file(s) could not be moved to the output mod]")
-                            .arg(failures);
+        // Skip files owned by the active deployment so a deployed mod file isn't
+        // moved into the capture target merely because its mtime was bumped.
+        DeployRecord rec = DeployRecord::loadFromFile(DeployEngine::recordPath(gameDir));
+        QString warning;
+        captureNewFiles(captureBase, destBase, gameDir, runStart, rec, &warning);
+        r.output += warning;
     }
     return r;
+}
+
+int ToolRunner::captureNewFiles(const QString& captureBase, const QString& destBase,
+                                const QString& gameDir, const QDateTime& runStart,
+                                const DeployRecord& record, QString* warning) {
+    QDir dataDir(captureBase);
+    QDir gameRoot(gameDir);
+    int moved = 0, failures = 0;
+    // Single walk: capture every file touched at or after runStart. This catches
+    // both newly created files (e.g. Community Shaders' runtime shader cache) and
+    // in-place modifications (e.g. xEdit cleaning a master), which the old
+    // before/after-set approach missed. Note: a file modified through a hardlink
+    // also changes the staging master - a VFS-less limitation that's acceptable;
+    // we still capture the result to the target.
+    QDirIterator it(captureBase, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        QString f = it.next();
+        if (it.fileInfo().lastModified() < runStart) continue;
+        // relPath relative to gameDir (e.g. "Data/SKSE/Plugins/foo.dll") matches
+        // the deploy record's keys; a managed/deployed file is left in place.
+        if (!record.ownerOf(gameRoot.relativeFilePath(f)).isEmpty()) continue;
+        QString relUnderData = dataDir.relativeFilePath(f);
+        QString dst = destBase + "/" + relUnderData;
+        QDir().mkpath(QFileInfo(dst).path());
+        if (QFile::rename(f, dst)) { ++moved; continue; }
+        // rename fails across filesystems -> copy then remove, and verify.
+        if (QFile::exists(dst)) QFile::remove(dst);
+        if (QFile::copy(f, dst) && QFile::remove(f)) { ++moved; continue; }
+        ++failures;
+    }
+    if (failures > 0 && warning)
+        *warning += QString("\n[warning: %1 captured file(s) could not be moved to the output mod]")
+                        .arg(failures);
+    return moved;
 }
 
 } // namespace solero

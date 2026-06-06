@@ -49,6 +49,9 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     m_model = new ModListModel(this);
     setModel(m_model);
     connect(m_model, &ModListModel::modsChanged, this, &ModListView::modsChanged);
+    // Model resets (rebuild()/setProfile()) clear first-column spans, so re-apply
+    // them whenever the model is reset to keep separators full-width.
+    connect(m_model, &QAbstractItemModel::modelReset, this, &ModListView::applyRowSpans);
     setRootIsDecorated(false);
     setIndentation(0); // remove the empty tree-indent column before the checkbox
     setDragDropMode(QAbstractItemView::InternalMove);
@@ -105,6 +108,7 @@ void ModListView::setProfile(Profile* profile) {
                         AppConfig::instance().stagingDir());
         m_model->setDependencyWarnings(warns);
     }
+    applyRowSpans(); // separators span full width; reset stale spans
     applyFilter(); // model rebuilt -> re-apply any active filter
     // Re-fit columns once the profile's data first populates. The viewport-width
     // guard in autoSizeColumns() makes this a no-op if the view isn't shown yet.
@@ -125,6 +129,18 @@ void ModListView::autoSizeColumns() {
     // already wider, leave them (a horizontal scrollbar is fine).
     if (target > header()->sectionSize(ModListModel::ColName))
         header()->resizeSection(ModListModel::ColName, target);
+}
+
+void ModListView::applyRowSpans() {
+    // Separator rows render full-width with their content in column 0; every other
+    // row spans normally. Resets clear spans, so this re-applies (and resets stale
+    // spans on rows that are no longer separators).
+    const int rows = m_model->rowCount();
+    for (int row = 0; row < rows; ++row) {
+        const auto* entry = m_model->entryAt(row);
+        const bool isSep = entry && entry->type == EntryType::Separator;
+        setFirstColumnSpanned(row, QModelIndex(), isSep);
+    }
 }
 
 void ModListView::showEvent(QShowEvent* event) {
@@ -183,8 +199,10 @@ void ModListView::mousePressEvent(QMouseEvent* event) {
         const auto* entry = m_model->entryAt(idx.row());
         if (entry && entry->type == EntryType::Separator
             && selectionModel()->isSelected(idx)) {
-            QModelIndex nameIdx = m_model->index(idx.row(), ModListModel::ColName);
-            QRect r = visualRect(nameIdx);
+            // The separator's icon lives in the spanned column 0, at the left of
+            // the (full-width) row rect.
+            QModelIndex spanIdx = m_model->index(idx.row(), ModListModel::ColEnabled);
+            QRect r = visualRect(spanIdx);
             QRect iconRect(r.left() + 2, r.top(), iconSize().width() + 6, r.height());
             if (iconRect.contains(event->pos())) {
                 showIconPicker(idx.row(), event->globalPosition().toPoint());

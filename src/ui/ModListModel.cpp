@@ -216,6 +216,13 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     const auto& entry = m_profile->modList().at(raw);
     bool isSep = (entry.type == EntryType::Separator);
 
+    // Separators render full-width in the spanned column 0: their "arrow + name"
+    // label, icon and edit text all live on ColEnabled, not ColName.
+    if (isSep && role == Qt::DisplayRole && idx.column() == ColEnabled) {
+        QString arrow = entry.collapsed ? "\xe2\x96\xb6" : "\xe2\x96\xbc";
+        return QString("%1  %2").arg(arrow, entry.name);
+    }
+
     if (role == Qt::DisplayRole) {
         switch (idx.column()) {
             case ColPriority: {
@@ -225,10 +232,7 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
                 return m_priorityByRaw.value(raw, 0);
             }
             case ColName:
-                if (isSep) {
-                    QString arrow = entry.collapsed ? "\xe2\x96\xb6" : "\xe2\x96\xbc";
-                    return QString("%1  %2").arg(arrow, entry.name);
-                }
+                if (isSep) return QVariant(); // separator label lives on ColEnabled
                 if (isGroupParent(raw)) {
                     QString arrow = entry.collapsed ? "\xe2\x96\xb6 " : "\xe2\x96\xbc "; // ▶/▼
                     return arrow + entry.name;
@@ -264,9 +268,12 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
         return m_depWarnings.value(entry.id).join("\n");
     if (role == Qt::CheckStateRole && idx.column() == ColEnabled && !isSep)
         return entry.enabled ? Qt::Checked : Qt::Unchecked;
-    if (role == Qt::EditRole && idx.column() == ColName)
+    // Separators rename via their spanned column 0; mods rename via ColName.
+    if (role == Qt::EditRole && isSep && idx.column() == ColEnabled)
         return entry.name;
-    if (role == Qt::DecorationRole && isSep && idx.column() == ColName && !entry.icon.isEmpty()) {
+    if (role == Qt::EditRole && !isSep && idx.column() == ColName)
+        return entry.name;
+    if (role == Qt::DecorationRole && isSep && idx.column() == ColEnabled && !entry.icon.isEmpty()) {
         return renderSvgIcon(entry.icon, solero::contrastText(QColor(entry.color)), 20);
     }
     // Out-of-date mod entries: a yellow up-arrow next to the name.
@@ -309,7 +316,12 @@ bool ModListModel::setData(const QModelIndex& idx, const QVariant& value, int ro
         emit modsChanged();
         return true;
     }
-    if (role == Qt::EditRole && idx.column() == ColName) {
+    // Mods rename via ColName; separators rename via their spanned column 0.
+    const auto& curEntry = m_profile->modList().at(raw);
+    bool renameCol = (curEntry.type == EntryType::Separator)
+                         ? (idx.column() == ColEnabled)
+                         : (idx.column() == ColName);
+    if (role == Qt::EditRole && renameCol) {
         const auto& cur = m_profile->modList().at(raw);
         QString nn = value.toString().trimmed();
         if (nn.isEmpty()) return false;
@@ -348,7 +360,9 @@ Qt::ItemFlags ModListModel::flags(const QModelIndex& idx) const {
             f |= Qt::ItemIsUserCheckable;
         if (entry.type == EntryType::Mod && idx.column() == ColName)
             f |= Qt::ItemIsEditable;
-        if (entry.type == EntryType::Separator && idx.column() == ColName)
+        // Separators render full-width in the spanned column 0, so rename edits
+        // that cell rather than ColName.
+        if (entry.type == EntryType::Separator && idx.column() == ColEnabled)
             f |= Qt::ItemIsEditable;
     }
     return f;

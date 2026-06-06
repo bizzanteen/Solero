@@ -51,6 +51,9 @@ private:
     bool m_didAutoSize = false;
     void autoSizeColumns();
     void applyFilter();
+    // Span separator rows across the full width (content in column 0) and reset
+    // spans on non-separator rows. Must be re-run after every model reset.
+    void applyRowSpans();
     // Selected mod-row ids in list (raw) order; separators/Overwrite excluded.
     QStringList selectedModIds() const;
     // Group the selected mods: first (topmost) becomes parent, rest nested under.

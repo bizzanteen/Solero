@@ -61,6 +61,7 @@
 #include <QFile>
 #include <QCryptographicHash>
 #include <QDir>
+#include <QDirIterator>
 #include <QFileInfo>
 #include <QFileDialog>
 #include <QUuid>
@@ -167,6 +168,32 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         m_downloads->enqueue(r.url, r.fileName, solero::AppConfig::instance().downloadsDir());
         m_rightPane->showDownloadsTab();
         statusBar()->showMessage("Downloading update for " + m_updateTargetName + "\xe2\x80\xa6");
+    });
+
+    // SKSE resolve finished: write the Nexus sidecar, flag for auto-install, and
+    // enqueue the download. The download-finished handler installs it as a mod.
+    connect(&m_skseResolveWatcher, &QFutureWatcher<ResolvedSkse>::finished,
+            this, [this]() {
+        const ResolvedSkse r = m_skseResolveWatcher.result();
+        if (!r.ok || r.url.isEmpty()) {
+            m_skseInstalling = false;
+            QMessageBox::warning(this, "Install SKSE",
+                r.error.isEmpty() ? QString("Could not prepare the SKSE download.") : r.error);
+            statusBar()->showMessage("Ready");
+            return;
+        }
+        // Tag the installed mod with SKSE's Nexus identity so thumbnail/version/
+        // update tracking work (installFromArchive reads this sidecar).
+        m_nxmMeta[r.fileName] = QJsonObject{
+            {"game",  "skyrimspecialedition"},
+            {"modId", "30379"},
+            {"fileId", r.fileId},
+            {"version", r.version},
+        };
+        m_autoInstall.insert(r.fileName);
+        m_downloads->enqueue(r.url, r.fileName, solero::AppConfig::instance().downloadsDir());
+        m_rightPane->showDownloadsTab();
+        statusBar()->showMessage("Downloading SKSE\xe2\x80\xa6");
     });
 
     switchProfile(m_profileMgr->profileNames().first());
@@ -472,6 +499,14 @@ void MainWindow::setupCentralWidget() {
             m_rightPane->downloadsTab()->setDownloadProgress(fn, ok ? 1 : 0, ok ? 1 : 0); // mark complete
             m_rightPane->downloadsTab()->refresh();
             statusBar()->showMessage(ok ? ("Downloaded: " + fn) : ("Download failed: " + fn + " - " + err));
+            // Auto-install flagged downloads (e.g. SKSE) once they finish. Runs
+            // after the sidecar write above so the new mod gets tagged with its
+            // Nexus identity. The update branch returns early, so no collision.
+            if (m_autoInstall.contains(fn)) {
+                m_autoInstall.remove(fn);
+                m_skseInstalling = false;
+                if (ok && !path.isEmpty()) installFromArchive(path);
+            }
         });
 
     connect(m_rightPane->downloadsTab(), &solero::DownloadsTab::installRequested,
@@ -1224,6 +1259,98 @@ void MainWindow::onUpdateMod(const QString& modId) {
     }));
 }
 
+bool MainWindow::skseInstalledFor(solero::Profile* profile) const {
+    // 1) The game dir root (a manual/Steam SKSE install drops the loader here).
+    const QString gameDir = solero::AppConfig::instance().gameDir();
+    if (!gameDir.isEmpty()) {
+        const QString loader = gameDir + "/skse64_loader.exe";
+        if (QFileInfo::exists(loader)) return true;
+        // Case-insensitive fallback for the bare filename in the game root.
+        for (const QString& f : QDir(gameDir).entryList(QDir::Files))
+            if (f.compare("skse64_loader.exe", Qt::CaseInsensitive) == 0) return true;
+    }
+    // 2) Any enabled mod's staging dir (recursively; mods are symlinked in).
+    if (profile) {
+        const QString stagingDir = solero::AppConfig::instance().stagingDir();
+        for (const solero::ModEntry& m : profile->modList()) {
+            if (m.type != solero::EntryType::Mod || !m.enabled) continue;
+            const QString modDir = stagingDir + "/" + m.id;
+            if (!QDir(modDir).exists()) continue;
+            QDirIterator it(modDir, QDir::Files,
+                            QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
+            while (it.hasNext()) {
+                it.next();
+                if (it.fileName().compare("skse64_loader.exe", Qt::CaseInsensitive) == 0)
+                    return true; // stop early on first hit
+            }
+        }
+    }
+    return false;
+}
+
+void MainWindow::maybeOfferSkse() {
+    if (!solero::NexusApi::keyAvailable()) return; // no key -> don't nag
+    if (m_skseInstalling) return;                  // already downloading SKSE
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return;
+    if (skseInstalledFor(profile)) return;
+
+    const auto ans = QMessageBox::question(this, "SKSE not found",
+        "This modlist doesn't include SKSE64 (Skyrim Script Extender), which most "
+        "Skyrim mods require.\n\nInstall it from Nexus now? (current Steam build, v2.2.6)",
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+    if (ans == QMessageBox::Yes) installSkseFromNexus();
+}
+
+void MainWindow::installSkseFromNexus() {
+    if (m_skseInstalling || m_skseResolveWatcher.isRunning()) {
+        statusBar()->showMessage("SKSE install already in progress\xe2\x80\xa6");
+        return;
+    }
+    m_skseInstalling = true;
+    statusBar()->showMessage("Resolving SKSE download\xe2\x80\xa6");
+
+    m_skseResolveWatcher.setFuture(QtConcurrent::run([]() -> ResolvedSkse {
+        ResolvedSkse out;
+        const QString game  = "skyrimspecialedition";
+        const QString modId = "30379";
+        const auto files = solero::NexusApi::files(modId, game);
+
+        QString fileId, version;
+        if (!files.isEmpty()) {
+            // Prefer the main-category file, choosing the highest version.
+            const solero::NexusApi::NexusFile* picked = nullptr;
+            for (const auto& f : files) {
+                if (f.category.compare("MAIN", Qt::CaseInsensitive) != 0) continue;
+                if (!picked || f.version > picked->version) picked = &f;
+            }
+            if (!picked) {
+                // Fall back to the highest-version file overall.
+                for (const auto& f : files)
+                    if (!picked || f.version > picked->version) picked = &f;
+            }
+            if (picked) { fileId = picked->fileId; version = picked->version; }
+        }
+        // Last-resort fallback to the known-good current main file (v2.2.6).
+        if (fileId.isEmpty()) { fileId = "462377"; version = "2.2.6"; }
+
+        out.fileId   = fileId;
+        out.version  = version;
+        out.url      = solero::NexusApi::downloadUrl(modId, fileId, game);
+        if (out.url.isEmpty()) {
+            out.error = "Could not get a download link for SKSE "
+                        "(Premium required, or file unavailable).";
+            return out;
+        }
+        // Derive a sensible saved filename from the URL (before any query string).
+        QString fn = QUrl(out.url).fileName();
+        if (fn.isEmpty()) fn = "skse64_" + version + ".7z";
+        out.fileName = fn;
+        out.ok = true;
+        return out;
+    }));
+}
+
 void MainWindow::onCheckUpdates() {
     runUpdateCheck(/*silentIfNone=*/false);
 }
@@ -1449,6 +1576,8 @@ void MainWindow::onInstallWabbajack() {
             [this](const QString& name) {
         selectImportedProfile(name);
         statusBar()->showMessage(QString("Imported Wabbajack modlist '%1'.").arg(name));
+        // After the profile switch settles, detect a missing SKSE and offer it.
+        QTimer::singleShot(0, this, &MainWindow::maybeOfferSkse);
     });
     dlg.exec();
 }

@@ -71,6 +71,16 @@ static int stageModFolder(const QString& srcDir, const QString& modDir, bool sym
     return failed; // empty mod folder is a valid (empty) mod -> 0 failures
 }
 
+// A Wabbajack-built list ships a separator named after the modlist itself
+// (e.g. "A Dragonborn's Fate 10.2.26" == the list title + version). That header
+// is redundant with the Solero profile name and just clutters the list, so we
+// skip any separator whose name starts with the modlist title. Guard against an
+// empty listTitle (would otherwise match every separator).
+static bool isListTitleSeparator(const QString& sepName, const QString& listTitle) {
+    if (listTitle.trimmed().isEmpty()) return false;
+    return sepName.trimmed().startsWith(listTitle.trimmed(), Qt::CaseInsensitive);
+}
+
 // MO2 keeps a few non-content folders inside its mods dir (e.g. "ModGroups",
 // which holds *.modgroups separator-group metadata, and sometimes "Backup").
 // These are listed in modlist.txt like real mods but are not game content, so
@@ -418,6 +428,9 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
 
         for (const ModEntry& e : entries) {
             if (e.type == EntryType::Separator) {
+                // Skip the redundant modlist-name header separator (WJ lists ship
+                // one named after the list title/version).
+                if (isListTitleSeparator(e.name, listTitle)) continue;
                 // Separators are per-profile UI entries (fresh UUID, kept from parse).
                 ModEntry sep = e;
                 const QString metaIni = modsDir + "/" + e.name + "_separator/meta.ini";

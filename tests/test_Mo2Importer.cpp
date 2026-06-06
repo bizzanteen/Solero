@@ -235,6 +235,31 @@ private slots:
             QVERIFY2(it->name.compare("ModGroups", Qt::CaseInsensitive) != 0,
                      "ModGroups artifact must not be imported as a mod");
     }
+    void importInstanceSkipsListTitleSeparator() {
+        QTemporaryDir tmp;
+        QString mo2 = tmp.path() + "/MO2";
+        write(mo2 + "/mods/ModA/a.txt", "a");
+        // modlist.txt has the redundant list-title header separator plus a real one.
+        write(mo2 + "/profiles/P1/modlist.txt",
+              "+ModA\n-Gameplay_separator\n-MyList 1.0_separator\n");
+        write(mo2 + "/ModOrganizer.ini", "[General]\nselected_profile=P1\n");
+
+        ProfileManager pm(tmp.path() + "/profiles");
+        auto r = Mo2Importer::importInstance(mo2, tmp.path() + "/staging", pm,
+                                             "MyList", /*symlink*/false);
+        QVERIFY2(r.success, r.errorMessage.toUtf8());
+
+        Profile* p = pm.loadProfile("P1");
+        QVERIFY(p != nullptr);
+        bool hasGameplay = false, hasListTitle = false;
+        for (auto it = p->modList().begin(); it != p->modList().end(); ++it) {
+            if (it->type != EntryType::Separator) continue;
+            if (it->name == "Gameplay") hasGameplay = true;
+            if (it->name.startsWith("MyList")) hasListTitle = true;
+        }
+        QVERIFY2(hasGameplay, "real Gameplay separator must be kept");
+        QVERIFY2(!hasListTitle, "list-title separator must be skipped");
+    }
     void importInstanceDisambiguatesNames() {
         QTemporaryDir tmp;
         QString mo2 = tmp.path() + "/MO2";

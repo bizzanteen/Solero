@@ -3,6 +3,7 @@
 #include <QAction>
 #include <QPair>
 #include <QHash>
+#include <QSet>
 #include <QJsonObject>
 #include <QFutureWatcher>
 #include "core/ProfileManager.h"
@@ -102,6 +103,11 @@ private:
     // not throttled (>6h since the last check) and a key is available.
     void maybeAutoCheckUpdates();
     void onIdentifyMod(const QString& modId);
+    // SKSE bootstrap: after a Wabbajack import, detect whether SKSE64 is present
+    // and, if not, offer to install it from Nexus (mod 30379, Steam build).
+    bool skseInstalledFor(solero::Profile* profile) const;
+    void maybeOfferSkse();
+    void installSkseFromNexus();
     void onModsChanged();
     void onZoomIn();
     void onZoomOut();
@@ -167,6 +173,13 @@ private:
     // Pending Nexus metadata for in-flight nxm downloads, keyed by saved filename.
     // Written to a <archive>.solero-nexus.json sidecar when the download finishes.
     QHash<QString, QJsonObject> m_nxmMeta;
+
+    // SKSE-from-Nexus: resolve the download off the UI thread, then auto-install.
+    struct ResolvedSkse { QString url, fileName, fileId, version; bool ok = false; QString error; };
+    QFutureWatcher<ResolvedSkse> m_skseResolveWatcher;
+    bool m_skseInstalling = false; // guard against re-offering while a SKSE DL is pending
+    // Filenames flagged to auto-install once their download finishes (e.g. SKSE).
+    QSet<QString> m_autoInstall;
 
     QWidget* m_runOverlay = nullptr;
     QLabel* m_runLockLabel = nullptr;

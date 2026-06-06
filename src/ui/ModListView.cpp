@@ -23,6 +23,9 @@
 #include <QListWidget>
 #include <QWidgetAction>
 #include <QStyledItemDelegate>
+#include <QStyleOptionViewItem>
+#include <QStyle>
+#include <QIcon>
 #include <QLineEdit>
 #include <QShowEvent>
 #include <QPaintEvent>
@@ -254,28 +257,39 @@ void ModListView::mousePressEvent(QMouseEvent* event) {
         if (entry && entry->type == EntryType::Separator) {
             // A separator renders full-width in the spanned column 0; its content
             // is laid out left-to-right as: [optional icon] [▶/▼ arrow] [name].
+            // Derive the icon/text rects from the actual style geometry rather than
+            // guessing offsets (which ignored the tree indentation + item padding).
+            const QPoint pos = event->pos();
             QModelIndex spanIdx = m_model->index(idx.row(), ModListModel::ColEnabled);
-            QRect r = visualRect(spanIdx);
-            // The ▶/▼ disclosure arrow follows the optional icon. A single click on
-            // it collapses/expands the section, mirroring the group-parent arrow
-            // (the double-click / context-menu toggles still work as before).
-            int arrowLeft = r.left() + 2;
-            if (!entry->icon.isEmpty()) arrowLeft += iconSize().width() + 6;
+            QStyleOptionViewItem opt;
+            initViewItemOption(&opt);
+            opt.rect = visualRect(spanIdx);
+            opt.index = spanIdx;
+            opt.features |= QStyleOptionViewItem::HasDisplay;
+            const bool hasIcon = !entry->icon.isEmpty();
+            if (hasIcon) {
+                opt.features |= QStyleOptionViewItem::HasDecoration;
+                opt.icon = spanIdx.data(Qt::DecorationRole).value<QIcon>();
+                opt.decorationSize = iconSize();
+            }
+            // Icon region -> picker (only meaningful when there is an icon).
+            QRect iconRect = hasIcon
+                ? style()->subElementRect(QStyle::SE_ItemViewItemDecoration, &opt, this)
+                : QRect();
+            // Text region: the arrow glyph is the leading run of the displayed text.
+            QRect textRect = style()->subElementRect(QStyle::SE_ItemViewItemText, &opt, this);
             QFont f = font(); f.setBold(true); // separators render bold (see model)
             int arrowW = QFontMetrics(f).horizontalAdvance(QStringLiteral("\xe2\x96\xbc  ")) + 4;
-            QRect arrowRect(arrowLeft, r.top(), arrowW, r.height());
-            if (arrowRect.contains(event->pos())) {
-                m_model->toggleCollapse(idx.row());
+            QRect arrowRect(textRect.left(), opt.rect.top(), arrowW, opt.rect.height());
+            // Order matters: icon picker first, then the disclosure arrow, then fall
+            // through to the base handler (preserving selection + drag-to-reorder).
+            if (hasIcon && iconRect.contains(pos)) {
+                showIconPicker(idx.row(), event->globalPosition().toPoint());
                 return; // consume
             }
-            // The separator's icon lives at the left of the (full-width) row rect;
-            // clicking it (once the row is selected) opens the icon picker.
-            if (selectionModel()->isSelected(idx)) {
-                QRect iconRect(r.left() + 2, r.top(), iconSize().width() + 6, r.height());
-                if (iconRect.contains(event->pos())) {
-                    showIconPicker(idx.row(), event->globalPosition().toPoint());
-                    return; // consume
-                }
+            if (arrowRect.contains(pos)) {
+                m_model->toggleCollapse(idx.row());
+                return; // consume
             }
         }
     }

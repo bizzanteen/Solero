@@ -391,7 +391,7 @@ void MainWindow::setupToolbar() {
 
     // Tools dropdown
     m_toolsBtn = new QToolButton(tb);
-    m_toolsBtn->setText("Tools \xe2\x96\xbe");
+    m_toolsBtn->setText("Tools");
     m_toolsBtn->setPopupMode(QToolButton::InstantPopup);
     m_toolsMenu = new QMenu(m_toolsBtn);
     m_toolsBtn->setMenu(m_toolsMenu);

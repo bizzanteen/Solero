@@ -24,6 +24,7 @@
 #include <QUrl>
 #include <QDir>
 #include <QFileInfo>
+#include <QCryptographicHash>
 #include <QSettings>
 #include <QPixmap>
 #include <QIcon>
@@ -75,9 +76,7 @@ void WabbajackDialog::buildGalleryPage() {
     m_search->setClearButtonEnabled(true);
     topBar->addWidget(m_search, 1);
 
-    m_gameFilter = new QComboBox(m_galleryPage);
-    topBar->addWidget(m_gameFilter);
-
+    // Solero targets Skyrim SE only - the gallery is filtered to it (no game switcher).
     m_refreshBtn = new QPushButton("Refresh", m_galleryPage);
     topBar->addWidget(m_refreshBtn);
 
@@ -145,7 +144,6 @@ void WabbajackDialog::buildGalleryPage() {
 
     // Connections
     connect(m_search, &QLineEdit::textChanged, this, &WabbajackDialog::applyFilter);
-    connect(m_gameFilter, &QComboBox::currentTextChanged, this, &WabbajackDialog::applyFilter);
     connect(m_refreshBtn, &QPushButton::clicked, this, &WabbajackDialog::startFetch);
     connect(m_retryBtn, &QPushButton::clicked, this, &WabbajackDialog::startFetch);
     connect(m_list, &QListWidget::currentRowChanged, this, &WabbajackDialog::onSelectionChanged);
@@ -218,7 +216,6 @@ void WabbajackDialog::buildProgressPage() {
 void WabbajackDialog::showEngineMissing() {
     m_list->setVisible(false);
     m_search->setEnabled(false);
-    m_gameFilter->setEnabled(false);
     m_refreshBtn->setEnabled(false);
     m_statusLabel->setText(
         "jackify-engine not found. Install Jackify "
@@ -235,7 +232,6 @@ void WabbajackDialog::showEngineMissing() {
         if (WabbajackEngine::available()) {
             // restore normal Retry behaviour and fetch
             m_search->setEnabled(true);
-            m_gameFilter->setEnabled(true);
             m_refreshBtn->setEnabled(true);
             m_list->setVisible(true);
             m_retryBtn->setText("Retry");
@@ -264,7 +260,6 @@ void WabbajackDialog::onModlistsReady(const QList<WabbajackModlist>& modlists) {
     m_all = modlists;
     m_refreshBtn->setEnabled(true);
     m_statusLabel->clear();
-    rebuildGameFilter();
     applyFilter();
 }
 
@@ -280,28 +275,10 @@ void WabbajackDialog::onFailed(const QString& error) {
     m_retryBtn->setVisible(true);
 }
 
-void WabbajackDialog::rebuildGameFilter() {
-    QSignalBlocker block(m_gameFilter);
-    const QString prev = m_gameFilter->currentText();
-    m_gameFilter->clear();
-    m_gameFilter->addItem("All games");
-    QStringList games;
-    for (const auto& ml : m_all)
-        if (!ml.gameHuman.isEmpty() && !games.contains(ml.gameHuman))
-            games << ml.gameHuman;
-    games.sort(Qt::CaseInsensitive);
-    m_gameFilter->addItems(games);
-
-    // Default to Skyrim SE on first population, else keep the prior choice.
-    QString target = prev.isEmpty() ? QStringLiteral("Skyrim Special Edition") : prev;
-    int idx = m_gameFilter->findText(target, Qt::MatchFixedString);
-    m_gameFilter->setCurrentIndex(idx >= 0 ? idx : 0);
-}
-
 void WabbajackDialog::applyFilter() {
     const QString q = m_search->text().trimmed();
-    const QString game = m_gameFilter->currentText();
-    const bool allGames = (game.isEmpty() || game == "All games");
+    // Solero targets Skyrim SE only - the gallery is fixed to it.
+    static const QString kGame = QStringLiteral("Skyrim Special Edition");
 
     m_filtered.clear();
     ++m_thumbGen; // late thumbnail replies for the old view must not apply
@@ -309,7 +286,7 @@ void WabbajackDialog::applyFilter() {
     m_list->clear();
 
     for (const auto& ml : m_all) {
-        if (!allGames && ml.gameHuman != game) continue;
+        if (ml.gameHuman != kGame) continue;
         if (!q.isEmpty()) {
             const bool match =
                 ml.title.contains(q, Qt::CaseInsensitive) ||
@@ -348,25 +325,52 @@ void WabbajackDialog::applyFilter() {
     Q_UNUSED(gen);
 }
 
+QString WabbajackDialog::thumbCachePath(const QString& url) {
+    static const QString dir = [] {
+        const QString d = AppConfig::dataRoot() + "/wabbajack-thumbs";
+        QDir().mkpath(d);
+        return d;
+    }();
+    const QString h = QString::fromLatin1(
+        QCryptographicHash::hash(url.toUtf8(), QCryptographicHash::Md5).toHex());
+    return dir + "/" + h + ".png";
+}
+
 void WabbajackDialog::loadThumb(QListWidgetItem* item, const QString& url) {
     // Capture the row index, not the pointer: a re-filter both bumps m_thumbGen
     // and rebuilds the list, so checking the generation guards against any stale
     // apply, and item() re-resolves the (same-generation) row safely.
     const int gen = m_thumbGen;
     const int row = m_list->row(item);
+
+    // 1) In-memory cache -> instant (re-filter / re-open within the session).
+    auto memIt = m_thumbMem.constFind(url);
+    if (memIt != m_thumbMem.constEnd()) { item->setIcon(QIcon(memIt.value())); return; }
+
+    // 2) On-disk cache -> instant + offline, no re-download across sessions.
+    const QString path = thumbCachePath(url);
+    if (QFileInfo::exists(path)) {
+        QPixmap pm(path);
+        if (!pm.isNull()) { m_thumbMem.insert(url, pm); item->setIcon(QIcon(pm)); return; }
+    }
+
+    // 3) Network -> downscale to a compact thumbnail, cache to disk + memory.
     QNetworkRequest req{QUrl(url)};
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                      QNetworkRequest::NoLessSafeRedirectPolicy);
     QNetworkReply* reply = m_net->get(req);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, row, gen] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, row, gen, url, path] {
         reply->deleteLater();
-        if (gen != m_thumbGen) return;            // list re-filtered: stale
         if (reply->error() != QNetworkReply::NoError) return;
-        QListWidgetItem* it = m_list->item(row);
-        if (!it) return;
         QPixmap pm;
-        if (pm.loadFromData(reply->readAll()) && !pm.isNull())
-            it->setIcon(QIcon(pm));
+        if (!pm.loadFromData(reply->readAll()) || pm.isNull()) return;
+        // The list icon is 80×45; store a 160-wide thumb (crisp, tiny on disk).
+        const QPixmap thumb = pm.width() > 160
+            ? pm.scaledToWidth(160, Qt::SmoothTransformation) : pm;
+        thumb.save(path, "PNG");          // cache regardless of current filter
+        m_thumbMem.insert(url, thumb);
+        if (gen != m_thumbGen) return;     // list re-filtered: don't apply to a stale row
+        if (QListWidgetItem* it = m_list->item(row)) it->setIcon(QIcon(thumb));
     });
 }
 

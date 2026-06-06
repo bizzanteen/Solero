@@ -2,6 +2,8 @@
 #include "wabbajack/WabbajackModlist.h"
 #include <QDialog>
 #include <QList>
+#include <QHash>
+#include <QPixmap>
 
 class QStackedWidget;
 class QLineEdit;
@@ -48,10 +50,10 @@ private:
     void buildProgressPage();
     void startFetch();
     void showEngineMissing();
-    void rebuildGameFilter();
     void applyFilter();
     void onSelectionChanged();
     void loadThumb(QListWidgetItem* item, const QString& url);
+    static QString thumbCachePath(const QString& url); // dataRoot()/wabbajack-thumbs/<md5>.png
     void triggerInstall(const QString& target, bool isLocalFile, const QString& displayName);
     void doImport();
     // Returns true if it's OK to close/reject (not installing, or user confirmed
@@ -69,7 +71,6 @@ private:
     // Page 0 - gallery
     QWidget* m_galleryPage = nullptr;
     QLineEdit* m_search = nullptr;
-    QComboBox* m_gameFilter = nullptr;
     QPushButton* m_refreshBtn = nullptr;
     QListWidget* m_list = nullptr;
     QLabel* m_statusLabel = nullptr;      // "Loading…" / error placeholder
@@ -85,6 +86,7 @@ private:
     QList<WabbajackModlist> m_all;        // full fetched gallery
     QList<WabbajackModlist> m_filtered;   // current view (index-aligned to m_list rows)
     int m_thumbGen = 0;                   // guards async thumbnail replies
+    QHash<QString, QPixmap> m_thumbMem;   // in-session thumbnail cache, keyed by url
 
     // Page 1 - install progress
     QWidget* m_progressPage = nullptr;

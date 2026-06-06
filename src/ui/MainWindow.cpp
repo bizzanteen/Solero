@@ -1925,6 +1925,17 @@ void MainWindow::onPlay() {
         return;
     }
 
+    // Steam DRM: launching the game's exe directly through Proton (not via the
+    // Steam client UI) needs steam_appid.txt in the game dir so steam_api can
+    // attach to the already-running Steam client. Without it the game exits
+    // immediately ("doesn't launch"). Create it once if missing.
+    {
+        QFile appid(gameDir + "/steam_appid.txt");
+        if (!appid.exists() && appid.open(QIODevice::WriteOnly)) {
+            appid.write("489830"); appid.close();
+        }
+    }
+
     solero::Executable exe;
     exe.name       = "Skyrim Special Edition (SKSE)";
     exe.binaryPath = skse;

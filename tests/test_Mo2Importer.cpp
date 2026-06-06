@@ -370,6 +370,50 @@ private slots:
         QVERIFY(QFile::exists(staging + "/" + manualId + "/foo.dll"));
         QVERIFY(QFile::exists(staging + "/" + manualId + "/Data/Scripts/x.pex"));
     }
+    void capturesStockGameRootOverlay() {
+        QTemporaryDir tmp;
+        QString mo2 = tmp.path() + "/MO2";
+        // A normal Data mod.
+        write(mo2 + "/mods/ModA/a.txt", "a");
+        // StockGame overlay: vanilla files, mod-added root binaries, Proton cruft,
+        // and a Data/ subdir that must be ignored entirely.
+        write(mo2 + "/StockGame/SkyrimSE.exe", "exe");
+        write(mo2 + "/StockGame/steam_api64.dll", "steam");
+        write(mo2 + "/StockGame/d3dx9_42.dll", "d3d");
+        write(mo2 + "/StockGame/skse64_loader.exe", "skse");
+        write(mo2 + "/StockGame/SkyrimSE.dxvk-cache", "cache");
+        write(mo2 + "/StockGame/Data/vanilla.esp", "esp");
+        write(mo2 + "/profiles/P1/modlist.txt", "+ModA\n");
+        write(mo2 + "/ModOrganizer.ini", "[General]\nselected_profile=P1\n");
+
+        QString staging = tmp.path() + "/staging";
+        ProfileManager pm(tmp.path() + "/profiles");
+        auto r = Mo2Importer::importInstance(mo2, staging, pm, "MyList", /*symlink*/false);
+        QVERIFY2(r.success, r.errorMessage.toUtf8());
+        // ModA + Game Root Files.
+        QCOMPARE(r.modsStaged, 2);
+
+        Profile* p = pm.loadProfile("P1");
+        QVERIFY(p != nullptr);
+        QString rootId;
+        bool enabled = false;
+        for (auto it = p->modList().begin(); it != p->modList().end(); ++it)
+            if (it->name == "Game Root Files") { rootId = it->id; enabled = it->enabled; }
+        QVERIFY2(!rootId.isEmpty(), "Game Root Files mod must exist in the profile");
+        QVERIFY(enabled);
+        // It must be at the very top (index 0 / lowest priority).
+        QCOMPARE(p->modList().at(0).name, QString("Game Root Files"));
+
+        // Mod-added root binaries staged at the root (not under Data/).
+        QVERIFY(QFile::exists(staging + "/" + rootId + "/d3dx9_42.dll"));
+        QVERIFY(QFile::exists(staging + "/" + rootId + "/skse64_loader.exe"));
+        // Vanilla / cruft / subdir content excluded.
+        QVERIFY(!QFile::exists(staging + "/" + rootId + "/SkyrimSE.exe"));
+        QVERIFY(!QFile::exists(staging + "/" + rootId + "/steam_api64.dll"));
+        QVERIFY(!QFile::exists(staging + "/" + rootId + "/SkyrimSE.dxvk-cache"));
+        QVERIFY(!QFile::exists(staging + "/" + rootId + "/Data/vanilla.esp"));
+        QVERIFY(!QFile::exists(staging + "/" + rootId + "/vanilla.esp"));
+    }
     void importInstanceDisambiguatesNames() {
         QTemporaryDir tmp;
         QString mo2 = tmp.path() + "/MO2";

@@ -360,6 +360,82 @@ static void applyPlugins(const QString& mo2ProfileDir, Profile* p) {
     }
 }
 
+// Case-insensitive child lookup: return the full path of the entry under
+// `parent` whose name matches `name` (case-insensitively), or empty if none.
+// Mirrors the childCI helper used in install/PluginScanner.cpp.
+static QString childCI(const QString& parent, const QString& name) {
+    QDir d(parent);
+    if (!d.exists()) return {};
+    for (const QString& e : d.entryList(QDir::AllEntries | QDir::NoDotAndDotDot))
+        if (e.compare(name, Qt::CaseInsensitive) == 0) return parent + "/" + e;
+    return {};
+}
+
+// Vanilla / engine files that live in the game root but are not mod-added - they
+// belong to the base install (or Proton) and must never be staged as a mod.
+static bool isVanillaRootFile(const QString& name) {
+    static const char* kBlock[] = {
+        "SkyrimSE.exe", "SkyrimSELauncher.exe", "SkyrimVR.exe",
+        "steam_api64.dll", "steam_api.dll", "bink2w64.dll", "binkw64.dll",
+        "Skyrim.ccc", "installscript.vdf", "steam_appid.txt",
+    };
+    for (const char* b : kBlock)
+        if (name.compare(QLatin1String(b), Qt::CaseInsensitive) == 0) return true;
+    return false;
+}
+
+// Proton/DXVK/runtime cruft that may sit next to the exe but is regenerated and
+// not mod content (e.g. SkyrimSE.dxvk-cache, *.log, steam_emu.ini-style *.vdf).
+static bool isRootCruft(const QString& name) {
+    const QString lower = name.toLower();
+    if (lower.endsWith(".dxvk-cache")) return true;
+    static const char* kSuffix[] = { "cache", "conf", "log", "vdf", "dxvk-cache" };
+    const QString suffix = QFileInfo(name).suffix().toLower();
+    for (const char* s : kSuffix)
+        if (suffix == QLatin1String(s)) return true;
+    return false;
+}
+
+ModEntry Mo2Importer::stageGameRootOverlay(const QString& instanceDir,
+                                           const QString& stagingRoot, bool symlink) {
+    ModEntry empty; // id stays empty -> "invalid" sentinel
+
+    // Find the overlay folder (case-insensitive) among the known names.
+    QString overlayDir;
+    for (const char* candidate : { "StockGame", "Stock Game", "Game Root",
+                                   "Root", "Stock Game Folder" }) {
+        const QString hit = childCI(instanceDir, QLatin1String(candidate));
+        if (!hit.isEmpty() && QFileInfo(hit).isDir()) { overlayDir = hit; break; }
+    }
+    if (overlayDir.isEmpty()) return empty;
+
+    // Enumerate only the top-level FILES (never descend into subdirs like Data/,
+    // Creations/, Mods/, _CommonRedist/). Keep anything that isn't vanilla or cruft.
+    QStringList keep;
+    for (const QFileInfo& fi :
+         QDir(overlayDir).entryInfoList(QDir::Files | QDir::NoDotAndDotDot)) {
+        const QString name = fi.fileName();
+        if (name.startsWith('.')) continue;
+        if (isVanillaRootFile(name)) continue;
+        if (isRootCruft(name)) continue;
+        keep << name;
+    }
+    if (keep.isEmpty()) return empty;
+
+    ModEntry e;
+    e.type = EntryType::Mod;
+    e.name = "Game Root Files";
+    e.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    e.enabled = true;
+    e.isOutputMod = false;
+
+    const QString destDir = stagingRoot + "/" + e.id;
+    QDir().mkpath(destDir);
+    for (const QString& name : keep)
+        placeEntry(overlayDir + "/" + name, destDir + "/" + name, symlink);
+    return e;
+}
+
 Mo2ImportResult Mo2Importer::importProfile(const QString& mo2ProfileDir,
                                            const QString& mo2ModsDir,
                                            const QString& stagingRoot,
@@ -396,6 +472,29 @@ Mo2ImportResult Mo2Importer::importProfile(const QString& mo2ProfileDir,
             if (!col.isEmpty()) e.color = col;
         }
         p->modList().append(e);
+    }
+
+    // Capture the game-root overlay (StockGame / "Game Root" / …) - the loose
+    // root binaries (d3dx9_42.dll, SKSE loader, ENB dlls) that Wabbajack/Fluorine
+    // keep there instead of in mods/. The MO2 instance dir is the mods/ parent.
+    {
+        const QString instanceDir = QDir(mo2ModsDir + "/..").canonicalPath();
+        // Avoid duplicating an already-present "Game Root Files" mod.
+        bool already = false;
+        for (auto it = p->modList().begin(); it != p->modList().end(); ++it)
+            if (it->type == EntryType::Mod &&
+                it->name.compare("Game Root Files", Qt::CaseInsensitive) == 0) {
+                already = true; break;
+            }
+        if (!already) {
+            ModEntry rootMod = stageGameRootOverlay(instanceDir, stagingRoot, symlinkMods);
+            if (!rootMod.id.isEmpty()) {
+                p->modList().append(rootMod);
+                // Move to index 0 (lowest priority / top of MO2 load order).
+                p->modList().move(p->modList().count() - 1, 0);
+                ++staged;
+            }
+        }
     }
 
     applyPlugins(mo2ProfileDir, p);
@@ -484,7 +583,14 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
         }
     }
 
-    r.modsStaged = sharedMods.size() + (haveManualInstall ? 1 : 0);
+    // Capture the game-root overlay (StockGame / "Game Root" / …) once and share
+    // its id across every created profile (lowest priority, like base/SKSE content).
+    const ModEntry gameRootMod =
+        stageGameRootOverlay(mo2InstanceDir, stagingRoot, symlinkMods);
+    const bool haveGameRoot = !gameRootMod.id.isEmpty();
+
+    r.modsStaged = sharedMods.size() + (haveManualInstall ? 1 : 0)
+                 + (haveGameRoot ? 1 : 0);
 
     // Resolve MO2 selected_profile -> the MO2 profile name we should map primary to.
     QString selectedMo2;
@@ -550,6 +656,16 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
             r.errorMessage = "Could not load created profile '" + soleroName + "'.";
             r.success = false;
             return r;
+        }
+
+        // Place the game-root overlay mod at the very top of the load order
+        // (lowest priority == index 0 in Solero order), enabled, so the loose
+        // root binaries (d3dx9_42.dll, SKSE loader, ENB dlls) are present but any
+        // later mod can still override them. Same shared id across all profiles.
+        if (haveGameRoot) {
+            ModEntry m = gameRootMod;
+            m.enabled = true;
+            p->modList().append(m);
         }
 
         // Place the manual-install mod near the top of the load order (lowest

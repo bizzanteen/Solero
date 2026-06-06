@@ -49,6 +49,14 @@ public:
                                                   ProfileManager& profiles,
                                                   const QString& listTitle,
                                                   bool symlinkMods);
+
+    // If `instanceDir` contains a game-root overlay folder (StockGame / "Stock Game" /
+    // "Game Root" / "Root"), stage its mod-added root-level loose files (dll/exe/asi/ini,
+    // excluding vanilla game files + Proton cache) into a new ModEntry whose files sit at
+    // the staging root (so they deploy to <game>/, not <game>/Data). Returns an invalid/
+    // empty-id ModEntry if there's no overlay or nothing mod-added to stage.
+    static ModEntry stageGameRootOverlay(const QString& instanceDir,
+                                         const QString& stagingRoot, bool symlink);
 };
 
 } // namespace solero

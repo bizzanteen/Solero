@@ -43,6 +43,7 @@
 #include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QKeyEvent>
+#include <QCloseEvent>
 #include <QKeySequence>
 #include <QStandardPaths>
 #include <QMessageBox>
@@ -172,7 +173,24 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     refreshDeployState(); // reflect any existing deployment from a previous run
 }
 
+void MainWindow::detachProfileFromViews() {
+    if (m_modListView)   m_modListView->setProfile(nullptr);
+    if (m_rightPane)     m_rightPane->setProfile(nullptr, /*reconcilePlugins=*/false);
+    if (m_bottomPanel)   m_bottomPanel->setProfile(nullptr);
+    if (m_bethiniWindow) m_bethiniWindow->setProfile(nullptr);
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+    // Drop model->Profile references while the event loop is still alive, so a
+    // queued paint after the window starts closing can't deref a freed Profile.
+    detachProfileFromViews();
+    QMainWindow::closeEvent(event);
+}
+
 MainWindow::~MainWindow() {
+    // The models hold a raw Profile* owned by m_profileMgr; detach them before
+    // freeing it, or a child view's late paint segfaults on the dangling pointer.
+    detachProfileFromViews();
     delete m_profileMgr;
     delete m_txLog;
 }

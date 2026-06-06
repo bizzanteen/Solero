@@ -55,6 +55,12 @@ signals:
 protected:
     void keyPressEvent(QKeyEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
+    void closeEvent(QCloseEvent* event) override;
+
+private:
+    // Detach every model from the active Profile so a late paint can't deref it
+    // once the ProfileManager (which owns the Profile) is gone. Idempotent.
+    void detachProfileFromViews();
 
 private:
     void setupToolbar();

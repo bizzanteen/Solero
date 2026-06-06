@@ -30,6 +30,10 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
             this, &PluginListView::onSortChanged);
     connect(m_model, &PluginListModel::loadOrderChanged,
             this, &PluginListView::loadOrderChanged);
+    // Resizing another column lets the Plugin column absorb the slack (no gap).
+    connect(horizontalHeader(), &QHeaderView::sectionResized, this, [this](int idx, int, int) {
+        if (idx != PluginListModel::ColName) fillNameColumn();
+    });
 }
 
 void PluginListView::applyHeaderLayout() {
@@ -43,15 +47,25 @@ void PluginListView::applyHeaderLayout() {
 
 void PluginListView::autoSizeColumns() {
     horizontalHeader()->resizeSections(QHeaderView::ResizeToContents);
+    fillNameColumn();
+}
+
+// Resize the Plugin column so the columns always span the full viewport.
+void PluginListView::fillNameColumn() {
+    if (!model()) return;
     const int vw = viewport()->width();
-    if (vw <= 0) return; // not laid out yet - keep the ResizeToContents result
+    if (vw <= 0) return;
     int other = 0;
     for (int c = 0; c < model()->columnCount(); ++c)
         if (c != PluginListModel::ColName) other += horizontalHeader()->sectionSize(c);
-    constexpr int kMinName = 160;
-    const int target = qMax(kMinName, vw - other);
-    if (target > horizontalHeader()->sectionSize(PluginListModel::ColName))
+    const int target = qMax(160, vw - other);
+    if (target != horizontalHeader()->sectionSize(PluginListModel::ColName))
         horizontalHeader()->resizeSection(PluginListModel::ColName, target);
+}
+
+void PluginListView::resizeEvent(QResizeEvent* event) {
+    QTableView::resizeEvent(event);
+    fillNameColumn();
 }
 
 void PluginListView::showEvent(QShowEvent* event) {

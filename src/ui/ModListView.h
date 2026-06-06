@@ -44,12 +44,14 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private:
     ModListModel* m_model;
     QString m_filter;
     bool m_didAutoSize = false;
     void autoSizeColumns();
+    void fillNameColumn();
     void applyFilter();
     // Span separator rows across the full width (content in column 0) and reset
     // spans on non-separator rows. Must be re-run after every model reset.

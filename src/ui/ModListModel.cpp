@@ -254,7 +254,7 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
                 QStringList parts;
                 if (entry.isOutputMod) parts << "Output";
                 if (entry.hasFomodChoices) parts << "FOMOD";
-                if (m_updates.contains(entry.id)) parts << "\xe2\xac\x86 Update"; // ⬆ Update
+                // (out-of-date is shown by the yellow up-arrow on the Version column)
                 QString flags = parts.join(" ");
                 if (m_depWarnings.contains(entry.id)) flags = "\xe2\x9a\xa0 " + flags; // ⚠
                 return flags;

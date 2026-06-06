@@ -1575,6 +1575,9 @@ void MainWindow::onImportMo2() {
 
     selectImportedProfile(r.profileName);
     statusBar()->showMessage(QString("Imported '%1' - %2 mods staged.").arg(r.profileName).arg(r.modsStaged));
+    // MO2 lists often keep SKSE's loader in the game root (outside the mods), so
+    // the import won't include it - offer to install SKSE if it's missing.
+    QTimer::singleShot(0, this, &MainWindow::maybeOfferSkse);
 }
 
 void MainWindow::selectImportedProfile(const QString& name) {
@@ -1863,19 +1866,18 @@ void MainWindow::onPlay() {
         return {};
     };
     const QString skse = findExeCI("skse64_loader.exe");
-    const QString target = !skse.isEmpty() ? skse : findExeCI("SkyrimSE.exe");
-    if (target.isEmpty()) {
-        QMessageBox::warning(this, "Play",
-            "Couldn't find skse64_loader.exe or SkyrimSE.exe in the game folder.\n"
-            "Make sure SKSE is installed (it deploys with your modlist).");
+    if (skse.isEmpty()) {
+        // SKSE's loader isn't deployed - required by virtually every modlist (and
+        // launching the bare game would load no script-extender mods). Offer to
+        // install it from Nexus rather than starting a broken session.
+        statusBar()->showMessage("SKSE not found - it's needed to launch with script-extender mods.");
+        maybeOfferSkse();
         return;
     }
-    if (skse.isEmpty())
-        statusBar()->showMessage("SKSE not found - launching without the script extender.");
 
     solero::Executable exe;
-    exe.name       = skse.isEmpty() ? "Skyrim Special Edition" : "Skyrim Special Edition (SKSE)";
-    exe.binaryPath = target;
+    exe.name       = "Skyrim Special Edition (SKSE)";
+    exe.binaryPath = skse;
     exe.workingDir = gameDir;
     exe.runtime    = solero::RuntimeType::Proton;          // launch through the Skyrim Proton prefix
     exe.winePrefix = QDir(gameDir + "/../..").canonicalPath() + "/compatdata/489830";

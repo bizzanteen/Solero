@@ -83,6 +83,11 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     // clickable headers would only flip a lying sort indicator. Disable sorting.
     setSortingEnabled(false);
     header()->setSectionsClickable(false);
+    // When the user resizes any OTHER column, the Name column absorbs the slack so
+    // the columns keep filling the pane (no gap). Resizing Name itself is left alone.
+    connect(header(), &QHeaderView::sectionResized, this, [this](int idx, int, int) {
+        if (idx != ModListModel::ColName) fillNameColumn();
+    });
 
     connect(selectionModel(), &QItemSelectionModel::selectionChanged,
             this, [this](const QItemSelection&, const QItemSelection&) {
@@ -116,19 +121,28 @@ void ModListView::setProfile(Profile* profile) {
 }
 
 void ModListView::autoSizeColumns() {
-    // Fit every column to header + cell contents (leaves sections Interactive).
+    // Fit every column to header + cell contents (leaves sections Interactive),
+    // then let the Name column consume the remaining width.
     header()->resizeSections(QHeaderView::ResizeToContents);
+    fillNameColumn();
+}
+
+// Resize the Name column so the columns always span the full viewport (no empty
+// gap on the right, no Stretch section so manual resizes stay intuitive).
+void ModListView::fillNameColumn() {
     const int vw = viewport()->width();
-    if (vw <= 0) return; // not laid out yet - keep the ResizeToContents result
+    if (vw <= 0) return; // not laid out yet
     int other = 0;
     for (int c = 0; c < m_model->columnCount(); ++c)
         if (c != ModListModel::ColName) other += header()->sectionSize(c);
-    constexpr int kMinName = 160;
-    const int target = qMax(kMinName, vw - other);
-    // Only widen the Name column up to the available slack; if contents are
-    // already wider, leave them (a horizontal scrollbar is fine).
-    if (target > header()->sectionSize(ModListModel::ColName))
+    const int target = qMax(160, vw - other);
+    if (target != header()->sectionSize(ModListModel::ColName))
         header()->resizeSection(ModListModel::ColName, target);
+}
+
+void ModListView::resizeEvent(QResizeEvent* event) {
+    QTreeView::resizeEvent(event);
+    fillNameColumn(); // refill on pane resize so columns never under-fill the width
 }
 
 void ModListView::applyRowSpans() {

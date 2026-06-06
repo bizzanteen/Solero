@@ -19,9 +19,11 @@ private slots:
 protected:
     void contextMenuEvent(QContextMenuEvent* event) override;
     void showEvent(QShowEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 private:
     void applyHeaderLayout();
     void autoSizeColumns();
+    void fillNameColumn();
     void setAllEnabled(bool enabled);
     PluginListModel* m_model;
     QSortFilterProxyModel* m_proxy;

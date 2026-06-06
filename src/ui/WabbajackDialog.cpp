@@ -563,12 +563,15 @@ void WabbajackDialog::doImport() {
     }
 
     // Import every MO2 profile in the instance as its own Solero profile, sharing
-    // the staged mods so they aren't duplicated. listTitle disambiguates names.
+    // the staged mods so they aren't duplicated. Pass the RAW title so the
+    // title-separator filter can match the WJ header (which keeps its real
+    // apostrophe); importInstance sanitizes it internally for profile naming.
+    const QString rawTitle = m_installTitle.trimmed();
     const QString listTitle = sanitize(m_installTitle);
     QApplication::setOverrideCursor(Qt::WaitCursor);
     auto r = Mo2Importer::importInstance(m_installDir,
         AppConfig::instance().stagingDir(), *m_profiles,
-        listTitle.isEmpty() ? QStringLiteral("Wabbajack") : listTitle,
+        rawTitle.isEmpty() ? QStringLiteral("Wabbajack") : rawTitle,
         /*symlinkMods=*/true);
     QApplication::restoreOverrideCursor();
 

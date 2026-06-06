@@ -47,26 +47,112 @@ QList<ModEntry> Mo2Importer::parseModlist(const QString& modlistTxt) {
     return out;
 }
 
-// Stage one mod folder. On copy mode, returns the number of files that FAILED
-// to copy (0 == fully OK, including an empty mod). On symlink mode, returns 0
-// on success and 1 if the link could not be created.
-static int stageModFolder(const QString& srcDir, const QString& modDir, bool symlink) {
-    // Contents are Data-relative; place under <modDir>/Data/.
-    QString dataDir = modDir + "/Data";
+// A game-root file is one that the game loads from the folder next to
+// SkyrimSE.exe rather than from Data/ - primarily native binaries: SKSE's
+// skse64_loader.exe, ENB/ASI DLLs, d3dx9_42.dll (Engine Fixes), etc. We
+// classify a top-level file as game-root if its suffix is one of these.
+static bool isRootFile(const QString& name) {
+    const QString suffix = QFileInfo(name).suffix().toLower();
+    return suffix == "dll" || suffix == "exe" || suffix == "asi" || suffix == "bin";
+}
+
+// Link or copy a single top-level entry (file or directory) of a mod into the
+// staging tree. `src` is the absolute source path; `dst` the absolute target.
+// In symlink mode we create a symlink (the deployer follows symlinks, including
+// for directories); in copy mode we recursively copy files. Returns the number
+// of failures (0 == OK).
+static int placeEntry(const QString& src, const QString& dst, bool symlink) {
+    QDir().mkpath(QFileInfo(dst).path());
     if (symlink) {
-        QDir().mkpath(modDir);
-        return QFile::link(srcDir, dataDir) ? 0 : 1; // symlink the whole folder as Data
-    }
-    QDir().mkpath(dataDir);
-    QDirIterator it(srcDir, QDir::Files, QDirIterator::Subdirectories);
-    int failed = 0;
-    while (it.hasNext()) {
-        QString f = it.next();
-        QString rel = QDir(srcDir).relativeFilePath(f);
-        QString dst = dataDir + "/" + rel;
-        QDir().mkpath(QFileInfo(dst).path());
         QFile::remove(dst);
-        if (!QFile::copy(f, dst)) ++failed;
+        return QFile::link(src, dst) ? 0 : 1;
+    }
+    QFileInfo si(src);
+    if (si.isDir()) {
+        QDir().mkpath(dst);
+        QDirIterator it(src, QDir::Files, QDirIterator::Subdirectories);
+        int failed = 0;
+        while (it.hasNext()) {
+            QString f = it.next();
+            QString rel = QDir(src).relativeFilePath(f);
+            QString d = dst + "/" + rel;
+            QDir().mkpath(QFileInfo(d).path());
+            QFile::remove(d);
+            if (!QFile::copy(f, d)) ++failed;
+        }
+        return failed;
+    }
+    QFile::remove(dst);
+    return QFile::copy(src, dst) ? 0 : 1;
+}
+
+// Stage one mod folder into <destUuidDir>, classifying each top-LEVEL entry as
+// game-root vs Data/ content so binaries that must sit next to SkyrimSE.exe
+// (SKSE loader, ENB/ASI DLLs, d3dx9_42.dll) land at the staging root while
+// normal mod content (meshes/, textures/, *.esp, *.bsa, …) lands under Data/.
+//
+// Classification, per top-level entry (skipping meta.ini, *.modgroups, dotfiles):
+//   1. dir named "Root" (case-insensitive)  -> Root Builder: each child -> root.
+//   2. else if mod has a top-level "Data" subdir -> mod is game-root-relative:
+//        place the entry AS-IS at the staging root (its own Data subdir maps to
+//        <game>/Data; root *.dll/*.exe map to game root).
+//   3. else if entry is a file with a root suffix (dll/exe/asi/bin) -> root.
+//   4. else (normal Data-relative content) -> under Data/.
+//
+// On copy mode returns the number of files that FAILED to copy (0 == fully OK,
+// including an empty mod). On symlink mode returns the number of links that
+// could not be created.
+static int stageModClassified(const QString& srcDir, const QString& destUuidDir, bool symlink) {
+    QDir().mkpath(destUuidDir);
+
+    // Detect a top-level "Data" subdir (case-insensitive) - marks the mod as
+    // game-root-relative (rule 2).
+    bool hasDataSubdir = false;
+    const QFileInfoList topInfos =
+        QDir(srcDir).entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot);
+    for (const QFileInfo& fi : topInfos) {
+        if (fi.isDir() && fi.fileName().compare("Data", Qt::CaseInsensitive) == 0) {
+            hasDataSubdir = true;
+            break;
+        }
+    }
+
+    int failed = 0;
+    for (const QFileInfo& fi : topInfos) {
+        const QString name = fi.fileName();
+        // Skip MO2/Solero metadata and dotfiles (never game content).
+        if (name.startsWith('.')) continue;
+        if (name.compare("meta.ini", Qt::CaseInsensitive) == 0) continue;
+        if (name.endsWith(".modgroups", Qt::CaseInsensitive)) continue;
+
+        const QString src = srcDir + "/" + name;
+
+        // Rule 1: a "Root" directory holds game-root content (Root Builder).
+        if (fi.isDir() && name.compare("Root", Qt::CaseInsensitive) == 0) {
+            const QFileInfoList children =
+                QDir(src).entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot);
+            for (const QFileInfo& ci : children) {
+                if (ci.fileName().startsWith('.')) continue;
+                failed += placeEntry(src + "/" + ci.fileName(),
+                                     destUuidDir + "/" + ci.fileName(), symlink);
+            }
+            continue;
+        }
+
+        // Rule 2: game-root-relative mod -> place entry at staging root as-is.
+        if (hasDataSubdir) {
+            failed += placeEntry(src, destUuidDir + "/" + name, symlink);
+            continue;
+        }
+
+        // Rule 3: a bare root-suffixed file -> game root.
+        if (fi.isFile() && isRootFile(name)) {
+            failed += placeEntry(src, destUuidDir + "/" + name, symlink);
+            continue;
+        }
+
+        // Rule 4: normal Data-relative content -> under Data/.
+        failed += placeEntry(src, destUuidDir + "/Data/" + name, symlink);
     }
     return failed; // empty mod folder is a valid (empty) mod -> 0 failures
 }
@@ -99,6 +185,22 @@ static bool isMo2Artifact(const QString& modName) {
 // Sets e.nexusModId only when modid is a positive integer and repository is
 // empty or "Nexus". Sets e.version from the General/version key. Robust to a
 // missing file (most mods have one; some won't).
+// MO2 meta.ini stores 4-component versions like "1.7.1.0" where Nexus reports
+// "1.7.1". Strip trailing all-zero components (keeping at least one component)
+// so the Version column matches Nexus: 1.7.1.0->1.7.1, 2.0.0.0->2, 1.0.1->1.0.1.
+static QString normalizeVersion(const QString& v) {
+    const QString t = v.trimmed();
+    if (t.isEmpty()) return t;
+    QStringList parts = t.split('.');
+    while (parts.size() > 1) {
+        bool ok = false;
+        const int n = parts.last().toInt(&ok);
+        if (ok && n == 0) parts.removeLast();
+        else break;
+    }
+    return parts.join('.');
+}
+
 static void applyModMeta(const QString& modDir, ModEntry& e) {
     const QString metaIni = modDir + "/meta.ini";
     if (!QFileInfo::exists(metaIni)) return;
@@ -109,7 +211,7 @@ static void applyModMeta(const QString& modDir, ModEntry& e) {
     const QString repository  = s.value("repository").toString().trimmed();
     const QString modIdStr    = s.value("modid").toString().trimmed();
 
-    if (!version.isEmpty()) e.version = version;
+    if (!version.isEmpty()) e.version = normalizeVersion(version);
 
     const bool repoOk = repository.isEmpty()
                      || repository.compare("Nexus", Qt::CaseInsensitive) == 0;
@@ -132,7 +234,7 @@ static ModEntry stageMod(const QString& modName, const QString& mo2ModsDir,
     e.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     const QString src = mo2ModsDir + "/" + modName;
     applyModMeta(src, e);
-    copyFailures += stageModFolder(src, stagingRoot + "/" + e.id, symlink);
+    copyFailures += stageModClassified(src, stagingRoot + "/" + e.id, symlink);
     return e;
 }
 
@@ -299,7 +401,7 @@ Mo2ImportResult Mo2Importer::importProfile(const QString& mo2ProfileDir,
             QString src = mo2ModsDir + "/" + e.name;
             if (QDir(src).exists()) {
                 applyModMeta(src, e);
-                copyFailures += stageModFolder(src, stagingRoot + "/" + e.id, symlinkMods);
+                copyFailures += stageModClassified(src, stagingRoot + "/" + e.id, symlinkMods);
                 ++staged;
             }
         } else if (e.type == EntryType::Separator) {
@@ -373,7 +475,31 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
         ModEntry staged = stageMod(name, modsDir, stagingRoot, symlinkMods, copyFailures);
         sharedMods.insert(name.toLower(), staged);
     }
-    r.modsStaged = sharedMods.size();
+
+    // FIX 2: import the engine's "__Files Requiring Manual Install" folder (the
+    // literal name, with leading double underscore) as an extra mod. It holds
+    // the game-root binaries the engine couldn't auto-place (skse64_loader.exe,
+    // skse64_*.dll, d3dx9_42.dll) plus any Data/ content. Stage it once via the
+    // same classifier and reference it (enabled, near the top of the load order)
+    // in every created profile, so other mods can override it.
+    ModEntry manualInstallMod;
+    bool haveManualInstall = false;
+    {
+        const QString manualDir = mo2InstanceDir + "/__Files Requiring Manual Install";
+        QDir md(manualDir);
+        if (md.exists() &&
+            !md.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot).isEmpty()) {
+            manualInstallMod.type = EntryType::Mod;
+            manualInstallMod.name = "Manual Install Files";
+            manualInstallMod.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            manualInstallMod.enabled = true;
+            copyFailures += stageModClassified(
+                manualDir, stagingRoot + "/" + manualInstallMod.id, symlinkMods);
+            haveManualInstall = true;
+        }
+    }
+
+    r.modsStaged = sharedMods.size() + (haveManualInstall ? 1 : 0);
 
     // Resolve MO2 selected_profile -> the MO2 profile name we should map primary to.
     QString selectedMo2;
@@ -395,6 +521,21 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
         selectedMo2 = selectedMo2.trimmed();
     }
 
+    // FIX 3: listTitle arrives RAW (unsanitized) so the separator filter below
+    // can match the real WJ header (which keeps the title's apostrophe). For
+    // profile-name disambiguation we want a filesystem-friendly form, so derive
+    // a sanitized variant here (mirrors WabbajackDialog::sanitize).
+    auto sanitizeTitle = [](const QString& s) {
+        QString out;
+        out.reserve(s.size());
+        for (QChar c : s) {
+            if (c.isLetterOrNumber() || c == ' ' || c == '-' || c == '_') out += c;
+            else out += ' ';
+        }
+        return out.simplified();
+    };
+    const QString listTitleForName = sanitizeTitle(listTitle);
+
     // Build a Solero profile per MO2 profile, referencing the shared staged mods.
     QHash<QString, QString> mo2ToSolero; // MO2 profile name -> created Solero name
     for (const QString& mp : mo2Profiles) {
@@ -405,7 +546,7 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
         const QStringList existing = profiles.profileNames();
         auto taken = [&](const QString& n) { return existing.contains(n); };
         if (taken(soleroName)) {
-            soleroName = mp + " (" + listTitle + ")";
+            soleroName = mp + " (" + listTitleForName + ")";
             QString base = soleroName;
             int n = 2;
             while (taken(soleroName)) {
@@ -426,10 +567,20 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
             return r;
         }
 
+        // Place the manual-install mod near the top of the load order (lowest
+        // priority == index 0 in Solero order), enabled, so its game-root
+        // binaries are present but any later mod can still override its content.
+        if (haveManualInstall) {
+            ModEntry m = manualInstallMod;
+            m.enabled = true;
+            p->modList().append(m);
+        }
+
         for (const ModEntry& e : entries) {
             if (e.type == EntryType::Separator) {
                 // Skip the redundant modlist-name header separator (WJ lists ship
-                // one named after the list title/version).
+                // one named after the list title/version). Use the RAW listTitle
+                // here (FIX 3) so it matches the WJ header's real apostrophe.
                 if (isListTitleSeparator(e.name, listTitle)) continue;
                 // Separators are per-profile UI entries (fresh UUID, kept from parse).
                 ModEntry sep = e;

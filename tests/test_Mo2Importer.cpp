@@ -208,7 +208,8 @@ private slots:
             if (it->name == "No Meta Mod")     withoutId = it->nexusModId;
         }
         QCOMPARE(withId, QString("12345"));
-        QCOMPARE(withVer, QString("2.0"));
+        // FIX 4: "2.0" normalizes to "2" (trailing all-zero components stripped).
+        QCOMPARE(withVer, QString("2"));
         QVERIFY(withoutId.isEmpty());
     }
     void skipsModGroupsArtifact() {
@@ -259,6 +260,115 @@ private slots:
         }
         QVERIFY2(hasGameplay, "real Gameplay separator must be kept");
         QVERIFY2(!hasListTitle, "list-title separator must be skipped");
+    }
+    void classifiesRootVsDataContent() {
+        QTemporaryDir tmp;
+        QString mo2 = tmp.path() + "/MO2";
+        // Mod A: normal Data-relative meshes + a root ENB dll + a root .esp.
+        write(mo2 + "/mods/ENB Mod/meshes/x.nif", "nif");
+        write(mo2 + "/mods/ENB Mod/enbhost.dll", "dll");
+        write(mo2 + "/mods/ENB Mod/Cool.esp", "esp");
+        // Mod B: Root Builder layout (Root/d3dx9_42.dll).
+        write(mo2 + "/mods/RootMod/Root/d3dx9_42.dll", "d3d");
+        // Mod C: game-root-relative (has a Data/ subdir + a root loader.exe).
+        write(mo2 + "/mods/RootRel/Data/Scripts/s.pex", "pex");
+        write(mo2 + "/mods/RootRel/loader.exe", "exe");
+        write(mo2 + "/profiles/Default/modlist.txt",
+              "+ENB Mod\n+RootMod\n+RootRel\n");
+
+        QString staging = tmp.path() + "/staging";
+        ProfileManager pm(tmp.path() + "/profiles");
+        auto r = Mo2Importer::importProfile(
+            mo2 + "/profiles/Default", mo2 + "/mods", staging, pm, "Cls", /*symlink*/false);
+        QVERIFY2(r.success, r.errorMessage.toUtf8());
+
+        Profile* p = pm.loadProfile("Cls");
+        QVERIFY(p != nullptr);
+        QString enbId, rootId, relId;
+        for (auto it = p->modList().begin(); it != p->modList().end(); ++it) {
+            if (it->name == "ENB Mod") enbId = it->id;
+            if (it->name == "RootMod") rootId = it->id;
+            if (it->name == "RootRel") relId = it->id;
+        }
+        QVERIFY(!enbId.isEmpty() && !rootId.isEmpty() && !relId.isEmpty());
+        // ENB Mod: root dll at root, meshes + esp under Data/.
+        QVERIFY(QFile::exists(staging + "/" + enbId + "/enbhost.dll"));
+        QVERIFY(QFile::exists(staging + "/" + enbId + "/Data/meshes/x.nif"));
+        QVERIFY(QFile::exists(staging + "/" + enbId + "/Data/Cool.esp"));
+        QVERIFY(!QFile::exists(staging + "/" + enbId + "/Data/enbhost.dll"));
+        // RootMod: Root/d3dx9_42.dll -> root.
+        QVERIFY(QFile::exists(staging + "/" + rootId + "/d3dx9_42.dll"));
+        QVERIFY(!QFile::exists(staging + "/" + rootId + "/Data/d3dx9_42.dll"));
+        // RootRel: has Data/ subdir -> entries placed AS-IS at root.
+        QVERIFY(QFile::exists(staging + "/" + relId + "/Data/Scripts/s.pex"));
+        QVERIFY(QFile::exists(staging + "/" + relId + "/loader.exe"));
+    }
+    void normalizesStoredVersions() {
+        QTemporaryDir tmp;
+        QString mo2 = tmp.path() + "/MO2";
+        auto verFor = [&](const QString& mod, const QString& ver) -> QString {
+            write(mo2 + "/mods/" + mod + "/a.txt", "a");
+            write(mo2 + "/mods/" + mod + "/meta.ini",
+                  "[General]\nmodid=1\nrepository=Nexus\nversion=" + ver + "\n");
+            return mod;
+        };
+        verFor("V1", "1.7.1.0");
+        verFor("V2", "2.0.0.0");
+        verFor("V3", "1.0.1");
+        write(mo2 + "/profiles/Default/modlist.txt", "+V1\n+V2\n+V3\n");
+
+        ProfileManager pm(tmp.path() + "/profiles");
+        auto r = Mo2Importer::importProfile(
+            mo2 + "/profiles/Default", mo2 + "/mods",
+            tmp.path() + "/staging", pm, "Ver", /*symlink*/false);
+        QVERIFY2(r.success, r.errorMessage.toUtf8());
+        Profile* p = pm.loadProfile("Ver");
+        QVERIFY(p != nullptr);
+        QHash<QString, QString> got;
+        for (auto it = p->modList().begin(); it != p->modList().end(); ++it)
+            got.insert(it->name, it->version);
+        QCOMPARE(got.value("V1"), QString("1.7.1"));
+        QCOMPARE(got.value("V2"), QString("2"));
+        QCOMPARE(got.value("V3"), QString("1.0.1"));
+    }
+    void importsManualInstallFilesAsMod() {
+        QTemporaryDir tmp;
+        QString mo2 = tmp.path() + "/MO2";
+        write(mo2 + "/mods/ModA/a.txt", "a");
+        // The engine's manual-install folder with a game-root dll + Data content.
+        write(mo2 + "/__Files Requiring Manual Install/foo.dll", "dll");
+        write(mo2 + "/__Files Requiring Manual Install/Data/Scripts/x.pex", "pex");
+        write(mo2 + "/profiles/P1/modlist.txt", "+ModA\n");
+        write(mo2 + "/profiles/P2/modlist.txt", "+ModA\n");
+        write(mo2 + "/ModOrganizer.ini", "[General]\nselected_profile=P1\n");
+
+        QString staging = tmp.path() + "/staging";
+        ProfileManager pm(tmp.path() + "/profiles");
+        auto r = Mo2Importer::importInstance(mo2, staging, pm, "MyList", /*symlink*/false);
+        QVERIFY2(r.success, r.errorMessage.toUtf8());
+        // ModA + Manual Install Files counted.
+        QCOMPARE(r.modsStaged, 2);
+
+        QString manualId;
+        {
+            Profile* p1 = pm.loadProfile("P1");
+            QVERIFY(p1 != nullptr);
+            // Manual Install Files is at index 0 (lowest priority / top of LO).
+            QCOMPARE(p1->modList().at(0).name, QString("Manual Install Files"));
+            QVERIFY(p1->modList().at(0).enabled);
+            QVERIFY(p1->modList().at(0).nexusModId.isEmpty());
+            manualId = p1->modList().at(0).id;
+        }
+        {
+            Profile* p2 = pm.loadProfile("P2");
+            QVERIFY(p2 != nullptr);
+            QCOMPARE(p2->modList().at(0).name, QString("Manual Install Files"));
+            // Shared once: same id across profiles.
+            QCOMPARE(p2->modList().at(0).id, manualId);
+        }
+        // Staged: root dll at root, Data content under Data/.
+        QVERIFY(QFile::exists(staging + "/" + manualId + "/foo.dll"));
+        QVERIFY(QFile::exists(staging + "/" + manualId + "/Data/Scripts/x.pex"));
     }
     void importInstanceDisambiguatesNames() {
         QTemporaryDir tmp;

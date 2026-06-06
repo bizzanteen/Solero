@@ -127,6 +127,7 @@ private:
     void onEditTool(const QString& id);
     void onRemoveTool(const QString& id);
     void onManageTools();
+    void onPatchWizard();
     QList<QPair<QString,QString>> modChoices() const;
     void rebuildToolsMenu();
     void onOpenBethini();

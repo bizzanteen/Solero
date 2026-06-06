@@ -48,6 +48,13 @@ public:
                                     const std::function<void(int)>& onProgress = {});
     static void extractSubpaths(InstallPrep& prep, const QStringList& subpaths,
                                 const std::function<void(int)>& onProgress = {});
+
+    // Retroactively install a subset of FOMOD option files into an already-staged
+    // mod without wiping it (used by the Patch Wizard). Extracts the needed source
+    // files from archivePath and copies source->destination into modDir/Data.
+    static bool installOptionFiles(const QString& archivePath, const QString& modDir,
+                                   const QList<FomodFile>& files,
+                                   const std::function<void(int)>& onProgress = {});
 private:
     static QString baseName(const QString& archivePath);
     static bool moveNormalized(const QString& extractDir,
@@ -56,6 +63,14 @@ private:
     static QString resolveCaseInsensitive(const QString& base, const QString& rel);
     static bool copyDirInto(const QString& srcDir, const QString& dstDir);
     static bool extractFull(InstallPrep& prep, const std::function<void(int)>& onProgress = {});
+    // Copy FOMOD source->destination entries (priority-ordered, last-writer-wins)
+    // into modDir/Data. fomodBase is the archive root that the FOMOD `source`
+    // paths are relative to (the parent of the `fomod` folder).
+    static void copyFomodFiles(const QString& fomodBase, const QList<FomodFile>& files,
+                               const QString& modDir);
+    // Locate the FOMOD config inside an extracted tree and return the archive root
+    // (parent of the `fomod` folder). Falls back to extractDir if not found.
+    static QString fomodBaseFor(const QString& extractDir);
 };
 
 } // namespace solero

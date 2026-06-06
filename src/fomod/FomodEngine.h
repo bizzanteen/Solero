@@ -14,6 +14,9 @@ public:
 
     bool load(const QString& moduleConfigPath);
     const FomodModule& module() const { return m_module; }
+    // Inject an already-parsed module (e.g. for the Patch Wizard, which re-uses
+    // effectiveType()/isStepVisible() against an in-memory FomodModule).
+    void setModule(const FomodModule& m) { m_module = m; }
     QHash<QString, QString> flagsFor(const Selection& sel) const;
 
     // Set the predicate used to evaluate fileDependency conditions (by plugin

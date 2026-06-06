@@ -21,6 +21,7 @@
 #include "ui/ToolsManagerDialog.h"
 #include "ui/NexusWebView.h"
 #include "ui/LootRulesEditor.h"
+#include "ui/PatchWizardDialog.h"
 #include "tools/ToolRunner.h"
 #include "tools/ToolCatalog.h"
 #include "fomod/FomodEngine.h"
@@ -1956,6 +1957,10 @@ void MainWindow::rebuildToolsMenu() {
         }
     }
     if (!tools.isEmpty()) m_toolsMenu->addSeparator();
+    // Built-in: always available regardless of configured tools.
+    m_toolsMenu->addAction(QIcon::fromTheme("system-search", QIcon::fromTheme("edit-find")),
+                           "Patch Wizard\xe2\x80\xa6", this, &MainWindow::onPatchWizard);
+    m_toolsMenu->addSeparator();
     // Use real icons (in the icon column) so these align with the tool entries above.
     m_toolsMenu->addAction(QIcon::fromTheme("list-add"), "Add tool\xe2\x80\xa6", this, &MainWindow::onAddTool2);
     m_toolsMenu->addAction(QIcon::fromTheme("configure", QIcon::fromTheme("settings-configure")),
@@ -1977,6 +1982,29 @@ void MainWindow::onManageTools() {
     connect(&dlg, &solero::ToolsManagerDialog::addToolRequested, this, [this, &dlg]{ onAddTool2(); dlg.refresh(); });
     connect(&dlg, &solero::ToolsManagerDialog::editToolRequested, this, [this, &dlg](const QString& id){ onEditTool(id); dlg.refresh(); });
     connect(&dlg, &solero::ToolsManagerDialog::removeToolRequested, this, [this, &dlg](const QString& id){ onRemoveTool(id); dlg.refresh(); });
+    dlg.exec();
+}
+
+void MainWindow::onPatchWizard() {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) { statusBar()->showMessage("No active profile."); return; }
+    if (!solero::AppConfig::instance().isConfigured()) {
+        QMessageBox::warning(this, "Patch Wizard",
+                             "Configure the game first (Game Settings\xe2\x80\xa6).");
+        return;
+    }
+    solero::PatchWizardDialog dlg(profile, this);
+    connect(&dlg, &solero::PatchWizardDialog::patchesInstalled, this,
+            [this](const QStringList& modIds) {
+        for (const QString& id : modIds) {
+            m_modListView->invalidateModCache(id);
+            m_rightPane->invalidateModPluginCache(id);
+        }
+        if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
+        if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+        updatePluginNotice();
+        statusBar()->showMessage("Patches installed - re-deploy to apply.");
+    });
     dlg.exec();
 }
 

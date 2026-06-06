@@ -114,6 +114,8 @@ set(SOLERO_SOURCES
   src/install/ModInstaller.cpp
   src/fomod/FomodCondition.cpp
   src/fomod/FomodEngine.cpp
+  src/patch/PatchScanner.cpp
+  src/ui/PatchWizardDialog.cpp
   src/ui/FomodWizard.cpp
   src/tools/ToolStore.cpp
   src/tools/ToolRunner.cpp

@@ -191,7 +191,13 @@ InstallResult ModInstaller::stageFomod(InstallPrep& prep, const QString& staging
 
     QString fomodDir = QFileInfo(prep.fomodConfigPath).dir().path(); // .../fomod
     QString fomodBase = QFileInfo(fomodDir).dir().path();            // parent of fomod
+    copyFomodFiles(fomodBase, files, modDir);
+    r.success = true;
+    return r;
+}
 
+void ModInstaller::copyFomodFiles(const QString& fomodBase, const QList<FomodFile>& files,
+                                  const QString& modDir) {
     // FOMOD spec: when two sources write the same destination, the one with the
     // higher priority wins. We copy last-writer-wins, so stable-sort ASCENDING
     // by priority - higher priority is copied last and overwrites lower.
@@ -219,8 +225,34 @@ InstallResult ModInstaller::stageFomod(InstallPrep& prep, const QString& staging
             QFile::copy(src, dst);
         }
     }
-    r.success = true;
-    return r;
+}
+
+QString ModInstaller::fomodBaseFor(const QString& extractDir) {
+    QDirIterator it(extractDir, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        QString f = it.next();
+        if (f.endsWith("/ModuleConfig.xml", Qt::CaseInsensitive)
+            && QFileInfo(f).dir().dirName().compare("fomod", Qt::CaseInsensitive) == 0) {
+            QString fomodDir = QFileInfo(f).dir().path();   // .../fomod
+            return QFileInfo(fomodDir).dir().path();         // parent of fomod
+        }
+    }
+    return extractDir;
+}
+
+bool ModInstaller::installOptionFiles(const QString& archivePath, const QString& modDir,
+                                      const QList<FomodFile>& files,
+                                      const std::function<void(int)>& onProgress) {
+    if (files.isEmpty()) return true;
+    if (!ArchiveTool::sevenZipAvailable()) return false;
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) return false;
+    // Extract the whole archive so all candidate source files are available
+    // (option sources may be solid/scattered); the temp dir auto-cleans.
+    if (!ArchiveTool::extract(archivePath, tmp.path(), onProgress)) return false;
+    QString fomodBase = fomodBaseFor(tmp.path());
+    copyFomodFiles(fomodBase, files, modDir);
+    return true;
 }
 
 QString ModInstaller::resolveCaseInsensitive(const QString& base, const QString& rel) {

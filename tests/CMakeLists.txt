@@ -97,6 +97,27 @@ endfunction()
 add_solero_fomod_test(test_FomodCondition)
 add_solero_fomod_test(test_FomodEngine)
 
+# PatchScanner: the test exercises only the pure candidatesForModule(), but the
+# translation unit also pulls in scanProfile()'s IO deps (ModInstaller/ArchiveTool/
+# Profile), so link the same set the install test uses.
+add_executable(test_PatchScanner test_PatchScanner.cpp
+  ../src/patch/PatchScanner.cpp
+  ../src/fomod/FomodCondition.cpp
+  ../src/fomod/FomodEngine.cpp
+  ../src/install/ArchiveTool.cpp
+  ../src/install/DataDirDetector.cpp
+  ../src/install/ModInstaller.cpp
+  ../src/core/ModList.cpp
+  ../src/core/PluginList.cpp
+  ../src/core/Profile.cpp
+  ../src/core/ProfileManager.cpp
+  ../src/ai/AITransaction.cpp
+  ../src/core/AppConfig.cpp
+)
+target_include_directories(test_PatchScanner PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_PatchScanner PRIVATE Qt6::Core Qt6::Xml Qt6::Test)
+add_test(NAME test_PatchScanner COMMAND test_PatchScanner)
+
 function(add_solero_tools_test name)
   add_executable(${name} ${name}.cpp
     ../src/tools/ToolStore.cpp

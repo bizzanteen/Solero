@@ -1827,9 +1827,73 @@ void MainWindow::onOpenLootRules() {
 }
 
 void MainWindow::onPlay() {
-    // Launch Skyrim SE through Steam.
-    QDesktopServices::openUrl(QUrl("steam://rungameid/489830"));
-    statusBar()->showMessage("Launching Skyrim via Steam\xe2\x80\xa6");
+    if (m_toolRunning) {
+        statusBar()->showMessage("Something is already running - wait for it to finish.");
+        return;
+    }
+    if (!solero::AppConfig::instance().isConfigured()) {
+        QMessageBox::warning(this, "Play", "Configure the game first (Game Settings\xe2\x80\xa6).");
+        return;
+    }
+    // Mods must be deployed to play with them (same as running a tool).
+    if (!m_deployed || m_deployDirty) {
+        QMessageBox box(this);
+        box.setWindowTitle("Deploy required");
+        box.setIcon(QMessageBox::Warning);
+        box.setText("Deploy your modlist before playing?");
+        box.setInformativeText(QString("Mods only reach the game once deployed")
+                               + (m_deployDirty ? " (you have undeployed changes)." : "."));
+        QAbstractButton* deployBtn = box.addButton("Deploy && Play", QMessageBox::AcceptRole);
+        box.addButton("Cancel", QMessageBox::RejectRole);
+        box.exec();
+        if (box.clickedButton() != deployBtn) return;
+        if (!deployCurrent()) {
+            QMessageBox::critical(this, "Deploy Failed", "Could not deploy - see status bar."); return;
+        }
+    }
+
+    const QString gameDir = solero::AppConfig::instance().gameDir();
+    // Find a launch target in the game root, case-insensitively. Prefer the SKSE
+    // loader so script-extender plugins load; fall back to the base game exe.
+    auto findExeCI = [&](const QString& name) -> QString {
+        if (QFile::exists(gameDir + "/" + name)) return gameDir + "/" + name;
+        const auto matches = QDir(gameDir).entryList(QDir::Files);
+        for (const QString& f : matches)
+            if (f.compare(name, Qt::CaseInsensitive) == 0) return gameDir + "/" + f;
+        return {};
+    };
+    const QString skse = findExeCI("skse64_loader.exe");
+    const QString target = !skse.isEmpty() ? skse : findExeCI("SkyrimSE.exe");
+    if (target.isEmpty()) {
+        QMessageBox::warning(this, "Play",
+            "Couldn't find skse64_loader.exe or SkyrimSE.exe in the game folder.\n"
+            "Make sure SKSE is installed (it deploys with your modlist).");
+        return;
+    }
+    if (skse.isEmpty())
+        statusBar()->showMessage("SKSE not found - launching without the script extender.");
+
+    solero::Executable exe;
+    exe.name       = skse.isEmpty() ? "Skyrim Special Edition" : "Skyrim Special Edition (SKSE)";
+    exe.binaryPath = target;
+    exe.workingDir = gameDir;
+    exe.runtime    = solero::RuntimeType::Proton;          // launch through the Skyrim Proton prefix
+    exe.winePrefix = QDir(gameDir + "/../..").canonicalPath() + "/compatdata/489830";
+
+    // Lock the UI (MO2-style) while the game runs; ToolRunner blocks via an event
+    // loop until the process exits, then we unlock.
+    m_toolRunning = true;
+    showRunLock(exe.name);
+    statusBar()->showMessage("Launching " + exe.name + "\xe2\x80\xa6");
+    auto res = solero::ToolRunner::run(exe, gameDir, solero::AppConfig::instance().stagingDir());
+    hideRunLock();
+    m_toolRunning = false;
+
+    if (!res.launched)
+        QMessageBox::warning(this, "Play",
+            res.error.isEmpty() ? "Failed to launch the game." : res.error);
+    else
+        statusBar()->showMessage("Game closed.");
 }
 
 void MainWindow::onEditTool(const QString& id) {

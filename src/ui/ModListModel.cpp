@@ -278,8 +278,8 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     if (role == Qt::DecorationRole && isSep && idx.column() == ColEnabled && !entry.icon.isEmpty()) {
         return renderSvgIcon(entry.icon, solero::contrastText(QColor(entry.color)), 20);
     }
-    // Out-of-date mod entries: a yellow up-arrow next to the name.
-    if (role == Qt::DecorationRole && !isSep && idx.column() == ColName
+    // Out-of-date mod entries: a yellow up-arrow next to the VERSION.
+    if (role == Qt::DecorationRole && !isSep && idx.column() == ColVersion
             && entry.type == EntryType::Mod && m_updates.contains(entry.id)) {
         return solero::yellowUpArrowIcon();
     }

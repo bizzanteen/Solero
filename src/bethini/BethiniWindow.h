@@ -49,6 +49,7 @@ private:
     QString iniPathFor(const QString& file) const;
     IniFile& iniFor(const QString& file) const;     // lazy-load into cache
     void saveAllInis();                             // flush dirty cached INIs
+    void pushInisToLive() const;  // mirror profile INIs to the live game INI dir
     QVariant readKey(const BethiniIniKey& k) const;
     void writeKey(const BethiniIniKey& k, const QVariant& v);
 

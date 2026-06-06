@@ -1,4 +1,5 @@
 #include "BethiniWindow.h"
+#include "core/AppConfig.h"
 #include <QCloseEvent>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -17,6 +18,7 @@
 #include <QMessageBox>
 #include <limits>
 #include <QFile>
+#include <QDir>
 #include <QFont>
 #include <QGuiApplication>
 #include <QScreen>
@@ -79,6 +81,25 @@ void BethiniWindow::saveAllInis() {
     for (auto it = m_iniCache.begin(); it != m_iniCache.end(); ++it)
         if (it.value().dirty())
             it.value().save(it.key());
+}
+
+void BethiniWindow::pushInisToLive() const {
+    if (!m_profile) return;
+    QString docs = AppConfig::instance().documentsDir();
+    QString iniDir = docs.isEmpty() ? AppConfig::instance().gameDir() : docs;
+    if (iniDir.isEmpty()) return;
+    QDir().mkpath(iniDir);
+    const QList<QPair<QString,QString>> map = {
+        { m_profile->skyrimIniPath(),    iniDir + "/Skyrim.ini" },
+        { m_profile->skyrimPrefsPath(),  iniDir + "/SkyrimPrefs.ini" },
+        { m_profile->skyrimCustomPath(), iniDir + "/SkyrimCustom.ini" },
+    };
+    for (const auto& [src, target] : map) {
+        if (QFile::exists(src)) {
+            QFile::remove(target);
+            QFile::copy(src, target);
+        }
+    }
 }
 
 QVariant BethiniWindow::readKey(const BethiniIniKey& k) const {
@@ -306,7 +327,7 @@ void BethiniWindow::buildAdvancedTab(QTabWidget* tabs) {
     v->addLayout(bar);
 
     auto* hint = new QLabel(
-        "Directly edit this profile's INI. Changes deploy to the game on next Deploy.", page);
+        "Directly edit this profile's INI. Saving writes to the game's INIs immediately.", page);
     hint->setStyleSheet("color: gray;");
     v->addWidget(hint);
 
@@ -349,6 +370,7 @@ void BethiniWindow::onAdvancedSave() {
     // Invalidate the cached structured view so subsequent reads/writes reload
     // the hand-edited content from disk.
     m_iniCache.remove(path);
+    pushInisToLive();
     // Reload the form widgets so the structured tabs reflect raw edits.
     for (auto& rw : m_rows) loadRow(rw);
 }
@@ -501,6 +523,7 @@ void BethiniWindow::applyPreset(const QString& presetName) {
     if (!m_profile) { showStatus("No profile loaded"); return; }
     for (auto& rw : m_rows) applyPresetToRow(rw, presetName);
     saveAllInis();
+    pushInisToLive();
     resetDirty();
     QString shortName = presetName;
     shortName.remove("Bethini ");
@@ -545,6 +568,7 @@ void BethiniWindow::applyRecommendedTweaks() {
     }
 
     saveAllInis();
+    pushInisToLive();
     // Re-read the UI rows so widgets reflect the new INI values.
     reloadRows();
     showStatus(QStringLiteral("✓ Applied %1 recommended tweaks").arg(count));
@@ -606,9 +630,10 @@ void BethiniWindow::onSave() {
     for (auto& rw : m_rows)
         if (rowDiffersFromIni(rw)) saveRow(rw);
     saveAllInis();
+    pushInisToLive();
     if (m_advEdit) m_advEdit->document()->setModified(false);
     resetDirty();
-    showStatus(QStringLiteral("\xe2\x9c\x93 Saved to profile"));
+    showStatus(QStringLiteral("\xe2\x9c\x93 Saved - applied to game"));
 }
 
 bool BethiniWindow::hasUnsavedChanges() const {

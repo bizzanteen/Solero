@@ -643,8 +643,11 @@ void MainWindow::switchProfile(const QString& name) {
     m_bethiniWindow->setProfile(profile);
     // Self-review fix: load previously-computed ConflictIndex if it exists
     QString conflictPath = solero::DeployEngine::conflictIndexPath(profile->path());
-    if (QFile::exists(conflictPath))
-        m_rightPane->setConflictIndex(solero::ConflictIndex::loadFromFile(conflictPath));
+    if (QFile::exists(conflictPath)) {
+        const auto ci = solero::ConflictIndex::loadFromFile(conflictPath);
+        m_rightPane->setConflictIndex(ci);
+        m_modListView->setConflictIndex(ci);
+    }
     setWindowTitle(QString("Solero - %1").arg(name));
 
     // Deploy the incoming profile if the previous one was deployed.
@@ -661,6 +664,7 @@ void MainWindow::switchProfile(const QString& name) {
         m_deployDirty = false;
         if (result.success) {
             m_rightPane->setConflictIndex(result.conflicts);
+            m_modListView->setConflictIndex(result.conflicts);
             m_rightPane->setProfile(profile);
         }
         updateDeployButton();
@@ -734,6 +738,7 @@ bool MainWindow::deployCurrent() {
             .arg(result.filesDeployed)
             .arg(result.conflicts.conflictedPaths().size()));
     m_rightPane->setConflictIndex(result.conflicts);
+    m_modListView->setConflictIndex(result.conflicts);
     m_rightPane->setProfile(profile); // refresh plugin list - LOOT may have reordered it
     m_modListView->invalidateModCache(); // deploy may have populated Overwrite
     emit conflictsUpdated(result.conflicts);

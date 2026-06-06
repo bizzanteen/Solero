@@ -103,6 +103,7 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
                 ids << entry->id;
         }
         emit modsSelected(ids);
+        updateConflictHighlights();
     });
 }
 
@@ -186,6 +187,31 @@ void ModListView::invalidateModCache(const QString& id) {
 
 void ModListView::setUpdateInfo(const QHash<QString, QPair<QString,QString>>& info) {
     m_model->setUpdateInfo(info);
+}
+
+void ModListView::setConflictIndex(const ConflictIndex& index) {
+    m_conflicts = index;
+    updateConflictHighlights();
+}
+
+void ModListView::updateConflictHighlights() {
+    // Highlight relative to a single selected mod (MO2 behaviour). Anything else
+    // (none / multiple / a separator / Overwrite) clears the highlight.
+    const auto ids = selectedModIds();
+    if (ids.size() != 1) { m_model->setConflictHighlights({}); return; }
+    const QString sel = ids.first();
+
+    QHash<QString,int> hi; // modId -> 1 green (overwrites sel) / 2 red (overwritten by sel)
+    // Files the selected mod LOSES -> their winner overwrites it -> GREEN.
+    for (const QString& f : m_conflicts.losingFilesOf(sel)) {
+        const QString w = m_conflicts.winnerOf(f);
+        if (!w.isEmpty() && w != sel) hi[w] = 1;
+    }
+    // Files the selected mod WINS -> its losers are overwritten by it -> RED.
+    for (const QString& f : m_conflicts.winningFilesOf(sel))
+        for (const QString& l : m_conflicts.losersOf(f))
+            if (l != sel && !hi.contains(l)) hi[l] = 2; // green takes precedence
+    m_model->setConflictHighlights(hi);
 }
 
 void ModListView::mouseDoubleClickEvent(QMouseEvent* event) {

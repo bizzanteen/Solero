@@ -52,6 +52,9 @@ public:
     // Mark mods that have a newer version available. Key = mod id; value =
     // {installedVersion, latestVersion}. Only includes mods with an update.
     void setUpdateInfo(const QHash<QString, QPair<QString,QString>>& info);
+    // MO2-style conflict highlight for the selected mod: id -> 1 (green: this mod
+    // overwrites the selection) / 2 (red: overwritten by the selection). Empty = clear.
+    void setConflictHighlights(const QHash<QString,int>& roles);
 
     // Invalidate cached disk scans (empty-mod / Overwrite "has files"). Call only
     // when a mod's staged files actually change. Empty id clears the whole cache
@@ -70,6 +73,7 @@ private:
     QHash<int,int> m_priorityByRaw;
     QHash<QString,QStringList> m_depWarnings;
     QHash<QString, QPair<QString,QString>> m_updates; // modId -> {installed, latest}
+    QHash<QString,int> m_conflictHi; // modId -> 1 green / 2 red (selection conflicts)
     mutable QHash<QString,bool> m_emptyCache;
     mutable int m_overwriteHasFiles = -1; // tri-state cache: -1 unknown, 0 no, 1 yes
 

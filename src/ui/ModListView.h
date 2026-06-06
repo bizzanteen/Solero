@@ -3,6 +3,7 @@
 #include <QHash>
 #include <QPair>
 #include "core/Profile.h"
+#include "deploy/ConflictIndex.h"
 
 namespace solero {
 class ModListModel;
@@ -25,6 +26,9 @@ public:
     // Pass-through to the underlying model's update-available indicator.
     // Key = mod id; value = {installedVersion, latestVersion} (mods with updates).
     void setUpdateInfo(const QHash<QString, QPair<QString,QString>>& info);
+    // Provide the per-file conflict index so selecting a mod highlights its
+    // conflicting mods (green = overwrites it, red = overwritten by it), MO2-style.
+    void setConflictIndex(const ConflictIndex& index);
 
 signals:
     // Emitted on selection change. Each entry is a mod id, "__overwrite__" for the
@@ -50,6 +54,9 @@ private:
     ModListModel* m_model;
     QString m_filter;
     bool m_didAutoSize = false;
+    ConflictIndex m_conflicts;
+    // Recompute the green/red conflict highlight for the current single selection.
+    void updateConflictHighlights();
     void autoSizeColumns();
     void fillNameColumn();
     void applyFilter();

@@ -181,6 +181,60 @@ private slots:
         // Staged exactly once: only 3 dirs under staging.
         QCOMPARE(QDir(staging).entryList(QDir::Dirs | QDir::NoDotAndDotDot).size(), 3);
     }
+    void capturesNexusIdAndVersionFromMetaIni() {
+        QTemporaryDir tmp;
+        QString mo2 = tmp.path() + "/MO2";
+        // Mod with a Nexus meta.ini.
+        write(mo2 + "/mods/Better Weather/textures/a.dds", "tex");
+        write(mo2 + "/mods/Better Weather/meta.ini",
+              "[General]\ngameName=SkyrimSE\nmodid=12345\nversion=2.0\n"
+              "installationFile=Better Weather-12345.7z\nrepository=Nexus\n");
+        // Mod without a meta.ini.
+        write(mo2 + "/mods/No Meta Mod/meshes/b.nif", "mesh");
+        write(mo2 + "/profiles/Default/modlist.txt",
+              "+Better Weather\n+No Meta Mod\n");
+
+        ProfileManager pm(tmp.path() + "/profiles");
+        auto r = Mo2Importer::importProfile(
+            mo2 + "/profiles/Default", mo2 + "/mods",
+            tmp.path() + "/staging", pm, "Meta", /*symlink*/false);
+        QVERIFY2(r.success, r.errorMessage.toUtf8());
+
+        Profile* p = pm.loadProfile("Meta");
+        QVERIFY(p != nullptr);
+        QString withId, withoutId, withVer;
+        for (auto it = p->modList().begin(); it != p->modList().end(); ++it) {
+            if (it->name == "Better Weather") { withId = it->nexusModId; withVer = it->version; }
+            if (it->name == "No Meta Mod")     withoutId = it->nexusModId;
+        }
+        QCOMPARE(withId, QString("12345"));
+        QCOMPARE(withVer, QString("2.0"));
+        QVERIFY(withoutId.isEmpty());
+    }
+    void skipsModGroupsArtifact() {
+        QTemporaryDir tmp;
+        QString mo2 = tmp.path() + "/MO2";
+        write(mo2 + "/mods/RealMod/a.txt", "a");
+        // MO2's ModGroups metadata folder - not game content.
+        write(mo2 + "/mods/ModGroups/group.modgroups", "{}");
+        write(mo2 + "/mods/ModGroups/meta.ini", "[General]\n");
+        write(mo2 + "/profiles/P1/modlist.txt",
+              "+RealMod\n+ModGroups\n");
+        write(mo2 + "/ModOrganizer.ini", "[General]\nselected_profile=P1\n");
+
+        ProfileManager pm(tmp.path() + "/profiles");
+        auto r = Mo2Importer::importInstance(mo2, tmp.path() + "/staging", pm,
+                                             "MyList", /*symlink*/false);
+        QVERIFY2(r.success, r.errorMessage.toUtf8());
+        // ModGroups excluded from unique-staged count: only RealMod.
+        QCOMPARE(r.modsStaged, 1);
+
+        Profile* p = pm.loadProfile("P1");
+        QVERIFY(p != nullptr);
+        for (auto it = p->modList().begin(); it != p->modList().end(); ++it)
+            QVERIFY2(it->name.compare("ModGroups", Qt::CaseInsensitive) != 0,
+                     "ModGroups artifact must not be imported as a mod");
+    }
     void importInstanceDisambiguatesNames() {
         QTemporaryDir tmp;
         QString mo2 = tmp.path() + "/MO2";

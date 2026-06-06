@@ -137,7 +137,7 @@ int DeployEngine::deployMod(const QString& modId,
 
     int failures = 0;
     QDirIterator it(modRoot, QDir::Files | QDir::NoDotAndDotDot,
-                    QDirIterator::Subdirectories);
+                    QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
     while (it.hasNext()) {
         QString srcPath = it.next();
         QString relPath = srcPath.mid(modRoot.length() + 1);
@@ -223,7 +223,7 @@ bool DeployEngine::undeploy(const QString& gameDir, const std::function<void(int
     // then tear down the backup tree.
     if (QDir(backupRoot).exists()) {
         QDirIterator bit(backupRoot, QDir::Files | QDir::NoDotAndDotDot,
-                         QDirIterator::Subdirectories);
+                         QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
         while (bit.hasNext()) {
             QString backupPath = bit.next();
             QString relPath = backupPath.mid(backupRoot.length() + 1);

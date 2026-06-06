@@ -54,7 +54,8 @@ void ModFileTree::buildTree(const QString& rootDir,
     const bool wasSorting = isSortingEnabled();
     setSortingEnabled(false);
     QMap<QString, QTreeWidgetItem*> dirItems;
-    QDirIterator it(rootDir, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+    QDirIterator it(rootDir, QDir::Files | QDir::NoDotAndDotDot,
+                    QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
     while (it.hasNext()) {
         QString fullPath = it.next();
         QString relPath  = fullPath.mid(rootDir.length() + 1);

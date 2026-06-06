@@ -56,7 +56,7 @@ bool ModListModel::isModEmpty(const QString& id) const {
     auto it = m_emptyCache.constFind(id);
     if (it != m_emptyCache.constEnd()) return it.value();
     QDirIterator di(AppConfig::instance().stagingDir() + "/" + id,
-                    QDir::Files, QDirIterator::Subdirectories);
+                    QDir::Files, QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
     bool empty = !di.hasNext();
     m_emptyCache.insert(id, empty);
     return empty;

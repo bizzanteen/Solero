@@ -194,7 +194,8 @@ void DataTab::refresh() {
 void DataTab::showSingleMod(const QString& modId) {
     QString root = stagingRootFor(modId);
 
-    QDirIterator probe(root, QDir::Files, QDirIterator::Subdirectories);
+    QDirIterator probe(root, QDir::Files,
+                       QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
     bool empty = true;
     while (probe.hasNext()) {
         if (!QFileInfo(probe.next()).fileName().startsWith(".solero")) { empty = false; break; }

@@ -71,6 +71,45 @@ static int stageModFolder(const QString& srcDir, const QString& modDir, bool sym
     return failed; // empty mod folder is a valid (empty) mod -> 0 failures
 }
 
+// MO2 keeps a few non-content folders inside its mods dir (e.g. "ModGroups",
+// which holds *.modgroups separator-group metadata, and sometimes "Backup").
+// These are listed in modlist.txt like real mods but are not game content, so
+// they must never become Solero mod entries. Returns true for such artifacts.
+static bool isMo2Artifact(const QString& modName) {
+    return modName.compare("ModGroups", Qt::CaseInsensitive) == 0
+        || modName.compare("Backup",    Qt::CaseInsensitive) == 0;
+}
+
+// Read Nexus identity + version from a mod's <modsDir>/<ModName>/meta.ini.
+// MO2 writes e.g.:
+//   [General]
+//   modid=149975
+//   version=1.7.1.0
+//   repository=Nexus
+// Sets e.nexusModId only when modid is a positive integer and repository is
+// empty or "Nexus". Sets e.version from the General/version key. Robust to a
+// missing file (most mods have one; some won't).
+static void applyModMeta(const QString& modDir, ModEntry& e) {
+    const QString metaIni = modDir + "/meta.ini";
+    if (!QFileInfo::exists(metaIni)) return;
+    // QSettings folds the INI's [General] section into the top level, so read
+    // the keys without a "General/" prefix (mirrors selected_profile handling).
+    QSettings s(metaIni, QSettings::IniFormat);
+    const QString version    = s.value("version").toString().trimmed();
+    const QString repository  = s.value("repository").toString().trimmed();
+    const QString modIdStr    = s.value("modid").toString().trimmed();
+
+    if (!version.isEmpty()) e.version = version;
+
+    const bool repoOk = repository.isEmpty()
+                     || repository.compare("Nexus", Qt::CaseInsensitive) == 0;
+    if (repoOk) {
+        bool ok = false;
+        const int modId = modIdStr.toInt(&ok);
+        if (ok && modId > 0) e.nexusModId = QString::number(modId);
+    }
+}
+
 // Stage a single MO2 mod by name into stagingRoot, returning a ModEntry that
 // references the staged copy (fresh UUID + name). On copy mode, copyFailures is
 // incremented by the number of files that failed to copy. The source folder is
@@ -82,6 +121,7 @@ static ModEntry stageMod(const QString& modName, const QString& mo2ModsDir,
     e.name = modName;
     e.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     const QString src = mo2ModsDir + "/" + modName;
+    applyModMeta(src, e);
     copyFailures += stageModFolder(src, stagingRoot + "/" + e.id, symlink);
     return e;
 }
@@ -244,8 +284,11 @@ Mo2ImportResult Mo2Importer::importProfile(const QString& mo2ProfileDir,
     int copyFailures = 0;
     for (ModEntry& e : entries) {
         if (e.type == EntryType::Mod) {
+            // Skip MO2's non-content artifact folders (e.g. ModGroups).
+            if (isMo2Artifact(e.name)) continue;
             QString src = mo2ModsDir + "/" + e.name;
             if (QDir(src).exists()) {
+                applyModMeta(src, e);
                 copyFailures += stageModFolder(src, stagingRoot + "/" + e.id, symlinkMods);
                 ++staged;
             }
@@ -303,6 +346,7 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
         QList<ModEntry> entries = parseModlist(QString::fromUtf8(ml.readAll()));
         for (const ModEntry& e : entries) {
             if (e.type != EntryType::Mod) continue;
+            if (isMo2Artifact(e.name)) continue;                  // skip ModGroups etc.
             const QString key = e.name.toLower();
             if (seen.contains(key)) continue;
             if (!QDir(modsDir + "/" + e.name).exists()) continue; // only real folders
@@ -381,6 +425,7 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
                 if (!col.isEmpty()) sep.color = col;
                 p->modList().append(sep);
             } else {
+                if (isMo2Artifact(e.name)) continue;  // never import ModGroups etc.
                 // Reference the SHARED staged mod (same id + name); preserve this
                 // profile's enabled state. Skip mods not staged (missing folder).
                 auto it = sharedMods.constFind(e.name.toLower());

@@ -6,6 +6,7 @@
 #include <QHeaderView>
 #include <QFont>
 #include <QColor>
+#include <QMenu>
 
 namespace solero {
 
@@ -38,6 +39,9 @@ ConflictsTab::ConflictsTab(QWidget* parent) : QWidget(parent) {
         if (modId.isEmpty()) return; // group header or placeholder
         emit fileActivated(modId, item->data(0, kRoleRelPath).toString());
     });
+    m_tree->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_tree, &QWidget::customContextMenuRequested,
+            this, &ConflictsTab::showContextMenu);
     layout->addWidget(m_tree);
 }
 
@@ -74,7 +78,11 @@ void ConflictsTab::refresh() {
             auto losers = m_conflicts.losersOf(path);
             QStringList loserNames;
             for (const auto& id : losers) loserNames << modDisplayName(id);
-            auto* item = new QTreeWidgetItem(winRoot, {path, QString("beats: %1").arg(loserNames.join(", "))});
+            QString detail = QString("beats: %1").arg(loserNames.join(", "));
+            const QString forced = m_profile ? m_profile->winnerOverride(path) : QString();
+            if (!forced.isEmpty())
+                detail += QString("  [forced winner: %1]").arg(modDisplayName(forced));
+            auto* item = new QTreeWidgetItem(winRoot, {path, detail});
             item->setForeground(1, QColor("#27ae60"));
             item->setData(0, kRoleModId, m_currentModId);
             item->setData(0, kRoleRelPath, path);
@@ -87,7 +95,11 @@ void ConflictsTab::refresh() {
         loseRoot->setForeground(0, QColor("#c0392b"));
         loseRoot->setExpanded(true);
         for (const auto& path : losing) {
-            auto* item = new QTreeWidgetItem(loseRoot, {path, QString("won by: %1").arg(modDisplayName(m_conflicts.winnerOf(path)))});
+            QString detail = QString("won by: %1").arg(modDisplayName(m_conflicts.winnerOf(path)));
+            const QString forced = m_profile ? m_profile->winnerOverride(path) : QString();
+            if (!forced.isEmpty())
+                detail += QString("  [forced winner: %1]").arg(modDisplayName(forced));
+            auto* item = new QTreeWidgetItem(loseRoot, {path, detail});
             item->setForeground(1, QColor("#c0392b"));
             item->setData(0, kRoleModId, m_currentModId);
             item->setData(0, kRoleRelPath, path);
@@ -111,6 +123,39 @@ void ConflictsTab::applyFilter() {
         // Hide a group header whose children are all filtered out.
         root->setHidden(root->childCount() > 0 && visibleChildren == 0);
     }
+}
+
+void ConflictsTab::showContextMenu(const QPoint& pos) {
+    if (!m_profile) return;
+    QTreeWidgetItem* item = m_tree->itemAt(pos);
+    if (!item) return;
+    const QString modId   = item->data(0, kRoleModId).toString();   // == m_currentModId
+    const QString relPath = item->data(0, kRoleRelPath).toString();
+    if (modId.isEmpty() || relPath.isEmpty()) return; // group header / placeholder
+
+    QMenu menu(this);
+    const QString forced = m_profile->winnerOverride(relPath);
+    // Force the currently-shown mod to win this path on the next deploy.
+    if (forced != modId) {
+        menu.addAction(QString("Set \"%1\" as winner for this file").arg(modDisplayName(modId)),
+                       this, [this, relPath, modId]{
+            m_profile->setWinnerOverride(relPath, modId);
+            m_profile->save();
+            emit fileRulesChanged();
+            refresh();
+        });
+    }
+    if (!forced.isEmpty()) {
+        menu.addAction(QString("Clear winner override (currently: %1)").arg(modDisplayName(forced)),
+                       this, [this, relPath]{
+            m_profile->clearWinnerOverride(relPath);
+            m_profile->save();
+            emit fileRulesChanged();
+            refresh();
+        });
+    }
+    if (!menu.isEmpty())
+        menu.exec(m_tree->viewport()->mapToGlobal(pos));
 }
 
 } // namespace solero

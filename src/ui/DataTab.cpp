@@ -66,6 +66,7 @@ DataTab::DataTab(QWidget* parent) : QWidget(parent) {
     // Page 0: single tree (mod files or game dir)
     m_singleTree = new ModFileTree(this);
     connect(m_singleTree, &ModFileTree::fileActivated, this, &DataTab::onFileActivated);
+    connect(m_singleTree, &ModFileTree::hideToggled, this, &DataTab::onHideToggled);
     m_stack->addWidget(m_singleTree);
 
     // Page 1: placeholder
@@ -90,6 +91,8 @@ DataTab::DataTab(QWidget* parent) : QWidget(parent) {
     connect(m_splitRight, &ModFileTree::fileActivated, this, &DataTab::onFileActivated);
     connect(m_splitLeft,  &ModFileTree::filesDropped,  this, &DataTab::onSplitDropped);
     connect(m_splitRight, &ModFileTree::filesDropped,  this, &DataTab::onSplitDropped);
+    connect(m_splitLeft,  &ModFileTree::hideToggled,   this, &DataTab::onHideToggled);
+    connect(m_splitRight, &ModFileTree::hideToggled,   this, &DataTab::onHideToggled);
     m_stack->addWidget(m_splitPage);
 
     layout->addWidget(m_stack);
@@ -208,8 +211,9 @@ void DataTab::showSingleMod(const QString& modId) {
 
     m_editTrackingRoot = root;
     loadEditedFor(root, m_editedRelPaths);
+    QSet<QString> hidden = m_profile ? m_profile->hiddenFiles().value(modId) : QSet<QString>();
     m_singleTree->showModFiles(root, modId, m_conflicts, m_editedRelPaths, accentColor(),
-                               [this](const QString& id){ return modDisplayName(id); });
+                               [this](const QString& id){ return modDisplayName(id); }, hidden);
     m_stack->setCurrentWidget(m_singleTree);
     applyFolderState();
     applyFilter();
@@ -239,10 +243,12 @@ void DataTab::showSplit(const QString& modIdA, const QString& modIdB) {
     loadEditedFor(rootB, editedB);
     m_splitLeft->setAcceptDrops(true);
     m_splitRight->setAcceptDrops(true);
+    QSet<QString> hiddenA = m_profile ? m_profile->hiddenFiles().value(modIdA) : QSet<QString>();
+    QSet<QString> hiddenB = m_profile ? m_profile->hiddenFiles().value(modIdB) : QSet<QString>();
     m_splitLeft->showModFiles(rootA, modIdA, m_conflicts, editedA, accentColor(),
-                              [this](const QString& id){ return modDisplayName(id); });
+                              [this](const QString& id){ return modDisplayName(id); }, hiddenA);
     m_splitRight->showModFiles(rootB, modIdB, m_conflicts, editedB, accentColor(),
-                               [this](const QString& id){ return modDisplayName(id); });
+                               [this](const QString& id){ return modDisplayName(id); }, hiddenB);
     m_stack->setCurrentWidget(m_splitPage);
     applyFolderState();
     applyFilter();
@@ -271,6 +277,14 @@ void DataTab::onFileSaved(const QString& filePath) {
 
 void DataTab::onSplitDropped() {
     refresh(); // rebuild both trees to reflect the copied file
+}
+
+void DataTab::onHideToggled(const QString& modId, const QString& relPath, bool hide) {
+    if (!m_profile) return;
+    m_profile->setFileHidden(modId, relPath, hide);
+    m_profile->save();          // persist filerules.json immediately
+    emit fileRulesChanged();    // -> MainWindow marks the deployment dirty
+    refresh();                  // repaint the tree with the new hidden state
 }
 
 } // namespace solero

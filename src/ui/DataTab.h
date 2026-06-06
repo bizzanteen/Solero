@@ -25,10 +25,15 @@ public:
     // ids contain mod ids; "__overwrite__" for Overwrite; "__separator__" for separators.
     void setSelection(const QStringList& ids);
 
+signals:
+    // A per-file rule changed (hide/unhide) - the deployment is now dirty.
+    void fileRulesChanged();
+
 private slots:
     void onFileActivated(const QString& fullPath);
     void onFileSaved(const QString& filePath);
     void onSplitDropped();
+    void onHideToggled(const QString& modId, const QString& relPath, bool hide);
 
 private:
     Profile*      m_profile = nullptr;

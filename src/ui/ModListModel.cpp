@@ -301,6 +301,17 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
         }
         if (!entry.note.isEmpty())
             tips << QStringLiteral("\xf0\x9f\x93\x9d Note: ") + entry.note; // 📝
+        if (m_profile) {
+            const int hiddenCount = m_profile->hiddenFiles().value(entry.id).size();
+            if (hiddenCount > 0)
+                tips << QString("\xf0\x9f\x91\x81 %1 hidden file(s)").arg(hiddenCount); // 👁
+            int forcedWins = 0;
+            for (auto it = m_profile->fileOverrides().cbegin();
+                 it != m_profile->fileOverrides().cend(); ++it)
+                if (it.value() == entry.id) ++forcedWins;
+            if (forcedWins > 0)
+                tips << QString("\xe2\x98\x85 Forced winner on %1 path(s)").arg(forcedWins); // ★
+        }
         if (!tips.isEmpty()) return tips.join("\n");
     }
     if (role == Qt::CheckStateRole && idx.column() == ColEnabled && !isSep)

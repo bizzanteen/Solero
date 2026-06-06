@@ -40,6 +40,10 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     // Clean up any previous deployment first to avoid orphaned files
     undeploy(m_gameDir);
 
+    // Seed per-file conflict rules from the profile (hidden files + forced winners).
+    m_hiddenFiles   = profile.hiddenFiles();
+    m_fileOverrides = profile.fileOverrides();
+
     Linker linker(mode);
     DeployRecord record;
     ConflictIndex conflicts;
@@ -63,6 +67,10 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
         ++done;
         if (onProgress) onProgress(done, total);
     }
+
+    // Force per-path winners (Vortex/MO2 per-file conflict choice). Runs after the
+    // normal load-order loop so a chosen mod wins regardless of its priority.
+    applyWinnerOverrides(profile, m_gameDir, linker, record, conflicts, ciOwners);
 
     // Sort plugins with LOOT (if enabled) before writing plugins.txt. The mod
     // files must already be deployed above so LOOT can read the plugin headers.
@@ -166,6 +174,14 @@ int DeployEngine::deployMod(const QString& modId,
             || fn.compare("fomod-choices.json", Qt::CaseInsensitive) == 0)
             continue;
 
+        // Per-file HIDE (MO2 ".mohidden"): this mod no longer provides the file,
+        // so don't link or record it - the next-priority provider then wins.
+        {
+            auto hit = m_hiddenFiles.constFind(modId);
+            if (hit != m_hiddenFiles.constEnd() && hit.value().contains(relPath))
+                continue;
+        }
+
         const QString ciKey = relPath.toLower();
         const QString priorRel = ciOwners.value(ciKey);   // earlier-deployed path at this CI path, if any
         QString previousOwner = priorRel.isEmpty() ? QString() : record.ownerOf(priorRel);
@@ -218,6 +234,82 @@ int DeployEngine::deployMod(const QString& modId,
         ciOwners.insert(ciKey, relPath);
     }
     return failures;
+}
+
+void DeployEngine::applyWinnerOverrides(Profile& profile,
+                                        const QString& gameDir,
+                                        const Linker& linker,
+                                        DeployRecord& record,
+                                        ConflictIndex& conflicts,
+                                        QHash<QString, QString>& ciOwners) {
+    for (auto it = m_fileOverrides.cbegin(); it != m_fileOverrides.cend(); ++it) {
+        const QString relPath = it.key();
+        const QString modId   = it.value();
+        if (modId.isEmpty()) continue;
+
+        // The forced winner must be an enabled mod in the current load order.
+        const ModEntry* entry = profile.modList().findById(modId);
+        if (!entry || entry->type != EntryType::Mod || !entry->enabled) {
+            qWarning() << "Winner override skipped: mod" << modId
+                       << "is missing/disabled for" << relPath;
+            continue;
+        }
+        // A hidden file isn't provided by the mod - never override to it.
+        {
+            auto hit = m_hiddenFiles.constFind(modId);
+            if (hit != m_hiddenFiles.constEnd() && hit.value().contains(relPath))
+                continue;
+        }
+        // Validate the mod actually stages this path.
+        const QString srcPath = m_stagingRoot + "/" + modId + "/" + relPath;
+        if (!QFile::exists(srcPath)) {
+            qWarning() << "Winner override skipped: mod" << modId
+                       << "does not provide" << relPath;
+            continue;
+        }
+
+        const QString ciKey  = relPath.toLower();
+        const QString priorRel = ciOwners.value(ciKey);
+        const QString currentOwner = priorRel.isEmpty() ? QString() : record.ownerOf(priorRel);
+        if (currentOwner == modId && priorRel == relPath)
+            continue; // already the winner at this exact path - nothing to do
+
+        const QString dstPath = gameDir + "/" + relPath;
+
+        // Drop any stale case-variant the load-order loop deployed (Wine/Proton is
+        // case-insensitive, so both would otherwise be visible to the game).
+        if (!priorRel.isEmpty() && priorRel != relPath) {
+            QFile::remove(gameDir + "/" + priorRel);
+            record.remove(priorRel);
+        }
+
+        // No Solero owner yet but a file sits at the slot -> it's a pre-existing
+        // original; back it up so undeploy can restore it (mirrors deployMod).
+        if (currentOwner.isEmpty() && QFile::exists(dstPath)) {
+            QString backupPath = gameDir + "/" + backupDirName() + "/" + relPath;
+            if (!QFile::exists(backupPath)) {
+                QDir().mkpath(QFileInfo(backupPath).path());
+                if (!QFile::rename(dstPath, backupPath)) {
+                    if (QFile::copy(dstPath, backupPath))
+                        QFile::remove(dstPath);
+                }
+            }
+        }
+
+        QString realSrc = QFileInfo(srcPath).canonicalFilePath();
+        if (realSrc.isEmpty()) realSrc = srcPath;
+        if (!linker.deploy(realSrc, dstPath)) {
+            qWarning() << "Winner override failed to link" << relPath << "(mod" << modId << ")";
+            continue;
+        }
+        // The displaced load-order winner becomes a loser of the forced choice.
+        if (!currentOwner.isEmpty() && currentOwner != modId)
+            conflicts.recordConflict(relPath, modId, currentOwner);
+        else
+            conflicts.setWinner(relPath, modId);
+        record.add(relPath, modId);
+        ciOwners.insert(ciKey, relPath);
+    }
 }
 
 bool DeployEngine::undeploy(const QString& gameDir, const std::function<void(int,int)>& onProgress) {

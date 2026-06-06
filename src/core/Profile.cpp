@@ -18,12 +18,14 @@ QString Profile::skyrimPrefsPath()   const { return m_path + "/SkyrimPrefs.ini";
 QString Profile::skyrimCustomPath()  const { return m_path + "/SkyrimCustom.ini"; }
 QString Profile::executablesPath()   const { return m_path + "/executables.json"; }
 QString Profile::lootUserlistPath()  const { return m_path + "/loot-userlist.yaml"; }
+QString Profile::fileRulesPath()     const { return m_path + "/filerules.json"; }
 
 bool Profile::save() const {
     QDir().mkpath(m_path);
     if (!m_modList.saveToFile(modlistPath())) return false;
     if (!m_pluginList.saveToFile(pluginsPath())) return false;
-    return saveExecutables();
+    if (!saveExecutables()) return false;
+    return saveFileRules();
 }
 
 bool Profile::load() {
@@ -32,7 +34,37 @@ bool Profile::load() {
     if (QFile::exists(pluginsPath()))
         m_pluginList = PluginList::loadFromFile(pluginsPath());
     loadExecutables();
+    loadFileRules();
     return true;
+}
+
+bool Profile::isFileHidden(const QString& modId, const QString& relPath) const {
+    auto it = m_hiddenFiles.constFind(modId);
+    return it != m_hiddenFiles.constEnd() && it.value().contains(relPath);
+}
+
+void Profile::setFileHidden(const QString& modId, const QString& relPath, bool hidden) {
+    if (hidden) {
+        m_hiddenFiles[modId].insert(relPath);
+    } else {
+        auto it = m_hiddenFiles.find(modId);
+        if (it == m_hiddenFiles.end()) return;
+        it.value().remove(relPath);
+        if (it.value().isEmpty()) m_hiddenFiles.erase(it); // keep the map sparse
+    }
+}
+
+QString Profile::winnerOverride(const QString& relPath) const {
+    return m_fileOverrides.value(relPath);
+}
+
+void Profile::setWinnerOverride(const QString& relPath, const QString& modId) {
+    if (modId.isEmpty()) { m_fileOverrides.remove(relPath); return; }
+    m_fileOverrides[relPath] = modId;
+}
+
+void Profile::clearWinnerOverride(const QString& relPath) {
+    m_fileOverrides.remove(relPath);
 }
 
 bool Profile::saveExecutables() const {
@@ -96,6 +128,44 @@ bool Profile::loadExecutables() {
             e.extraActions.append(a);
         }
         m_executables.append(e);
+    }
+    return true;
+}
+
+bool Profile::saveFileRules() const {
+    QJsonObject hidden;
+    for (auto it = m_hiddenFiles.cbegin(); it != m_hiddenFiles.cend(); ++it) {
+        if (it.value().isEmpty()) continue;
+        QJsonArray paths;
+        for (const auto& p : it.value()) paths.append(p);
+        hidden.insert(it.key(), paths);
+    }
+    QJsonObject overrides;
+    for (auto it = m_fileOverrides.cbegin(); it != m_fileOverrides.cend(); ++it)
+        overrides.insert(it.key(), it.value());
+
+    QJsonObject root;
+    root["hiddenFiles"]   = hidden;
+    root["fileOverrides"] = overrides;
+    return atomicWrite(fileRulesPath(), QJsonDocument(root).toJson(QJsonDocument::Indented));
+}
+
+bool Profile::loadFileRules() {
+    m_hiddenFiles.clear();
+    m_fileOverrides.clear();
+    QFile f(fileRulesPath());
+    if (!f.open(QIODevice::ReadOnly)) return false; // missing file == no rules
+    auto root = QJsonDocument::fromJson(f.readAll()).object();
+    const auto hidden = root["hiddenFiles"].toObject();
+    for (auto it = hidden.constBegin(); it != hidden.constEnd(); ++it) {
+        QSet<QString> paths;
+        for (const auto& v : it.value().toArray()) paths.insert(v.toString());
+        if (!paths.isEmpty()) m_hiddenFiles.insert(it.key(), paths);
+    }
+    const auto overrides = root["fileOverrides"].toObject();
+    for (auto it = overrides.constBegin(); it != overrides.constEnd(); ++it) {
+        const QString modId = it.value().toString();
+        if (!modId.isEmpty()) m_fileOverrides.insert(it.key(), modId);
     }
     return true;
 }

@@ -156,6 +156,66 @@ private slots:
             DeployEngine::recordPath(gameDir));
         QCOMPARE(record.count(), 1);
     }
+    void hiddenFile_notDeployed() {
+        // A (low prio) and B (high prio) both stage Data/x.dll. Normally B wins.
+        // Hiding x.dll IN B makes B no longer provide it, so A's file wins instead.
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QDir().mkpath(gameDir);
+        writeFile(stagingRoot + "/aaa/Data/x.dll", "A-content");
+        writeFile(stagingRoot + "/bbb/Data/x.dll", "B-content");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry ma; ma.type = EntryType::Mod; ma.id = "aaa"; ma.name = "Low";  ma.enabled = true;
+        ModEntry mb; mb.type = EntryType::Mod; mb.id = "bbb"; mb.name = "High"; mb.enabled = true;
+        profile.modList().append(ma);
+        profile.modList().append(mb);
+        profile.setFileHidden("bbb", "Data/x.dll", true); // hide the higher-prio file
+
+        DeployEngine engine(gameDir, stagingRoot);
+        auto result = engine.deploy(profile, DeployMode::Copy);
+        QVERIFY(result.success);
+
+        // The deployed file has A's content (B's is hidden).
+        QFile f(gameDir + "/Data/x.dll"); QVERIFY(f.open(QIODevice::ReadOnly));
+        QCOMPARE(f.readAll(), QByteArray("A-content"));
+
+        // The record owner is A, not B.
+        DeployRecord record = DeployRecord::loadFromFile(DeployEngine::recordPath(gameDir));
+        QCOMPARE(record.ownerOf("Data/x.dll"), QString("aaa"));
+    }
+    void winnerOverride_forcesLowPriorityMod() {
+        // A (low) and B (high) stage Data/x.dll; B wins by load order. An override
+        // forcing A re-links A's file in the post-pass, so A wins regardless.
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QDir().mkpath(gameDir);
+        writeFile(stagingRoot + "/aaa/Data/x.dll", "A-content");
+        writeFile(stagingRoot + "/bbb/Data/x.dll", "B-content");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry ma; ma.type = EntryType::Mod; ma.id = "aaa"; ma.name = "Low";  ma.enabled = true;
+        ModEntry mb; mb.type = EntryType::Mod; mb.id = "bbb"; mb.name = "High"; mb.enabled = true;
+        profile.modList().append(ma);
+        profile.modList().append(mb);
+        profile.setWinnerOverride("Data/x.dll", "aaa"); // force the low-prio mod
+
+        DeployEngine engine(gameDir, stagingRoot);
+        auto result = engine.deploy(profile, DeployMode::Copy);
+        QVERIFY(result.success);
+
+        // Deployed file has A's content though B is higher priority.
+        QFile f(gameDir + "/Data/x.dll"); QVERIFY(f.open(QIODevice::ReadOnly));
+        QCOMPARE(f.readAll(), QByteArray("A-content"));
+
+        // Record owner = A; conflict winner = A, with B recorded as a loser.
+        DeployRecord record = DeployRecord::loadFromFile(DeployEngine::recordPath(gameDir));
+        QCOMPARE(record.ownerOf("Data/x.dll"), QString("aaa"));
+        QCOMPARE(result.conflicts.winnerOf("Data/x.dll"), QString("aaa"));
+        QVERIFY(result.conflicts.losersOf("Data/x.dll").contains("bbb"));
+    }
     void redeploy_removesOrphanedFiles() {
         QTemporaryDir tmp;
         QString stagingRoot = tmp.path() + "/staging";

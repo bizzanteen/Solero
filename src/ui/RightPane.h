@@ -45,6 +45,9 @@ signals:
     void sortRequested();
     // Emitted when the user clicks "LOOT Rules" to open the rules editor.
     void lootRulesRequested();
+    // Emitted when a per-file rule (hide / winner override) changed in the Data
+    // or Conflicts tab - MainWindow uses it to mark the deployment dirty.
+    void fileRulesChanged();
 
 public slots:
     void onSelectionChanged(const QStringList& ids);

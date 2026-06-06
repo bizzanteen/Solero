@@ -21,6 +21,8 @@ signals:
     // Double-clicking a conflict file row asks the right pane to show that mod's
     // Data view. relPath is the conflicting file's path (relative to Data).
     void fileActivated(const QString& modId, const QString& relPath);
+    // A per-file winner override changed - the deployment is now dirty.
+    void fileRulesChanged();
 
 private:
     QTreeWidget*  m_tree;
@@ -31,6 +33,7 @@ private:
     QString       m_filterText;
     void refresh();
     void applyFilter();
+    void showContextMenu(const QPoint& pos);
     // Resolve a mod id to its display name via the active profile.
     QString modDisplayName(const QString& modId) const;
 };

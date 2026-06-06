@@ -10,6 +10,9 @@
 #include <QMimeData>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QContextMenuEvent>
+#include <QMenu>
+#include <QPalette>
 #include <functional>
 
 namespace solero {
@@ -97,10 +100,23 @@ void ModFileTree::showModFiles(const QString& stagingRoot,
                                const ConflictIndex& conflicts,
                                const QSet<QString>& editedRelPaths,
                                const QColor& accent,
-                               const std::function<QString(const QString&)>& nameOf) {
+                               const std::function<QString(const QString&)>& nameOf,
+                               const QSet<QString>& hiddenRelPaths) {
     m_stagingRoot = stagingRoot;
+    m_modId = modId;
+    m_hiddenRelPaths = hiddenRelPaths;
     auto disp = [&](const QString& id){ return (nameOf && !id.isEmpty()) ? nameOf(id) : id; };
     buildTree(stagingRoot, [&](QTreeWidgetItem* item, const QString& relPath) {
+        // A hidden file is not provided on deploy; show it struck-through and
+        // dimmed, taking visual precedence over conflict status.
+        if (hiddenRelPaths.contains(relPath)) {
+            item->setText(2, QStringLiteral("hidden"));
+            QFont f = item->font(0); f.setStrikeOut(true); item->setFont(0, f);
+            QColor dim = palette().color(QPalette::Disabled, QPalette::Text);
+            item->setForeground(0, dim);
+            item->setForeground(2, dim);
+            return;
+        }
         QString status;
         QColor color;
         if (conflicts.hasConflict(relPath)) {
@@ -134,6 +150,8 @@ void ModFileTree::showGameDir(const QString& gameDir,
                               const QHash<QString, QString>& ownerByRelPath,
                               const QColor& accent) {
     m_stagingRoot.clear(); // game-dir mode: no drops
+    m_modId.clear();
+    m_hiddenRelPaths.clear();
     setAcceptDrops(false);
     buildTree(gameDir, [&](QTreeWidgetItem* item, const QString& relPath) {
         auto owner = ownerByRelPath.value(relPath);
@@ -211,6 +229,25 @@ void ModFileTree::dropEvent(QDropEvent* e) {
     }
     e->acceptProposedAction();
     if (any) emit filesDropped();
+}
+
+void ModFileTree::contextMenuEvent(QContextMenuEvent* e) {
+    // Hiding applies to a real mod's file (not the game-dir view, and not the
+    // synthetic "__overwrite__"/etc. pseudo-mods whose ids start with "__").
+    if (m_modId.isEmpty() || m_modId.startsWith("__")) return;
+    QTreeWidgetItem* item = itemAt(e->pos());
+    if (!item) return;
+    const QString relPath = item->data(0, RoleRelPath).toString();
+    if (relPath.isEmpty()) return; // folder row, not a file
+
+    QMenu menu(this);
+    const bool hidden = m_hiddenRelPaths.contains(relPath);
+    menu.addAction(hidden ? QStringLiteral("Unhide file")
+                          : QStringLiteral("Hide file in this mod"),
+                   this, [this, relPath, hidden]{
+        emit hideToggled(m_modId, relPath, !hidden);
+    });
+    menu.exec(e->globalPos());
 }
 
 } // namespace solero

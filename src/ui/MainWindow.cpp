@@ -556,6 +556,12 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onSortRequested);
     connect(m_rightPane, &solero::RightPane::lootRulesRequested,
             this, &MainWindow::onOpenLootRules);
+    // A per-file rule changed (hide a file in a mod / force a per-path winner):
+    // the staged outputs no longer match what's deployed, so mark dirty.
+    connect(m_rightPane, &solero::RightPane::fileRulesChanged, this, [this]{
+        if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+        updatePluginNotice();
+    });
 
     m_bottomPanel = new solero::BottomPanel(outer);
     connect(m_modListView, &solero::ModListView::modsSelected,

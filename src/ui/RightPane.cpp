@@ -56,6 +56,10 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
             [this](const QString& modId, const QString& /*relPath*/) {
         showDataFor(modId);
     });
+    // Per-file rule changes (hide in Data tab, winner override in Conflicts tab)
+    // bubble up so MainWindow can flag the deployment as dirty.
+    connect(m_dataTab,      &DataTab::fileRulesChanged,      this, &RightPane::fileRulesChanged);
+    connect(m_conflictsTab, &ConflictsTab::fileRulesChanged, this, &RightPane::fileRulesChanged);
 }
 
 void RightPane::showDownloadsTab() {

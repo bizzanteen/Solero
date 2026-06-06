@@ -11,12 +11,19 @@ class ModListModel;
 class ModListView : public QTreeView {
     Q_OBJECT
 public:
+    // Quick-filter predicates by mod state (alongside the name filter).
+    enum class StateFilter { All, Conflicts, UpdateAvailable, Enabled, Disabled, MissingDep };
+
     explicit ModListView(QWidget* parent = nullptr);
     void setProfile(Profile* profile);
     void deleteSelectedMods();
     // Hide Mod rows whose name doesn't contain `text` (case-insensitive).
-    // Separators and the Overwrite row stay visible. Empty text shows all.
+    // Separators with no visible children are hidden while filtering; the
+    // Overwrite row stays visible. Empty text shows all.
     void setFilter(const QString& text);
+    // Restrict the list to mods matching a state predicate (combined with the
+    // name filter). StateFilter::All clears the state restriction.
+    void setStateFilter(StateFilter state);
     // Set the enabled state of every selected Mod row at once (save + one
     // modsChanged signal). Separators / Overwrite are ignored.
     void setSelectedModsEnabled(bool enabled);
@@ -29,6 +36,8 @@ public:
     // Provide the per-file conflict index so selecting a mod highlights its
     // conflicting mods (green = overwrites it, red = overwritten by it), MO2-style.
     void setConflictIndex(const ConflictIndex& index);
+    // Repaint the Flags column (e.g. after a mod note was edited).
+    void refreshFlags();
 
 signals:
     // Emitted on selection change. Each entry is a mod id, "__overwrite__" for the
@@ -53,7 +62,14 @@ protected:
 private:
     ModListModel* m_model;
     QString m_filter;
+    StateFilter m_stateFilter = StateFilter::All;
     bool m_didAutoSize = false;
+    // True when the given mod entry passes the active state predicate.
+    bool matchesState(const ModEntry* entry) const;
+    // Right-click header menu: toggle which columns are shown (Name is mandatory);
+    // persists the hidden set to AppConfig.
+    void showHeaderMenu(const QPoint& pos);
+    void applyHiddenColumns(); // apply AppConfig's persisted hidden-column set
     ConflictIndex m_conflicts;
     // Recompute the green/red conflict highlight for the current single selection.
     void updateConflictHighlights();

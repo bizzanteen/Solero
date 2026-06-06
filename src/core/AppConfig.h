@@ -1,5 +1,7 @@
 #pragma once
 #include <QString>
+#include <QList>
+#include "deploy/DeployMode.h"
 
 namespace solero {
 
@@ -47,6 +49,11 @@ public:
     void setLastUpdateCheckEpoch(qint64 v)    { m_lastUpdateCheckEpoch = v; }
     QString jackifyEnginePath() const         { return m_jackifyEnginePath; }
     void setJackifyEnginePath(const QString& v) { m_jackifyEnginePath = v; }
+    DeployMode deployMode() const             { return m_deployMode; }
+    void setDeployMode(DeployMode v)          { m_deployMode = v; }
+    // Hidden mod-list columns (ModListModel::Column indices). Name is never hidden.
+    const QList<int>& hiddenColumns() const   { return m_hiddenColumns; }
+    void setHiddenColumns(const QList<int>& v) { m_hiddenColumns = v; }
 
     static QString dataRoot();   // ~/.local/share/solero
     static QString configPath();
@@ -77,6 +84,8 @@ private:
     qint64 m_lastUpdateCheckEpoch = 0;
     QString m_lastSeparatorColor;
     QString m_jackifyEnginePath;
+    DeployMode m_deployMode = DeployMode::HardLink;
+    QList<int> m_hiddenColumns;
 };
 
 } // namespace solero

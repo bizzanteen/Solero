@@ -14,6 +14,11 @@ public:
     explicit BottomPanel(QWidget* parent = nullptr);
     void setProfile(Profile* profile);
 
+signals:
+    // Forwarded from the Mod Info panel when a mod note is edited + saved, so the
+    // mod list can refresh its note indicator.
+    void noteChanged();
+
 public slots:
     // Populate the Mod Info content for the first selected mod (or clear if empty).
     void onModsSelected(const QStringList& ids);

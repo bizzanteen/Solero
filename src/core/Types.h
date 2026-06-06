@@ -28,6 +28,7 @@ struct ModEntry {
     bool isOutputMod = false;
     QStringList tags;
     QString sourceArchive; // archive path this mod was installed from (for Reinstall)
+    QString note;          // free-form user note (shown/edited in the Mod Info panel)
 
     // Separator fields
     QString color;       // hex e.g. "#c0392b"

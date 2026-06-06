@@ -144,6 +144,7 @@ private slots:
         ModList list;
         ModEntry sep; sep.type = EntryType::Separator; sep.id = "s1"; sep.name = "Weapons"; sep.color = "#ff0000"; sep.icon = "⚔";
         ModEntry mod; mod.type = EntryType::Mod; mod.id = "m1"; mod.name = "Heavy Armory"; mod.enabled = true; mod.version = "1.2";
+        mod.note = "Patched ESL flag\nremember to redeploy";
         list.append(sep);
         list.append(mod);
 
@@ -153,6 +154,16 @@ private slots:
         QCOMPARE(restored.at(0).name, "Weapons");
         QCOMPARE(restored.at(1).name, "Heavy Armory");
         QCOMPARE(restored.at(1).version, "1.2");
+        QCOMPARE(restored.at(1).note, QString("Patched ESL flag\nremember to redeploy"));
+    }
+
+    void note_absentInOlderJson_defaultsEmpty() {
+        // A modlist.json written before the note field existed has no "note" key.
+        const QByteArray legacy =
+            "[{\"type\":\"mod\",\"id\":\"m1\",\"name\":\"Old Mod\",\"enabled\":true}]";
+        ModList restored = ModList::fromJson(QJsonDocument::fromJson(legacy));
+        QCOMPARE(restored.count(), 1);
+        QVERIFY(restored.at(0).note.isEmpty());
     }
 };
 QTEST_MAIN(TestModList)

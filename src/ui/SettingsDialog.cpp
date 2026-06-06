@@ -4,6 +4,7 @@
 #include "app/NxmRegister.h"
 #include "nexus/NexusApi.h"
 #include "wabbajack/WabbajackEngine.h"
+#include "deploy/DeployMode.h"
 #include <QGroupBox>
 #include <QFileDialog>
 #include <QTabWidget>
@@ -85,15 +86,24 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
             : ("Registration failed:\n" + msg));
     });
 
-    // Disabled stub: deploy mode is not wired up yet.
+    // Deploy mode: how staged mod files are projected into the game's Data dir.
     auto* deployRow = new QVBoxLayout;
-    auto* deployLabel = new QLabel("Deploy mode (not wired up yet):", prefs);
-    deployLabel->setEnabled(false);
-    auto* deployCombo = new QComboBox(prefs);
-    deployCombo->addItems({"Hard link", "Symlink", "Copy"});
-    deployCombo->setEnabled(false);
-    deployRow->addWidget(deployLabel);
-    deployRow->addWidget(deployCombo);
+    deployRow->addWidget(new QLabel("Deploy mode:", prefs));
+    m_deployCombo = new QComboBox(prefs);
+    m_deployCombo->addItems({"Hard link", "Symlink", "Copy"}); // index == DeployMode
+    switch (cfg.deployMode()) {
+        case DeployMode::SymLink: m_deployCombo->setCurrentIndex(1); break;
+        case DeployMode::Copy:    m_deployCombo->setCurrentIndex(2); break;
+        default:                  m_deployCombo->setCurrentIndex(0); break;
+    }
+    deployRow->addWidget(m_deployCombo);
+    auto* deployHelp = new QLabel(
+        "Hard link: same filesystem only, instant, no extra disk. "
+        "Symlink: works across filesystems. "
+        "Copy: works anywhere but duplicates files on disk.", prefs);
+    deployHelp->setWordWrap(true);
+    deployHelp->setStyleSheet("color:#888;");
+    deployRow->addWidget(deployHelp);
     prefsLayout->addLayout(deployRow);
 
     // Wabbajack group
@@ -233,6 +243,11 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
         cfg.setDataShowAllFiles(m_dataShowAllFiles->isChecked());
         cfg.setPromptAfterBrowserDownload(m_promptAfterBrowserDownload->isChecked());
         cfg.setAutoCheckUpdates(m_autoCheckUpdates->isChecked());
+        switch (m_deployCombo->currentIndex()) {
+            case 1:  cfg.setDeployMode(DeployMode::SymLink); break;
+            case 2:  cfg.setDeployMode(DeployMode::Copy);    break;
+            default: cfg.setDeployMode(DeployMode::HardLink); break;
+        }
         cfg.setJackifyEnginePath(m_jackifyEdit->text().trimmed());
         cfg.save();
         accept();

@@ -159,6 +159,7 @@ add_test(NAME test_IniFile COMMAND test_IniFile)
 # link the full unit.
 add_executable(test_ModListModel test_ModListModel.cpp
   ../src/ui/ModListModel.cpp
+  ../src/deploy/ConflictIndex.cpp
   ../src/core/AppConfig.cpp
   ../src/core/ModList.cpp ../src/core/PluginList.cpp
   ../src/core/Profile.cpp ../src/core/ProfileManager.cpp

@@ -7,6 +7,8 @@
 
 class QLabel;
 class QTextBrowser;
+class QPlainTextEdit;
+class QEvent;
 class QNetworkAccessManager;
 
 namespace solero {
@@ -25,7 +27,19 @@ public:
     void showMod(Profile* profile, const QString& id);
     void clear();
 
+signals:
+    // Emitted after a mod's note is edited + persisted, so the list can refresh
+    // its note indicator.
+    void noteChanged();
+
+protected:
+    bool eventFilter(QObject* obj, QEvent* event) override;
+
 private:
+    // Persist the note editor's current text back to the mod it belongs to
+    // (m_noteModId). No-op if unchanged or no current mod/profile.
+    void saveNote();
+
     void applyDetails(const NexusApi::ModDetails& d);
     void applyImage(const QPixmap& pm);
     void fetchImage(const QString& nexusModId, const QString& url);
@@ -39,10 +53,14 @@ private:
     // Path to the on-disk PNG thumbnail for a given nexusModId (mkpath on call).
     static QString thumbnailPath(const QString& nexusModId);
 
-    QLabel*        m_image = nullptr;
-    QLabel*        m_name  = nullptr;
-    QLabel*        m_meta  = nullptr;
-    QTextBrowser*  m_desc  = nullptr;
+    QLabel*         m_image = nullptr;
+    QLabel*         m_name  = nullptr;
+    QLabel*         m_meta  = nullptr;
+    QTextBrowser*   m_desc  = nullptr;
+    QPlainTextEdit* m_note  = nullptr;
+
+    Profile* m_profile = nullptr;  // profile owning the currently shown mod
+    QString  m_noteModId;          // mod id whose note the editor currently holds
 
     QString m_currentId;       // mod entry id currently shown (guards stale async results)
     QString m_currentNexusId;  // nexusModId of the current entry (details results key off this)

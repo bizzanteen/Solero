@@ -37,6 +37,25 @@ void ModListModel::setConflictHighlights(const QHash<QString,int>& roles) {
         emit dataChanged(index(0,0), index(rowCount()-1, ColCount-1), {Qt::BackgroundRole});
 }
 
+void ModListModel::setConflictIndex(const ConflictIndex& ci) {
+    m_conflicts = ci;
+    m_overwritingMods.clear();
+    m_overwrittenMods.clear();
+    // Precompute per-mod winner/loser membership once so data() stays O(1).
+    for (const QString& path : ci.conflictedPaths()) {
+        const QString w = ci.winnerOf(path);
+        if (!w.isEmpty()) m_overwritingMods.insert(w);
+        for (const QString& l : ci.losersOf(path)) m_overwrittenMods.insert(l);
+    }
+    if (rowCount() > 0)
+        emit dataChanged(index(0,0), index(rowCount()-1, ColCount-1));
+}
+
+void ModListModel::refreshFlags() {
+    if (rowCount() > 0)
+        emit dataChanged(index(0,0), index(rowCount()-1, ColCount-1));
+}
+
 void ModListModel::invalidateModCache(const QString& id) {
     if (id.isEmpty()) {
         m_emptyCache.clear();
@@ -258,23 +277,32 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
                 return normalizeVersion(entry.version);
             case ColFlags: {
                 if (isSep) return QString();
+                // Status icons (conflicts / note / missing-dep / update) render via
+                // DecorationRole; this textual part keeps the mod-kind labels.
                 QStringList parts;
                 if (entry.isOutputMod) parts << "Output";
                 if (entry.hasFomodChoices) parts << "FOMOD";
-                // (out-of-date is shown by the yellow up-arrow on the Version column)
-                QString flags = parts.join(" ");
-                if (m_depWarnings.contains(entry.id)) flags = "\xe2\x9a\xa0 " + flags; // ⚠
-                return flags;
+                return parts.join(" ");
             }
             default: return {};
         }
     }
-    if (role == Qt::ToolTipRole && !isSep && m_updates.contains(entry.id)) {
-        const auto& u = m_updates.value(entry.id);
-        return QString("Update available: %1 \xe2\x86\x92 %2").arg(u.first, u.second); // installed -> latest
+    if (role == Qt::ToolTipRole && !isSep) {
+        QStringList tips;
+        if (m_overwritingMods.contains(entry.id))
+            tips << QStringLiteral("\xe2\x96\xb2 Overwrites other mods (wins file conflicts)");
+        if (m_overwrittenMods.contains(entry.id))
+            tips << QStringLiteral("\xe2\x96\xbc Overwritten by other mods (loses file conflicts)");
+        if (m_depWarnings.contains(entry.id))
+            tips << m_depWarnings.value(entry.id).join("\n");
+        if (m_updates.contains(entry.id)) {
+            const auto& u = m_updates.value(entry.id);
+            tips << QString("Update available: %1 \xe2\x86\x92 %2").arg(u.first, u.second);
+        }
+        if (!entry.note.isEmpty())
+            tips << QStringLiteral("\xf0\x9f\x93\x9d Note: ") + entry.note; // 📝
+        if (!tips.isEmpty()) return tips.join("\n");
     }
-    if (role == Qt::ToolTipRole && !isSep && m_depWarnings.contains(entry.id))
-        return m_depWarnings.value(entry.id).join("\n");
     if (role == Qt::CheckStateRole && idx.column() == ColEnabled && !isSep)
         return entry.enabled ? Qt::Checked : Qt::Unchecked;
     // Separators rename via their spanned column 0; mods rename via ColName.
@@ -289,6 +317,18 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     if (role == Qt::DecorationRole && !isSep && idx.column() == ColVersion
             && entry.type == EntryType::Mod && m_updates.contains(entry.id)) {
         return solero::yellowUpArrowIcon();
+    }
+    // Persistent Flags column: always-on status icons composed into one cell.
+    if (role == Qt::DecorationRole && !isSep && idx.column() == ColFlags
+            && entry.type == EntryType::Mod) {
+        QList<QIcon> icons;
+        if (m_overwritingMods.contains(entry.id)) icons << solero::greenUpTriangleIcon();
+        if (m_overwrittenMods.contains(entry.id)) icons << solero::redDownTriangleIcon();
+        if (m_depWarnings.contains(entry.id))      icons << solero::redBangIcon(16);
+        if (m_updates.contains(entry.id))          icons << solero::yellowUpArrowIcon();
+        if (!entry.note.isEmpty())                 icons << solero::noteIcon();
+        if (icons.isEmpty()) return {};
+        return solero::composeIcons(icons, 16);
     }
     if (role == Qt::FontRole && isSep) {
         QFont f; f.setBold(true); return f;

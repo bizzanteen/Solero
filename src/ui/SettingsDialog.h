@@ -2,6 +2,7 @@
 #include <QDialog>
 
 class QCheckBox;
+class QComboBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
@@ -22,6 +23,7 @@ private:
     QCheckBox* m_dataShowAllFiles = nullptr;
     QCheckBox* m_promptAfterBrowserDownload = nullptr;
     QCheckBox* m_autoCheckUpdates = nullptr;
+    QComboBox* m_deployCombo = nullptr;
     QLabel* m_nxmStatus = nullptr;
     QLabel* m_nexusStatus = nullptr;
     QLineEdit* m_keyEdit = nullptr;

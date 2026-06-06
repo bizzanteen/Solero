@@ -90,6 +90,11 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     connect(header(), &QHeaderView::sectionResized, this, [this](int idx, int, int) {
         if (idx != ModListModel::ColName) fillNameColumn();
     });
+    // Right-click the header to toggle column visibility (persisted in AppConfig).
+    header()->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(header(), &QWidget::customContextMenuRequested,
+            this, &ModListView::showHeaderMenu);
+    applyHiddenColumns(); // restore persisted hidden columns on startup
 
     connect(selectionModel(), &QItemSelectionModel::selectionChanged,
             this, [this](const QItemSelection&, const QItemSelection&) {
@@ -189,11 +194,18 @@ void ModListView::invalidateModCache(const QString& id) {
 
 void ModListView::setUpdateInfo(const QHash<QString, QPair<QString,QString>>& info) {
     m_model->setUpdateInfo(info);
+    applyFilter(); // the "Update available" state filter depends on this data
 }
 
 void ModListView::setConflictIndex(const ConflictIndex& index) {
     m_conflicts = index;
+    m_model->setConflictIndex(index); // always-on Flags-column winner/loser icons
     updateConflictHighlights();
+    applyFilter(); // the "Has conflicts" state filter depends on this data
+}
+
+void ModListView::refreshFlags() {
+    m_model->refreshFlags();
 }
 
 void ModListView::updateConflictHighlights() {
@@ -506,18 +518,96 @@ void ModListView::setFilter(const QString& text) {
     applyFilter();
 }
 
-void ModListView::applyFilter() {
-    // Hide Mod rows whose name doesn't contain the filter text. Separators and
-    // the Overwrite row remain visible. rebuild() clears hidden state, so callers
-    // that rebuild the model should re-apply the filter afterwards.
-    const QModelIndex root;
-    for (int row = 0; row < m_model->rowCount(); ++row) {
-        const auto* entry = m_model->entryAt(row);
-        bool hide = false;
-        if (entry && entry->type == EntryType::Mod && !m_filter.isEmpty())
-            hide = !entry->name.contains(m_filter, Qt::CaseInsensitive);
-        setRowHidden(row, root, hide);
+void ModListView::setStateFilter(StateFilter state) {
+    m_stateFilter = state;
+    applyFilter();
+}
+
+bool ModListView::matchesState(const ModEntry* entry) const {
+    if (!entry || entry->type != EntryType::Mod) return true;
+    switch (m_stateFilter) {
+        case StateFilter::All:             return true;
+        case StateFilter::Conflicts:       return m_model->modHasConflict(entry->id);
+        case StateFilter::UpdateAvailable: return m_model->modHasUpdate(entry->id);
+        case StateFilter::Enabled:         return entry->enabled;
+        case StateFilter::Disabled:        return !entry->enabled;
+        case StateFilter::MissingDep:      return m_model->modHasMissingDep(entry->id);
     }
+    return true;
+}
+
+void ModListView::applyFilter() {
+    // Hide Mod rows that don't match the name filter and the state predicate.
+    // While any filter is active, separators whose section has no visible mod are
+    // hidden too (no empty sections). The Overwrite row always stays visible.
+    // rebuild() clears hidden state, so callers that rebuild re-apply the filter.
+    const QModelIndex root;
+    const int rows = m_model->rowCount();
+    const bool filtering = !m_filter.isEmpty() || m_stateFilter != StateFilter::All;
+
+    QList<bool> hidden(rows, false);
+    for (int row = 0; row < rows; ++row) {
+        const auto* entry = m_model->entryAt(row);
+        if (!entry || entry->type != EntryType::Mod) continue; // sep/Overwrite below
+        bool hide = false;
+        if (!m_filter.isEmpty())
+            hide = !entry->name.contains(m_filter, Qt::CaseInsensitive);
+        if (!hide && !matchesState(entry))
+            hide = true;
+        hidden[row] = hide;
+    }
+    if (filtering) {
+        // Hide a separator if no mod in its section (up to the next separator or
+        // the Overwrite row) is visible.
+        for (int row = 0; row < rows; ++row) {
+            const auto* entry = m_model->entryAt(row);
+            if (!entry || entry->type != EntryType::Separator) continue;
+            bool anyVisible = false;
+            for (int r = row + 1; r < rows; ++r) {
+                const auto* e2 = m_model->entryAt(r);
+                if (!e2 || e2->type == EntryType::Separator) break; // Overwrite / next sep
+                if (!hidden[r]) { anyVisible = true; break; }
+            }
+            hidden[row] = !anyVisible;
+        }
+    }
+    for (int row = 0; row < rows; ++row)
+        setRowHidden(row, root, hidden[row]);
+}
+
+void ModListView::applyHiddenColumns() {
+    // ColName stays mandatory; restore the rest from AppConfig.
+    const auto hiddenCols = AppConfig::instance().hiddenColumns();
+    for (int c = 0; c < ModListModel::ColCount; ++c) {
+        if (c == ModListModel::ColName) { setColumnHidden(c, false); continue; }
+        setColumnHidden(c, hiddenCols.contains(c));
+    }
+}
+
+void ModListView::showHeaderMenu(const QPoint& pos) {
+    QMenu menu(this);
+    struct ColInfo { int col; const char* label; };
+    static const ColInfo cols[] = {
+        { ModListModel::ColEnabled,  "Enabled" },
+        { ModListModel::ColPriority, "Priority (#)" },
+        { ModListModel::ColVersion,  "Version" },
+        { ModListModel::ColFlags,    "Flags" },
+    };
+    for (const auto& ci : cols) {
+        QAction* a = menu.addAction(QString::fromLatin1(ci.label));
+        a->setCheckable(true);
+        a->setChecked(!isColumnHidden(ci.col));
+        connect(a, &QAction::toggled, this, [this, col = ci.col](bool shown) {
+            setColumnHidden(col, !shown);
+            QList<int> hidden;
+            for (int c = 0; c < ModListModel::ColCount; ++c)
+                if (c != ModListModel::ColName && isColumnHidden(c)) hidden << c;
+            AppConfig::instance().setHiddenColumns(hidden);
+            AppConfig::instance().save();
+            fillNameColumn(); // Name absorbs the freed/used width
+        });
+    }
+    menu.exec(header()->mapToGlobal(pos));
 }
 
 void ModListView::setSelectedModsEnabled(bool enabled) {

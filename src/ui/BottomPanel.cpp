@@ -32,6 +32,7 @@ BottomPanel::BottomPanel(QWidget* parent) : QWidget(parent) {
     outer->addWidget(header);
 
     m_modInfo = new ModInfoWidget(this);
+    connect(m_modInfo, &ModInfoWidget::noteChanged, this, &BottomPanel::noteChanged);
     outer->addWidget(m_modInfo);
 
     m_headerHeight = header->sizeHint().height();

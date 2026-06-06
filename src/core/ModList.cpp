@@ -154,6 +154,7 @@ static QJsonObject entryToJson(const ModEntry& e) {
     o["hasFomodChoices"] = e.hasFomodChoices;
     o["isOutputMod"]     = e.isOutputMod;
     o["sourceArchive"]   = e.sourceArchive;
+    o["note"]            = e.note;
     QJsonArray tags;
     for (const auto& t : e.tags) tags.append(t);
     o["tags"] = tags;
@@ -176,6 +177,7 @@ static ModEntry entryFromJson(const QJsonObject& o) {
     e.hasFomodChoices = o["hasFomodChoices"].toBool(false);
     e.isOutputMod     = o["isOutputMod"].toBool(false);
     e.sourceArchive   = o["sourceArchive"].toString();
+    e.note            = o["note"].toString(); // absent in older files -> empty
     for (const auto& t : o["tags"].toArray()) e.tags.append(t.toString());
     return e;
 }

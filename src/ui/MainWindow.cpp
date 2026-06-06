@@ -40,6 +40,7 @@
 #include <QToolButton>
 #include <QLabel>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QDialog>
 #include <QCheckBox>
 #include <QDialogButtonBox>
@@ -424,18 +425,35 @@ void MainWindow::setupCentralWidget() {
     auto* outer = new QSplitter(Qt::Vertical, this);
     m_splitter = new QSplitter(Qt::Horizontal, outer);
 
-    // Left pane: a small filter box above the mod list.
+    // Left pane: a filter row (name box + state quick-filter) above the mod list.
     auto* leftContainer = new QWidget(m_splitter);
     auto* leftLayout = new QVBoxLayout(leftContainer);
     leftLayout->setContentsMargins(0, 0, 0, 0);
     leftLayout->setSpacing(2);
+    auto* filterRow = new QHBoxLayout;
+    filterRow->setContentsMargins(0, 0, 0, 0);
+    filterRow->setSpacing(4);
     auto* modFilter = new QLineEdit(leftContainer);
     modFilter->setPlaceholderText("Filter mods\xe2\x80\xa6");
     modFilter->setClearButtonEnabled(true);
+    auto* stateFilter = new QComboBox(leftContainer);
+    stateFilter->setToolTip("Show only mods in a given state");
+    stateFilter->addItem("All",              int(solero::ModListView::StateFilter::All));
+    stateFilter->addItem("Has conflicts",    int(solero::ModListView::StateFilter::Conflicts));
+    stateFilter->addItem("Update available", int(solero::ModListView::StateFilter::UpdateAvailable));
+    stateFilter->addItem("Enabled",          int(solero::ModListView::StateFilter::Enabled));
+    stateFilter->addItem("Disabled",         int(solero::ModListView::StateFilter::Disabled));
+    stateFilter->addItem("Missing dependency", int(solero::ModListView::StateFilter::MissingDep));
+    filterRow->addWidget(modFilter, 1);
+    filterRow->addWidget(stateFilter);
     m_modListView = new solero::ModListView(leftContainer);
     connect(modFilter, &QLineEdit::textChanged, m_modListView,
             &solero::ModListView::setFilter);
-    leftLayout->addWidget(modFilter);
+    connect(stateFilter, &QComboBox::currentIndexChanged, this, [this, stateFilter](int){
+        m_modListView->setStateFilter(
+            static_cast<solero::ModListView::StateFilter>(stateFilter->currentData().toInt()));
+    });
+    leftLayout->addLayout(filterRow);
     leftLayout->addWidget(m_modListView);
 
     m_rightPane   = new solero::RightPane(m_splitter);
@@ -542,6 +560,9 @@ void MainWindow::setupCentralWidget() {
     m_bottomPanel = new solero::BottomPanel(outer);
     connect(m_modListView, &solero::ModListView::modsSelected,
             m_bottomPanel, &solero::BottomPanel::onModsSelected);
+    // A note edited in the Mod Info panel refreshes the list's note indicator.
+    connect(m_bottomPanel, &solero::BottomPanel::noteChanged,
+            m_modListView, &solero::ModListView::refreshFlags);
     outer->addWidget(m_splitter);
     outer->addWidget(m_bottomPanel);
     outer->setSizes({580, 200});
@@ -655,7 +676,7 @@ void MainWindow::switchProfile(const QString& name) {
         solero::DeployEngine engine(solero::AppConfig::instance().gameDir(),
                                     solero::AppConfig::instance().stagingDir());
         engine.setUserlistPath(profile->lootUserlistPath());
-        auto result = engine.deploy(*profile, m_deployMode,
+        auto result = engine.deploy(*profile, solero::AppConfig::instance().deployMode(),
                                     [&](int d, int t){ if (prog) { prog->setProgress(d, t); prog->pump(); } });
         m_deployed = result.success;
         m_deployDirty = false;
@@ -716,7 +737,7 @@ bool MainWindow::deployCurrent() {
         solero::AppConfig::instance().gameDir(),
         solero::AppConfig::instance().stagingDir());
     engine.setUserlistPath(profile->lootUserlistPath());
-    auto result = engine.deploy(*profile, m_deployMode, [&](int d, int t){ prog.setProgress(d, t); prog.pump(); });
+    auto result = engine.deploy(*profile, solero::AppConfig::instance().deployMode(), [&](int d, int t){ prog.setProgress(d, t); prog.pump(); });
 
     prog.close();
 

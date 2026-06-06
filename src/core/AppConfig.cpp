@@ -2,6 +2,7 @@
 #include "FileUtil.h"
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
@@ -86,6 +87,13 @@ bool AppConfig::load() {
     m_lastUpdateCheckEpoch = static_cast<qint64>(obj["lastUpdateCheckEpoch"].toDouble(0));
     m_lastSeparatorColor   = obj["lastSeparatorColor"].toString();
     m_jackifyEnginePath    = obj["jackifyEnginePath"].toString();
+    const QString dm = obj["deployMode"].toString("hardlink");
+    m_deployMode = (dm == "symlink") ? DeployMode::SymLink
+                 : (dm == "copy")    ? DeployMode::Copy
+                                     : DeployMode::HardLink;
+    m_hiddenColumns.clear();
+    for (const auto& v : obj["hiddenColumns"].toArray())
+        m_hiddenColumns.append(v.toInt());
     return true;
 }
 
@@ -106,6 +114,12 @@ bool AppConfig::save() const {
     obj["lastUpdateCheckEpoch"] = static_cast<double>(m_lastUpdateCheckEpoch);
     obj["lastSeparatorColor"]   = m_lastSeparatorColor;
     obj["jackifyEnginePath"]    = m_jackifyEnginePath;
+    obj["deployMode"] = (m_deployMode == DeployMode::SymLink) ? "symlink"
+                      : (m_deployMode == DeployMode::Copy)    ? "copy"
+                                                              : "hardlink";
+    QJsonArray hidden;
+    for (int c : m_hiddenColumns) hidden.append(c);
+    obj["hiddenColumns"] = hidden;
     return atomicWrite(configPath(), QJsonDocument(obj).toJson(QJsonDocument::Indented));
 }
 

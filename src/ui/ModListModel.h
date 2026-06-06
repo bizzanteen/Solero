@@ -3,7 +3,9 @@
 #include <QHash>
 #include <QPair>
 #include <QStringList>
+#include <QSet>
 #include "core/Profile.h"
+#include "deploy/ConflictIndex.h"
 
 namespace solero {
 
@@ -55,6 +57,18 @@ public:
     // MO2-style conflict highlight for the selected mod: id -> 1 (green: this mod
     // overwrites the selection) / 2 (red: overwritten by the selection). Empty = clear.
     void setConflictHighlights(const QHash<QString,int>& roles);
+    // Full per-file conflict index, used to paint always-ON winner/loser flag icons
+    // in the Flags column (independent of the transient on-select highlight above).
+    void setConflictIndex(const ConflictIndex& index);
+    // Re-paint flag indicators (e.g. after a mod note changed). Cheap dataChanged.
+    void refreshFlags();
+
+    // State-filter data sources (used by ModListView::applyFilter).
+    bool modHasConflict(const QString& id) const {
+        return m_overwritingMods.contains(id) || m_overwrittenMods.contains(id);
+    }
+    bool modHasUpdate(const QString& id) const     { return m_updates.contains(id); }
+    bool modHasMissingDep(const QString& id) const { return m_depWarnings.contains(id); }
 
     // Invalidate cached disk scans (empty-mod / Overwrite "has files"). Call only
     // when a mod's staged files actually change. Empty id clears the whole cache
@@ -74,6 +88,9 @@ private:
     QHash<QString,QStringList> m_depWarnings;
     QHash<QString, QPair<QString,QString>> m_updates; // modId -> {installed, latest}
     QHash<QString,int> m_conflictHi; // modId -> 1 green / 2 red (selection conflicts)
+    ConflictIndex m_conflicts;       // full index for the always-on Flags icons
+    QSet<QString> m_overwritingMods; // mods that win ≥1 file conflict (overwrite others)
+    QSet<QString> m_overwrittenMods; // mods that lose ≥1 file conflict (overwritten)
     mutable QHash<QString,bool> m_emptyCache;
     mutable int m_overwriteHasFiles = -1; // tri-state cache: -1 unknown, 0 no, 1 yes
 

@@ -4,6 +4,7 @@
 #include <QByteArray>
 #include "ui/ModListModel.h"
 #include "core/Profile.h"
+#include "deploy/ConflictIndex.h"
 using namespace solero;
 
 // Helper: build a QMimeData carrying a source VISIBLE row in the mod-row format.
@@ -177,6 +178,42 @@ private slots:
         QVERIFY(!model.dropMimeData(mime.data(), Qt::MoveAction, 4, 0, {}));
         // Whole group moves below "other", children staying contiguous after parent.
         QCOMPARE(order(prof), QString("u0,P0,c0,c1"));
+    }
+
+    void stateFilterSources_reflectConflictsUpdatesDeps() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        addMods(prof, 3); // m0,m1,m2
+        ModListModel model;
+        model.setProfile(&prof);
+
+        // No data yet -> all predicates false.
+        QVERIFY(!model.modHasConflict("m0"));
+        QVERIFY(!model.modHasUpdate("m0"));
+        QVERIFY(!model.modHasMissingDep("m0"));
+
+        // Conflict: m0 wins "a.esp" over m1 (m0 overwrites, m1 overwritten).
+        ConflictIndex ci;
+        ci.setWinner("a.esp", "m0");
+        ci.recordConflict("a.esp", "m0", "m1");
+        model.setConflictIndex(ci);
+        QVERIFY(model.modHasConflict("m0"));  // winner
+        QVERIFY(model.modHasConflict("m1"));  // loser
+        QVERIFY(!model.modHasConflict("m2")); // uninvolved
+
+        // Update available for m1.
+        QHash<QString, QPair<QString,QString>> updates;
+        updates.insert("m1", {"1.0", "1.1"});
+        model.setUpdateInfo(updates);
+        QVERIFY(model.modHasUpdate("m1"));
+        QVERIFY(!model.modHasUpdate("m0"));
+
+        // Missing dependency on m2.
+        QHash<QString,QStringList> deps;
+        deps.insert("m2", {"Requires SkyUI"});
+        model.setDependencyWarnings(deps);
+        QVERIFY(model.modHasMissingDep("m2"));
+        QVERIFY(!model.modHasMissingDep("m0"));
     }
 
     void moveRows_endMappingAppends() {

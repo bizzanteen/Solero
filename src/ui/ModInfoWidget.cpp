@@ -9,6 +9,8 @@
 #include <QVBoxLayout>
 #include <QLabel>
 #include <QTextBrowser>
+#include <QPlainTextEdit>
+#include <QEvent>
 #include <QFont>
 #include <QPixmap>
 #include <QFileInfo>
@@ -56,6 +58,17 @@ ModInfoWidget::ModInfoWidget(QWidget* parent) : QWidget(parent) {
     m_desc->setOpenExternalLinks(true);
     right->addWidget(m_desc, 1);
 
+    auto* noteLabel = new QLabel("Notes", this);
+    noteLabel->setStyleSheet("font-weight: bold;");
+    right->addWidget(noteLabel);
+
+    m_note = new QPlainTextEdit(this);
+    m_note->setPlaceholderText("Add a personal note for this mod\xe2\x80\xa6");
+    m_note->setMaximumHeight(60);
+    m_note->setTabChangesFocus(true);
+    m_note->installEventFilter(this); // save on focus-out
+    right->addWidget(m_note);
+
     root->addLayout(right, 1);
 
     // When the async Nexus details fetch finishes, apply only if still current.
@@ -74,15 +87,22 @@ ModInfoWidget::ModInfoWidget(QWidget* parent) : QWidget(parent) {
 }
 
 void ModInfoWidget::clear() {
+    saveNote(); // persist any pending edit before wiping the panel
     m_currentId.clear();
     m_currentNexusId.clear();
     m_expectedImageKey.clear();
     m_localName.clear();
     m_localMeta.clear();
+    m_noteModId.clear();
     if (m_name) m_name->setText("Select a mod to see info");
     if (m_meta) m_meta->clear();
     if (m_desc) m_desc->clear();
     if (m_image) m_image->setPixmap(QPixmap());
+    if (m_note) {
+        QSignalBlocker block(m_note);
+        m_note->clear();
+        m_note->setEnabled(false);
+    }
 }
 
 // Convert common Nexus BBCode to safe HTML for QTextBrowser. The raw text is
@@ -124,6 +144,8 @@ static QString bbcodeToHtml(const QString& in) {
 }
 
 void ModInfoWidget::showMod(Profile* profile, const QString& id) {
+    saveNote(); // persist any pending edit on the previously shown mod first
+
     if (!profile || id.isEmpty() || id == "__overwrite__" || id == "__separator__") {
         clear();
         return;
@@ -135,6 +157,15 @@ void ModInfoWidget::showMod(Profile* profile, const QString& id) {
     m_currentId = id;
     m_currentNexusId = entry->nexusModId;
     m_expectedImageKey.clear();
+
+    // Note editor: load this mod's note (enabled for both regular & output mods).
+    m_profile = profile;
+    m_noteModId = id;
+    if (m_note) {
+        QSignalBlocker block(m_note);
+        m_note->setEnabled(true);
+        m_note->setPlainText(entry->note);
+    }
 
     const QString staging = AppConfig::instance().stagingDir() + "/" + id;
 
@@ -328,6 +359,23 @@ void ModInfoWidget::fetchImage(const QString& nexusModId, const QString& url) {
 void ModInfoWidget::applyImage(const QPixmap& pm) {
     if (pm.isNull()) return;
     m_image->setPixmap(pm.scaled(m_image->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+}
+
+void ModInfoWidget::saveNote() {
+    if (!m_profile || m_noteModId.isEmpty() || !m_note) return;
+    ModEntry* e = m_profile->modList().findById(m_noteModId);
+    if (!e) return;
+    const QString text = m_note->toPlainText();
+    if (e->note == text) return; // unchanged
+    e->note = text;
+    m_profile->save();
+    emit noteChanged();
+}
+
+bool ModInfoWidget::eventFilter(QObject* obj, QEvent* event) {
+    if (obj == m_note && event->type() == QEvent::FocusOut)
+        saveNote();
+    return QWidget::eventFilter(obj, event);
 }
 
 } // namespace solero

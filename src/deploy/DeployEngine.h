@@ -4,6 +4,7 @@
 #include "ConflictIndex.h"
 #include "Linker.h"
 #include <QString>
+#include <QHash>
 #include <functional>
 
 namespace solero { class Profile; }
@@ -43,7 +44,8 @@ private:
                   const QString& gameDir,
                   const Linker& linker,
                   DeployRecord& record,
-                  ConflictIndex& conflicts);
+                  ConflictIndex& conflicts,
+                  QHash<QString, QString>& ciOwners);
 
     // Backup dir living inside the game dir; holds pre-existing (non-Solero)
     // originals that mods were deployed over, so undeploy can restore them.

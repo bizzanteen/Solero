@@ -118,6 +118,44 @@ private slots:
           QCOMPARE(f.readAll(), QByteArray("ORIGINAL")); }
         QVERIFY(!QDir(gameDir + "/.solero-backup").exists());
     }
+    void caseVariantConflict_resolvedToSingleWinner() {
+        // Wine/Proton is case-insensitive: two mods staging the same logical
+        // file with different case (e.g. base "QUI" ships QUI.dll, the update
+        // ships qui.dll) must collapse to one file - the later/higher-priority
+        // mod's - matching Windows mod-manager behaviour. Otherwise both land
+        // and SKSE loads the plugin twice.
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QDir().mkpath(gameDir);
+        writeFile(stagingRoot + "/aaa/Data/SKSE/Plugins/Foo.dll", "v3-base");
+        writeFile(stagingRoot + "/bbb/Data/SKSE/Plugins/foo.dll", "v4-update");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry ma; ma.type = EntryType::Mod; ma.id = "aaa"; ma.name = "Base";   ma.enabled = true;
+        ModEntry mb; mb.type = EntryType::Mod; mb.id = "bbb"; mb.name = "Update"; mb.enabled = true;
+        profile.modList().append(ma);
+        profile.modList().append(mb);
+
+        DeployEngine engine(gameDir, stagingRoot);
+        auto result = engine.deploy(profile, DeployMode::Copy);
+        QVERIFY(result.success);
+
+        // Exactly one dll lands (case-insensitively) - the stale variant is gone.
+        QStringList dlls = QDir(gameDir + "/Data/SKSE/Plugins")
+                               .entryList(QStringList() << "*.dll", QDir::Files);
+        QCOMPARE(dlls.size(), 1);
+
+        // The survivor is the later mod's file with its content.
+        QFile f(gameDir + "/Data/SKSE/Plugins/" + dlls.first());
+        f.open(QIODevice::ReadOnly);
+        QCOMPARE(f.readAll(), QByteArray("v4-update"));
+
+        // The record holds exactly one entry for this path (no duplicate).
+        DeployRecord record = DeployRecord::loadFromFile(
+            DeployEngine::recordPath(gameDir));
+        QCOMPARE(record.count(), 1);
+    }
     void redeploy_removesOrphanedFiles() {
         QTemporaryDir tmp;
         QString stagingRoot = tmp.path() + "/staging";

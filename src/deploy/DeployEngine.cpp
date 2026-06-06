@@ -43,6 +43,10 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     Linker linker(mode);
     DeployRecord record;
     ConflictIndex conflicts;
+    // Case-insensitive owner index (lowercased relPath -> actual deployed
+    // relPath). Wine/Proton present the game dir case-insensitively, so two
+    // mods staging the same path with different case must collapse to one file.
+    QHash<QString, QString> ciOwners;
 
     int total = 0;
     for (const auto& entry : profile.modList())
@@ -55,7 +59,7 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     for (const auto& entry : profile.modList()) {
         if (entry.type != EntryType::Mod) continue;
         if (!entry.enabled) continue;
-        failures += deployMod(entry.id, m_gameDir, linker, record, conflicts);
+        failures += deployMod(entry.id, m_gameDir, linker, record, conflicts, ciOwners);
         ++done;
         if (onProgress) onProgress(done, total);
     }
@@ -141,7 +145,8 @@ int DeployEngine::deployMod(const QString& modId,
                              const QString& gameDir,
                              const Linker& linker,
                              DeployRecord& record,
-                             ConflictIndex& conflicts) {
+                             ConflictIndex& conflicts,
+                             QHash<QString, QString>& ciOwners) {
     QString modRoot = m_stagingRoot + "/" + modId;
     if (!QDir(modRoot).exists()) return 0;
 
@@ -161,7 +166,18 @@ int DeployEngine::deployMod(const QString& modId,
             || fn.compare("fomod-choices.json", Qt::CaseInsensitive) == 0)
             continue;
 
-        QString previousOwner = record.ownerOf(relPath);
+        const QString ciKey = relPath.toLower();
+        const QString priorRel = ciOwners.value(ciKey);   // earlier-deployed path at this CI path, if any
+        QString previousOwner = priorRel.isEmpty() ? QString() : record.ownerOf(priorRel);
+
+        // Wine/Proton is case-insensitive: a file already deployed at a case-variant
+        // of this path (e.g. QUI.dll vs qui.dll) would both be visible to the game and
+        // load twice. The current mod is later in the load order = higher priority =
+        // winner, so drop the stale variant and let this file take its place.
+        if (!priorRel.isEmpty() && priorRel != relPath) {
+            QFile::remove(gameDir + "/" + priorRel);
+            record.remove(priorRel);
+        }
 
         // First Solero owner of this path and something already lives there:
         // it's a genuine pre-existing original (deploy() ran undeploy() first,
@@ -199,6 +215,7 @@ int DeployEngine::deployMod(const QString& modId,
             conflicts.setWinner(relPath, modId);
         }
         record.add(relPath, modId);
+        ciOwners.insert(ciKey, relPath);
     }
     return failures;
 }

@@ -10,6 +10,7 @@
 #include "core/AppConfig.h"
 #include "core/ModList.h"
 #include "core/VersionUtil.h"
+#include "core/LoadOrderBackup.h"
 #include "install/ModInstaller.h"
 #include "import/Mo2Importer.h"
 #include "ui/WabbajackDialog.h"
@@ -56,6 +57,7 @@
 #include <QPushButton>
 #include <QInputDialog>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QMenu>
 #include <QIcon>
 #include <QStatusBar>
@@ -556,6 +558,10 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onSortRequested);
     connect(m_rightPane, &solero::RightPane::lootRulesRequested,
             this, &MainWindow::onOpenLootRules);
+    connect(m_rightPane, &solero::RightPane::backupLoRequested,
+            this, &MainWindow::onBackupLo);
+    connect(m_rightPane, &solero::RightPane::restoreLoRequested,
+            this, &MainWindow::onRestoreLo);
     // A per-file rule changed (hide a file in a mod / force a per-path winner):
     // the staged outputs no longer match what's deployed, so mark dirty.
     connect(m_rightPane, &solero::RightPane::fileRulesChanged, this, [this]{
@@ -885,6 +891,102 @@ void MainWindow::onSortRequested() {
     m_loadOrderDirty = false;
     updateSortButton();
     statusBar()->showMessage("Plugins sorted by LOOT.");
+}
+
+void MainWindow::onBackupLo() {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) { statusBar()->showMessage("No active profile."); return; }
+
+    bool ok = false;
+    const QString def = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
+    const QString label = QInputDialog::getText(this, "Backup Load Order",
+        "Label (optional):", QLineEdit::Normal, def, &ok);
+    if (!ok) return;
+
+    const QString path = solero::LoadOrderBackup::create(*profile, label);
+    if (path.isEmpty())
+        statusBar()->showMessage("Couldn't write load-order backup.");
+    else
+        statusBar()->showMessage("Load order backed up (" +
+            QString::number(profile->pluginList().count()) + " plugins).");
+}
+
+void MainWindow::onRestoreLo() {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) { statusBar()->showMessage("No active profile."); return; }
+
+    auto backups = solero::LoadOrderBackup::list(*profile);
+    if (backups.isEmpty()) {
+        QMessageBox::information(this, "Restore Load Order",
+            "No load-order backups yet - use \"Backup LO\" first.");
+        return;
+    }
+
+    QDialog dlg(this);
+    dlg.setWindowTitle("Restore Load Order");
+    dlg.resize(460, 320);
+    auto* layout = new QVBoxLayout(&dlg);
+    layout->addWidget(new QLabel("Pick a snapshot to restore:", &dlg));
+    auto* listw = new QListWidget(&dlg);
+    layout->addWidget(listw, 1);
+
+    auto populate = [&] {
+        listw->clear();
+        for (const auto& b : backups) {
+            const QString when = b.created.isValid()
+                ? b.created.toString("yyyy-MM-dd HH:mm") : QString("unknown time");
+            auto* item = new QListWidgetItem(
+                QString("%1  -  %2  (%3 plugins)")
+                    .arg(b.label, when).arg(b.pluginCount), listw);
+            item->setData(Qt::UserRole, b.path);
+        }
+        if (listw->count()) listw->setCurrentRow(0);
+    };
+    populate();
+
+    auto* btnRow = new QHBoxLayout();
+    auto* deleteBtn = new QPushButton("Delete", &dlg);
+    btnRow->addWidget(deleteBtn);
+    btnRow->addStretch();
+    layout->addLayout(btnRow);
+
+    auto* buttons = new QDialogButtonBox(&dlg);
+    auto* restoreBtn = buttons->addButton("Restore", QDialogButtonBox::AcceptRole);
+    buttons->addButton(QDialogButtonBox::Cancel);
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    connect(deleteBtn, &QPushButton::clicked, &dlg, [&] {
+        auto* item = listw->currentItem();
+        if (!item) return;
+        const QString path = item->data(Qt::UserRole).toString();
+        if (QMessageBox::question(&dlg, "Delete backup",
+                "Delete \"" + item->text() + "\"?") != QMessageBox::Yes)
+            return;
+        QFile::remove(path);
+        backups = solero::LoadOrderBackup::list(*profile);
+        populate();
+        if (backups.isEmpty()) dlg.reject();
+    });
+
+    auto syncEnabled = [&] { restoreBtn->setEnabled(listw->currentItem() != nullptr); };
+    connect(listw, &QListWidget::currentRowChanged, &dlg, [&](int){ syncEnabled(); });
+    syncEnabled();
+
+    if (dlg.exec() != QDialog::Accepted) return;
+    auto* item = listw->currentItem();
+    if (!item) return;
+
+    const auto snap = solero::LoadOrderBackup::load(item->data(Qt::UserRole).toString());
+    if (!snap.valid) { statusBar()->showMessage("Couldn't read that backup."); return; }
+
+    profile->pluginList().restoreSnapshot(snap.plugins);
+    profile->save();
+    m_rightPane->setProfile(profile); // refresh the plugins view with the restored order
+    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+    updatePluginNotice();
+    statusBar()->showMessage("Load order restored from \"" + snap.label + "\".");
 }
 
 void MainWindow::onModsChanged() {

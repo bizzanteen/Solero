@@ -38,6 +38,19 @@ public:
     // documented on allowedDropRange().
     bool isValidMove(int src, int to) const;
 
+    // Reconcile this list against a saved load-order snapshot - a sequence of
+    // {filename, enabled} pairs in the snapshot's load order. MO2 semantics:
+    //   • plugins present in both take the snapshot's enabled state and its
+    //     relative order;
+    //   • plugins in the snapshot but no longer present are ignored;
+    //   • plugins present now but absent from the snapshot keep their current
+    //     enabled state and drop to the bottom (after the restored ones), in
+    //     their current relative order.
+    // Band ordering is always preserved: official/locked plugins stay in their
+    // forced top band (current relative order), then master < light < esp, so a
+    // restore can never produce an invalid load order.
+    void restoreSnapshot(const QList<QPair<QString, bool>>& snapshot);
+
     QString toPluginsTxt() const;
     static PluginList fromPluginsTxt(const QString& txt);
 

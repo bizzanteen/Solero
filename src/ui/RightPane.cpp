@@ -28,10 +28,19 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     m_pluginNotice->hide();
     pluginsLayout->addWidget(m_pluginNotice);
 
-    // Top row with right-aligned "LOOT Rules" + "Sort Now" (LOOT) buttons.
+    // Top row with right-aligned "Backup LO" / "Restore LO…" / "LOOT Rules" /
+    // "Sort Now" (LOOT) buttons.
     auto* sortRow = new QHBoxLayout();
     sortRow->setContentsMargins(4, 4, 4, 4);
     sortRow->addStretch();
+    auto* backupBtn = new QPushButton("Backup LO", pluginsContainer);
+    backupBtn->setToolTip("Snapshot the current load order + active state");
+    connect(backupBtn, &QPushButton::clicked, this, &RightPane::backupLoRequested);
+    sortRow->addWidget(backupBtn);
+    auto* restoreBtn = new QPushButton("Restore LO\xe2\x80\xa6", pluginsContainer);
+    restoreBtn->setToolTip("Restore a previously saved load-order snapshot");
+    connect(restoreBtn, &QPushButton::clicked, this, &RightPane::restoreLoRequested);
+    sortRow->addWidget(restoreBtn);
     auto* lootRulesBtn = new QPushButton("LOOT Rules", pluginsContainer);
     lootRulesBtn->setToolTip("Edit custom LOOT sorting rules");
     connect(lootRulesBtn, &QPushButton::clicked, this, &RightPane::lootRulesRequested);

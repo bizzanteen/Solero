@@ -73,6 +73,7 @@ set(SOLERO_SOURCES
   src/app/NxmRegister.cpp
   src/core/ModList.cpp
   src/core/PluginList.cpp
+  src/core/LoadOrderBackup.cpp
   src/core/Profile.cpp
   src/core/ProfileManager.cpp
   src/ai/AITransaction.cpp

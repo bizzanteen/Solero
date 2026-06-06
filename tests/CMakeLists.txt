@@ -2,6 +2,7 @@ function(add_solero_test name)
   add_executable(${name} ${name}.cpp
     ../src/core/ModList.cpp
     ../src/core/PluginList.cpp
+    ../src/core/LoadOrderBackup.cpp
     ../src/core/Profile.cpp
     ../src/core/ProfileManager.cpp
     ../src/ai/AITransaction.cpp
@@ -15,6 +16,7 @@ add_solero_test(test_ModList)
 add_solero_test(test_VersionUtil)
 add_solero_test(test_PluginList)
 add_solero_test(test_Profile)
+add_solero_test(test_LoadOrderBackup)
 
 function(add_solero_deploy_test name)
   add_executable(${name} ${name}.cpp

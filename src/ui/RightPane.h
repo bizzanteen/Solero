@@ -45,6 +45,10 @@ signals:
     void sortRequested();
     // Emitted when the user clicks "LOOT Rules" to open the rules editor.
     void lootRulesRequested();
+    // Emitted when the user clicks "Backup LO" to snapshot the load order.
+    void backupLoRequested();
+    // Emitted when the user clicks "Restore LO…" to restore a snapshot.
+    void restoreLoRequested();
     // Emitted when a per-file rule (hide / winner override) changed in the Data
     // or Conflicts tab - MainWindow uses it to mark the deployment dirty.
     void fileRulesChanged();

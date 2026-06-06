@@ -1,6 +1,7 @@
 #include "PluginList.h"
 #include "FileUtil.h"
 #include <QFile>
+#include <QHash>
 #include <algorithm>
 
 namespace solero {
@@ -94,6 +95,50 @@ QPair<int,int> PluginList::allowedDropRange(int src) const {
 bool PluginList::isValidMove(int src, int to) const {
     auto [lo, hi] = allowedDropRange(src);
     return lo <= hi && to >= lo && to <= hi;
+}
+
+void PluginList::restoreSnapshot(const QList<QPair<QString, bool>>& snapshot) {
+    // filename (lowercase) -> position in the snapshot.
+    QHash<QString, int> snapPos;
+    snapPos.reserve(snapshot.size());
+    for (int i = 0; i < snapshot.size(); ++i)
+        snapPos.insert(snapshot[i].first.toLower(), i);
+
+    // 1. Apply the snapshot's enabled state to every plugin still present.
+    for (auto& p : m_plugins) {
+        auto it = snapPos.constFind(p.filename.toLower());
+        if (it != snapPos.constEnd()) p.enabled = snapshot[it.value()].second;
+    }
+
+    // 2. Reorder. Sort key, in order of precedence:
+    //    a) official/locked plugins first, keeping their current relative order;
+    //    b) then by band (master < light < esp) so the result is always valid;
+    //    c) within a band: snapshot order; plugins absent from the snapshot sort
+    //       after all snapshot entries, keeping their current relative order.
+    const int n = m_plugins.size();
+    const int newBase = snapshot.size(); // pushes new-since-backup plugins to the end
+    QList<int> idx(n);
+    for (int i = 0; i < n; ++i) idx[i] = i;
+
+    auto desired = [&](int i) -> int {
+        auto it = snapPos.constFind(m_plugins[i].filename.toLower());
+        return it != snapPos.constEnd() ? it.value() : newBase + i;
+    };
+
+    std::stable_sort(idx.begin(), idx.end(), [&](int a, int b) {
+        const PluginEntry& pa = m_plugins[a];
+        const PluginEntry& pb = m_plugins[b];
+        if (pa.isOfficial != pb.isOfficial) return pa.isOfficial; // officials on top
+        if (pa.isOfficial && pb.isOfficial) return a < b;         // keep their order
+        const int ba = pluginBand(pa), bb = pluginBand(pb);
+        if (ba != bb) return ba < bb;
+        return desired(a) < desired(b);
+    });
+
+    QList<PluginEntry> reordered;
+    reordered.reserve(n);
+    for (int i : idx) reordered.append(m_plugins[i]);
+    m_plugins = reordered;
 }
 
 // plugins.txt format: lines starting with '*' are enabled, others disabled

@@ -89,10 +89,17 @@ void PluginListView::setProfile(Profile* profile) {
 }
 
 void PluginListView::reconcileWith(Profile* profile, const QString& stagingRoot) {
-    Q_UNUSED(stagingRoot);
     m_model->setProfile(profile);
     if (profile) {
+        // Plugins available to this profile = base/official + whatever's in the
+        // live Data, UNION the plugins provided by this profile's enabled staged
+        // mods. Without the staged half, an imported-but-not-yet-deployed profile
+        // loses every mod plugin (their ESPs aren't in live Data yet), so deploy
+        // would write a vanilla-only Plugins.txt and the game would load no mods.
         auto available = PluginScanner::scanGameData(AppConfig::instance().gameDir());
+        const QStringList staged = PluginScanner::scan(profile->modList(), stagingRoot);
+        for (const QString& p : staged)
+            if (!available.contains(p, Qt::CaseInsensitive)) available << p;
         // Snapshot the plugin list (filename + enabled + order) before reconcile so
         // we only pay for a profile save when the list actually changed.
         const auto snapshot = [&] {

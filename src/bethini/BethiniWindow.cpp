@@ -127,7 +127,7 @@ void BethiniWindow::buildUI() {
     searchEdit->setMaximumWidth(200);
     connect(searchEdit, &QLineEdit::textChanged, this, &BethiniWindow::onSearch);
     presetBar->addWidget(searchEdit);
-    auto* saveBtn = new QPushButton("Save to Profile", this);
+    auto* saveBtn = new QPushButton("Save", this);
     connect(saveBtn, &QPushButton::clicked, this, &BethiniWindow::onSave);
     presetBar->addWidget(saveBtn);
     outer->addLayout(presetBar);
@@ -250,6 +250,31 @@ void BethiniWindow::buildUI() {
 
     // Advanced tab: raw editing of the profile's INI files.
     buildAdvancedTab(tabs);
+
+    // Wire each editor widget's user-change signal to mark the editor dirty.
+    // Programmatic value loads (setValue/setCurrentIndex/setText) also fire some
+    // of these, so callers must resetDirty() after any programmatic (re)load.
+    for (auto& rw : m_rows) {
+        if (auto* cb = qobject_cast<QCheckBox*>(rw.widget))
+            connect(cb, &QCheckBox::toggled, this, [this]{ m_dirty = true; });
+        else if (auto* spin = qobject_cast<QSpinBox*>(rw.widget))
+            connect(spin, qOverload<int>(&QSpinBox::valueChanged), this, [this]{ m_dirty = true; });
+        else if (auto* d = qobject_cast<QDoubleSpinBox*>(rw.widget))
+            connect(d, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this]{ m_dirty = true; });
+        else if (auto* combo = qobject_cast<QComboBox*>(rw.widget))
+            connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), this, [this]{ m_dirty = true; });
+        else if (auto* edit = qobject_cast<QLineEdit*>(rw.widget))
+            connect(edit, &QLineEdit::textEdited, this, [this]{ m_dirty = true; });
+    }
+    if (m_advEdit)
+        connect(m_advEdit, &QPlainTextEdit::textChanged, this, [this]{ m_dirty = true; });
+
+    resetDirty();
+}
+
+void BethiniWindow::resetDirty() {
+    m_dirty = false;
+    if (m_advEdit) m_advEdit->document()->setModified(false);
 }
 
 void BethiniWindow::setProfile(Profile* profile) {
@@ -257,6 +282,7 @@ void BethiniWindow::setProfile(Profile* profile) {
     m_iniCache.clear(); // reload from the new profile's INIs
     for (auto& rw : m_rows) loadRow(rw);
     loadAdvancedFile();
+    resetDirty();
 }
 
 void BethiniWindow::buildAdvancedTab(QTabWidget* tabs) {
@@ -274,7 +300,7 @@ void BethiniWindow::buildAdvancedTab(QTabWidget* tabs) {
     auto* reload = new QPushButton("Reload", page);
     connect(reload, &QPushButton::clicked, this, &BethiniWindow::loadAdvancedFile);
     bar->addWidget(reload);
-    auto* save = new QPushButton("Save to Profile", page);
+    auto* save = new QPushButton("Save", page);
     connect(save, &QPushButton::clicked, this, &BethiniWindow::onAdvancedSave);
     bar->addWidget(save);
     v->addLayout(bar);
@@ -475,6 +501,7 @@ void BethiniWindow::applyPreset(const QString& presetName) {
     if (!m_profile) { showStatus("No profile loaded"); return; }
     for (auto& rw : m_rows) applyPresetToRow(rw, presetName);
     saveAllInis();
+    resetDirty();
     QString shortName = presetName;
     shortName.remove("Bethini ");
     showStatus(QStringLiteral("✓ Applied preset: %1").arg(shortName));
@@ -526,6 +553,7 @@ void BethiniWindow::applyRecommendedTweaks() {
 void BethiniWindow::reloadRows() {
     for (auto& rw : m_rows) loadRow(rw);
     loadAdvancedFile();
+    resetDirty();
 }
 
 void BethiniWindow::showStatus(const QString& message) {
@@ -579,14 +607,12 @@ void BethiniWindow::onSave() {
         if (rowDiffersFromIni(rw)) saveRow(rw);
     saveAllInis();
     if (m_advEdit) m_advEdit->document()->setModified(false);
+    resetDirty();
     showStatus(QStringLiteral("\xe2\x9c\x93 Saved to profile"));
 }
 
 bool BethiniWindow::hasUnsavedChanges() const {
-    for (const auto& rw : m_rows)
-        if (rowDiffersFromIni(rw)) return true;
-    if (m_advEdit && m_advEdit->document()->isModified()) return true;
-    return false;
+    return m_dirty;
 }
 
 void BethiniWindow::closeEvent(QCloseEvent* event) {

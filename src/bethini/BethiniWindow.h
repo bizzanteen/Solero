@@ -34,6 +34,7 @@ protected:
 
 private:
     bool hasUnsavedChanges() const;
+    void resetDirty();   // clear the dirty flag after a programmatic (re)load
     struct RowWidget {
         BethiniRow row;
         QWidget*   widget = nullptr;  // editor widget (combo/spin/check/edit)
@@ -75,6 +76,8 @@ private:
     QPlainTextEdit* m_advEdit = nullptr;      // Advanced tab: raw INI text
 
     QLabel* m_statusLabel = nullptr;          // green feedback line
+
+    bool m_dirty = false;                     // set only by genuine user edits
 };
 
 } // namespace solero

@@ -173,6 +173,15 @@ endfunction()
 
 add_solero_import_test(test_Mo2Importer)
 
+add_executable(test_ProfileManifest test_ProfileManifest.cpp
+  ../src/io/ProfileManifest.cpp
+  ../src/core/ModList.cpp ../src/core/PluginList.cpp
+  ../src/core/Profile.cpp ../src/core/ProfileManager.cpp
+  ../src/ai/AITransaction.cpp)
+target_include_directories(test_ProfileManifest PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_ProfileManifest PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_ProfileManifest COMMAND test_ProfileManifest)
+
 add_executable(test_PluginScanner test_PluginScanner.cpp
   ../src/install/PluginScanner.cpp
   ../src/core/ModList.cpp ../src/core/PluginList.cpp)

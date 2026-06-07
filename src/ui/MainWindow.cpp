@@ -14,6 +14,7 @@
 #include "core/FileMove.h"
 #include "install/ModInstaller.h"
 #include "import/Mo2Importer.h"
+#include "io/ProfileManifest.h"
 #include "ui/WabbajackDialog.h"
 #include "ui/FomodWizard.h"
 #include "ui/ProgressModal.h"
@@ -380,6 +381,9 @@ void MainWindow::setupToolbar() {
     auto* profileMenu = new QMenu(profileMenuBtn);
     profileMenu->addAction("New Profile...", this, &MainWindow::onNewProfile);
     profileMenu->addAction("Delete Current Profile", this, &MainWindow::onDeleteProfile);
+    profileMenu->addSeparator();
+    profileMenu->addAction("Export Profile...", this, &MainWindow::onExportProfile);
+    profileMenu->addAction("Import Profile...", this, &MainWindow::onImportProfile);
     profileMenu->addSeparator();
     profileMenu->addAction("Import MO2 Profile...", this, &MainWindow::onImportMo2);
     profileMenu->addAction("Install Wabbajack Modlist\xe2\x80\xa6", this, &MainWindow::onInstallWabbajack);
@@ -2064,6 +2068,75 @@ void MainWindow::onImportMo2() {
     // MO2 lists often keep SKSE's loader in the game root (outside the mods), so
     // the import won't include it - offer to install SKSE if it's missing.
     QTimer::singleShot(0, this, &MainWindow::maybeOfferSkse);
+}
+
+void MainWindow::onExportProfile() {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) { statusBar()->showMessage("No active profile to export."); return; }
+
+    const QString suggested =
+        QDir::homePath() + "/" + profile->name() + ".solero-profile.json";
+    QString path = QFileDialog::getSaveFileName(
+        this, "Export Profile", suggested,
+        "Solero profile (*.solero-profile.json);;All files (*)");
+    if (path.isEmpty()) return;
+    if (!path.endsWith(".solero-profile.json", Qt::CaseInsensitive))
+        path += ".solero-profile.json";
+
+    const QString fomodDir = solero::AppConfig::dataRoot() + "/fomod-choices";
+    if (solero::ProfileManifest::exportToFile(*profile, path, fomodDir))
+        statusBar()->showMessage("Exported profile to " + path);
+    else
+        QMessageBox::critical(this, "Export Failed", "Could not write " + path);
+}
+
+void MainWindow::onImportProfile() {
+    QString path = QFileDialog::getOpenFileName(
+        this, "Import Profile", QDir::homePath(),
+        "Solero profile (*.solero-profile.json);;All files (*)");
+    if (path.isEmpty()) return;
+
+    // Build the mod pool: the union of every profile's mod entries, deduped by id.
+    // (A mod is "installed" once it exists in any profile's modlist; its staging
+    // folder is keyed by that id, so reusing the id lets deploy find the files.)
+    solero::ModList pool;
+    QSet<QString> seen;
+    for (const QString& pn : m_profileMgr->profileNames()) {
+        solero::Profile pr(pn, profilesRoot());
+        pr.load();
+        for (auto it = pr.modList().begin(); it != pr.modList().end(); ++it) {
+            if (it->type != solero::EntryType::Mod) continue;
+            if (seen.contains(it->id)) continue;
+            seen.insert(it->id);
+            pool.append(*it);
+        }
+    }
+
+    const QString fomodDir = solero::AppConfig::dataRoot() + "/fomod-choices";
+    auto r = solero::ProfileManifest::importFile(path, *m_profileMgr, pool, fomodDir);
+    if (!r.success) { QMessageBox::critical(this, "Import Failed", r.errorMessage); return; }
+
+    selectImportedProfile(r.profileName);
+
+    const QString summary =
+        QString("Imported profile '%1': %2 mods matched, %3 separators, %4 missing (listed).")
+            .arg(r.profileName).arg(r.modsMatched).arg(r.separators).arg(r.missing.size());
+    statusBar()->showMessage(summary);
+
+    if (r.missing.isEmpty()) {
+        QMessageBox::information(this, "Profile Imported", summary);
+        return;
+    }
+    const QString bullet = QString(QChar(0x2022)) + " ";
+    QString body = summary +
+        "\n\nThese mods aren't installed on this machine and were skipped:\n";
+    for (const auto& m : r.missing) {
+        body += "\n  " + bullet + m.name;
+        if (!m.version.isEmpty())    body += " (" + m.version + ")";
+        if (!m.nexusModId.isEmpty()) body += "  - Nexus mod " + m.nexusModId;
+    }
+    body += "\n\nInstall them, then re-import the manifest (or add them to this profile).";
+    QMessageBox::information(this, "Profile Imported - Missing Mods", body);
 }
 
 void MainWindow::selectImportedProfile(const QString& name) {

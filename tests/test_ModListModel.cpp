@@ -216,6 +216,88 @@ private slots:
         QVERIFY(!model.modHasMissingDep("m0"));
     }
 
+    // --- Nested separators (sub-categories) -----------------------------------
+    // Build [sepA(L0), mA0, sepB(L1), mB0, sepC(L0), mC0] into a profile.
+    static void addNested(Profile& p) {
+        auto sep = [](const QString& id, const QString& name, int lvl) {
+            ModEntry e; e.type = EntryType::Separator; e.id = id; e.name = name; e.separatorLevel = lvl; return e;
+        };
+        auto mod = [](const QString& id) {
+            ModEntry e; e.type = EntryType::Mod; e.id = id; e.name = "Mod " + id; e.enabled = true; return e;
+        };
+        p.modList().append(sep("sepA", "A", 0));
+        p.modList().append(mod("mA0"));
+        p.modList().append(sep("sepB", "B", 1));
+        p.modList().append(mod("mB0"));
+        p.modList().append(sep("sepC", "C", 0));
+        p.modList().append(mod("mC0"));
+    }
+    static QStringList visibleIds(const ModListModel& m) {
+        QStringList ids;
+        for (int r = 0; r < m.rowCount(); ++r) {
+            const auto* e = m.entryAt(r);
+            ids << (e ? e->id : QString("__overwrite__"));
+        }
+        return ids;
+    }
+
+    void nestedSeparator_collapseParentHidesSubSeparatorsAndMods() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        addNested(prof);
+        ModListModel model;
+        model.setProfile(&prof);
+        // Expanded: sepA,mA0,sepB,mB0,sepC,mC0,Overwrite = 7.
+        QCOMPARE(model.rowCount(), 7);
+        // Collapse sepA (level 0, visible row 0): hides mA0 and the sub-separator
+        // sepB and its mB0, up to the next level<=0 separator (sepC).
+        model.toggleCollapse(0);
+        QCOMPARE(visibleIds(model),
+                 QStringList({"sepA", "sepC", "mC0", "__overwrite__"}));
+    }
+
+    void nestedSeparator_collapseChildHidesOnlyItsMods() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        addNested(prof);
+        ModListModel model;
+        model.setProfile(&prof);
+        // Collapse the sub-category sepB (level 1, visible row 2): hides only mB0,
+        // stopping at sepC (level 0 <= 1). Parent sepA stays expanded.
+        model.toggleCollapse(2);
+        QCOMPARE(visibleIds(model),
+                 QStringList({"sepA", "mA0", "sepB", "sepC", "mC0", "__overwrite__"}));
+    }
+
+    void nestedSeparator_dragLevel0CarriesSubtree() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        addNested(prof);
+        ModListModel model;
+        model.setProfile(&prof);
+        // Drag sepA (visible row 0) to the bottom (drop at Overwrite, row 6). The
+        // whole subtree (sepA,mA0,sepB,mB0) moves below sepC's section.
+        QScopedPointer<QMimeData> mime(modMime(0));
+        QVERIFY(!model.dropMimeData(mime.data(), Qt::MoveAction, 6, 0, {}));
+        QCOMPARE(order(prof), QString("sepC,mC0,sepA,mA0,sepB,mB0"));
+        // Relative levels preserved within the moved block.
+        QCOMPARE(prof.modList().findById("sepA")->separatorLevel, 0);
+        QCOMPARE(prof.modList().findById("sepB")->separatorLevel, 1);
+    }
+
+    void nestedSeparator_dragLevel1CarriesOnlyOwnMods() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        addNested(prof);
+        ModListModel model;
+        model.setProfile(&prof);
+        // Drag the sub-category sepB (visible row 2) to the bottom. Only sepB + its
+        // own mod mB0 move (boundary = next separator with level <= 1, i.e. sepC).
+        QScopedPointer<QMimeData> mime(modMime(2));
+        QVERIFY(!model.dropMimeData(mime.data(), Qt::MoveAction, 6, 0, {}));
+        QCOMPARE(order(prof), QString("sepA,mA0,sepC,mC0,sepB,mB0"));
+    }
+
     void moveRows_endMappingAppends() {
         // Direct moveRows: dst at the Overwrite visible row maps to end-of-list.
         QTemporaryDir tmp;

@@ -124,7 +124,13 @@ void ModListModel::rebuildVisibleRows() {
     // only dropped in setProfile() or via invalidateModCache().
     if (!m_profile) return;
 
-    bool inCollapsed = false;
+    // Level-aware separator collapse: collapsedLevel holds the depth of the
+    // currently-collapsing separator (or -1 = nothing collapsed). A separator
+    // deeper than collapsedLevel sits inside a collapsed ancestor -> hidden; a
+    // separator at the same or shallower level ends that collapse. Mods are hidden
+    // whenever collapsedLevel >= 0. With every separator at level 0 this reduces to
+    // the original flat behaviour.
+    int collapsedLevel = -1;
     QString curParentId;       // id of the current top-level parent mod, if any
     bool curParentCollapsed = false;
     int modPos = 0;            // running 1-based Mod position, raw order
@@ -133,21 +139,25 @@ void ModListModel::rebuildVisibleRows() {
         if (e.type == EntryType::Mod)
             m_priorityByRaw.insert(i, ++modPos);
         if (e.type == EntryType::Separator) {
-            inCollapsed = e.collapsed;
             curParentId.clear();
-            m_visibleRows.append(i); // separators always visible
+            if (collapsedLevel >= 0 && e.separatorLevel > collapsedLevel)
+                continue; // inside a collapsed ancestor -> hidden (collapse persists)
+            // Visible: this separator ends any shallower/equal collapse and may
+            // start a new one if it is itself collapsed.
+            m_visibleRows.append(i);
+            collapsedLevel = e.collapsed ? e.separatorLevel : -1;
         } else if (!e.parentId.isEmpty()) {
             // Child mod: hidden inside a collapsed separator, or when its parent is
             // collapsed (matched by parentId == the tracked top-level parent's id).
             bool hiddenByParent = (e.parentId == curParentId && curParentCollapsed);
-            if (!inCollapsed && !hiddenByParent)
+            if (collapsedLevel < 0 && !hiddenByParent)
                 m_visibleRows.append(i);
         } else {
             // Top-level mod (possibly a group parent). Remember it so following
             // children can be hidden when it's collapsed.
             curParentId = e.id;
             curParentCollapsed = e.collapsed;
-            if (!inCollapsed)
+            if (collapsedLevel < 0)
                 m_visibleRows.append(i);
         }
     }
@@ -274,7 +284,11 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     // label, icon and edit text all live on ColEnabled, not ColName.
     if (isSep && role == Qt::DisplayRole && idx.column() == ColEnabled) {
         QString arrow = entry.collapsed ? "\xe2\x96\xb6" : "\xe2\x96\xbc";
-        return QString("%1  %2").arg(arrow, entry.name);
+        // Sub-categories are inset: 4 leading spaces per level (mirrored by the
+        // arrow hit-test in ModListView::mousePressEvent). Spaces precede the
+        // arrow, so the disclosure glyph itself shifts right with the indent.
+        const QString indent(entry.separatorLevel * 4, QChar(' '));
+        return indent + QString("%1  %2").arg(arrow, entry.name);
     }
 
     if (role == Qt::DisplayRole) {
@@ -531,11 +545,15 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
 
     if (draggingSeparator) {
         // Move the whole section: the separator plus every entry after it up to
-        // (but excluding) the next separator or the end of the list. Reordering a
-        // section changes deploy order, so we reset + persist + emit modsChanged.
+        // (but excluding) the next separator whose level is <= this one's. That
+        // carries any nested sub-categories (deeper separators) and their mods as a
+        // single block, preserving their relative levels. Reordering a section
+        // changes deploy order, so we reset + persist + emit modsChanged.
+        const int srcLevel = list.at(srcRaw).separatorLevel;
         int blockLen = 1;
         for (int i = srcRaw + 1; i < list.count(); ++i) {
-            if (list.at(i).type == EntryType::Separator) break;
+            const auto& e = list.at(i);
+            if (e.type == EntryType::Separator && e.separatorLevel <= srcLevel) break;
             ++blockLen;
         }
         // Destination in raw-index terms, adjusted for the block's removal so the

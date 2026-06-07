@@ -167,6 +167,7 @@ static QJsonObject entryToJson(const ModEntry& e) {
     o["color"]           = e.color;
     o["icon"]            = e.icon;
     o["collapsed"]       = e.collapsed;
+    o["separatorLevel"]  = e.separatorLevel;
     o["hasFomodChoices"] = e.hasFomodChoices;
     o["isFomod"]         = e.isFomod;
     o["fomodStatus"]     = e.fomodStatus;
@@ -192,6 +193,7 @@ static ModEntry entryFromJson(const QJsonObject& o) {
     e.color           = o["color"].toString();
     e.icon            = o["icon"].toString();
     e.collapsed       = o["collapsed"].toBool(false);
+    e.separatorLevel  = o["separatorLevel"].toInt(0); // absent in older files -> 0 (top-level)
     e.hasFomodChoices = o["hasFomodChoices"].toBool(false);
     e.isFomod         = o["isFomod"].toBool(false);     // absent in older files -> false
     e.fomodStatus     = o["fomodStatus"].toString();    // absent in older files -> empty

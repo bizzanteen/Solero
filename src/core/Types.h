@@ -41,6 +41,10 @@ struct ModEntry {
     QString color;       // hex e.g. "#c0392b"
     QString icon;        // icon resource path e.g. ":/icons/separators/combat.svg", or empty
     bool collapsed = false;
+    // Nesting depth for Separator entries only (meaningless for Mods): 0 = top-level
+    // category, 1 = sub-category, etc. A separator nests under the nearest preceding
+    // separator of a shallower level. (Distinct from parentId, which groups mods.)
+    int separatorLevel = 0;
 };
 
 // Plugin list entry

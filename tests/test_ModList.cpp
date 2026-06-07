@@ -197,6 +197,30 @@ private slots:
         QCOMPARE(restored.count(), 1);
         QVERIFY(restored.at(0).note.isEmpty());
     }
+
+    void separatorLevel_roundtripsJson() {
+        // A nested sub-category separator must keep its level through save/load.
+        ModList list;
+        ModEntry top; top.type = EntryType::Separator; top.id = "s0"; top.name = "Combat"; top.separatorLevel = 0;
+        ModEntry sub; sub.type = EntryType::Separator; sub.id = "s1"; sub.name = "Melee";  sub.separatorLevel = 1;
+        list.append(top);
+        list.append(sub);
+
+        ModList restored = ModList::fromJson(list.toJson());
+        QCOMPARE(restored.count(), 2);
+        QCOMPARE(restored.at(0).separatorLevel, 0);
+        QCOMPARE(restored.at(1).separatorLevel, 1);
+    }
+
+    void separatorLevel_absentInOlderJson_defaultsZero() {
+        // A modlist.json written before nested separators existed has no
+        // "separatorLevel" key -> must default to 0 (top-level / flat behaviour).
+        const QByteArray legacy =
+            "[{\"type\":\"separator\",\"id\":\"s1\",\"name\":\"Textures\"}]";
+        ModList restored = ModList::fromJson(QJsonDocument::fromJson(legacy));
+        QCOMPARE(restored.count(), 1);
+        QCOMPARE(restored.at(0).separatorLevel, 0);
+    }
 };
 QTEST_MAIN(TestModList)
 #include "test_ModList.moc"

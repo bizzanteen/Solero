@@ -319,8 +319,13 @@ void ModListView::mousePressEvent(QMouseEvent* event) {
             // Text region: the arrow glyph is the leading run of the displayed text.
             QRect textRect = style()->subElementRect(QStyle::SE_ItemViewItemText, &opt, this);
             QFont f = font(); f.setBold(true); // separators render bold (see model)
-            int arrowW = QFontMetrics(f).horizontalAdvance(QStringLiteral("\xe2\x96\xbc  ")) + 4;
-            QRect arrowRect(textRect.left(), opt.rect.top(), arrowW, opt.rect.height());
+            const QFontMetrics fm(f);
+            // The displayed label is "<indent><arrow>  <name>" (see ModListModel):
+            // 4 leading spaces per nesting level. Offset the arrow hit region by that
+            // indent width so the click target tracks the visually-inset glyph.
+            const int indentW = fm.horizontalAdvance(QString(entry->separatorLevel * 4, QChar(' ')));
+            int arrowW = fm.horizontalAdvance(QStringLiteral("\xe2\x96\xbc  ")) + 4;
+            QRect arrowRect(textRect.left() + indentW, opt.rect.top(), arrowW, opt.rect.height());
             // Order matters: icon picker first, then the disclosure arrow, then fall
             // through to the base handler (preserving selection + drag-to-reorder).
             if (hasIcon && iconRect.contains(pos)) {
@@ -416,6 +421,24 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         menu.addAction(entry->collapsed ? "Expand" : "Collapse",
                        [this, row = idx.row()]{ m_model->toggleCollapse(row); });
         menu.addAction("Delete Separator", [this, row = idx.row()]{ onDeleteSeparator(row); });
+        menu.addSeparator();
+        // Nest / un-nest into sub-categories. Indent is disabled when it would jump
+        // past (nearest preceding separator level + 1); promote is disabled at top.
+        {
+            const int raw = m_model->rawIndexForRow(idx.row());
+            const auto& list = m_model->profile()->modList();
+            int prevLevel = -1;
+            for (int i = raw - 1; i >= 0; --i)
+                if (list.at(i).type == EntryType::Separator) {
+                    prevLevel = list.at(i).separatorLevel; break;
+                }
+            QAction* indentAct = menu.addAction("Make sub-category (indent)",
+                [this, row = idx.row()]{ onIndentSeparator(row); });
+            indentAct->setEnabled(entry->separatorLevel < prevLevel + 1);
+            QAction* promoteAct = menu.addAction("Promote (outdent)",
+                [this, row = idx.row()]{ onOutdentSeparator(row); });
+            promoteAct->setEnabled(entry->separatorLevel > 0);
+        }
         menu.addSeparator();
         menu.addAction("Add Separator Below", [this, row = idx.row()]{ onAddSeparatorAt(row + 1); });
     } else {
@@ -535,6 +558,36 @@ void ModListView::onDeleteSeparator(int visibleRow) {
             QString("Delete separator \"%1\"? (Mods under it are not deleted.)").arg(name))
         != QMessageBox::Yes) return;
     m_model->profile()->modList().remove(id);
+    m_model->profile()->save();
+    m_model->rebuild();
+}
+
+void ModListView::onIndentSeparator(int visibleRow) {
+    const auto* entry = m_model->entryAt(visibleRow);
+    if (!entry || entry->type != EntryType::Separator || !m_model->profile()) return;
+    auto& list = m_model->profile()->modList();
+    const int raw = m_model->rawIndexForRow(visibleRow);
+    // Clamp to (nearest preceding separator level + 1) so depth can't skip levels.
+    // No preceding separator -> prevLevel -1 -> maxLevel 0 -> can't indent (stays 0).
+    int prevLevel = -1;
+    for (int i = raw - 1; i >= 0; --i)
+        if (list.at(i).type == EntryType::Separator) { prevLevel = list.at(i).separatorLevel; break; }
+    const int maxLevel = prevLevel + 1;
+    ModEntry up = *entry;
+    up.separatorLevel = qMin(up.separatorLevel + 1, maxLevel);
+    if (up.separatorLevel == entry->separatorLevel) return; // no-op (already at max)
+    list.update(entry->id, up);
+    m_model->profile()->save();
+    m_model->rebuild();
+}
+
+void ModListView::onOutdentSeparator(int visibleRow) {
+    const auto* entry = m_model->entryAt(visibleRow);
+    if (!entry || entry->type != EntryType::Separator || !m_model->profile()) return;
+    if (entry->separatorLevel <= 0) return;
+    ModEntry up = *entry;
+    up.separatorLevel = up.separatorLevel - 1;
+    m_model->profile()->modList().update(entry->id, up);
     m_model->profile()->save();
     m_model->rebuild();
 }

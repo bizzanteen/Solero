@@ -96,6 +96,11 @@ private:
     void onAddSeparatorAt(int visibleRow);
     void onEditSeparator(int visibleRow);
     void onDeleteSeparator(int visibleRow);
+    // Nest a separator one level deeper (sub-category), clamped so its level never
+    // exceeds the nearest preceding separator's level + 1 (no orphan depth jumps).
+    void onIndentSeparator(int visibleRow);
+    // Promote a separator one level shallower (min 0).
+    void onOutdentSeparator(int visibleRow);
     void showIconPicker(int visibleRow, const QPoint& globalPos);
 };
 }

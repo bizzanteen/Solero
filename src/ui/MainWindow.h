@@ -94,6 +94,10 @@ private:
                          const QString& fileName, const QString& version);
     void installFromArchive(const QString& archive);
     void onReinstallMod(const QString& modId);
+    // "Create Mod from Overwrite…": prompt for a name, move the overwrite dir's
+    // contents into a new mod's staging Data, append it at the bottom of the load
+    // order, and mark the deployment dirty.
+    void onCreateModFromOverwrite();
     // "Redownload from Nexus" context action: re-fetch the mod's exact archive
     // (Premium -> enqueue into downloadsDir; free/unavailable -> nxm guidance).
     void onRedownloadMod(const QString& modId);

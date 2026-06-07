@@ -11,6 +11,7 @@
 #include "core/ModList.h"
 #include "core/VersionUtil.h"
 #include "core/LoadOrderBackup.h"
+#include "core/FileMove.h"
 #include "install/ModInstaller.h"
 #include "import/Mo2Importer.h"
 #include "ui/WabbajackDialog.h"
@@ -562,6 +563,8 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onModsChanged);
     connect(m_modListView, &solero::ModListView::modActivated,
             m_rightPane, &solero::RightPane::showDataFor);
+    connect(m_modListView, &solero::ModListView::createModFromOverwriteRequested,
+            this, &MainWindow::onCreateModFromOverwrite);
 
     // Plugins tab: manual reorder marks the load order dirty; "Sort Now" runs LOOT.
     connect(m_rightPane->pluginsView(), &solero::PluginListView::loadOrderChanged,
@@ -1528,6 +1531,57 @@ QString MainWindow::uniqueModName(const QString& base, solero::Profile* profile)
         const QString cand = QString("%1 (%2)").arg(base).arg(n);
         if (!ml.findByName(cand)) return cand;
     }
+}
+
+void MainWindow::onCreateModFromOverwrite() {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) { statusBar()->showMessage("No active profile."); return; }
+
+    const QString overwriteDir = solero::AppConfig::dataRoot() + "/overwrite";
+    // The context action is disabled when Overwrite is empty, but guard anyway.
+    {
+        QDirIterator probe(overwriteDir,
+                           QDir::Files | QDir::Hidden | QDir::System | QDir::NoSymLinks,
+                           QDirIterator::Subdirectories);
+        if (!probe.hasNext()) { statusBar()->showMessage("Overwrite is empty."); return; }
+    }
+
+    bool ok = false;
+    QString name = QInputDialog::getText(this, "Create Mod from Overwrite",
+        "Mod name:", QLineEdit::Normal, "Overwrite Mod", &ok);
+    if (!ok) return;
+    name = name.trimmed();
+    if (name.isEmpty()) return;
+    // Auto-suffix " (2)" etc. so the new mod never collides with an existing name.
+    name = uniqueModName(name, profile);
+
+    // A fresh real mod + its staging Data dir (mirrors ensureOutputMod's layout).
+    solero::ModEntry mod;
+    mod.type = solero::EntryType::Mod;
+    mod.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    mod.name = name;
+    mod.enabled = true;
+
+    const QString destData = solero::AppConfig::instance().stagingDir() + "/" + mod.id + "/Data";
+    QDir().mkpath(destData);
+
+    // Move (not copy) the overwrite contents in; cross-fs safe, leaves Overwrite empty.
+    const int moved = solero::moveTreeContents(overwriteDir, destData);
+
+    // Append -> the new mod lands at the bottom of the real mod list, i.e. just
+    // ABOVE the Overwrite pseudo-row (which isn't stored in the mod list).
+    profile->modList().append(mod);
+    profile->save();
+
+    m_modListView->invalidateModCache(mod.id); // newly staged files for this mod
+    m_modListView->invalidateModCache();        // Overwrite contents changed (now empty)
+    m_rightPane->invalidateModPluginCache(mod.id);
+    m_modListView->setProfile(profile);
+    if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
+    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+    updatePluginNotice();
+    statusBar()->showMessage(
+        QString("Created mod '%1' from Overwrite (%2 files)").arg(name).arg(moved));
 }
 
 void MainWindow::onRedownloadMod(const QString& modId) {

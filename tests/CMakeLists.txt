@@ -223,6 +223,11 @@ target_include_directories(test_IniFile PRIVATE ../src ${CMAKE_BINARY_DIR}/inclu
 target_link_libraries(test_IniFile PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_IniFile COMMAND test_IniFile)
 
+add_executable(test_FileMove test_FileMove.cpp ../src/core/FileMove.cpp)
+target_include_directories(test_FileMove PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_FileMove PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_FileMove COMMAND test_FileMove)
+
 # ModListModel pulls in Qt Widgets/Svg (IconUtil) and AppConfig for its data()
 # disk scans; the drag-drop tests only exercise moveRows/dropMimeData but still
 # link the full unit.

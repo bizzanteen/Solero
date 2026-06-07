@@ -50,6 +50,9 @@ signals:
     void updateRequested(const QString& modId);
     void modsChanged();
     void modActivated(const QString& modId);
+    // Right-click the Overwrite row -> "Create Mod from Overwrite…": promote the
+    // captured overwrite files into a new, named, sortable mod (MO2 parity).
+    void createModFromOverwriteRequested();
 
 protected:
     void contextMenuEvent(QContextMenuEvent* event) override;

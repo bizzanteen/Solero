@@ -18,6 +18,7 @@
 #include <QMessageBox>
 #include <QCheckBox>
 #include <QDir>
+#include <QDirIterator>
 #include <QFileInfo>
 #include <QFrame>
 #include <QListWidget>
@@ -376,8 +377,19 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
     const auto* entry = m_model->entryAt(idx.row());
     if (!entry) {
         // Overwrite row
-        menu.addAction("Open Overwrite Folder", []{
-            QString ow = AppConfig::dataRoot() + "/overwrite";
+        const QString ow = AppConfig::dataRoot() + "/overwrite";
+        // Enabled only when the overwrite dir actually holds files.
+        bool hasFiles = false;
+        {
+            QDirIterator it(ow, QDir::Files | QDir::Hidden | QDir::System | QDir::NoSymLinks,
+                            QDirIterator::Subdirectories);
+            hasFiles = it.hasNext();
+        }
+        QAction* createAct = menu.addAction(
+            QStringLiteral("Create Mod from Overwrite") + QChar(0x2026),
+            [this]{ emit createModFromOverwriteRequested(); });
+        createAct->setEnabled(hasFiles);
+        menu.addAction("Open Overwrite Folder", [ow]{
             QDir().mkpath(ow);
             QDesktopServices::openUrl(QUrl::fromLocalFile(ow));
         });

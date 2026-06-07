@@ -384,6 +384,9 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         if (!entry->nexusModId.isEmpty()) {
             menu.addAction("Update Mod",
                            [this, id = entry->id]{ emit updateRequested(id); });
+            if (!entry->nexusFileId.isEmpty())
+                menu.addAction("Redownload from Nexus",
+                               [this, id = entry->id]{ emit redownloadRequested(id); });
             menu.addAction("Endorse on Nexus",
                            [this, id = entry->id]{ emit endorseRequested(id); });
         }

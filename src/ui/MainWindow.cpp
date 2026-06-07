@@ -86,6 +86,13 @@ using solero::normalizeVersion;
 // from the Nexus sidecar, strip everything from that "-<modId>" boundary on so
 // the displayed name reads just "<name>". For manually-added archives (no
 // sidecar / empty modId) leave the name untouched - guessing would be too risky.
+// Normalize a name for fuzzy/identity comparison: lowercase, alphanumerics only.
+QString normalizeName(const QString& s) {
+    QString r;
+    for (QChar c : s) if (c.isLetterOrNumber()) r += c.toLower();
+    return r;
+}
+
 QString cleanModName(const QString& raw, const QString& nexusModId) {
     if (nexusModId.isEmpty())
         return raw;
@@ -541,6 +548,8 @@ void MainWindow::setupCentralWidget() {
             m_rightPane, &solero::RightPane::onSelectionChanged);
     connect(m_modListView, &solero::ModListView::reinstallRequested,
             this, &MainWindow::onReinstallMod);
+    connect(m_modListView, &solero::ModListView::redownloadRequested,
+            this, &MainWindow::onRedownloadMod);
     connect(m_modListView, &solero::ModListView::endorseRequested,
             this, &MainWindow::onEndorseMod);
     connect(m_modListView, &solero::ModListView::updateRequested,
@@ -1031,6 +1040,62 @@ void MainWindow::installFromArchive(const QString& archive) {
     auto prep = solero::ModInstaller::prepare(archive, [&](int pct){ extractProg->setProgress(pct, 100); });
     if (!prep.ok) { extractProg->close(); QMessageBox::critical(this, "Install Failed", prep.errorMessage); return; }
 
+    // Duplicate detection (MO2-style Replace / Rename)
+    // Read any Nexus sidecar up front (also reused for tagging the mod below) so we
+    // can recognise a re-install of a mod that already exists in this profile.
+    QString sidecarModId, sidecarFileId, sidecarVersion;
+    {
+        QFile sf(archive + ".solero-nexus.json");
+        if (sf.open(QIODevice::ReadOnly)) {
+            const QJsonObject meta = QJsonDocument::fromJson(sf.readAll()).object();
+            sidecarModId   = meta["modId"].toString();
+            sidecarFileId  = meta["fileId"].toString();
+            sidecarVersion = meta["version"].toString();
+        }
+    }
+    const QString proposedName = cleanModName(prep.modName, sidecarModId);
+
+    QString existingModId;  // non-empty -> Replace the existing mod in place
+    QString overrideName;   // non-empty -> Rename: install new with this name
+    {
+        auto& ml = profile->modList();
+        // Same mod by name (case-insensitive). For a Nexus mod id match we only
+        // treat it as the same mod when the names are also equal once normalized -
+        // otherwise it's another file of the same mod, which the auto-group path
+        // below should keep handling (don't break multi-file installs).
+        solero::ModEntry* collide = ml.findByName(proposedName);
+        if (!collide && !sidecarModId.isEmpty()) {
+            if (solero::ModEntry* byId = ml.findByNexusId(sidecarModId)) {
+                const QString nn = normalizeName(proposedName);
+                if (!nn.isEmpty() && normalizeName(byId->name) == nn)
+                    collide = byId;
+            }
+        }
+        if (collide) {
+            extractProg->hide(); // step the progress modal aside for the prompt
+            QMessageBox box(this);
+            box.setWindowTitle("Mod Already Exists");
+            box.setText(QString("A mod named \"%1\" already exists.").arg(collide->name));
+            box.setInformativeText("Replace it in place, or install as a new copy?");
+            QPushButton* replaceBtn = box.addButton("Replace", QMessageBox::AcceptRole);
+            QPushButton* renameBtn  = box.addButton("Rename",  QMessageBox::ActionRole);
+            box.addButton("Cancel", QMessageBox::RejectRole);
+            box.setDefaultButton(replaceBtn);
+            box.exec();
+            if (box.clickedButton() == replaceBtn) {
+                existingModId = collide->id;
+            } else if (box.clickedButton() == renameBtn) {
+                overrideName = uniqueModName(proposedName, profile);
+            } else {
+                // Cancel -> abort; prep's QTemporaryDir cleans the extraction on scope exit.
+                extractProg->close();
+                statusBar()->showMessage("Install cancelled.");
+                return;
+            }
+            extractProg->show(); extractProg->pump();
+        }
+    }
+
     const QString staging = solero::AppConfig::instance().stagingDir();
     solero::InstallResult result;
     QJsonArray choiceLog;
@@ -1042,7 +1107,7 @@ void MainWindow::installFromArchive(const QString& archive) {
             QMessageBox::warning(this, "FOMOD", "Could not parse the FOMOD config; installing all files.");
             solero::ProgressModal stageProg(this, "Install", "Installing files...");
             stageProg.show(); stageProg.pump();
-            result = solero::ModInstaller::stageSimple(prep, staging, QString(),
+            result = solero::ModInstaller::stageSimple(prep, staging, existingModId,
                 [&](int pct){ stageProg.setProgress(pct, 100); });
             stageProg.close();
         } else {
@@ -1081,7 +1146,7 @@ void MainWindow::installFromArchive(const QString& archive) {
             if (wizard.exec() != QDialog::Accepted) { statusBar()->showMessage("Install cancelled."); return; }
             solero::ProgressModal stageProg(this, "Install", "Installing files...");
             stageProg.show(); stageProg.pump();
-            result = solero::ModInstaller::stageFomod(prep, staging, wizard.result(), QString(),
+            result = solero::ModInstaller::stageFomod(prep, staging, wizard.result(), existingModId,
                 [&](int pct){ stageProg.setProgress(pct, 100); });
             stageProg.close();
             const auto sel = wizard.selection();
@@ -1102,7 +1167,7 @@ void MainWindow::installFromArchive(const QString& archive) {
         extractProg->close();
         solero::ProgressModal stageProg(this, "Install", "Installing files...");
         stageProg.show(); stageProg.pump();
-        result = solero::ModInstaller::stageSimple(prep, staging, QString(),
+        result = solero::ModInstaller::stageSimple(prep, staging, existingModId,
             [&](int pct){ stageProg.setProgress(pct, 100); });
         stageProg.close();
     }
@@ -1121,63 +1186,77 @@ void MainWindow::installFromArchive(const QString& archive) {
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     }
 
-    solero::ModEntry mod;
-    mod.type = solero::EntryType::Mod;
-    mod.id = result.modId;
-    mod.name = result.modName;
-    mod.enabled = true;
-    mod.hasFomodChoices = !choiceLog.isEmpty();
-    mod.sourceArchive = archive;
-    // If an nxm download left a Nexus sidecar next to the archive, tag the mod with
-    // its mod/file/version ids (used by endorse + the update checker).
-    {
-        QFile sf(archive + ".solero-nexus.json");
-        if (sf.open(QIODevice::ReadOnly)) {
-            auto meta = QJsonDocument::fromJson(sf.readAll()).object();
-            mod.nexusModId = meta["modId"].toString();
-            mod.nexusFileId = meta["fileId"].toString();
-            const QString v = meta["version"].toString();
-            if (!v.isEmpty()) mod.version = v;
+    if (!existingModId.isEmpty()) {
+        // Replace in place
+        // stageSimple/stageFomod reused the existing mod's UUID and replaced its
+        // files; keep the entry's load-order position + enabled state, just refresh
+        // its archive/Nexus metadata (mirrors onReinstallMod).
+        if (solero::ModEntry* existing = profile->modList().findById(existingModId)) {
+            existing->hasFomodChoices = !choiceLog.isEmpty();
+            existing->sourceArchive   = archive;
+            if (!sidecarModId.isEmpty())   existing->nexusModId  = sidecarModId;
+            if (!sidecarFileId.isEmpty())  existing->nexusFileId = sidecarFileId;
+            if (!sidecarVersion.isEmpty()) existing->version     = sidecarVersion;
+            existing->name = cleanModName(existing->name, existing->nexusModId);
         }
-    }
-    // Strip the trailing "-<modId>-<version>-<timestamp>" tail Nexus appends to
-    // archive names, now that mod.nexusModId is known from the sidecar above.
-    mod.name = cleanModName(mod.name, mod.nexusModId);
-    profile->modList().append(mod);
+        profile->save();
+    } else {
+        // Install as a new mod
+        solero::ModEntry mod;
+        mod.type = solero::EntryType::Mod;
+        mod.id = result.modId;
+        mod.name = result.modName;
+        mod.enabled = true;
+        mod.hasFomodChoices = !choiceLog.isEmpty();
+        mod.sourceArchive = archive;
+        // Tag the mod with the Nexus ids read from the sidecar up front (used by
+        // endorse + the update checker).
+        mod.nexusModId  = sidecarModId;
+        mod.nexusFileId = sidecarFileId;
+        if (!sidecarVersion.isEmpty()) mod.version = sidecarVersion;
+        // Strip the trailing "-<modId>-<version>-<timestamp>" tail Nexus appends to
+        // archive names, now that mod.nexusModId is known.
+        mod.name = cleanModName(mod.name, mod.nexusModId);
+        // Rename-on-collision -> use the de-duplicated name chosen above.
+        if (!overrideName.isEmpty()) mod.name = overrideName;
+        profile->modList().append(mod);
 
-    // Auto-group: if another installed mod shares this Nexus mod id, nest the new
-    // file under that mod's group (the existing mod becomes the group head, or, if
-    // it's already a child, we nest under its parent). Children are stored
-    // contiguously right after the parent - groupUnder handles the repositioning.
-    if (!mod.nexusModId.isEmpty()) {
-        const auto& list = profile->modList();
-        // The new mod was appended at the END, so it lives in the trailing
-        // separator section (after the last separator). Only auto-group it under
-        // a candidate that lives in that same section; grouping across a separator
-        // would pull the child out of its section and break the "children are
-        // contiguous with their parent in the same section" invariant.
-        int lastSeparatorRaw = -1;
-        for (int i = 0; i < list.count(); ++i)
-            if (list.at(i).type == solero::EntryType::Separator)
-                lastSeparatorRaw = i;
+        // Auto-group: if another installed mod shares this Nexus mod id, nest the new
+        // file under that mod's group (the existing mod becomes the group head, or, if
+        // it's already a child, we nest under its parent). Children are stored
+        // contiguously right after the parent - groupUnder handles the repositioning.
+        // (A same-name/same-mod re-install never reaches here - it went through the
+        // Replace branch above - so this only fires for genuine multi-file additions.)
+        if (!mod.nexusModId.isEmpty()) {
+            const auto& list = profile->modList();
+            // The new mod was appended at the END, so it lives in the trailing
+            // separator section (after the last separator). Only auto-group it under
+            // a candidate that lives in that same section; grouping across a separator
+            // would pull the child out of its section and break the "children are
+            // contiguous with their parent in the same section" invariant.
+            int lastSeparatorRaw = -1;
+            for (int i = 0; i < list.count(); ++i)
+                if (list.at(i).type == solero::EntryType::Separator)
+                    lastSeparatorRaw = i;
 
-        QString parentId;
-        for (int i = 0; i < list.count(); ++i) {
-            const auto& e = list.at(i);
-            if (e.type != solero::EntryType::Mod) continue;
-            if (e.id == mod.id) continue;
-            if (e.nexusModId != mod.nexusModId) continue;
-            // Same trailing section only (a candidate in the trailing section has
-            // its parent, if any, in that same section too).
-            if (i <= lastSeparatorRaw) continue;
-            // Group head = the existing mod's parent if it's a child, else itself.
-            parentId = e.parentId.isEmpty() ? e.id : e.parentId;
-            break;
+            QString parentId;
+            for (int i = 0; i < list.count(); ++i) {
+                const auto& e = list.at(i);
+                if (e.type != solero::EntryType::Mod) continue;
+                if (e.id == mod.id) continue;
+                if (e.nexusModId != mod.nexusModId) continue;
+                // Same trailing section only (a candidate in the trailing section has
+                // its parent, if any, in that same section too).
+                if (i <= lastSeparatorRaw) continue;
+                // Group head = the existing mod's parent if it's a child, else itself.
+                parentId = e.parentId.isEmpty() ? e.id : e.parentId;
+                break;
+            }
+            if (!parentId.isEmpty())
+                profile->modList().groupUnder(mod.id, parentId);
         }
-        if (!parentId.isEmpty())
-            profile->modList().groupUnder(mod.id, parentId);
+        profile->save();
     }
-    profile->save();
 
     // Newly staged files for this mod - drop its cached empty/plugin scans.
     m_modListView->invalidateModCache(result.modId);
@@ -1188,7 +1267,12 @@ void MainWindow::installFromArchive(const QString& archive) {
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     m_rightPane->downloadsTab()->refresh();
     updatePluginNotice();
-    statusBar()->showMessage(QString("Installed: %1").arg(result.modName));
+    if (!existingModId.isEmpty()) {
+        const solero::ModEntry* e = profile->modList().findById(existingModId);
+        statusBar()->showMessage("Replaced: " + (e ? e->name : result.modName));
+    } else {
+        statusBar()->showMessage(QString("Installed: %1").arg(result.modName));
+    }
 }
 
 void MainWindow::onReinstallMod(const QString& modId) {
@@ -1199,12 +1283,37 @@ void MainWindow::onReinstallMod(const QString& modId) {
     if (!existing) return;
 
     QString archive = existing->sourceArchive;
-    if (archive.isEmpty() || !QFile::exists(archive))
-        archive = QFileDialog::getOpenFileName(this, "Reinstall: choose the mod archive",
-            solero::AppConfig::instance().downloadsDir().isEmpty() ? QDir::homePath()
-                : solero::AppConfig::instance().downloadsDir(),
-            "Mod archives (*.zip *.7z *.rar *.tar *.gz);;All files (*)");
+    if (archive.isEmpty() || !QFile::exists(archive)) {
+        // The stored archive is missing - try to locate the download automatically
+        // before falling back to a manual file picker.
+        const QStringList cands = findDownloadArchivesFor(existing);
+        if (cands.size() == 1) {
+            archive = cands.first();
+        } else if (cands.size() > 1) {
+            QStringList names;
+            for (const QString& c : cands) names << QFileInfo(c).fileName();
+            bool okSel = false;
+            const QString chosen = QInputDialog::getItem(this, "Reinstall",
+                QString("Found %1 possible archives for \"%2\". Choose one:")
+                    .arg(cands.size()).arg(existing->name),
+                names, 0, /*editable=*/false, &okSel);
+            if (!okSel) return;
+            archive = cands.at(names.indexOf(chosen));
+        } else {
+            archive.clear(); // none found -> manual picker below
+        }
+        if (archive.isEmpty())
+            archive = QFileDialog::getOpenFileName(this, "Reinstall: choose the mod archive",
+                solero::AppConfig::instance().downloadsDir().isEmpty() ? QDir::homePath()
+                    : solero::AppConfig::instance().downloadsDir(),
+                "Mod archives (*.zip *.7z *.rar *.tar *.gz);;All files (*)");
+    }
     if (archive.isEmpty()) return;
+    // Persist the located/chosen archive so future reinstalls skip the search.
+    if (archive != existing->sourceArchive) {
+        existing->sourceArchive = archive;
+        profile->save();
+    }
 
     statusBar()->showMessage("Preparing...");
     qApp->processEvents();
@@ -1314,6 +1423,107 @@ void MainWindow::onReinstallMod(const QString& modId) {
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     updatePluginNotice();
     statusBar()->showMessage("Reinstalled: " + existing->name);
+}
+
+QStringList MainWindow::findDownloadArchivesFor(const solero::ModEntry* existing) const {
+    QStringList out;
+    if (!existing) return out;
+    const QString dl = solero::AppConfig::instance().downloadsDir();
+    if (dl.isEmpty()) return out;
+    static const QStringList kExts = {"*.zip", "*.7z", "*.rar", "*.tar", "*.gz"};
+    const QFileInfoList files = QDir(dl).entryInfoList(kExts, QDir::Files, QDir::Time);
+    auto addUnique = [&out](const QString& p) {
+        if (!p.isEmpty() && !out.contains(p)) out.append(p);
+    };
+
+    // 1) Exact basename of the stored sourceArchive (path may have moved/changed).
+    if (!existing->sourceArchive.isEmpty()) {
+        const QString base = QFileInfo(existing->sourceArchive).fileName();
+        for (const QFileInfo& fi : files)
+            if (fi.fileName().compare(base, Qt::CaseInsensitive) == 0)
+                addUnique(fi.absoluteFilePath());
+    }
+
+    // 2) Nexus sidecar whose modId matches (and fileId, when the mod has one).
+    if (!existing->nexusModId.isEmpty()) {
+        for (const QFileInfo& fi : files) {
+            QFile sf(fi.absoluteFilePath() + ".solero-nexus.json");
+            if (!sf.open(QIODevice::ReadOnly)) continue;
+            const QJsonObject meta = QJsonDocument::fromJson(sf.readAll()).object();
+            if (meta["modId"].toString() != existing->nexusModId) continue;
+            if (!existing->nexusFileId.isEmpty()
+                && meta["fileId"].toString() != existing->nexusFileId) continue;
+            addUnique(fi.absoluteFilePath());
+        }
+    }
+
+    // 3) Fuzzy: the mod name (normalized) is a substring of the archive name
+    //    (or vice-versa). Require a reasonably long name to avoid weak matches.
+    const QString target = normalizeName(existing->name);
+    if (target.size() >= 4) {
+        for (const QFileInfo& fi : files) {
+            const QString cand = normalizeName(fi.completeBaseName());
+            if (cand.isEmpty()) continue;
+            if (cand.contains(target) || target.contains(cand))
+                addUnique(fi.absoluteFilePath());
+        }
+    }
+    return out;
+}
+
+QString MainWindow::uniqueModName(const QString& base, solero::Profile* profile) const {
+    if (!profile) return base;
+    auto& ml = profile->modList();
+    if (!ml.findByName(base)) return base;
+    for (int n = 2; ; ++n) {
+        const QString cand = QString("%1 (%2)").arg(base).arg(n);
+        if (!ml.findByName(cand)) return cand;
+    }
+}
+
+void MainWindow::onRedownloadMod(const QString& modId) {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return;
+    solero::ModEntry* mod = profile->modList().findById(modId);
+    if (!mod || mod->nexusModId.isEmpty() || mod->nexusFileId.isEmpty()) return;
+
+    const QString nexusModId = mod->nexusModId;
+    const QString fileId     = mod->nexusFileId;
+    const QString name       = mod->name;
+
+    const QString url = solero::NexusApi::downloadUrl(nexusModId, fileId);
+    if (url.isEmpty()) {
+        if (!solero::NexusApi::keyAvailable())
+            QMessageBox::information(this, "Redownload from Nexus",
+                "A Nexus API key is required to download from within Solero.\n"
+                "Add your personal API key in Settings.");
+        else
+            QMessageBox::information(this, "Redownload from Nexus",
+                "This download is unavailable or requires Nexus Premium. Use the "
+                "mod page's 'Mod Manager Download' (nxm) button on the website instead.");
+        return;
+    }
+
+    // Pick a clean filename + current version from the Nexus file list (same source
+    // the update flow uses); fall back to the URL/synthetic name.
+    QString fileName, version = mod->version;
+    for (const auto& f : solero::NexusApi::files(nexusModId)) {
+        if (f.fileId == fileId) {
+            fileName = f.name;
+            if (!f.version.isEmpty()) version = f.version;
+            break;
+        }
+    }
+    if (fileName.isEmpty()) fileName = QUrl(url).fileName();
+    if (fileName.isEmpty()) fileName = "nexus-" + nexusModId + "-" + fileId + ".archive";
+
+    // Tag the download so its sidecar is written on finish (matches onNexusDownload).
+    m_nxmMeta[fileName] = QJsonObject{
+        {"game", "skyrimspecialedition"}, {"modId", nexusModId},
+        {"fileId", fileId}, {"version", version}};
+    m_downloads->enqueue(url, fileName, solero::AppConfig::instance().downloadsDir());
+    m_rightPane->showDownloadsTab();
+    statusBar()->showMessage("Redownloading " + name + "\xe2\x80\xa6");
 }
 
 void MainWindow::onEndorseMod(const QString& modId) {

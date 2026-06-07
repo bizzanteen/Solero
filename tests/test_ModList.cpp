@@ -140,6 +140,38 @@ private slots:
         QVERIFY(list.findById("y")->parentId.isEmpty());
     }
 
+    void findByNexusId_returnsMatch_respectsSkip() {
+        ModList list;
+        list.append(makeMod("a", "100"));
+        list.append(makeMod("b", "100"));
+        ModEntry sep; sep.type = EntryType::Separator; sep.id = "100"; // id collides w/ nexus id on purpose
+        list.append(sep);
+        // First Mod with nexusModId "100" is "a".
+        QVERIFY(list.findByNexusId("100") != nullptr);
+        QCOMPARE(list.findByNexusId("100")->id, QString("a"));
+        // Skipping "a" returns the next match "b".
+        QCOMPARE(list.findByNexusId("100", "a")->id, QString("b"));
+        // Separators are ignored even if their id equals the nexus id.
+        QVERIFY(list.findByNexusId("999") == nullptr);
+        // Empty nexus id never matches.
+        QVERIFY(list.findByNexusId(QString()) == nullptr);
+    }
+
+    void findByName_caseInsensitive_respectsSkip() {
+        ModList list;
+        ModEntry m1; m1.type = EntryType::Mod; m1.id = "1"; m1.name = "Noble Skyrim";
+        ModEntry m2; m2.type = EntryType::Mod; m2.id = "2"; m2.name = "Noble Skyrim";
+        list.append(m1);
+        list.append(m2);
+        // Case-insensitive name match returns the first entry.
+        QVERIFY(list.findByName("noble skyrim") != nullptr);
+        QCOMPARE(list.findByName("NOBLE skyrim")->id, QString("1"));
+        // Skipping the first returns the duplicate-named second.
+        QCOMPARE(list.findByName("Noble Skyrim", "1")->id, QString("2"));
+        // No match -> nullptr.
+        QVERIFY(list.findByName("Unknown Mod") == nullptr);
+    }
+
     void roundtripJson_preservesData() {
         ModList list;
         ModEntry sep; sep.type = EntryType::Separator; sep.id = "s1"; sep.name = "Weapons"; sep.color = "#ff0000"; sep.icon = "⚔";

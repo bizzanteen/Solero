@@ -37,6 +37,12 @@ public:
     const ModEntry& at(int index) const { return m_entries.at(index); }
     ModEntry* findById(const QString& id);
     const ModEntry* findById(const QString& id) const;
+    // Find a Mod entry by its Nexus mod id (skip the entry whose id == skipId, so
+    // callers can ignore the mod they're currently installing/reinstalling).
+    // Returns the first match, or nullptr. Empty nexusModId never matches.
+    ModEntry* findByNexusId(const QString& nexusModId, const QString& skipId = {});
+    // Find a Mod entry by display name (case-insensitive; skip the given id).
+    ModEntry* findByName(const QString& name, const QString& skipId = {});
 
     QJsonDocument toJson() const;
     static ModList fromJson(const QJsonDocument& doc);

@@ -138,6 +138,22 @@ const ModEntry* ModList::findById(const QString& id) const {
     return nullptr;
 }
 
+ModEntry* ModList::findByNexusId(const QString& nexusModId, const QString& skipId) {
+    if (nexusModId.isEmpty()) return nullptr;
+    for (auto& e : m_entries)
+        if (e.type == EntryType::Mod && e.id != skipId && e.nexusModId == nexusModId)
+            return &e;
+    return nullptr;
+}
+
+ModEntry* ModList::findByName(const QString& name, const QString& skipId) {
+    for (auto& e : m_entries)
+        if (e.type == EntryType::Mod && e.id != skipId
+            && e.name.compare(name, Qt::CaseInsensitive) == 0)
+            return &e;
+    return nullptr;
+}
+
 static QJsonObject entryToJson(const ModEntry& e) {
     QJsonObject o;
     o["type"]            = (e.type == EntryType::Mod) ? "mod" : "separator";

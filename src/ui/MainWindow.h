@@ -94,6 +94,16 @@ private:
                          const QString& fileName, const QString& version);
     void installFromArchive(const QString& archive);
     void onReinstallMod(const QString& modId);
+    // "Redownload from Nexus" context action: re-fetch the mod's exact archive
+    // (Premium -> enqueue into downloadsDir; free/unavailable -> nxm guidance).
+    void onRedownloadMod(const QString& modId);
+    // Reinstall helper: candidate archives in downloadsDir for a mod, in priority
+    // order (stored sourceArchive basename -> Nexus sidecar modId/fileId -> fuzzy
+    // name). De-duplicated; empty when nothing plausible is found.
+    QStringList findDownloadArchivesFor(const solero::ModEntry* existing) const;
+    // Generate a name like "<base> (2)" that doesn't collide with any mod in the
+    // profile (case-insensitive). Returns base unchanged if it's already free.
+    QString uniqueModName(const QString& base, solero::Profile* profile) const;
     void onEndorseMod(const QString& modId);
     void onUpdateMod(const QString& modId);
     void onCheckUpdates();

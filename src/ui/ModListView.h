@@ -44,6 +44,7 @@ signals:
     // Overwrite row, or "__separator__" for separator rows. Empty list = nothing selected.
     void modsSelected(const QStringList& ids);
     void reinstallRequested(const QString& modId);
+    void redownloadRequested(const QString& modId);
     void endorseRequested(const QString& modId);
     void identifyRequested(const QString& modId);
     void updateRequested(const QString& modId);

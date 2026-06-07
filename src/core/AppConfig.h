@@ -51,6 +51,13 @@ public:
     void setJackifyEnginePath(const QString& v) { m_jackifyEnginePath = v; }
     DeployMode deployMode() const             { return m_deployMode; }
     void setDeployMode(DeployMode v)          { m_deployMode = v; }
+    // Wrap the game launch (onPlay) in gamescope so Skyrim gets a proper input
+    // grab under Wayland (XWayland borderless windows otherwise miss keyboard
+    // focus). Default on when gamescope is installed and the session is Wayland.
+    bool launchThroughGamescope() const       { return m_launchThroughGamescope; }
+    void setLaunchThroughGamescope(bool v)    { m_launchThroughGamescope = v; }
+    const QString& gamescopeArgs() const      { return m_gamescopeArgs; }
+    void setGamescopeArgs(const QString& v)   { m_gamescopeArgs = v; }
     // Hidden mod-list columns (ModListModel::Column indices). Name is never hidden.
     const QList<int>& hiddenColumns() const   { return m_hiddenColumns; }
     void setHiddenColumns(const QList<int>& v) { m_hiddenColumns = v; }
@@ -67,8 +74,15 @@ public:
     // Find the Proton directory Skyrim uses (prefer GE). Empty if none found.
     QString detectProtonDir() const;
 
+    // Locate the gamescope binary (prefer /usr/bin, else PATH). Empty if absent.
+    static QString detectGamescopePath();
+    // True when running under a Wayland session (XDG_SESSION_TYPE or WAYLAND_DISPLAY).
+    static bool isWaylandSession();
+    // Default for launchThroughGamescope: gamescope present and Wayland session.
+    static bool gamescopeDefaultEnabled();
+
 private:
-    AppConfig() = default;
+    AppConfig();
     QString m_gameDir;
     QString m_stagingDir;
     QString m_dataDir; // derived: gameDir/Data
@@ -85,6 +99,8 @@ private:
     QString m_lastSeparatorColor;
     QString m_jackifyEnginePath;
     DeployMode m_deployMode = DeployMode::HardLink;
+    bool m_launchThroughGamescope = false;
+    QString m_gamescopeArgs = QStringLiteral("-f");
     QList<int> m_hiddenColumns;
 };
 

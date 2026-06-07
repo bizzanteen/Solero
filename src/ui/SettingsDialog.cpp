@@ -108,6 +108,39 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     deployRow->addWidget(deployHelp);
     prefsLayout->addLayout(deployRow);
 
+    // Game launch group
+    auto* launchGroup = new QGroupBox("Game Launch", prefs);
+    auto* launchLayout = new QVBoxLayout(launchGroup);
+    m_launchGamescope = new QCheckBox(
+        "Launch game through gamescope (fixes keyboard/mouse input on Wayland)", launchGroup);
+    m_launchGamescope->setChecked(cfg.launchThroughGamescope());
+    launchLayout->addWidget(m_launchGamescope);
+
+    const QString gsPath = AppConfig::detectGamescopePath();
+    auto* gsDetected = new QLabel(
+        gsPath.isEmpty() ? QStringLiteral("gamescope: not found ") + QChar('-')
+                               + QStringLiteral(" install gamescope")
+                         : ("gamescope: found at " + gsPath), launchGroup);
+    gsDetected->setStyleSheet("color:#888;");
+    launchLayout->addWidget(gsDetected);
+
+    auto* gsRow = new QHBoxLayout;
+    gsRow->addWidget(new QLabel("gamescope arguments:", launchGroup));
+    m_gamescopeArgs = new QLineEdit(cfg.gamescopeArgs(), launchGroup);
+    m_gamescopeArgs->setPlaceholderText("-f");
+    m_gamescopeArgs->setToolTip(QStringLiteral(
+        "Passed to gamescope before `--` (e.g. -f for fullscreen, "
+        "-W 1920 -H 1080 to set the nested resolution)."));
+    gsRow->addWidget(m_gamescopeArgs, 1);
+    launchLayout->addLayout(gsRow);
+
+    // Grey out the controls when gamescope isn't installed.
+    if (gsPath.isEmpty()) {
+        m_launchGamescope->setEnabled(false);
+        m_gamescopeArgs->setEnabled(false);
+    }
+    prefsLayout->addWidget(launchGroup);
+
     // Wabbajack group
     auto* wjGroup = new QGroupBox("Wabbajack", prefs);
     auto* wjLayout = new QVBoxLayout(wjGroup);
@@ -304,6 +337,9 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
             default: cfg.setDeployMode(DeployMode::HardLink); break;
         }
         cfg.setJackifyEnginePath(m_jackifyEdit->text().trimmed());
+        cfg.setLaunchThroughGamescope(m_launchGamescope->isChecked());
+        const QString gsArgs = m_gamescopeArgs->text().trimmed();
+        cfg.setGamescopeArgs(gsArgs.isEmpty() ? QStringLiteral("-f") : gsArgs);
         cfg.save();
         accept();
     });

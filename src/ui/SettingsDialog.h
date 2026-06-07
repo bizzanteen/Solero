@@ -28,6 +28,8 @@ private:
     QCheckBox* m_dataShowAllFiles = nullptr;
     QCheckBox* m_promptAfterBrowserDownload = nullptr;
     QCheckBox* m_autoCheckUpdates = nullptr;
+    QCheckBox* m_launchGamescope = nullptr;
+    QLineEdit* m_gamescopeArgs = nullptr;
     QComboBox* m_deployCombo = nullptr;
     QLabel* m_nxmStatus = nullptr;
     QLabel* m_nexusStatus = nullptr;

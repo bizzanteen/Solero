@@ -67,6 +67,50 @@ QStringList ArchiveTool::listEntries(const QString& archivePath, bool* ok) {
     return result;
 }
 
+QList<ArchiveTool::Entry> ArchiveTool::listEntriesWithCrc(const QString& archivePath, bool* ok) {
+    QList<Entry> result;
+    if (ok) *ok = false;
+
+    // rar: fall back to the bare path list (no CRC available via unrar lb).
+    if (archivePath.endsWith(".rar", Qt::CaseInsensitive)) {
+        bool listed = false;
+        const QStringList paths = listEntries(archivePath, &listed);
+        if (!listed) return result;
+        for (const QString& p : paths) result.append({ p, 0 });
+        if (ok) *ok = true;
+        return result;
+    }
+
+    QString bin = sevenZipBinary();
+    if (bin.isEmpty()) return result;
+
+    QProcess proc;
+    proc.start(bin, {"l", "-ba", "-slt", archivePath});
+    if (!proc.waitForFinished(120000)) return result;
+    if (proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0) return result;
+
+    const QString out = QString::fromUtf8(proc.readAllStandardOutput());
+    QString curPath; bool curIsDir = false; quint32 curCrc = 0;
+    auto flush = [&]{
+        if (!curPath.isEmpty() && !curIsDir) {
+            QString p = curPath; p.replace('\\', '/');
+            result.append({ p, curCrc });
+        }
+        curPath.clear(); curIsDir = false; curCrc = 0;
+    };
+    for (const QString& line : out.split('\n')) {
+        QString t = line.trimmed();
+        if (t.isEmpty()) { flush(); continue; }
+        if (t.startsWith("Path = "))            curPath = t.mid(7);
+        else if (t.startsWith("Attributes = ")) curIsDir = t.mid(13).contains('D');
+        else if (t.startsWith("Folder = "))      curIsDir = curIsDir || t.mid(9).startsWith('+');
+        else if (t.startsWith("CRC = "))         curCrc = t.mid(6).trimmed().toUInt(nullptr, 16);
+    }
+    flush();
+    if (ok) *ok = true;
+    return result;
+}
+
 bool ArchiveTool::extract(const QString& archivePath, const QString& destDir,
                           const std::function<void(int)>& onProgress) {
     if (archivePath.endsWith(".rar", Qt::CaseInsensitive)) {

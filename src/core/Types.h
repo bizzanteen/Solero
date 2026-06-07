@@ -26,6 +26,13 @@ struct ModEntry {
     bool enabled = true;
     bool hasFomodChoices = false;
     bool isOutputMod = false;
+    // FOMOD detection (back-filled by the load-order FOMOD scan). isFomod is true
+    // when the mod's source archive carries a fomod/ModuleConfig.xml. fomodStatus
+    // tracks how its choices were recovered: "" (unknown/none), "reconstructed"
+    // (choices recovered by file-diff), "needs-rerun" (flag-driven; not
+    // reconstructable - re-run the installer to record), or "manual".
+    bool isFomod = false;
+    QString fomodStatus;
     QStringList tags;
     QString sourceArchive; // archive path this mod was installed from (for Reinstall)
     QString note;          // free-form user note (shown/edited in the Mod Info panel)

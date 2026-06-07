@@ -8,6 +8,7 @@
 #include <QPointF>
 #include <QRectF>
 #include <QColor>
+#include <QFont>
 #include <QSvgRenderer>
 namespace solero {
 inline QIcon redCrossIcon(int px = 26) {
@@ -104,6 +105,28 @@ inline QIcon noteIcon(int px = 16) {
         double y = px * (0.34 + i * 0.18);
         p.drawLine(QPointF(px * 0.33, y), QPointF(px * 0.67, y));
     }
+    return QIcon(pm);
+}
+// FOMOD badge: a small rounded square carrying a white "F". The fill colour
+// signals how the choices were recovered - green when reconstructed/manual,
+// amber when the installer is flag-driven and needs a re-run, slate otherwise.
+inline QIcon fomodIcon(const QString& status, int px = 16) {
+    QPixmap pm(px, px); pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    QColor fill("#2980b9"); // detected (no choice info)
+    if (status == "reconstructed" || status == "manual") fill = QColor("#27ae60");
+    else if (status == "needs-rerun")                    fill = QColor("#e67e22");
+    p.setPen(Qt::NoPen);
+    p.setBrush(fill);
+    p.drawRoundedRect(QRectF(px * 0.08, px * 0.08, px * 0.84, px * 0.84),
+                      px * 0.18, px * 0.18);
+    QFont f;
+    f.setPixelSize(int(px * 0.66));
+    f.setBold(true);
+    p.setFont(f);
+    p.setPen(Qt::white);
+    p.drawText(QRectF(0, 0, px, px), Qt::AlignCenter, "F");
     return QIcon(pm);
 }
 // Lay several small icons out horizontally into a single icon (for the Flags

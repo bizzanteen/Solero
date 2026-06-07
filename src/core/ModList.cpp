@@ -168,6 +168,8 @@ static QJsonObject entryToJson(const ModEntry& e) {
     o["icon"]            = e.icon;
     o["collapsed"]       = e.collapsed;
     o["hasFomodChoices"] = e.hasFomodChoices;
+    o["isFomod"]         = e.isFomod;
+    o["fomodStatus"]     = e.fomodStatus;
     o["isOutputMod"]     = e.isOutputMod;
     o["sourceArchive"]   = e.sourceArchive;
     o["note"]            = e.note;
@@ -191,6 +193,8 @@ static ModEntry entryFromJson(const QJsonObject& o) {
     e.icon            = o["icon"].toString();
     e.collapsed       = o["collapsed"].toBool(false);
     e.hasFomodChoices = o["hasFomodChoices"].toBool(false);
+    e.isFomod         = o["isFomod"].toBool(false);     // absent in older files -> false
+    e.fomodStatus     = o["fomodStatus"].toString();    // absent in older files -> empty
     e.isOutputMod     = o["isOutputMod"].toBool(false);
     e.sourceArchive   = o["sourceArchive"].toString();
     e.note            = o["note"].toString(); // absent in older files -> empty

@@ -110,10 +110,12 @@ set(SOLERO_SOURCES
   src/bethini/BethiniWindow.cpp
   src/bethini/IniFile.cpp
   src/install/ArchiveTool.cpp
+  src/install/ArchiveLocator.cpp
   src/install/DataDirDetector.cpp
   src/install/ModInstaller.cpp
   src/fomod/FomodCondition.cpp
   src/fomod/FomodEngine.cpp
+  src/fomod/FomodScanner.cpp
   src/patch/PatchScanner.cpp
   src/ui/PatchWizardDialog.cpp
   src/ui/FomodWizard.cpp

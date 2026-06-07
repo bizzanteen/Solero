@@ -5,11 +5,38 @@
 #include <QDirIterator>
 #include <QMimeData>
 #include <QByteArray>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 #include "core/AppConfig.h"
 #include "core/VersionUtil.h"
 #include "ui/IconUtil.h"
 
 namespace solero {
+
+namespace {
+// Read back a reconstructed/recorded FOMOD selection as human-readable lines
+// ("Step - A, B") from fomod-choices.json. Empty when the file is absent/empty.
+QString fomodChoicesSummary(const QString& modId) {
+    QFile f(AppConfig::dataRoot() + "/fomod-choices/" + modId + ".json");
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    const QJsonArray steps = QJsonDocument::fromJson(f.readAll())
+                                 .object().value("steps").toArray();
+    QStringList lines;
+    for (const QJsonValue& sv : steps) {
+        const QJsonObject so = sv.toObject();
+        QStringList picks;
+        for (const QJsonValue& pv : so.value("selected").toArray())
+            picks << pv.toString();
+        if (picks.isEmpty()) continue;
+        const QString step = so.value("step").toString();
+        lines << (step.isEmpty() ? picks.join(", ")
+                                 : QString("%1 - %2").arg(step, picks.join(", ")));
+    }
+    return lines.join("\n");
+}
+} // namespace
 
 ModListModel::ModListModel(QObject* parent) : QAbstractItemModel(parent) {}
 
@@ -301,6 +328,18 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
         }
         if (!entry.note.isEmpty())
             tips << QStringLiteral("\xf0\x9f\x93\x9d Note: ") + entry.note; // 📝
+        if (entry.isFomod) {
+            if (entry.fomodStatus == "needs-rerun") {
+                tips << QStringLiteral(
+                    "FOMOD installer - choices not reconstructable; "
+                    "re-run the installer to record them");
+            } else {
+                const QString sum = fomodChoicesSummary(entry.id);
+                tips << (sum.isEmpty()
+                             ? QStringLiteral("FOMOD installer")
+                             : QStringLiteral("FOMOD choices:\n") + sum);
+            }
+        }
         if (m_profile) {
             const int hiddenCount = m_profile->hiddenFiles().value(entry.id).size();
             if (hiddenCount > 0)
@@ -338,6 +377,7 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
         if (m_depWarnings.contains(entry.id))      icons << solero::redBangIcon(16);
         if (m_updates.contains(entry.id))          icons << solero::yellowUpArrowIcon();
         if (!entry.note.isEmpty())                 icons << solero::noteIcon();
+        if (entry.isFomod)                         icons << solero::fomodIcon(entry.fomodStatus);
         if (icons.isEmpty()) return {};
         return solero::composeIcons(icons, 16);
     }

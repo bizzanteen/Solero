@@ -25,6 +25,7 @@
 #include "tools/ToolRunner.h"
 #include "tools/ToolCatalog.h"
 #include "fomod/FomodEngine.h"
+#include "fomod/FomodScanner.h"
 #include "loot/LootSorter.h"
 #include "PluginListView.h"
 #include "nexus/NexusApi.h"
@@ -386,6 +387,7 @@ void MainWindow::setupToolbar() {
         "Check for Mod Updates\xe2\x80\xa6", this, &MainWindow::onCheckUpdates);
     m_checkUpdatesAction->setShortcut(QKeySequence(Qt::Key_F5));
     m_checkUpdatesAction->setToolTip("Check for Mod Updates (F5)");
+    profileMenu->addAction("Scan for FOMOD mods\xe2\x80\xa6", this, &MainWindow::onScanFomod);
     profileMenuBtn->setMenu(profileMenu);
     profileMenuBtn->setPopupMode(QToolButton::InstantPopup);
     tb->addWidget(profileMenuBtn);
@@ -1762,6 +1764,47 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
         return results;
     });
     m_updateWatcher.setFuture(future);
+}
+
+void MainWindow::onScanFomod() {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return;
+
+    solero::ProgressModal prog(this, "Scan for FOMOD mods",
+                               "Locating source archives\xe2\x80\xa6");
+    prog.enableCancel();
+    prog.show();
+    prog.pump();
+
+    auto progressCb = [&](int done, int total, const QString& name) {
+        prog.setProgress(done, total);
+        prog.setMessage(QString("Scanning %1/%2: %3").arg(done + 1).arg(total).arg(name));
+    };
+    auto cancelCb = [&]() { return prog.wasCancelled(); };
+
+    const solero::FomodScanSummary sum = solero::scanProfile(
+        *profile,
+        solero::AppConfig::instance().gameDir(),
+        solero::AppConfig::instance().stagingDir(),
+        progressCb, cancelCb);
+
+    prog.close();
+
+    // Refresh the mod list so new FOMOD badges/tooltips show immediately.
+    m_modListView->setProfile(profile);
+
+    QMessageBox::information(
+        this, "Scan for FOMOD mods",
+        QString("Scanned %1 enabled mod(s).\n\n"
+                "Found %2 FOMOD mod(s):\n"
+                "  \xe2\x80\xa2 %3 with choices reconstructed\n"
+                "  \xe2\x80\xa2 %4 needing a re-run (flag-driven)\n\n"
+                "%5 mod(s) had no locatable source archive.")
+            .arg(sum.scanned)
+            .arg(sum.fomodFound)
+            .arg(sum.choicesReconstructed)
+            .arg(sum.needsRerun)
+            .arg(sum.archiveNotFound));
 }
 
 void MainWindow::maybeAutoCheckUpdates() {

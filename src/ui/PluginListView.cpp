@@ -9,7 +9,53 @@
 #include <QContextMenuEvent>
 #include <QShowEvent>
 #include <QTimer>
+#include <QStyledItemDelegate>
+#include <QApplication>
+#include <QStyle>
+#include <QPainter>
+#include <QIcon>
 namespace solero {
+
+namespace {
+// The model exposes the missing-master warning via Qt::DecorationRole on the
+// Plugin column. The default delegate draws that icon to the LEFT of the name;
+// instead, suppress the leading icon and paint it immediately after the text so
+// the warning trails the plugin name. The model's tooltip (listing the missing
+// masters) is left untouched, so hovering still works.
+class NameDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+protected:
+    void initStyleOption(QStyleOptionViewItem* opt, const QModelIndex& idx) const override {
+        QStyledItemDelegate::initStyleOption(opt, idx);
+        // Drop the leading decoration so the base delegate doesn't draw it on the
+        // left; we repaint it after the text in paint().
+        opt->icon = QIcon();
+        opt->features &= ~QStyleOptionViewItem::HasDecoration;
+    }
+    void paint(QPainter* painter, const QStyleOptionViewItem& option,
+               const QModelIndex& idx) const override {
+        QStyledItemDelegate::paint(painter, option, idx);
+        const QIcon icon = qvariant_cast<QIcon>(idx.data(Qt::DecorationRole));
+        if (icon.isNull()) return;
+        // Locate where the (left-aligned) text ends, using the same font the base
+        // delegate used (FontRole-aware, so bold ESM widths are correct).
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, idx);
+        const QWidget* w = opt.widget;
+        QStyle* style = w ? w->style() : QApplication::style();
+        const QRect textRect = style->subElementRect(QStyle::SE_ItemViewItemText, &opt, w);
+        const QString text = idx.data(Qt::DisplayRole).toString();
+        const int textW = opt.fontMetrics.horizontalAdvance(text);
+        const int sz = qMin(textRect.height(), 16);
+        const int gap = 4;
+        const int x = textRect.left() + textW + gap;
+        const int y = textRect.top() + (textRect.height() - sz) / 2;
+        if (x + sz <= textRect.right() + 1)
+            icon.paint(painter, QRect(x, y, sz, sz), Qt::AlignCenter);
+    }
+};
+} // namespace
 PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
     m_model = new PluginListModel(this);
     m_proxy = new QSortFilterProxyModel(this);
@@ -24,6 +70,8 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
     horizontalHeader()->setSectionsClickable(true);
     horizontalHeader()->setSortIndicatorShown(true);
     horizontalHeader()->setSortIndicator(PluginListModel::ColPriority, Qt::AscendingOrder);
+    // Draw the missing-master warning icon after the plugin name (see NameDelegate).
+    setItemDelegateForColumn(PluginListModel::ColName, new NameDelegate(this));
     applyHeaderLayout();
     verticalHeader()->hide();
     connect(horizontalHeader(), &QHeaderView::sortIndicatorChanged,

@@ -444,6 +444,12 @@ void MainWindow::setupToolbar() {
     // Game settings
     tb->addAction("\xe2\x9a\x99 Settings", this, [this]{
         solero::SettingsDialog dlg(this);
+        // "Connect to Nexus": switch the central view to the embedded browser and
+        // jump straight to the personal API-key page (login cookie persists there).
+        connect(&dlg, &solero::SettingsDialog::connectNexusRequested, this, [this]{
+            if (m_browseAction) m_browseAction->setChecked(true);
+            if (m_nexusWeb) m_nexusWeb->openUrl(solero::NexusWebView::apiKeyUrl());
+        });
         if (dlg.exec() == QDialog::Accepted)
             statusBar()->showMessage("Settings updated.");
     });

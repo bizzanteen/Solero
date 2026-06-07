@@ -21,6 +21,8 @@
 #include <QUrl>
 #include <QFile>
 #include <QDir>
+#include <QClipboard>
+#include <QGuiApplication>
 
 namespace solero {
 
@@ -144,8 +146,11 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     nexusLayout->addWidget(nexusHeading);
 
     auto* nexusHelp = new QLabel(
-        "Sign in with your Nexus personal API key. Click \"Get API Key\" to open "
-        "your Nexus account page, copy the Personal API Key, and paste it below.",
+        QStringLiteral("Connect to Nexus ") + QChar(0x2192)
+            + QStringLiteral(" sign in, copy your Personal API Key, then "
+              "\"Paste key & connect\". This opens the built-in Nexus browser straight "
+              "to your API-key page (you're usually already signed in). You can still "
+              "paste a key manually below if you prefer."),
         nexus);
     nexusHelp->setWordWrap(true);
     nexusLayout->addWidget(nexusHelp);
@@ -170,6 +175,21 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     m_keyEdit->setPlaceholderText("Paste your Nexus API key…");
     nexusLayout->addWidget(m_keyEdit);
 
+    // Primary one-click flow: open the embedded browser at the API-key page,
+    // then paste the copied key back here without hunting for the field.
+    auto* connectRow = new QHBoxLayout;
+    auto* connectBtn = new QPushButton(
+        QStringLiteral("Connect to Nexus ") + QChar(0x2192), nexus);
+    connectBtn->setToolTip(QStringLiteral(
+        "Open the built-in Nexus browser at your API-key page"));
+    auto* pasteBtn = new QPushButton("Paste key & connect", nexus);
+    pasteBtn->setToolTip(QStringLiteral(
+        "Read the API key you copied from the page and sign in"));
+    connectRow->addWidget(connectBtn);
+    connectRow->addWidget(pasteBtn);
+    connectRow->addStretch();
+    nexusLayout->addLayout(connectRow);
+
     auto* nexusBtnRow = new QHBoxLayout;
     auto* getKeyBtn = new QPushButton("Get API Key", nexus);
     auto* signInBtn = new QPushButton("Sign In", nexus);
@@ -191,6 +211,41 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
 
     connect(getKeyBtn, &QPushButton::clicked, this, []{
         QDesktopServices::openUrl(QUrl("https://www.nexusmods.com/users/myaccount?tab=api"));
+    });
+
+    // "Connect to Nexus": close Settings and let MainWindow open the embedded
+    // browser at the API-key page. accept() keeps the user's other edits.
+    connect(connectBtn, &QPushButton::clicked, this, [this]{
+        emit connectNexusRequested();
+        accept();
+    });
+
+    // "Paste key & connect": grab the clipboard, sanity-check it, validate via
+    // the Nexus API, store it, and report inline - no field hunting required.
+    connect(pasteBtn, &QPushButton::clicked, this, [this, applyStatus]{
+        const QString key = QGuiApplication::clipboard()->text().trimmed();
+        const bool looksLikeKey = !key.isEmpty()
+            && !key.contains(QStringLiteral("://"))
+            && !key.contains(QLatin1Char('<'))
+            && !key.contains(QLatin1Char(' '))
+            && !key.contains(QLatin1Char('\n'));
+        const QString badKeyMsg =
+            QStringLiteral("That clipboard text isn't a valid Nexus API key ") + QChar('-')
+            + QStringLiteral(" copy the Personal API Key from the page and try again.");
+        if (!looksLikeKey) {
+            QMessageBox::warning(this, "Nexus Account", badKeyMsg);
+            return;
+        }
+        const auto info = NexusApi::validateUser(key);
+        if (!info.ok) {
+            QMessageBox::warning(this, "Nexus Account", badKeyMsg);
+            return;
+        }
+        NexusApi::setApiKey(key);
+        applyStatus(info);
+        m_keyEdit->clear();
+        QMessageBox::information(this, "Nexus Account",
+                                 QString("Signed in as %1.").arg(info.name));
     });
 
     connect(signInBtn, &QPushButton::clicked, this, [this, applyStatus]{

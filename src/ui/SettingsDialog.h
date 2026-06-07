@@ -16,6 +16,11 @@ class SettingsDialog : public QDialog {
 public:
     explicit SettingsDialog(QWidget* parent = nullptr);
 
+signals:
+    // Emitted when the user clicks "Connect to Nexus": MainWindow opens the
+    // embedded Nexus browser at the personal API-key page. The dialog closes.
+    void connectNexusRequested();
+
 private:
     SetupPanel* m_setupPanel = nullptr;
     QCheckBox* m_confirmDelete = nullptr;

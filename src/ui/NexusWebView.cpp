@@ -1,4 +1,5 @@
 #include "NexusWebView.h"
+#include "nexus/NexusApi.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QTabWidget>
@@ -13,6 +14,9 @@
 #include <QDir>
 #include <QIcon>
 #include <QRegularExpression>
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QMessageBox>
 #include <functional>
 
 namespace solero {
@@ -44,6 +48,10 @@ QUrl NexusWebView::homepageUrl() {
 QUrl NexusWebView::signInUrl() {
     return QUrl(QStringLiteral(
         "https://users.nexusmods.com/auth/sign_in?redirect_url=https://www.nexusmods.com/skyrimspecialedition"));
+}
+
+QUrl NexusWebView::apiKeyUrl() {
+    return QUrl(QStringLiteral("https://www.nexusmods.com/users/myaccount?tab=api"));
 }
 
 bool NexusWebView::looksLoggedIn() const {
@@ -80,12 +88,20 @@ NexusWebView::NexusWebView(QWidget* parent) : QWidget(parent) {
     m_addr = new QLineEdit(this);
     m_addr->setClearButtonEnabled(true);
     m_addr->setPlaceholderText("nexusmods.com\xe2\x80\xa6");
+    // One-click capture: copy your Personal API Key on the account page, then click.
+    auto* pasteKey = new QToolButton(this);
+    pasteKey->setText(QStringLiteral("Paste key & connect"));
+    pasteKey->setToolTip(QStringLiteral(
+        "Copy your Personal API Key from the API tab, then click to sign in"));
     bar->addWidget(m_back);
     bar->addWidget(m_fwd);
     bar->addWidget(reload);
     bar->addWidget(home);
     bar->addWidget(m_addr, 1);
+    bar->addWidget(pasteKey);
     v->addLayout(bar);
+
+    connect(pasteKey, &QToolButton::clicked, this, &NexusWebView::pasteKeyAndConnect);
 
     // Shared persistent profile (Nexus login survives across tabs/restarts)
     m_profile = new QWebEngineProfile(QStringLiteral("solero-nexus"), this);
@@ -194,6 +210,39 @@ void NexusWebView::loadAddress() {
     if (t.isEmpty()) return;
     if (!t.contains("://")) t = "https://" + t;
     vw->load(QUrl::fromUserInput(t));
+}
+
+void NexusWebView::openUrl(const QUrl& url) {
+    addTab(url);
+}
+
+void NexusWebView::pasteKeyAndConnect() {
+    const QString key = QGuiApplication::clipboard()->text().trimmed();
+    // Reject obvious non-keys (empty, a URL, or pasted HTML/markup) before
+    // spending a network round-trip on validation.
+    const bool looksLikeKey = !key.isEmpty()
+        && !key.contains(QStringLiteral("://"))
+        && !key.contains(QLatin1Char('<'))
+        && !key.contains(QLatin1Char(' '))
+        && !key.contains(QLatin1Char('\n'));
+    const QString badKeyMsg =
+        QStringLiteral("That clipboard text isn't a valid Nexus API key ") + QChar('-')
+        + QStringLiteral(" copy the Personal API Key from the page and try again.");
+    if (!looksLikeKey) {
+        QMessageBox::warning(this, QStringLiteral("Connect to Nexus"), badKeyMsg);
+        return;
+    }
+
+    const auto info = NexusApi::validateUser(key);
+    if (!info.ok) {
+        QMessageBox::warning(this, QStringLiteral("Connect to Nexus"), badKeyMsg);
+        return;
+    }
+
+    NexusApi::setApiKey(key);
+    const QString tier = info.premium ? QStringLiteral("Premium") : QStringLiteral("Free");
+    QMessageBox::information(this, QStringLiteral("Connect to Nexus"),
+        QStringLiteral("Signed in as %1 (%2).").arg(info.name, tier));
 }
 
 } // namespace solero

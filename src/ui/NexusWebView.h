@@ -21,6 +21,13 @@ class NexusWebView : public QWidget {
 public:
     explicit NexusWebView(QWidget* parent = nullptr);
 
+    // Open a URL in a fresh tab and raise it. Used to jump straight to the
+    // personal API-key page from the "Connect to Nexus" Settings button.
+    void openUrl(const QUrl& url);
+
+    // The personal API-key page (login cookie persists in this profile).
+    static QUrl apiKeyUrl();
+
 signals:
     void nxmRequested(const QString& url);
 
@@ -28,6 +35,9 @@ private:
     QWebEngineView* currentView() const;
     QWebEngineView* addTab(const QUrl& url);
     void loadAddress();
+    // Read the clipboard, validate it as a Nexus API key, store it, and report
+    // the result inline. Driven by the "Paste key & connect" toolbar button.
+    void pasteKeyAndConnect();
     void refreshNav();
     static QUrl homepageUrl();
     static QUrl signInUrl();

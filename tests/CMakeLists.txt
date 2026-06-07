@@ -107,6 +107,7 @@ add_executable(test_PatchScanner test_PatchScanner.cpp
   ../src/install/ArchiveTool.cpp
   ../src/install/DataDirDetector.cpp
   ../src/install/ModInstaller.cpp
+  ../src/install/PluginScanner.cpp
   ../src/core/ModList.cpp
   ../src/core/PluginList.cpp
   ../src/core/Profile.cpp

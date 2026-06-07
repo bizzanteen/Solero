@@ -23,9 +23,10 @@ PatchWizardDialog::PatchWizardDialog(Profile* profile, QWidget* parent)
 
     auto* root = new QVBoxLayout(this);
     auto* intro = new QLabel(
-        "Re-scans installed FOMOD mods for optional patches that are now applicable "
-        "to your current load order (their required plugin is present) but were not "
-        "installed. Tick the ones to install.", this);
+        "Re-scans installed FOMOD mods, reconstructs your original choices, and "
+        "compares them against your current load order. Surfaces patches that are "
+        "now applicable (a matching mod or plugin is present) but were not installed "
+        "- including \"pick which mod you have\" options. Tick the ones to install.", this);
     intro->setWordWrap(true);
     root->addWidget(intro);
 
@@ -63,7 +64,7 @@ void PatchWizardDialog::runScan() {
 
 void PatchWizardDialog::buildList() {
     if (m_candidates.isEmpty()) {
-        auto* empty = new QLabel("No applicable unselected patches found.", this);
+        auto* empty = new QLabel("No applicable patches found.", this);
         empty->setAlignment(Qt::AlignCenter);
         m_listLayout->addWidget(empty);
         m_installBtn->setEnabled(false);
@@ -82,7 +83,13 @@ void PatchWizardDialog::buildList() {
         rl->setContentsMargins(16, 2, 4, 6);
         rl->setSpacing(1);
         auto* check = new QCheckBox(c.optionName, row);
-        check->setChecked(true);
+        if (c.installable) {
+            check->setChecked(true);
+        } else {
+            check->setChecked(false);
+            check->setEnabled(false);
+            check->setText(c.optionName + "  (detected - install needs the source archive)");
+        }
         rl->addWidget(check);
         auto* reason = new QLabel("<i>" + c.reason.toHtmlEscaped() + "</i>", row);
         reason->setStyleSheet("color: palette(mid);");
@@ -93,6 +100,24 @@ void PatchWizardDialog::buildList() {
             desc->setWordWrap(true);
             desc->setContentsMargins(20, 0, 0, 0);
             rl->addWidget(desc);
+        }
+        // Summarise the files/folders this patch would install.
+        QStringList paths;
+        for (const FomodFile& f : c.files) {
+            const QString d = f.destination.isEmpty()
+                ? (f.isFolder ? QStringLiteral("Data/") : f.source) : f.destination;
+            paths << (f.isFolder ? (d + "/*") : d);
+        }
+        if (!paths.isEmpty()) {
+            const int shown = qMin(paths.size(), 8);
+            QString text = paths.mid(0, shown).join(", ");
+            if (paths.size() > shown)
+                text += QStringLiteral(" \xe2\x80\xa6 (+%1 more)").arg(paths.size() - shown);
+            auto* files = new QLabel(text.toHtmlEscaped(), row);
+            files->setWordWrap(true);
+            files->setStyleSheet("color: palette(mid); font-size: 11px;");
+            files->setContentsMargins(20, 0, 0, 0);
+            rl->addWidget(files);
         }
         m_listLayout->addWidget(row);
         m_checks.append(check);
@@ -109,6 +134,7 @@ void PatchWizardDialog::onInstallSelected() {
     for (int i = 0; i < m_candidates.size(); ++i) {
         if (i >= m_checks.size() || !m_checks[i]->isChecked()) continue;
         const PatchCandidate& c = m_candidates[i];
+        if (!c.installable || c.sourceArchive.isEmpty()) continue;
         prog.setMessage("Installing: " + c.optionName);
         prog.pump();
         const QString modDir = staging + "/" + c.modId;

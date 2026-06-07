@@ -48,6 +48,26 @@ public:
         } else { QStyledItemDelegate::setEditorData(editor, idx); }
     }
 };
+
+// The Flags column carries a horizontal strip of status icons composed into one
+// QIcon. The default delegate squeezes that whole strip into the square
+// iconSize(), shrinking each icon when a row has 2-3 flags. Render the composed
+// icon at its natural size instead so every flag stays at the canonical pixel
+// size regardless of how many a row has.
+class FlagsDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+protected:
+    void initStyleOption(QStyleOptionViewItem* opt, const QModelIndex& idx) const override {
+        QStyledItemDelegate::initStyleOption(opt, idx);
+        if (!opt->icon.isNull()) {
+            // actualSize keeps the strip at its drawn height (kFlagIconPx) and
+            // returns its true width, so the base delegate draws it un-squished.
+            const QSize nat = opt->icon.actualSize(QSize(1 << 16, opt->decorationSize.height()));
+            if (!nat.isEmpty()) opt->decorationSize = nat;
+        }
+    }
+};
 } // namespace
 
 ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
@@ -71,6 +91,7 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     setIconSize(QSize(20, 20));
     setEditTriggers(QAbstractItemView::SelectedClicked | QAbstractItemView::EditKeyPressed);
     setItemDelegateForColumn(ModListModel::ColName, new RenameDelegate(this));
+    setItemDelegateForColumn(ModListModel::ColFlags, new FlagsDelegate(this));
     // Every column is user-resizable (Interactive). A middle Stretch section makes
     // manual resizes feel inverted, so we instead auto-fit on first show.
     auto* hdr = header();

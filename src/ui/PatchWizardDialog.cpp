@@ -111,7 +111,7 @@ PatchWizardDialog::PatchWizardDialog(Profile* profile, QWidget* parent)
     tools->addWidget(m_selectNoneBtn);
     tools->addStretch(1);
     m_filter = new QLineEdit(this);
-    m_filter->setPlaceholderText("Filter\xe2\x80\xa6");
+    m_filter->setPlaceholderText(QStringLiteral("Filter") + QChar(0x2026)); // ellipsis
     m_filter->setClearButtonEnabled(true);
     m_filter->setMaximumWidth(240);
     connect(m_filter, &QLineEdit::textChanged, this, &PatchWizardDialog::applyFilter);
@@ -144,7 +144,8 @@ PatchWizardDialog::PatchWizardDialog(Profile* profile, QWidget* parent)
 }
 
 void PatchWizardDialog::runScan() {
-    ProgressModal prog(this, "Patch Wizard", "Scanning installed FOMOD mods\xe2\x80\xa6");
+    ProgressModal prog(this, "Patch Wizard",
+                       QStringLiteral("Scanning installed FOMOD mods") + QChar(0x2026));
     prog.show();
     prog.pump();
     const QString gameDir = AppConfig::instance().gameDir();
@@ -190,8 +191,10 @@ void PatchWizardDialog::buildTree() {
         // One-line rich text: option name + green reason inline.
         QString html = c.optionName.toHtmlEscaped();
         if (!c.reason.isEmpty()) {
-            html += QStringLiteral(" <span style=\"color:%1;\">- %2</span>")
-                        .arg(kReasonGreen, c.reason.toHtmlEscaped());
+            // name <em dash> reason, the dash built from QChar (never a \xNN
+            // byte escape, which mojibakes inside a QStringLiteral).
+            html += QStringLiteral(" <span style=\"color:%1;\">%2 %3</span>")
+                        .arg(kReasonGreen, QString(QChar('-')), c.reason.toHtmlEscaped());
         }
         if (!c.installable) {
             html += QStringLiteral(" <i>(install needs the source archive)</i>");
@@ -210,9 +213,11 @@ void PatchWizardDialog::buildTree() {
         }
         if (!paths.isEmpty()) {
             const int shown = qMin(paths.size(), 30);
-            tip += "\n\nInstalls:\n\xe2\x80\xa2 " + paths.mid(0, shown).join("\n\xe2\x80\xa2 ");
+            const QString bullet = QString(QChar(0x2022)) + QStringLiteral(" "); // "• "
+            tip += "\n\nInstalls:\n" + bullet + paths.mid(0, shown).join("\n" + bullet);
             if (paths.size() > shown)
-                tip += QStringLiteral("\n\xe2\x80\xa6 (+%1 more)").arg(paths.size() - shown);
+                tip += "\n" + QString(QChar(0x2026)) // ellipsis
+                     + QStringLiteral(" (+%1 more)").arg(paths.size() - shown);
         }
         if (!c.installable)
             tip += "\n\n(install needs the source archive)";
@@ -350,7 +355,8 @@ void PatchWizardDialog::onInstallSelected() {
 
     QStringList changed;
     int installed = 0;
-    ProgressModal prog(this, "Patch Wizard", "Installing patches\xe2\x80\xa6");
+    ProgressModal prog(this, "Patch Wizard",
+                       QStringLiteral("Installing patches") + QChar(0x2026));
     prog.show();
     prog.pump();
     const QString staging = AppConfig::instance().stagingDir();

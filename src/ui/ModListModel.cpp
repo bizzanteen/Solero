@@ -374,12 +374,12 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
         QList<QIcon> icons;
         if (m_overwritingMods.contains(entry.id)) icons << solero::greenUpTriangleIcon();
         if (m_overwrittenMods.contains(entry.id)) icons << solero::redDownTriangleIcon();
-        if (m_depWarnings.contains(entry.id))      icons << solero::redBangIcon(16);
+        if (m_depWarnings.contains(entry.id))      icons << solero::redBangIcon(solero::kFlagIconPx);
         if (m_updates.contains(entry.id))          icons << solero::yellowUpArrowIcon();
         if (!entry.note.isEmpty())                 icons << solero::noteIcon();
         if (entry.isFomod)                         icons << solero::fomodIcon(entry.fomodStatus);
         if (icons.isEmpty()) return {};
-        return solero::composeIcons(icons, 16);
+        return solero::composeIcons(icons);
     }
     if (role == Qt::FontRole && isSep) {
         QFont f; f.setBold(true); return f;
@@ -392,8 +392,8 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     if (role == Qt::BackgroundRole && !isSep && entry.type == EntryType::Mod) {
         auto ci = m_conflictHi.constFind(entry.id);
         if (ci != m_conflictHi.constEnd())
-            return ci.value() == 1 ? QColor(0x6b, 0x2e, 0x2e)   // red: overwrites selected
-                                   : QColor(0x2e, 0x5d, 0x34);  // green: overwritten by selected
+            return ci.value() == 1 ? QColor(0x2e, 0x5d, 0x34)   // green: overwrites selected (wins over it)
+                                   : QColor(0x6b, 0x2e, 0x2e);  // red: overwritten by selected (loses to it)
     }
     if (role == Qt::BackgroundRole && isSep && !entry.color.isEmpty())
         return QColor(entry.color);

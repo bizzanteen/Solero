@@ -74,6 +74,46 @@ QStringList presentFileDeps(const QString& xml) {
     return out;
 }
 
+// For the file-driven (conditionalFileInstalls) branch: try to name the single
+// dependency file that now makes the surfaced files apply. Parses the stored
+// <conditionalFileInstalls> XML, finds the <pattern>(s) whose payload overlaps
+// `targetKeys`, and returns a present fileDependency gating them - but only when
+// exactly one distinct trigger is found (otherwise it isn't unambiguous and we
+// fall back to general wording). Empty when not determinable.
+QString attributeConditionalTrigger(const QString& conditionalInstallsXml,
+                                    const QSet<QString>& targetKeys,
+                                    const FilePresentFn& filePresent) {
+    if (conditionalInstallsXml.isEmpty()) return {};
+    QDomDocument doc;
+    if (!doc.setContent(conditionalInstallsXml)) return {};
+    QStringList triggers;
+    const QDomNodeList patterns = doc.elementsByTagName("pattern");
+    for (int i = 0; i < patterns.size(); ++i) {
+        const QDomElement pat = patterns.at(i).toElement();
+        // Does this pattern's <files> payload overlap the surfaced files?
+        bool overlaps = false;
+        for (QDomElement files = pat.firstChildElement();
+             !overlaps && !files.isNull(); files = files.nextSiblingElement()) {
+            if (files.tagName().compare("files", Qt::CaseInsensitive) != 0) continue;
+            for (QDomElement n = files.firstChildElement();
+                 !n.isNull(); n = n.nextSiblingElement()) {
+                FomodFile f;
+                f.source = n.attribute("source");
+                f.destination = n.attribute("destination");
+                f.isFolder = n.tagName().compare("folder", Qt::CaseInsensitive) == 0;
+                if (targetKeys.contains(fileKey(f))) { overlaps = true; break; }
+            }
+        }
+        if (!overlaps) continue;
+        // Name a present fileDependency that gates this pattern.
+        QStringList deps;
+        collectPresentDepsRec(pat, deps);
+        for (const QString& d : deps)
+            if (!d.isEmpty() && filePresent(d) && !triggers.contains(d)) triggers << d;
+    }
+    return triggers.size() == 1 ? triggers.first() : QString();
+}
+
 // Map a flag-setting option onto a present installed mod. Matching is fuzzy and
 // case/punctuation-insensitive, in either direction, against the mod's display
 // name, its nexus name, and its plugin basenames. A short option-name guard
@@ -231,10 +271,15 @@ QList<PatchCandidate> findPatches(const FomodModule& module,
         if (alreadyInstalled(f)) continue;
         fileDriven.append(f);
     }
-    if (!fileDriven.isEmpty())
+    if (!fileDriven.isEmpty()) {
+        const QString trigger = attributeConditionalTrigger(
+            module.conditionalInstallsXml, keysOf(fileDriven), filePresent);
+        const QString reason = trigger.isEmpty()
+            ? QStringLiteral("Optional patch files that apply to your current setup")
+            : QStringLiteral("Auto-applied patch (needs %1, now present)").arg(trigger);
         makeCandidate(QStringLiteral("Newly applicable files"), QString(),
-                      QStringLiteral("Conditional files whose requirements are now met"),
-                      fileDriven);
+                      reason, fileDriven);
+    }
 
     return out;
 }

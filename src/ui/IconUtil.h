@@ -11,6 +11,12 @@
 #include <QFont>
 #include <QSvgRenderer>
 namespace solero {
+// Canonical square pixel size for every Flags-column status icon. Keeping it in
+// one place lets every helper and composeIcons() lay out at the same size, so a
+// row with 1, 2 or 3 flags looks consistent. (The view must then render the
+// composed strip at its natural size - see FlagsDelegate in ModListView.cpp.)
+inline constexpr int kFlagIconPx = 16;
+
 inline QIcon redCrossIcon(int px = 26) {
     QPixmap pm(px, px); pm.fill(Qt::transparent);
     QPainter p(&pm);
@@ -41,7 +47,7 @@ inline QIcon redBangIcon(int px = 26) {
     p.drawEllipse(QPointF(cx, px * 0.76), px * 0.07, px * 0.07);
     return QIcon(pm);
 }
-inline QIcon yellowUpArrowIcon(int px = 16) {
+inline QIcon yellowUpArrowIcon(int px = kFlagIconPx) {
     QPixmap pm(px, px); pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing, true);
@@ -60,7 +66,7 @@ inline QIcon yellowUpArrowIcon(int px = 16) {
     return QIcon(pm);
 }
 // Conflict flag: this mod OVERWRITES others (wins file conflicts). Green ▲.
-inline QIcon greenUpTriangleIcon(int px = 16) {
+inline QIcon greenUpTriangleIcon(int px = kFlagIconPx) {
     QPixmap pm(px, px); pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing, true);
@@ -75,7 +81,7 @@ inline QIcon greenUpTriangleIcon(int px = 16) {
     return QIcon(pm);
 }
 // Conflict flag: this mod is OVERWRITTEN by others (loses file conflicts). Red ▼.
-inline QIcon redDownTriangleIcon(int px = 16) {
+inline QIcon redDownTriangleIcon(int px = kFlagIconPx) {
     QPixmap pm(px, px); pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing, true);
@@ -90,7 +96,7 @@ inline QIcon redDownTriangleIcon(int px = 16) {
     return QIcon(pm);
 }
 // Has-note flag: a small lined "page" glyph.
-inline QIcon noteIcon(int px = 16) {
+inline QIcon noteIcon(int px = kFlagIconPx) {
     QPixmap pm(px, px); pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing, true);
@@ -110,7 +116,7 @@ inline QIcon noteIcon(int px = 16) {
 // FOMOD badge: a small rounded square carrying a white "F". The fill colour
 // signals how the choices were recovered - green when reconstructed/manual,
 // amber when the installer is flag-driven and needs a re-run, slate otherwise.
-inline QIcon fomodIcon(const QString& status, int px = 16) {
+inline QIcon fomodIcon(const QString& status, int px = kFlagIconPx) {
     QPixmap pm(px, px); pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing, true);
@@ -131,14 +137,19 @@ inline QIcon fomodIcon(const QString& status, int px = 16) {
 }
 // Lay several small icons out horizontally into a single icon (for the Flags
 // column, which can only carry one DecorationRole image per cell).
-inline QIcon composeIcons(const QList<QIcon>& icons, int px = 16) {
+inline QIcon composeIcons(const QList<QIcon>& icons, int px = kFlagIconPx) {
     if (icons.isEmpty()) return {};
-    const int gap = 2;
+    const int gap = qMax(2, px / 4); // even, size-proportional spacing
     const int w = icons.size() * px + (icons.size() - 1) * gap;
     QPixmap pm(w, px); pm.fill(Qt::transparent);
     QPainter p(&pm);
     int x = 0;
-    for (const QIcon& ic : icons) { ic.paint(&p, QRect(x, 0, px, px)); x += px + gap; }
+    // Each icon is painted, centred, into an identical px×px cell so every flag
+    // is the same size regardless of how many share the strip.
+    for (const QIcon& ic : icons) {
+        ic.paint(&p, QRect(x, 0, px, px), Qt::AlignCenter);
+        x += px + gap;
+    }
     return QIcon(pm);
 }
 inline QIcon renderSvgIcon(const QString& resPath, const QColor& tint, int px = 20) {

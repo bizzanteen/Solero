@@ -144,7 +144,7 @@ void BethiniWindow::buildUI() {
     presetBar->addWidget(recBtn);
     presetBar->addStretch();
     auto* searchEdit = new QLineEdit(this);
-    searchEdit->setPlaceholderText("Search…");
+    searchEdit->setPlaceholderText(QStringLiteral("Search") + QChar(0x2026)); // ellipsis
     searchEdit->setMaximumWidth(200);
     connect(searchEdit, &QLineEdit::textChanged, this, &BethiniWindow::onSearch);
     presetBar->addWidget(searchEdit);
@@ -527,7 +527,7 @@ void BethiniWindow::applyPreset(const QString& presetName) {
     resetDirty();
     QString shortName = presetName;
     shortName.remove("Bethini ");
-    showStatus(QStringLiteral("✓ Applied preset: %1").arg(shortName));
+    showStatus(QChar(0x2713) + QStringLiteral(" Applied preset: ") + shortName); // check mark
 }
 
 // BethINI Pie's well-known "Recommended Tweaks" for Skyrim SE: a curated set of
@@ -571,7 +571,7 @@ void BethiniWindow::applyRecommendedTweaks() {
     pushInisToLive();
     // Re-read the UI rows so widgets reflect the new INI values.
     reloadRows();
-    showStatus(QStringLiteral("✓ Applied %1 recommended tweaks").arg(count));
+    showStatus(QChar(0x2713) + QStringLiteral(" Applied %1 recommended tweaks").arg(count)); // check mark
 }
 
 void BethiniWindow::reloadRows() {
@@ -633,7 +633,9 @@ void BethiniWindow::onSave() {
     pushInisToLive();
     if (m_advEdit) m_advEdit->document()->setModified(false);
     resetDirty();
-    showStatus(QStringLiteral("\xe2\x9c\x93 Saved - applied to game"));
+    // check mark + em dash, built from QChar so they don't mojibake.
+    showStatus(QChar(0x2713) + QStringLiteral(" Saved ") + QChar('-')
+               + QStringLiteral(" applied to game"));
 }
 
 bool BethiniWindow::hasUnsavedChanges() const {

@@ -788,7 +788,54 @@ bool MainWindow::deployCurrent() {
     updateDeployButton();
     updatePluginNotice();
     updateSortButton();
+
+    // Auto-run any tools flagged "Run on deployment" - only after a real, fully
+    // successful DEPLOY (not a partial deploy, and never an undeploy, which lives
+    // in onDeployToggle and doesn't reach here).
+    if (result.success) runPostDeployTools();
+
     return result.success;
+}
+
+void MainWindow::runPostDeployTools() {
+    // Collect the flagged tools up front (in listed order) so the run loop doesn't
+    // observe mid-run changes to the store.
+    QList<solero::Executable> queue;
+    for (const auto& t : m_toolStore->tools())
+        if (t.runThroughDeployer) queue.append(t);
+    if (queue.isEmpty()) return;
+
+    // m_toolRunning serializes runs and blocks re-entrant deploys (deployCurrent /
+    // onDeployToggle / onRunTool all bail when it's set), so a post-deploy tool
+    // can't trigger another deploy loop. A tool exiting normally never re-enters
+    // here regardless.
+    const QString gameDir = solero::AppConfig::instance().gameDir();
+    const QString stagingDir = solero::AppConfig::instance().stagingDir();
+    QStringList failed;
+    for (const auto& exe : queue) {
+        statusBar()->showMessage("Running post-deploy tool: " + exe.name);
+        m_toolRunning = true;
+        showRunLock(exe.name);
+        auto res = solero::ToolRunner::run(exe, gameDir, stagingDir);
+        hideRunLock();
+        m_toolRunning = false;
+        // Don't abort the rest of the queue if one tool fails - record it.
+        if (!res.launched) failed.append(exe.name);
+    }
+
+    // A post-deploy tool may have captured output into a mod, changing staged
+    // files - refresh exactly as onRunTool does after a run.
+    m_modListView->invalidateModCache();
+    m_rightPane->invalidateModPluginCache();
+    if (auto* p = m_profileMgr->activeProfile()) { m_rightPane->refreshPlugins(p); m_modListView->setProfile(p); }
+    updatePluginNotice();
+
+    if (!failed.isEmpty())
+        QMessageBox::warning(this, "Post-Deploy Tools",
+            "These tools flagged \"Run on deployment\" failed to launch:\n\n"
+            + failed.join("\n"));
+    else
+        statusBar()->showMessage("Post-deploy tools finished.");
 }
 
 void MainWindow::onDeployToggle() {

@@ -130,6 +130,9 @@ private:
     void onZoomOut();
     void onZoomReset();
     void onRunTool(const solero::Executable& exe);
+    // After a successful deploy, run each tool flagged "Run on deployment"
+    // (runThroughDeployer) in listed order via ToolRunner, honoring the UI lock.
+    void runPostDeployTools();
     void onAddTool2();
     QString ensureOutputMod(const QString& name);
     // Pick a tool's output mod: suggest an existing load-order mod whose name

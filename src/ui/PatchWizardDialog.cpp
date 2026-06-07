@@ -5,38 +5,132 @@
 #include "install/ModInstaller.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QCheckBox>
 #include <QLabel>
-#include <QFrame>
-#include <QScrollArea>
+#include <QLineEdit>
+#include <QTreeWidget>
+#include <QTreeWidgetItem>
 #include <QDialogButtonBox>
 #include <QPushButton>
 #include <QMessageBox>
-#include <QIcon>
+#include <QStyledItemDelegate>
+#include <QTextDocument>
+#include <QAbstractTextDocumentLayout>
+#include <QApplication>
+#include <QPainter>
+#include <QPalette>
+#include <QTextOption>
 
 namespace solero {
+
+namespace {
+
+// The app's existing positive/green signal colour (see IconUtil.h
+// greenUpTriangleIcon, used for "this mod wins file conflicts"). Mid green:
+// readable on both the dark and light themes - unlike a dark "#2e7d32".
+constexpr const char* kReasonGreen = "#27ae60";
+
+// Roles carried by tree items.
+enum {
+    CandidateRole = Qt::UserRole,     // child only: index into m_candidates
+    SearchRole    = Qt::UserRole + 1, // lowercased text used by the filter box
+};
+
+// Delegate that renders an item's display text as rich text so a single row can
+// mix the normal-coloured option name with the green reason. Keeps the row to one
+// line and clips (elides) overly long content. The checkbox/branch indicator and
+// the selection background are still drawn by the style.
+class HtmlItemDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    void paint(QPainter* painter, const QStyleOptionViewItem& option,
+               const QModelIndex& index) const override {
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+        const QWidget* w = opt.widget;
+        QStyle* style = w ? w->style() : QApplication::style();
+
+        const QString html = opt.text;
+        opt.text.clear();
+        style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, w);
+
+        const QRect textRect = style->subElementRect(QStyle::SE_ItemViewItemText, &opt, w);
+        const QColor base = (opt.state & QStyle::State_Selected)
+            ? opt.palette.color(QPalette::HighlightedText)
+            : opt.palette.color(QPalette::Text);
+
+        QTextDocument doc;
+        doc.setDocumentMargin(0);
+        doc.setDefaultStyleSheet(QStringLiteral("body{color:%1;}").arg(base.name()));
+        QTextOption to;
+        to.setWrapMode(QTextOption::NoWrap);
+        doc.setDefaultTextOption(to);
+        doc.setHtml(QStringLiteral("<body>") + html + QStringLiteral("</body>"));
+
+        painter->save();
+        painter->setClipRect(textRect);
+        const qreal y = textRect.top() + (textRect.height() - doc.size().height()) / 2.0;
+        painter->translate(textRect.left(), y);
+        QAbstractTextDocumentLayout::PaintContext ctx;
+        ctx.clip = QRectF(0, 0, textRect.width(), textRect.height());
+        doc.documentLayout()->draw(painter, ctx);
+        painter->restore();
+    }
+
+    QSize sizeHint(const QStyleOptionViewItem& option,
+                   const QModelIndex& index) const override {
+        QSize s = QStyledItemDelegate::sizeHint(option, index);
+        s.setHeight(qMax(s.height(), 22));
+        return s;
+    }
+};
+
+} // namespace
 
 PatchWizardDialog::PatchWizardDialog(Profile* profile, QWidget* parent)
     : QDialog(parent), m_profile(profile) {
     setWindowTitle("Patch Wizard");
-    resize(640, 520);
+    resize(680, 560);
 
     auto* root = new QVBoxLayout(this);
+
     auto* intro = new QLabel(
-        "Re-scans installed FOMOD mods, reconstructs your original choices, and "
-        "compares them against your current load order. Surfaces patches that are "
-        "now applicable (a matching mod or plugin is present) but were not installed "
-        "- including \"pick which mod you have\" options. Tick the ones to install.", this);
+        "Surfaces FOMOD patches that are now applicable to your current load order "
+        "(a matching mod or plugin is present) but were never installed. Tick the "
+        "ones to install.", this);
     intro->setWordWrap(true);
     root->addWidget(intro);
 
-    auto* scroll = new QScrollArea(this);
-    scroll->setWidgetResizable(true);
-    auto* container = new QWidget(scroll);
-    m_listLayout = new QVBoxLayout(container);
-    m_listLayout->setAlignment(Qt::AlignTop);
-    scroll->setWidget(container);
-    root->addWidget(scroll, 1);
+    // Toolbar: select all / none + filter.
+    auto* tools = new QHBoxLayout();
+    m_selectAllBtn = new QPushButton("Select all", this);
+    m_selectNoneBtn = new QPushButton("Select none", this);
+    connect(m_selectAllBtn, &QPushButton::clicked, this, [this] { setAllChecked(true); });
+    connect(m_selectNoneBtn, &QPushButton::clicked, this, [this] { setAllChecked(false); });
+    tools->addWidget(m_selectAllBtn);
+    tools->addWidget(m_selectNoneBtn);
+    tools->addStretch(1);
+    m_filter = new QLineEdit(this);
+    m_filter->setPlaceholderText("Filter\xe2\x80\xa6");
+    m_filter->setClearButtonEnabled(true);
+    m_filter->setMaximumWidth(240);
+    connect(m_filter, &QLineEdit::textChanged, this, &PatchWizardDialog::applyFilter);
+    tools->addWidget(m_filter);
+    root->addLayout(tools);
+
+    m_tree = new QTreeWidget(this);
+    m_tree->setHeaderHidden(true);
+    m_tree->setColumnCount(1);
+    m_tree->setUniformRowHeights(true);
+    m_tree->setItemDelegate(new HtmlItemDelegate(m_tree));
+    m_tree->setExpandsOnDoubleClick(true);
+    connect(m_tree, &QTreeWidget::itemChanged, this, &PatchWizardDialog::onItemChanged);
+    root->addWidget(m_tree, 1);
+
+    m_empty = new QLabel("No applicable patches found.", this);
+    m_empty->setAlignment(Qt::AlignCenter);
+    m_empty->hide();
+    root->addWidget(m_empty);
 
     auto* buttons = new QDialogButtonBox(this);
     m_installBtn = buttons->addButton("Install Selected", QDialogButtonBox::AcceptRole);
@@ -46,7 +140,7 @@ PatchWizardDialog::PatchWizardDialog(Profile* profile, QWidget* parent)
     root->addWidget(buttons);
 
     runScan();
-    buildList();
+    buildTree();
 }
 
 void PatchWizardDialog::runScan() {
@@ -62,46 +156,52 @@ void PatchWizardDialog::runScan() {
     prog.close();
 }
 
-void PatchWizardDialog::buildList() {
+void PatchWizardDialog::buildTree() {
     if (m_candidates.isEmpty()) {
-        auto* empty = new QLabel("No applicable patches found.", this);
-        empty->setAlignment(Qt::AlignCenter);
-        m_listLayout->addWidget(empty);
+        m_tree->hide();
+        m_filter->setEnabled(false);
+        m_selectAllBtn->setEnabled(false);
+        m_selectNoneBtn->setEnabled(false);
+        m_empty->show();
         m_installBtn->setEnabled(false);
         return;
     }
 
-    QString lastMod;
-    for (const PatchCandidate& c : m_candidates) {
-        if (c.modName != lastMod) {
-            lastMod = c.modName;
-            auto* header = new QLabel("<b>" + c.modName.toHtmlEscaped() + "</b>", this);
-            m_listLayout->addWidget(header);
+    m_updating = true; // suppress propagation while populating
+
+    QHash<QString, QTreeWidgetItem*> groups; // modId -> top-level item
+    QStringList order;                        // preserve scan order
+
+    for (int i = 0; i < m_candidates.size(); ++i) {
+        const PatchCandidate& c = m_candidates[i];
+        QTreeWidgetItem* parent = groups.value(c.modId);
+        if (!parent) {
+            parent = new QTreeWidgetItem(m_tree);
+            parent->setData(0, SearchRole, c.modName.toLower());
+            groups.insert(c.modId, parent);
+            order << c.modId;
         }
-        auto* row = new QWidget(this);
-        auto* rl = new QVBoxLayout(row);
-        rl->setContentsMargins(16, 2, 4, 6);
-        rl->setSpacing(1);
-        auto* check = new QCheckBox(c.optionName, row);
-        if (c.installable) {
-            check->setChecked(true);
-        } else {
-            check->setChecked(false);
-            check->setEnabled(false);
-            check->setText(c.optionName + "  (detected - install needs the source archive)");
+
+        auto* child = new QTreeWidgetItem(parent);
+        child->setData(0, CandidateRole, i);
+        child->setData(0, SearchRole,
+                       (c.modName + " " + c.optionName + " " + c.reason).toLower());
+
+        // One-line rich text: option name + green reason inline.
+        QString html = c.optionName.toHtmlEscaped();
+        if (!c.reason.isEmpty()) {
+            html += QStringLiteral(" <span style=\"color:%1;\">- %2</span>")
+                        .arg(kReasonGreen, c.reason.toHtmlEscaped());
         }
-        rl->addWidget(check);
-        auto* reason = new QLabel("<i>" + c.reason.toHtmlEscaped() + "</i>", row);
-        reason->setStyleSheet("color: palette(mid);");
-        reason->setContentsMargins(20, 0, 0, 0);
-        rl->addWidget(reason);
-        if (!c.optionDescription.isEmpty()) {
-            auto* desc = new QLabel(c.optionDescription, row);
-            desc->setWordWrap(true);
-            desc->setContentsMargins(20, 0, 0, 0);
-            rl->addWidget(desc);
+        if (!c.installable) {
+            html += QStringLiteral(" <i>(install needs the source archive)</i>");
         }
-        // Summarise the files/folders this patch would install.
+        child->setData(0, Qt::DisplayRole, html);
+
+        // Verbose detail -> tooltip.
+        QString tip = c.optionName;
+        if (!c.optionDescription.isEmpty())
+            tip += "\n\n" + c.optionDescription;
         QStringList paths;
         for (const FomodFile& f : c.files) {
             const QString d = f.destination.isEmpty()
@@ -109,31 +209,154 @@ void PatchWizardDialog::buildList() {
             paths << (f.isFolder ? (d + "/*") : d);
         }
         if (!paths.isEmpty()) {
-            const int shown = qMin(paths.size(), 8);
-            QString text = paths.mid(0, shown).join(", ");
+            const int shown = qMin(paths.size(), 30);
+            tip += "\n\nInstalls:\n\xe2\x80\xa2 " + paths.mid(0, shown).join("\n\xe2\x80\xa2 ");
             if (paths.size() > shown)
-                text += QStringLiteral(" \xe2\x80\xa6 (+%1 more)").arg(paths.size() - shown);
-            auto* files = new QLabel(text.toHtmlEscaped(), row);
-            files->setWordWrap(true);
-            files->setStyleSheet("color: palette(mid); font-size: 11px;");
-            files->setContentsMargins(20, 0, 0, 0);
-            rl->addWidget(files);
+                tip += QStringLiteral("\n\xe2\x80\xa6 (+%1 more)").arg(paths.size() - shown);
         }
-        m_listLayout->addWidget(row);
-        m_checks.append(check);
+        if (!c.installable)
+            tip += "\n\n(install needs the source archive)";
+        child->setToolTip(0, tip);
+
+        if (c.installable) {
+            child->setFlags((child->flags() | Qt::ItemIsUserCheckable) & ~Qt::ItemIsAutoTristate);
+            child->setCheckState(0, Qt::Checked);
+        } else {
+            // Detected only: an unchecked, non-checkable, disabled row.
+            child->setFlags(child->flags() & ~Qt::ItemIsUserCheckable);
+            child->setCheckState(0, Qt::Unchecked);
+            child->setDisabled(true);
+        }
+    }
+
+    // Finalise each group: label with patch count + parent check state.
+    for (const QString& modId : order) {
+        QTreeWidgetItem* parent = groups.value(modId);
+        const int n = parent->childCount();
+        const QString name = m_candidates[parent->child(0)->data(0, CandidateRole).toInt()].modName;
+        parent->setData(0, Qt::DisplayRole,
+            QStringLiteral("<b>%1</b> (%2 patch%3)")
+                .arg(name.toHtmlEscaped()).arg(n).arg(n == 1 ? "" : "es"));
+
+        bool hasCheckable = false;
+        for (int j = 0; j < n; ++j)
+            if (parent->child(j)->flags() & Qt::ItemIsUserCheckable) { hasCheckable = true; break; }
+        if (hasCheckable)
+            parent->setFlags(parent->flags() | Qt::ItemIsUserCheckable);
+        else
+            parent->setFlags(parent->flags() & ~Qt::ItemIsUserCheckable);
+        updateParentState(parent);
+    }
+
+    m_tree->expandAll();
+    m_updating = false;
+    updateInstallEnabled();
+}
+
+// Recompute a top-level item's tri-state from its checkable children.
+void PatchWizardDialog::updateParentState(QTreeWidgetItem* parent) {
+    if (!parent || !(parent->flags() & Qt::ItemIsUserCheckable)) return;
+    int checkable = 0, checked = 0;
+    for (int i = 0; i < parent->childCount(); ++i) {
+        QTreeWidgetItem* ch = parent->child(i);
+        if (!(ch->flags() & Qt::ItemIsUserCheckable)) continue;
+        ++checkable;
+        if (ch->checkState(0) == Qt::Checked) ++checked;
+    }
+    Qt::CheckState st = (checked == 0) ? Qt::Unchecked
+                       : (checked == checkable) ? Qt::Checked
+                       : Qt::PartiallyChecked;
+    if (parent->checkState(0) != st) parent->setCheckState(0, st);
+}
+
+void PatchWizardDialog::onItemChanged(QTreeWidgetItem* item, int column) {
+    if (m_updating || column != 0) return;
+    m_updating = true;
+    if (!item->parent()) {
+        // Top-level toggled: drive all checkable children to match.
+        const Qt::CheckState st = item->checkState(0);
+        if (st != Qt::PartiallyChecked) {
+            for (int i = 0; i < item->childCount(); ++i) {
+                QTreeWidgetItem* ch = item->child(i);
+                if (ch->flags() & Qt::ItemIsUserCheckable)
+                    ch->setCheckState(0, st);
+            }
+        }
+    } else {
+        updateParentState(item->parent());
+    }
+    m_updating = false;
+    updateInstallEnabled();
+}
+
+void PatchWizardDialog::setAllChecked(bool checked) {
+    m_updating = true;
+    const Qt::CheckState st = checked ? Qt::Checked : Qt::Unchecked;
+    for (int i = 0; i < m_tree->topLevelItemCount(); ++i) {
+        QTreeWidgetItem* parent = m_tree->topLevelItem(i);
+        for (int j = 0; j < parent->childCount(); ++j) {
+            QTreeWidgetItem* ch = parent->child(j);
+            if (ch->flags() & Qt::ItemIsUserCheckable)
+                ch->setCheckState(0, st);
+        }
+        updateParentState(parent);
+    }
+    m_updating = false;
+    updateInstallEnabled();
+}
+
+void PatchWizardDialog::applyFilter(const QString& text) {
+    const QString needle = text.trimmed().toLower();
+    for (int i = 0; i < m_tree->topLevelItemCount(); ++i) {
+        QTreeWidgetItem* parent = m_tree->topLevelItem(i);
+        const bool parentMatch =
+            needle.isEmpty() || parent->data(0, SearchRole).toString().contains(needle);
+        bool anyVisible = false;
+        for (int j = 0; j < parent->childCount(); ++j) {
+            QTreeWidgetItem* ch = parent->child(j);
+            const bool match = parentMatch || needle.isEmpty()
+                || ch->data(0, SearchRole).toString().contains(needle);
+            ch->setHidden(!match);
+            anyVisible = anyVisible || match;
+        }
+        parent->setHidden(!anyVisible);
     }
 }
 
+void PatchWizardDialog::updateInstallEnabled() {
+    int checked = 0;
+    for (int i = 0; i < m_tree->topLevelItemCount(); ++i) {
+        QTreeWidgetItem* parent = m_tree->topLevelItem(i);
+        for (int j = 0; j < parent->childCount(); ++j) {
+            QTreeWidgetItem* ch = parent->child(j);
+            if ((ch->flags() & Qt::ItemIsUserCheckable) && ch->checkState(0) == Qt::Checked)
+                ++checked;
+        }
+    }
+    m_installBtn->setEnabled(checked > 0);
+}
+
 void PatchWizardDialog::onInstallSelected() {
+    // Gather every checked child across all mod groups.
+    QList<int> selected;
+    for (int i = 0; i < m_tree->topLevelItemCount(); ++i) {
+        QTreeWidgetItem* parent = m_tree->topLevelItem(i);
+        for (int j = 0; j < parent->childCount(); ++j) {
+            QTreeWidgetItem* ch = parent->child(j);
+            if ((ch->flags() & Qt::ItemIsUserCheckable) && ch->checkState(0) == Qt::Checked)
+                selected << ch->data(0, CandidateRole).toInt();
+        }
+    }
+
     QStringList changed;
     int installed = 0;
     ProgressModal prog(this, "Patch Wizard", "Installing patches\xe2\x80\xa6");
     prog.show();
     prog.pump();
     const QString staging = AppConfig::instance().stagingDir();
-    for (int i = 0; i < m_candidates.size(); ++i) {
-        if (i >= m_checks.size() || !m_checks[i]->isChecked()) continue;
-        const PatchCandidate& c = m_candidates[i];
+    for (int idx : selected) {
+        if (idx < 0 || idx >= m_candidates.size()) continue;
+        const PatchCandidate& c = m_candidates[idx];
         if (!c.installable || c.sourceArchive.isEmpty()) continue;
         prog.setMessage("Installing: " + c.optionName);
         prog.pump();

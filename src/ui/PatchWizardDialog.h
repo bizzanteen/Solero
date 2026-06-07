@@ -4,9 +4,11 @@
 #include <QList>
 #include <QStringList>
 
-class QCheckBox;
-class QVBoxLayout;
 class QPushButton;
+class QTreeWidget;
+class QTreeWidgetItem;
+class QLineEdit;
+class QLabel;
 
 namespace solero {
 
@@ -27,14 +29,23 @@ signals:
 
 private:
     void runScan();
-    void buildList();
+    void buildTree();
+    void onItemChanged(QTreeWidgetItem* item, int column);
     void onInstallSelected();
+    void setAllChecked(bool checked);
+    void applyFilter(const QString& text);
+    void updateParentState(QTreeWidgetItem* parent);
+    void updateInstallEnabled();
 
     Profile* m_profile = nullptr;
     QList<PatchCandidate> m_candidates;
-    QList<QCheckBox*> m_checks;     // parallel to m_candidates
-    QVBoxLayout* m_listLayout = nullptr;
+    QTreeWidget* m_tree = nullptr;
+    QLineEdit* m_filter = nullptr;
+    QLabel* m_empty = nullptr;
     QPushButton* m_installBtn = nullptr;
+    QPushButton* m_selectAllBtn = nullptr;
+    QPushButton* m_selectNoneBtn = nullptr;
+    bool m_updating = false;   // re-entrancy guard for check-state propagation
 };
 
 } // namespace solero

@@ -30,6 +30,10 @@
 #include "fomod/FomodScanner.h"
 #include "loot/LootSorter.h"
 #include "PluginListView.h"
+#include "ui/ProblemsDialog.h"
+#include "ui/IconUtil.h"
+#include "core/HealthCheck.h"
+#include "install/DependencyChecker.h"
 #include "nexus/NexusApi.h"
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -428,6 +432,15 @@ void MainWindow::setupToolbar() {
     tb->addAction("\xe2\x96\xb6 Play", this, &MainWindow::onPlay);
     tb->addSeparator();
 
+    // Problems / health indicator: count + worst-severity icon, opens the panel.
+    m_problemsBtn = new QToolButton(tb);
+    m_problemsBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_problemsBtn->setText("Problems");
+    m_problemsBtn->setToolTip("Show problems (missing masters, dependencies, conflicts, FOMOD, deploy)");
+    connect(m_problemsBtn, &QToolButton::clicked, this, &MainWindow::onShowProblems);
+    tb->addWidget(m_problemsBtn);
+    tb->addSeparator();
+
     // Game settings
     tb->addAction("\xe2\x9a\x99 Settings", this, [this]{
         solero::SettingsDialog dlg(this);
@@ -696,9 +709,13 @@ void MainWindow::switchProfile(const QString& name) {
     QString conflictPath = solero::DeployEngine::conflictIndexPath(profile->path());
     if (QFile::exists(conflictPath)) {
         const auto ci = solero::ConflictIndex::loadFromFile(conflictPath);
+        m_lastConflicts = ci;
         m_rightPane->setConflictIndex(ci);
         m_modListView->setConflictIndex(ci);
+    } else {
+        m_lastConflicts.clear();
     }
+    m_lastDeployWarning.clear(); // stale once we switch profiles
     setWindowTitle(QString("Solero - %1").arg(name));
 
     // Deploy the incoming profile if the previous one was deployed.
@@ -713,7 +730,9 @@ void MainWindow::switchProfile(const QString& name) {
                                     [&](int d, int t){ if (prog) { prog->setProgress(d, t); prog->pump(); } });
         m_deployed = result.success;
         m_deployDirty = false;
+        m_lastDeployWarning = result.warning;
         if (result.success) {
+            m_lastConflicts = result.conflicts;
             m_rightPane->setConflictIndex(result.conflicts);
             m_modListView->setConflictIndex(result.conflicts);
             m_rightPane->setProfile(profile);
@@ -729,6 +748,7 @@ void MainWindow::switchProfile(const QString& name) {
     if (prog) prog->close();
     updatePluginNotice();
     updateSortButton();
+    refreshHealthIndicator();
 
     // Auto-check Nexus for mod updates after a profile loads (throttled to once
     // every 6h, opt-out via Settings, no-op if no key / no Nexus-tagged mods).
@@ -782,6 +802,7 @@ bool MainWindow::deployCurrent() {
     }
     if (!result.warning.isEmpty())
         QMessageBox::information(this, "Deploy Notice", result.warning);
+    m_lastDeployWarning = result.warning;
 
     m_deployed = result.success;
     m_deployDirty = false;
@@ -789,6 +810,7 @@ bool MainWindow::deployCurrent() {
         QString("Deployed %1 files. %2 conflicts. Plugins sorted by LOOT.")
             .arg(result.filesDeployed)
             .arg(result.conflicts.conflictedPaths().size()));
+    m_lastConflicts = result.conflicts;
     m_rightPane->setConflictIndex(result.conflicts);
     m_modListView->setConflictIndex(result.conflicts);
     m_rightPane->setProfile(profile); // refresh plugin list - LOOT may have reordered it
@@ -798,6 +820,7 @@ bool MainWindow::deployCurrent() {
     updateDeployButton();
     updatePluginNotice();
     updateSortButton();
+    refreshHealthIndicator();
 
     // Auto-run any tools flagged "Run on deployment" - only after a real, fully
     // successful DEPLOY (not a partial deploy, and never an undeploy, which lives
@@ -885,12 +908,15 @@ void MainWindow::onDeployToggle() {
         m_loadOrderDirty = false; // not deployed -> manual sort no longer applies
         m_modListView->invalidateModCache(); // undeploy may have cleared Overwrite
         if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
+        m_lastConflicts.clear();      // no live deployment -> no conflict winners
+        m_lastDeployWarning.clear();
         statusBar()->showMessage("Undeployed.");
     }
 
     updateDeployButton();
     updatePluginNotice();
     updateSortButton();
+    refreshHealthIndicator();
 }
 
 void MainWindow::updateDeployButton() {
@@ -905,6 +931,57 @@ void MainWindow::updateDeployButton() {
         m_deployAction->setText("\xe2\x9c\x97 Not Deployed");
         m_deployAction->setToolTip("Click to deploy mods to game directory (Ctrl+D)");
     }
+}
+
+void MainWindow::refreshHealthIndicator() {
+    if (!m_problemsBtn) return;
+    QList<solero::HealthIssue> issues;
+    if (auto* profile = m_profileMgr->activeProfile()) {
+        solero::HealthInputs in;
+        in.dependencyWarnings = solero::DependencyChecker::check(
+            profile->modList(), solero::AppConfig::instance().stagingDir());
+        in.lastDeployWarning = m_lastDeployWarning;
+        in.deployed          = m_deployed;
+        in.deployDirty       = m_deployDirty;
+        issues = solero::collect(*profile, m_lastConflicts, in);
+    }
+
+    const int worst = solero::worstSeverity(issues);
+    if (issues.isEmpty()) {
+        m_problemsBtn->setText("No Problems");
+        m_problemsBtn->setIcon(QIcon());
+    } else {
+        m_problemsBtn->setText(QString("Problems (%1)").arg(issues.size()));
+        m_problemsBtn->setIcon(
+            worst == int(solero::HealthSeverity::Error)   ? solero::redBangIcon(18)
+          : worst == int(solero::HealthSeverity::Warning) ? solero::yellowUpArrowIcon(18)
+                                                          : QIcon());
+    }
+
+    if (m_problemsDialog && m_problemsDialog->isVisible())
+        m_problemsDialog->setIssues(issues);
+}
+
+void MainWindow::onShowProblems() {
+    if (!m_problemsDialog) {
+        m_problemsDialog = new solero::ProblemsDialog(this);
+        connect(m_problemsDialog, &solero::ProblemsDialog::rescanRequested,
+                this, &MainWindow::refreshHealthIndicator);
+        connect(m_problemsDialog, &solero::ProblemsDialog::goToMod, this,
+                [this](const QString& id) {
+                    if (m_browseAction && m_browseAction->isChecked())
+                        m_browseAction->setChecked(false); // leave the Nexus browser
+                    m_modListView->selectModById(id);
+                });
+        connect(m_problemsDialog, &solero::ProblemsDialog::goToPlugin, this,
+                [this](const QString& filename) {
+                    m_rightPane->selectPlugin(filename);
+                });
+    }
+    refreshHealthIndicator(); // populate with the current state before showing
+    m_problemsDialog->show();
+    m_problemsDialog->raise();
+    m_problemsDialog->activateWindow();
 }
 
 void MainWindow::updatePluginNotice() {
@@ -1085,6 +1162,7 @@ void MainWindow::onModsChanged() {
     if (profile) m_rightPane->refreshPlugins(profile);  // plugins follow enabled mods
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     updatePluginNotice();
+    refreshHealthIndicator();
 }
 
 void MainWindow::onInstallMod() {
@@ -1922,6 +2000,7 @@ void MainWindow::onScanFomod() {
 
     // Refresh the mod list so new FOMOD badges/tooltips show immediately.
     m_modListView->setProfile(profile);
+    refreshHealthIndicator(); // FOMOD needs-rerun flags may have changed
 
     QMessageBox::information(
         this, "Scan for FOMOD mods",
@@ -2028,6 +2107,7 @@ void MainWindow::refreshDeployState() {
     updateDeployButton();
     updatePluginNotice();
     updateSortButton();
+    refreshHealthIndicator(); // m_deployed just settled - reflect it in the count
 }
 
 void MainWindow::onNewProfile() {

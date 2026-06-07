@@ -73,6 +73,7 @@ set(SOLERO_SOURCES
   src/app/NxmRegister.cpp
   src/core/ModList.cpp
   src/core/PluginList.cpp
+  src/core/HealthCheck.cpp
   src/core/FileMove.cpp
   src/core/LoadOrderBackup.cpp
   src/core/Profile.cpp
@@ -84,6 +85,7 @@ set(SOLERO_SOURCES
   src/ui/ModListView.cpp
   src/ui/PluginListModel.cpp
   src/ui/PluginListView.cpp
+  src/ui/ProblemsDialog.cpp
   src/ui/BottomPanel.cpp
   src/ui/ModInfoWidget.cpp
   src/ui/SeparatorDialog.cpp

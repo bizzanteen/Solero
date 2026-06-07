@@ -16,6 +16,9 @@ public:
 
     explicit ModListView(QWidget* parent = nullptr);
     void setProfile(Profile* profile);
+    // Select + scroll to the Mod row with the given id (jump-to from the Problems
+    // panel). No-op if the id isn't present or its row is hidden (collapsed group).
+    void selectModById(const QString& id);
     void deleteSelectedMods();
     // Hide Mod rows whose name doesn't contain `text` (case-insensitive).
     // Separators with no visible children are hidden while filtering; the

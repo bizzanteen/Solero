@@ -18,6 +18,22 @@ add_solero_test(test_PluginList)
 add_solero_test(test_Profile)
 add_solero_test(test_LoadOrderBackup)
 
+# HealthCheck aggregates Profile + ConflictIndex data, so link the core profile
+# set plus ConflictIndex and HealthCheck itself.
+add_executable(test_HealthCheck test_HealthCheck.cpp
+  ../src/core/HealthCheck.cpp
+  ../src/deploy/ConflictIndex.cpp
+  ../src/core/ModList.cpp
+  ../src/core/PluginList.cpp
+  ../src/core/LoadOrderBackup.cpp
+  ../src/core/Profile.cpp
+  ../src/core/ProfileManager.cpp
+  ../src/ai/AITransaction.cpp
+)
+target_include_directories(test_HealthCheck PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_HealthCheck PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_HealthCheck COMMAND test_HealthCheck)
+
 function(add_solero_deploy_test name)
   add_executable(${name} ${name}.cpp
     ../src/deploy/Linker.cpp

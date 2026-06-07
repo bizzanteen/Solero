@@ -11,6 +11,9 @@ public:
     void setProfile(Profile* profile);
     void reconcileWith(Profile* profile, const QString& stagingRoot);
     void highlightPlugins(const QStringList& filenames);
+    // Select + scroll to the plugin row matching `filename` (case-insensitive),
+    // mapping through the sort proxy when active. No-op if not found.
+    void selectPlugin(const QString& filename);
 signals:
     // Forwarded from the model: the user manually reordered the load order.
     void loadOrderChanged();

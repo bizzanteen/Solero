@@ -28,6 +28,9 @@ public:
     void setConflictIndex(const ConflictIndex& index);
     DownloadsTab* downloadsTab() const { return m_downloadsTab; }
     void showDownloadsTab();
+    // Switch to the Plugins tab and select + scroll to the named plugin (jump-to
+    // from the Problems panel).
+    void selectPlugin(const QString& filename);
     void showPluginNotice(const QString& text);
     void hidePluginNotice();
     // Enable/disable the Plugins-tab "Sort Now" (LOOT) button. An empty tooltip

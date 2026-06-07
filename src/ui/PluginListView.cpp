@@ -4,6 +4,7 @@
 #include "core/AppConfig.h"
 #include <QHeaderView>
 #include <QSortFilterProxyModel>
+#include <QItemSelectionModel>
 #include <QSet>
 #include <QMenu>
 #include <QContextMenuEvent>
@@ -203,6 +204,27 @@ void PluginListView::contextMenuEvent(QContextMenuEvent* event) {
 
 void PluginListView::setAllEnabled(bool enabled) {
     m_model->setAllEnabled(enabled);
+}
+
+void PluginListView::selectPlugin(const QString& filename) {
+    Profile* profile = m_model->profile();
+    if (filename.isEmpty() || !profile) return;
+    // Find the source row by case-insensitive filename match against the live
+    // plugin list (the model's DisplayRole may carry a pin-glyph prefix).
+    const PluginList& pl = profile->pluginList();
+    int srcRow = -1;
+    for (int r = 0; r < pl.count(); ++r)
+        if (pl.at(r).filename.compare(filename, Qt::CaseInsensitive) == 0) {
+            srcRow = r; break;
+        }
+    if (srcRow < 0) return;
+    QModelIndex idx = m_model->index(srcRow, PluginListModel::ColName);
+    if (model() == m_proxy) idx = m_proxy->mapFromSource(idx);
+    if (!idx.isValid()) return;
+    selectionModel()->setCurrentIndex(
+        idx, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    scrollTo(idx, QAbstractItemView::PositionAtCenter);
+    setFocus();
 }
 
 void PluginListView::highlightPlugins(const QStringList& filenames) {

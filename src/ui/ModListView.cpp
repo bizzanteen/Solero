@@ -153,6 +153,24 @@ void ModListView::setProfile(Profile* profile) {
     QTimer::singleShot(0, this, [this]{ autoSizeColumns(); });
 }
 
+void ModListView::selectModById(const QString& id) {
+    Profile* profile = m_model->profile();
+    if (!profile || id.isEmpty()) return;
+    const ModList& ml = profile->modList();
+    int raw = -1;
+    for (int i = 0; i < ml.count(); ++i)
+        if (ml.at(i).id == id) { raw = i; break; }
+    if (raw < 0) return;
+    const int row = m_model->rawToVisible(raw);
+    if (row < 0) return; // hidden (e.g. inside a collapsed group/separator)
+    const QModelIndex idx = m_model->index(row, ModListModel::ColName);
+    if (!idx.isValid()) return;
+    selectionModel()->setCurrentIndex(
+        idx, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    scrollTo(idx, QAbstractItemView::PositionAtCenter);
+    setFocus();
+}
+
 void ModListView::autoSizeColumns() {
     // Fit every column to header + cell contents (leaves sections Interactive),
     // then let the Name column consume the remaining width.

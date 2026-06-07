@@ -81,6 +81,12 @@ void RightPane::showDownloadsTab() {
     setCurrentWidget(m_downloadsTab);
 }
 
+void RightPane::selectPlugin(const QString& filename) {
+    if (auto* container = m_pluginsTab->parentWidget())
+        setCurrentWidget(container);
+    m_pluginsTab->selectPlugin(filename);
+}
+
 void RightPane::showPluginNotice(const QString& text) {
     m_pluginNotice->setText(text);
     m_pluginNotice->show();

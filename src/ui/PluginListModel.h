@@ -12,6 +12,7 @@ public:
     enum Column { ColEnabled = 0, ColPriority, ColName, ColFlags, ColCount };
     explicit PluginListModel(QObject* parent = nullptr);
     void setProfile(Profile* profile);
+    Profile* profile() const { return m_profile; }
     void reconcile(const QStringList& available);
     void setHighlighted(const QSet<QString>& lowerFilenames);
     // Enable or disable every plugin at once (save + refresh).

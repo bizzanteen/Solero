@@ -34,6 +34,7 @@ class PluginListView;
 class RightPane;
 class BottomPanel;
 class BethiniWindow;
+class ProblemsDialog;
 }
 
 class MainWindow : public QMainWindow {
@@ -74,6 +75,12 @@ private:
     void hideRunLock();
     void refreshDeployState();   // detect an existing deployment on startup
     void updateDeployButton();   // sync the toggle's text/tooltip to m_deployed
+    // Recompute the aggregated health issues for the active profile and refresh
+    // the toolbar Problems indicator (count + worst-severity icon). Cheap enough
+    // to call from the existing post-deploy / profile-switch / scan refresh points
+    // (a shallow dependency scan, no recursion); not wired to per-keystroke events.
+    void refreshHealthIndicator();
+    void onShowProblems();       // open (or refresh) the non-modal Problems panel
     void updatePluginNotice();   // show/hide the Plugins-tab staleness notice
     void updateSortButton();     // enable "Sort Now" only when deployed && load order dirty
     void onLoadOrderChanged();   // user manually reordered a plugin -> mark order dirty
@@ -170,6 +177,10 @@ private:
     bool m_switchingProfile = false; // guards re-entrant switchProfile (pumps re-dispatch combo changes)
     bool m_warnedMissingAppData = false; // one-time warning when AppData can't be located
     QAction* m_deployAction = nullptr;
+    QToolButton* m_problemsBtn = nullptr;          // toolbar health indicator
+    solero::ProblemsDialog* m_problemsDialog = nullptr;
+    QString m_lastDeployWarning;                   // last DeployResult::warning
+    solero::ConflictIndex m_lastConflicts;         // last deployed/loaded conflict index
     QComboBox* m_profileCombo = nullptr;
     QSplitter* m_splitter = nullptr;
     solero::ModListView*    m_modListView = nullptr;

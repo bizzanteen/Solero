@@ -11,6 +11,19 @@
 
 namespace solero {
 
+namespace {
+// U+1F4CC PUSHPIN, shown on pinned rows. QChar holds a single UTF-16 code unit
+// and can't represent this non-BMP code point, so build the QString straight
+// from the code point (no \xNN byte escapes - those have caused mojibake here).
+const QString& pinGlyph() {
+    static const QString g = [] {
+        const char32_t cp = 0x1F4CC;
+        return QString::fromUcs4(&cp, 1);
+    }();
+    return g;
+}
+} // namespace
+
 PluginListModel::PluginListModel(QObject* parent) : QAbstractTableModel(parent) {}
 
 void PluginListModel::setProfile(Profile* profile) {
@@ -94,7 +107,9 @@ void PluginListModel::reconcile(const QStringList& available) {
     PluginList rebuilt;
     for (const auto& e : officials) rebuilt.append(e);
     for (const auto& e : rest)      rebuilt.append(e);
+    rebuilt.copyOrderState(pl); // carry lock + pins across the wholesale rebuild
     pl = rebuilt;
+    pl.applyPins(); // restore pinned plugins to their indices after the reconcile
     endResetModel();
 }
 
@@ -106,6 +121,27 @@ void PluginListModel::setAllEnabled(bool enabled) {
         pl.setEnabled(pl.at(i).filename, enabled);
     m_profile->save();
     emit dataChanged(index(0, 0), index(pl.count() - 1, ColCount - 1));
+}
+
+void PluginListModel::togglePin(int row) {
+    if (!m_profile) return;
+    PluginList& pl = m_profile->pluginList();
+    if (row < 0 || row >= pl.count()) return;
+    const QString fn = pl.at(row).filename;
+    pl.setPinned(fn, !pl.isPinned(fn));
+    m_profile->save();
+    emit dataChanged(index(row, 0), index(row, ColCount - 1));
+}
+
+bool PluginListModel::isRowPinned(int row) const {
+    if (!m_profile || row < 0 || row >= m_profile->pluginList().count()) return false;
+    const auto& p = m_profile->pluginList().at(row);
+    return m_profile->pluginList().isPinned(p.filename);
+}
+
+bool PluginListModel::isRowOfficial(int row) const {
+    if (!m_profile || row < 0 || row >= m_profile->pluginList().count()) return false;
+    return m_profile->pluginList().at(row).isOfficial;
 }
 
 void PluginListModel::setHighlighted(const QSet<QString>& lowerFilenames) {
@@ -143,24 +179,31 @@ QVariant PluginListModel::data(const QModelIndex& idx, int role) const {
         return {};
     }
     if (role == Qt::ToolTipRole) {
+        QStringList parts;
+        const PluginList& pl = m_profile->pluginList();
+        if (pl.isPinned(p.filename))
+            parts << (pinGlyph() + QStringLiteral(" Pinned - restored to index %1 after sorts")
+                                       .arg(pl.pinnedIndex(p.filename)));
         const QStringList missing = missingMasters(p);
         if (!missing.isEmpty()) {
             QString t = QStringLiteral("Missing masters:");
             for (const QString& m : missing) t += "\n - " + m;
-            return t;
-        }
-        if (!p.masters.isEmpty()) {
+            parts << t;
+        } else if (!p.masters.isEmpty()) {
             QString t = QStringLiteral("Masters:");
             for (const QString& m : p.masters) t += "\n - " + m;
-            return t;
+            parts << t;
         }
-        return QString();
+        return parts.join(QStringLiteral("\n\n"));
     }
 
     if (role == Qt::DisplayRole) {
         switch (idx.column()) {
             case ColPriority: return idx.row();
-            case ColName:     return p.filename;
+            case ColName:
+                return m_profile->pluginList().isPinned(p.filename)
+                    ? (pinGlyph() + QStringLiteral(" ") + p.filename)
+                    : p.filename;
             case ColFlags: {
                 if (p.isMaster || p.filename.endsWith(".esm", Qt::CaseInsensitive))
                     return QStringLiteral("ESM");
@@ -291,9 +334,16 @@ bool PluginListModel::dropMimeData(const QMimeData* data, Qt::DropAction, int ro
     // Use beginMoveRows (not beginResetModel): resetting the model from inside the
     // view's drop event invalidates the persistent indexes the view still holds,
     // which crashes on the next move. moveRows updates them correctly.
+    // Capture the dragged plugin's name before the move so a pinned plugin can
+    // have its pinned index updated to the slot the user just dragged it to
+    // (pins follow the user's own moves; only sorts/reconciles restore them).
+    const QString movedFn = m_profile->pluginList().at(src).filename;
+
     if (!beginMoveRows(QModelIndex(), src, src, QModelIndex(), insertion))
         return false;
     m_profile->pluginList().move(src, finalTo);
+    if (m_profile->pluginList().isPinned(movedFn))
+        m_profile->pluginList().setPinned(movedFn, true); // re-record at new index
     m_profile->save();
     endMoveRows();
     emit loadOrderChanged(); // a successful manual reorder marks the order dirty

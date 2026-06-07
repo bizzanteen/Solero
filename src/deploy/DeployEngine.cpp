@@ -74,7 +74,9 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
 
     // Sort plugins with LOOT (if enabled) before writing plugins.txt. The mod
     // files must already be deployed above so LOOT can read the plugin headers.
-    if (m_lootEnabled) {
+    // A locked load order skips the auto-sort entirely and deploys the current
+    // manual order as-is.
+    if (m_lootEnabled && !profile.pluginList().loadOrderLocked()) {
         auto sortResult = LootSorter::sort(
             profile.pluginList(),
             m_gameDir,
@@ -82,6 +84,7 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
         if (!sortResult.success)
             qWarning() << "LOOT sort failed (deploying with current order):"
                        << sortResult.errorMessage;
+        profile.pluginList().applyPins(); // restore pinned plugins after the sort
         profile.save(); // persist the sorted order back to the profile
     }
 

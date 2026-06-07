@@ -575,6 +575,8 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onLoadOrderChanged);
     connect(m_rightPane, &solero::RightPane::sortRequested,
             this, &MainWindow::onSortRequested);
+    connect(m_rightPane, &solero::RightPane::lockOrderToggled,
+            this, &MainWindow::onLockOrderToggled);
     connect(m_rightPane, &solero::RightPane::lootRulesRequested,
             this, &MainWindow::onOpenLootRules);
     connect(m_rightPane, &solero::RightPane::backupLoRequested,
@@ -723,6 +725,7 @@ void MainWindow::switchProfile(const QString& name) {
     }
     // A profile switch starts from a clean (just-loaded or just-deployed) order.
     m_loadOrderDirty = false;
+    m_rightPane->setLockOrderChecked(profile->pluginList().loadOrderLocked());
     if (prog) prog->close();
     updatePluginNotice();
     updateSortButton();
@@ -920,8 +923,25 @@ void MainWindow::updatePluginNotice() {
 
 void MainWindow::updateSortButton() {
     // LOOT reads plugin headers from the deployed Data folder, so sorting only
-    // makes sense when deployed; only offer it when the user dirtied the order.
-    m_rightPane->setSortButtonEnabled(m_deployed && m_loadOrderDirty);
+    // makes sense when deployed; only offer it when the user dirtied the order
+    // and the load order isn't locked (locking disables LOOT auto-sort).
+    auto* profile = m_profileMgr->activeProfile();
+    const bool locked = profile && profile->pluginList().loadOrderLocked();
+    m_rightPane->setSortButtonEnabled(
+        m_deployed && m_loadOrderDirty && !locked,
+        locked ? QStringLiteral("Load order is locked")
+               : QStringLiteral("Run LOOT to auto-sort the load order"));
+}
+
+void MainWindow::onLockOrderToggled(bool checked) {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return;
+    profile->pluginList().setLoadOrderLocked(checked);
+    profile->save();
+    updateSortButton();
+    statusBar()->showMessage(checked
+        ? "Load order locked - LOOT auto-sort disabled; manual order kept."
+        : "Load order unlocked - LOOT auto-sort re-enabled.");
 }
 
 void MainWindow::onLoadOrderChanged() {
@@ -933,6 +953,10 @@ void MainWindow::onLoadOrderChanged() {
 void MainWindow::onSortRequested() {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) { statusBar()->showMessage("No active profile."); return; }
+    if (profile->pluginList().loadOrderLocked()) {
+        statusBar()->showMessage("Load order is locked - unlock to sort.");
+        return;
+    }
     if (!m_deployed) {
         statusBar()->showMessage("Deploy first - LOOT needs plugins in the game's Data folder.");
         return;
@@ -952,6 +976,7 @@ void MainWindow::onSortRequested() {
         return;
     }
 
+    profile->pluginList().applyPins(); // restore pinned plugins after the sort
     profile->save();
     m_rightPane->setProfile(profile); // refresh the plugins view with the sorted order
     m_loadOrderDirty = false;

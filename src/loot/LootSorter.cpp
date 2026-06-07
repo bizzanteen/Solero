@@ -100,6 +100,9 @@ LootSorter::SortResult LootSorter::sort(PluginList& pluginList,
                 newList.append(p);
         }
 
+        // Preserve manual load-order control state (lock + pins) across the
+        // wholesale list rebuild; the caller re-applies pins after sorting.
+        newList.copyOrderState(pluginList);
         pluginList = newList;
         result.success = true;
     } catch (const std::exception& e) {

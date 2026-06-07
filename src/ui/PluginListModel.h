@@ -17,6 +17,12 @@ public:
     // Enable or disable every plugin at once (save + refresh).
     void setAllEnabled(bool enabled);
 
+    // Toggle the pin on the plugin at `row` (records its current index when
+    // pinning), persist, and refresh that row's pin indicator.
+    void togglePin(int row);
+    bool isRowPinned(int row) const;
+    bool isRowOfficial(int row) const;
+
     int rowCount(const QModelIndex& = {}) const override;
     int columnCount(const QModelIndex& = {}) const override { return ColCount; }
     QVariant data(const QModelIndex&, int role = Qt::DisplayRole) const override;

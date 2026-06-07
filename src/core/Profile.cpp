@@ -19,13 +19,15 @@ QString Profile::skyrimCustomPath()  const { return m_path + "/SkyrimCustom.ini"
 QString Profile::executablesPath()   const { return m_path + "/executables.json"; }
 QString Profile::lootUserlistPath()  const { return m_path + "/loot-userlist.yaml"; }
 QString Profile::fileRulesPath()     const { return m_path + "/filerules.json"; }
+QString Profile::loadOrderStatePath() const { return m_path + "/loadorder-state.json"; }
 
 bool Profile::save() const {
     QDir().mkpath(m_path);
     if (!m_modList.saveToFile(modlistPath())) return false;
     if (!m_pluginList.saveToFile(pluginsPath())) return false;
     if (!saveExecutables()) return false;
-    return saveFileRules();
+    if (!saveFileRules()) return false;
+    return saveLoadOrderState();
 }
 
 bool Profile::load() {
@@ -35,6 +37,7 @@ bool Profile::load() {
         m_pluginList = PluginList::loadFromFile(pluginsPath());
     loadExecutables();
     loadFileRules();
+    loadLoadOrderState(); // after the plugin list - state is applied onto it
     return true;
 }
 
@@ -167,6 +170,33 @@ bool Profile::loadFileRules() {
         const QString modId = it.value().toString();
         if (!modId.isEmpty()) m_fileOverrides.insert(it.key(), modId);
     }
+    return true;
+}
+
+bool Profile::saveLoadOrderState() const {
+    QJsonObject pins;
+    const auto& pinned = m_pluginList.pinnedIndices();
+    for (auto it = pinned.cbegin(); it != pinned.cend(); ++it)
+        pins.insert(it.key(), it.value());
+
+    QJsonObject root;
+    root["loadOrderLocked"] = m_pluginList.loadOrderLocked();
+    root["pinned"]          = pins;
+    return atomicWrite(loadOrderStatePath(), QJsonDocument(root).toJson(QJsonDocument::Indented));
+}
+
+bool Profile::loadLoadOrderState() {
+    m_pluginList.setLoadOrderLocked(false);
+    m_pluginList.setPinnedIndices({});
+    QFile f(loadOrderStatePath());
+    if (!f.open(QIODevice::ReadOnly)) return false; // missing == unlocked, no pins
+    const auto root = QJsonDocument::fromJson(f.readAll()).object();
+    m_pluginList.setLoadOrderLocked(root["loadOrderLocked"].toBool(false));
+    QHash<QString, int> pins;
+    const auto obj = root["pinned"].toObject();
+    for (auto it = obj.constBegin(); it != obj.constEnd(); ++it)
+        pins.insert(it.key(), it.value().toInt());
+    m_pluginList.setPinnedIndices(pins);
     return true;
 }
 

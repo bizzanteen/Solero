@@ -141,6 +141,54 @@ void PluginList::restoreSnapshot(const QList<QPair<QString, bool>>& snapshot) {
     m_plugins = reordered;
 }
 
+void PluginList::setPinned(const QString& fn, bool pinned) {
+    const QString key = fn.toLower();
+    if (!pinned) { m_pinned.remove(key); return; }
+    // Record the plugin's current index; ignore a pin for a plugin not in the list.
+    for (int i = 0; i < m_plugins.size(); ++i)
+        if (m_plugins[i].filename.toLower() == key) { m_pinned[key] = i; return; }
+}
+
+bool PluginList::isPinned(const QString& fn) const {
+    return m_pinned.contains(fn.toLower());
+}
+
+int PluginList::pinnedIndex(const QString& fn) const {
+    return m_pinned.value(fn.toLower(), -1);
+}
+
+void PluginList::copyOrderState(const PluginList& other) {
+    m_loadOrderLocked = other.m_loadOrderLocked;
+    m_pinned = other.m_pinned;
+}
+
+void PluginList::applyPins() {
+    if (m_pinned.isEmpty()) return;
+    // Collect (target index, key) for every pinned plugin still in the list.
+    struct Pin { int target; QString key; };
+    QList<Pin> pins;
+    for (auto it = m_pinned.cbegin(); it != m_pinned.cend(); ++it) {
+        for (const auto& p : m_plugins)
+            if (p.filename.toLower() == it.key()) { pins.append({it.value(), it.key()}); break; }
+    }
+    // Settle pins from the lowest target upward so earlier slots are fixed first
+    // and later pins move into an already-stable prefix.
+    std::stable_sort(pins.begin(), pins.end(),
+        [](const Pin& a, const Pin& b){ return a.target < b.target; });
+    for (const Pin& pin : pins) {
+        int cur = -1;
+        for (int i = 0; i < m_plugins.size(); ++i)
+            if (m_plugins[i].filename.toLower() == pin.key) { cur = i; break; }
+        if (cur < 0) continue;
+        // Clamp the pinned index to the plugin's legal destination range so a pin
+        // can never lift a plugin above the official block or break the bands.
+        auto [lo, hi] = allowedDropRange(cur);
+        if (lo > hi) continue; // official/locked-in-place: not movable
+        const int to = std::clamp(pin.target, lo, hi);
+        if (to != cur) move(cur, to);
+    }
+}
+
 // plugins.txt format: lines starting with '*' are enabled, others disabled
 QString PluginList::toPluginsTxt() const {
     QStringList lines;

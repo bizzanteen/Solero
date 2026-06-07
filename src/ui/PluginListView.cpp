@@ -182,6 +182,20 @@ void PluginListView::reconcileWith(Profile* profile, const QString& stagingRoot)
 
 void PluginListView::contextMenuEvent(QContextMenuEvent* event) {
     QMenu menu(this);
+    // Resolve the row under the cursor, mapping through the proxy when the view is
+    // sorted by a non-priority column, so per-plugin actions hit the right plugin.
+    const QModelIndex idx = indexAt(viewport()->mapFromGlobal(event->globalPos()));
+    int srcRow = -1;
+    if (idx.isValid())
+        srcRow = (model() == m_proxy) ? m_proxy->mapToSource(idx).row() : idx.row();
+
+    // Pin/unpin only makes sense for movable (non-official) plugins.
+    if (srcRow >= 0 && !m_model->isRowOfficial(srcRow)) {
+        const bool pinned = m_model->isRowPinned(srcRow);
+        menu.addAction(pinned ? "Unpin" : "Pin to current position",
+                       [this, srcRow]{ m_model->togglePin(srcRow); });
+        menu.addSeparator();
+    }
     menu.addAction("Enable all",  [this]{ setAllEnabled(true); });
     menu.addAction("Disable all", [this]{ setAllEnabled(false); });
     menu.exec(event->globalPos());

@@ -78,6 +78,7 @@ private:
     void updateSortButton();     // enable "Sort Now" only when deployed && load order dirty
     void onLoadOrderChanged();   // user manually reordered a plugin -> mark order dirty
     void onSortRequested();      // run LOOT on the current load order
+    void onLockOrderToggled(bool checked); // lock/unlock the profile's load order
     void onBackupLo();           // snapshot the current load order to <profile>/lo-backups
     void onRestoreLo();          // pick a snapshot and restore it (MO2-style reconcile)
     void onNewProfile();

@@ -33,6 +33,7 @@ public:
     QString executablesPath()   const;
     QString lootUserlistPath()  const;
     QString fileRulesPath()     const;
+    QString loadOrderStatePath() const;
 
     // Per-file conflict resolution (MO2 ".mohidden" + Vortex per-file winner).
     // relPath is in the same form DeployEngine uses: path relative to the mod
@@ -67,6 +68,10 @@ private:
     bool loadExecutables();
     bool saveFileRules() const;
     bool loadFileRules();
+    // Manual load-order control (lock + pins). The state lives on m_pluginList;
+    // these persist it alongside the plugin list. Missing file == unlocked, no pins.
+    bool saveLoadOrderState() const;
+    bool loadLoadOrderState();
 };
 
 } // namespace solero

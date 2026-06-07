@@ -2,6 +2,7 @@
 #include "Types.h"
 #include <QString>
 #include <QPair>
+#include <QHash>
 
 namespace solero {
 
@@ -51,6 +52,31 @@ public:
     // restore can never produce an invalid load order.
     void restoreSnapshot(const QList<QPair<QString, bool>>& snapshot);
 
+    // Manual load-order control (lock + per-plugin pins)
+    // Lock: when set, callers SKIP LOOT auto-sort and keep the manual order -
+    // both "Sort Now" and the automatic sort inside deploy become no-ops.
+    bool loadOrderLocked() const { return m_loadOrderLocked; }
+    void setLoadOrderLocked(bool locked) { m_loadOrderLocked = locked; }
+
+    // Pin: keep a plugin at a chosen load-order index. setPinned(name, true)
+    // records the plugin's current index; applyPins() then restores every pinned
+    // plugin to its recorded index after a non-manual reorder (LOOT sort /
+    // reconcile), clamped to its legal allowedDropRange() slot so the official
+    // block and master<light<esp bands are never broken. Filenames are matched
+    // case-insensitively. A manual drag of a pinned plugin should re-call
+    // setPinned(name, true) to update the recorded index to the new slot.
+    void setPinned(const QString& filename, bool pinned);
+    bool isPinned(const QString& filename) const;
+    int  pinnedIndex(const QString& filename) const;          // -1 if not pinned
+    const QHash<QString, int>& pinnedIndices() const { return m_pinned; }
+    void setPinnedIndices(const QHash<QString, int>& pins) { m_pinned = pins; }
+    void applyPins();
+
+    // Copy lock + pin metadata (not the plugin entries) from `other`. The reorder
+    // primitives that rebuild the list wholesale (LOOT sort / reconcile) use this
+    // so the manual-control state survives the rebuild.
+    void copyOrderState(const PluginList& other);
+
     QString toPluginsTxt() const;
     static PluginList fromPluginsTxt(const QString& txt);
 
@@ -62,6 +88,8 @@ public:
 
 private:
     QList<PluginEntry> m_plugins;
+    bool m_loadOrderLocked = false;
+    QHash<QString, int> m_pinned; // lowercased filename -> pinned load-order index
 };
 
 } // namespace solero

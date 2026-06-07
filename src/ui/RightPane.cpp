@@ -9,6 +9,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QWidget>
 
 namespace solero {
@@ -45,6 +46,11 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     lootRulesBtn->setToolTip("Edit custom LOOT sorting rules");
     connect(lootRulesBtn, &QPushButton::clicked, this, &RightPane::lootRulesRequested);
     sortRow->addWidget(lootRulesBtn);
+    m_lockBtn = new QPushButton("Lock Order", pluginsContainer);
+    m_lockBtn->setCheckable(true);
+    m_lockBtn->setToolTip("Lock the load order: skip LOOT auto-sort and keep the current manual order");
+    connect(m_lockBtn, &QPushButton::toggled, this, &RightPane::lockOrderToggled);
+    sortRow->addWidget(m_lockBtn);
     m_sortBtn = new QPushButton("Sort Now", pluginsContainer);
     m_sortBtn->setToolTip("Run LOOT to auto-sort the load order");
     m_sortBtn->setEnabled(false);
@@ -84,8 +90,16 @@ void RightPane::hidePluginNotice() {
     m_pluginNotice->hide();
 }
 
-void RightPane::setSortButtonEnabled(bool enabled) {
-    if (m_sortBtn) m_sortBtn->setEnabled(enabled);
+void RightPane::setSortButtonEnabled(bool enabled, const QString& tooltip) {
+    if (!m_sortBtn) return;
+    m_sortBtn->setEnabled(enabled);
+    if (!tooltip.isEmpty()) m_sortBtn->setToolTip(tooltip);
+}
+
+void RightPane::setLockOrderChecked(bool checked) {
+    if (!m_lockBtn) return;
+    QSignalBlocker block(m_lockBtn); // reflect state without re-emitting toggled()
+    m_lockBtn->setChecked(checked);
 }
 
 void RightPane::invalidateModPluginCache(const QString& id) {

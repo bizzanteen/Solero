@@ -30,8 +30,11 @@ public:
     void showDownloadsTab();
     void showPluginNotice(const QString& text);
     void hidePluginNotice();
-    // Enable/disable the Plugins-tab "Sort Now" (LOOT) button.
-    void setSortButtonEnabled(bool enabled);
+    // Enable/disable the Plugins-tab "Sort Now" (LOOT) button. An empty tooltip
+    // leaves the current one in place.
+    void setSortButtonEnabled(bool enabled, const QString& tooltip = QString());
+    // Reflect the profile's "Lock Order" flag on the toggle without re-emitting.
+    void setLockOrderChecked(bool checked);
     // Forwarded from the Plugins view: a manual reorder dirtied the load order.
     PluginListView* pluginsView() const { return m_pluginsTab; }
 
@@ -43,6 +46,8 @@ public:
 signals:
     // Emitted when the user clicks "Sort Now" to run LOOT.
     void sortRequested();
+    // Emitted when the user toggles the "Lock Order" button (true = locked).
+    void lockOrderToggled(bool checked);
     // Emitted when the user clicks "LOOT Rules" to open the rules editor.
     void lootRulesRequested();
     // Emitted when the user clicks "Backup LO" to snapshot the load order.
@@ -61,6 +66,7 @@ private:
     PluginListView* m_pluginsTab;
     QLabel*         m_pluginNotice = nullptr;
     QPushButton*    m_sortBtn = nullptr;
+    QPushButton*    m_lockBtn = nullptr;
     DataTab*        m_dataTab;
     ConflictsTab*   m_conflictsTab;
     DownloadsTab*   m_downloadsTab;

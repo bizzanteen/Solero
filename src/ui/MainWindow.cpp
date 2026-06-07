@@ -2665,19 +2665,6 @@ void MainWindow::onPlay() {
     // dir; the capture skips files owned by the deploy record.
     exe.isCapturingOutput = true;
 
-    // Optionally run the game inside gamescope so Skyrim gets a proper input
-    // grab under Wayland (XWayland borderless windows otherwise miss keyboard
-    // focus). Re-detect gamescope at launch time; if it's gone, fall back to the
-    // normal launch and note it in the log.
-    auto& cfg = solero::AppConfig::instance();
-    const QString gsPath = solero::AppConfig::detectGamescopePath();
-    const bool useGamescope = cfg.launchThroughGamescope() && !gsPath.isEmpty();
-    QString gsNote;
-    if (cfg.launchThroughGamescope() && gsPath.isEmpty())
-        gsNote = "[gamescope requested but not found - launching without it]\n";
-    else if (useGamescope)
-        gsNote = "[launching through gamescope: " + gsPath + " " + cfg.gamescopeArgs() + "]\n";
-
     // Lock the UI (MO2-style) while the game runs; ToolRunner blocks via an event
     // loop until the process exits, then we unlock.
     m_toolRunning = true;
@@ -2685,8 +2672,7 @@ void MainWindow::onPlay() {
     statusBar()->showMessage("Launching " + exe.name
         + " - new files created during play move to Overwrite\xe2\x80\xa6");
     QElapsedTimer runTimer; runTimer.start();
-    auto res = solero::ToolRunner::run(exe, gameDir, cfg.stagingDir(),
-                                       useGamescope, gsPath, cfg.gamescopeArgs());
+    auto res = solero::ToolRunner::run(exe, gameDir, solero::AppConfig::instance().stagingDir());
     const qint64 ranMs = runTimer.elapsed();
     hideRunLock();
     m_toolRunning = false;
@@ -2696,7 +2682,7 @@ void MainWindow::onPlay() {
         QFile lg(solero::AppConfig::dataRoot() + "/play.log");
         if (lg.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
             lg.write(("exit=" + QString::number(res.launched) + " ranMs=" + QString::number(ranMs)
-                      + "\n" + gsNote + res.output).toUtf8());
+                      + "\n" + res.output).toUtf8());
         }
     }
     if (!res.launched) {

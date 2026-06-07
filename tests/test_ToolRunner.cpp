@@ -67,28 +67,6 @@ private slots:
         QCOMPARE(moved, 0);
         QVERIFY(QFile::exists(oldAbs));
     }
-
-    // gamescopeWrappedArgv prepends `gamescope <args> --` when enabled, and is a
-    // strict no-op when disabled or the gamescope path is empty.
-    void gamescopeWrapping() {
-        const QStringList inner = {"umu-run", "/games/skse64_loader.exe", "-arg"};
-
-        // Enabled + path present -> wrapped with tokenized args then `--`.
-        QCOMPARE(ToolRunner::gamescopeWrappedArgv(true, "/usr/bin/gamescope", "-f", inner),
-                 (QStringList{"/usr/bin/gamescope", "-f", "--",
-                              "umu-run", "/games/skse64_loader.exe", "-arg"}));
-
-        // Multi-token args (e.g. a forced resolution) are split correctly.
-        QCOMPARE(ToolRunner::gamescopeWrappedArgv(true, "/usr/bin/gamescope",
-                                                  "-f -W 1920 -H 1080", inner),
-                 (QStringList{"/usr/bin/gamescope", "-f", "-W", "1920", "-H", "1080", "--",
-                              "umu-run", "/games/skse64_loader.exe", "-arg"}));
-
-        // Disabled -> unchanged.
-        QCOMPARE(ToolRunner::gamescopeWrappedArgv(false, "/usr/bin/gamescope", "-f", inner), inner);
-        // Enabled but gamescope absent -> unchanged.
-        QCOMPARE(ToolRunner::gamescopeWrappedArgv(true, QString(), "-f", inner), inner);
-    }
 };
 
 QTEST_MAIN(TestToolRunner)

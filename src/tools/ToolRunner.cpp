@@ -40,21 +40,8 @@ QStringList ToolRunner::tokenizeArgs(const QString& s) {
     return out;
 }
 
-QStringList ToolRunner::gamescopeWrappedArgv(bool enabled, const QString& gamescopePath,
-                                             const QString& gamescopeArgs,
-                                             const QStringList& innerArgv) {
-    if (!enabled || gamescopePath.isEmpty()) return innerArgv;
-    QStringList out;
-    out << gamescopePath;
-    out += tokenizeArgs(gamescopeArgs);
-    out << "--";
-    out += innerArgv;
-    return out;
-}
-
 ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir,
-                                   const QString& stagingRoot, bool useGamescope,
-                                   const QString& gamescopePath, const QString& gamescopeArgs) {
+                                   const QString& stagingRoot) {
     Result r;
     QString captureBase = gameDir + "/Data";
     bool capture = exe.isCapturingOutput;
@@ -78,11 +65,6 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
     QObject::connect(&proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
                      &loop, &QEventLoop::quit);
 
-    // Assemble the inner launch as a single argv (program first) so it can be
-    // optionally wrapped in gamescope below. Both runtimes funnel into one start.
-    QString program;
-    QStringList procArgs;
-
     if (exe.runtime == RuntimeType::Native) {
         if (exe.binaryPath.isEmpty() || !QFile::exists(exe.binaryPath)) {
             r.error = "Native binary not found: " + exe.binaryPath;
@@ -90,8 +72,8 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
         }
         QFile(exe.binaryPath).setPermissions(QFile(exe.binaryPath).permissions()
             | QFileDevice::ExeOwner | QFileDevice::ExeGroup | QFileDevice::ExeUser);
-        program = exe.binaryPath;
-        procArgs = args;
+        if (capture) runStart = QDateTime::currentDateTime();
+        proc.start(exe.binaryPath, args);
     } else {
         // Windows tool via umu-run, reusing the Skyrim Proton prefix.
         if (QStandardPaths::findExecutable("umu-run").isEmpty()) {
@@ -117,21 +99,10 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
         env.insert("PROTONPATH", protonDir);
         env.insert("PROTON_VERB", "waitforexitandrun");
         proc.setProcessEnvironment(env);
-        program = "umu-run";
-        procArgs << exe.binaryPath;
-        procArgs += args;
+        QStringList pargs; pargs << exe.binaryPath; pargs += args;
+        if (capture) runStart = QDateTime::currentDateTime();
+        proc.start("umu-run", pargs);
     }
-
-    // Optionally wrap the whole invocation in gamescope (game-launch path only).
-    // The Proton env vars set on proc are inherited through gamescope to the
-    // umu-run child, so they still take effect.
-    QStringList innerArgv; innerArgv << program; innerArgv += procArgs;
-    const QStringList full = gamescopeWrappedArgv(useGamescope, gamescopePath, gamescopeArgs, innerArgv);
-    program = full.first();
-    procArgs = full.mid(1);
-
-    if (capture) runStart = QDateTime::currentDateTime();
-    proc.start(program, procArgs);
     if (!proc.waitForStarted(15000)) { r.error = "Failed to start: " + exe.binaryPath; return r; }
     r.launched = true;
     loop.exec();

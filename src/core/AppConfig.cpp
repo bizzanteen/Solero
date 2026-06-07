@@ -14,27 +14,6 @@ AppConfig& AppConfig::instance() {
     return s;
 }
 
-AppConfig::AppConfig() {
-    // Seed the gamescope toggle from the environment so a fresh install (no
-    // config file yet) still defaults on under Wayland. load() overrides this
-    // from config.json when a value is present.
-    m_launchThroughGamescope = gamescopeDefaultEnabled();
-}
-
-QString AppConfig::detectGamescopePath() {
-    if (QFile::exists("/usr/bin/gamescope")) return QStringLiteral("/usr/bin/gamescope");
-    return QStandardPaths::findExecutable("gamescope");
-}
-
-bool AppConfig::isWaylandSession() {
-    return qEnvironmentVariable("XDG_SESSION_TYPE") == QLatin1String("wayland")
-        || !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY");
-}
-
-bool AppConfig::gamescopeDefaultEnabled() {
-    return !detectGamescopePath().isEmpty() && isWaylandSession();
-}
-
 QString AppConfig::dataRoot() {
     return QDir::homePath() + "/.local/share/solero";
 }
@@ -112,9 +91,6 @@ bool AppConfig::load() {
     m_deployMode = (dm == "symlink") ? DeployMode::SymLink
                  : (dm == "copy")    ? DeployMode::Copy
                                      : DeployMode::HardLink;
-    // Absent key -> Wayland-auto default (gamescope present + Wayland session).
-    m_launchThroughGamescope = obj["launchThroughGamescope"].toBool(gamescopeDefaultEnabled());
-    m_gamescopeArgs = obj["gamescopeArgs"].toString(QStringLiteral("-f"));
     m_hiddenColumns.clear();
     for (const auto& v : obj["hiddenColumns"].toArray())
         m_hiddenColumns.append(v.toInt());
@@ -141,8 +117,6 @@ bool AppConfig::save() const {
     obj["deployMode"] = (m_deployMode == DeployMode::SymLink) ? "symlink"
                       : (m_deployMode == DeployMode::Copy)    ? "copy"
                                                               : "hardlink";
-    obj["launchThroughGamescope"] = m_launchThroughGamescope;
-    obj["gamescopeArgs"]          = m_gamescopeArgs;
     QJsonArray hidden;
     for (int c : m_hiddenColumns) hidden.append(c);
     obj["hiddenColumns"] = hidden;

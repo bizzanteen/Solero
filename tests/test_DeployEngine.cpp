@@ -14,7 +14,15 @@ static void writeFile(const QString& path, const QByteArray& content = "data") {
 
 class TestDeployEngine : public QObject {
     Q_OBJECT
+    QTemporaryDir m_home; // isolates dataRoot() (see initTestCase)
 private slots:
+    void initTestCase() {
+        // dataRoot() resolves via $HOME, and deploy() deploys dataRoot/overwrite
+        // as the highest-priority layer. Point $HOME at an empty temp dir so tests
+        // that don't inject an Overwrite dir don't pick up the real (populated)
+        // ~/.local/share/solero/overwrite folder.
+        qputenv("HOME", m_home.path().toLocal8Bit());
+    }
     void deploy_copiesModFilesToGameDir() {
         QTemporaryDir tmp;
         QString stagingRoot = tmp.path() + "/staging";
@@ -215,6 +223,63 @@ private slots:
         QCOMPARE(record.ownerOf("Data/x.dll"), QString("aaa"));
         QCOMPARE(result.conflicts.winnerOf("Data/x.dll"), QString("aaa"));
         QVERIFY(result.conflicts.losersOf("Data/x.dll").contains("bbb"));
+    }
+    void overwrite_deploysToGame() {
+        // The Overwrite folder is Data-relative: a file at <overwrite>/SKSE/...
+        // lands at gameDir/Data/SKSE/... and is recorded as __overwrite__.
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QString overwrite   = tmp.path() + "/overwrite";
+        QDir().mkpath(gameDir);
+        writeFile(overwrite + "/SKSE/Plugins/runtime.dll", "captured");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+
+        DeployEngine engine(gameDir, stagingRoot);
+        engine.setOverwriteDir(overwrite);
+        auto result = engine.deploy(profile, DeployMode::Copy);
+        QVERIFY(result.success);
+
+        QVERIFY(QFile::exists(gameDir + "/Data/SKSE/Plugins/runtime.dll"));
+        { QFile f(gameDir + "/Data/SKSE/Plugins/runtime.dll"); f.open(QIODevice::ReadOnly);
+          QCOMPARE(f.readAll(), QByteArray("captured")); }
+
+        DeployRecord record = DeployRecord::loadFromFile(DeployEngine::recordPath(gameDir));
+        QCOMPARE(record.ownerOf("Data/SKSE/Plugins/runtime.dll"), QString("__overwrite__"));
+
+        engine.undeploy(gameDir);
+        QVERIFY(!QFile::exists(gameDir + "/Data/SKSE/Plugins/runtime.dll"));
+    }
+    void overwrite_winsConflict() {
+        // A mod stages Data/x.txt and Overwrite has x.txt with different content.
+        // Overwrite deploys last (highest priority) so its content wins.
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QString overwrite   = tmp.path() + "/overwrite";
+        QDir().mkpath(gameDir);
+        writeFile(stagingRoot + "/aaa/Data/x.txt", "mod");
+        writeFile(overwrite + "/x.txt", "overwrite");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry m; m.type = EntryType::Mod; m.id = "aaa"; m.name = "M"; m.enabled = true;
+        profile.modList().append(m);
+
+        DeployEngine engine(gameDir, stagingRoot);
+        engine.setOverwriteDir(overwrite);
+        auto result = engine.deploy(profile, DeployMode::Copy);
+        QVERIFY(result.success);
+
+        // The deployed file has the OVERWRITE content (overwrite wins).
+        QFile f(gameDir + "/Data/x.txt"); QVERIFY(f.open(QIODevice::ReadOnly));
+        QCOMPARE(f.readAll(), QByteArray("overwrite"));
+
+        // Record owner + conflict winner = __overwrite__, with the mod a loser.
+        DeployRecord record = DeployRecord::loadFromFile(DeployEngine::recordPath(gameDir));
+        QCOMPARE(record.ownerOf("Data/x.txt"), QString("__overwrite__"));
+        QCOMPARE(result.conflicts.winnerOf("Data/x.txt"), QString("__overwrite__"));
+        QVERIFY(result.conflicts.losersOf("Data/x.txt").contains("aaa"));
     }
     void redeploy_removesOrphanedFiles() {
         QTemporaryDir tmp;

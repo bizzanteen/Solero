@@ -2698,6 +2698,17 @@ void MainWindow::onPlay() {
         statusBar()->showMessage("Game closed.");
     }
 
+    // The capture just moved new runtime files into Overwrite, so they no longer
+    // exist in the game dir. If the profile is deployed, incrementally link the
+    // Overwrite folder back into gameDir/Data and append it to the on-disk deploy
+    // record - otherwise files created while playing would be stranded (present in
+    // Overwrite but missing from the game). Now-owned by __overwrite__, they also
+    // won't be re-captured next run. Relinking already-present files is idempotent.
+    if (m_deployed) {
+        solero::DeployEngine::deployOverwriteIncremental(
+            gameDir, solero::AppConfig::instance().deployMode());
+    }
+
     // Runtime files written during play were captured into Overwrite - invalidate
     // cached scans and rebuild so the Overwrite entry reflects the new files
     // (mirrors the post-run refresh in onRunTool).

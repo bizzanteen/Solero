@@ -67,9 +67,20 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     if (onProgress) onProgress(0, total);
 
     int failures = 0;
+    // First pass: every enabled mod EXCEPT managed shader-cache mods.
     for (const auto& entry : profile.modList()) {
         if (entry.type != EntryType::Mod) continue;
         if (!entry.enabled) continue;
+        if (entry.isManagedCache) continue; // deployed last (see below)
+        failures += deployMod(entry, m_gameDir, linker, record, conflicts, ciOwners);
+        ++done;
+        if (onProgress) onProgress(done, total);
+    }
+    // Second pass: managed shader-cache mods deploy after everything else so their
+    // captured shaders win all conflicts (last-wins), regardless of list position.
+    for (const auto& entry : profile.modList()) {
+        if (entry.type != EntryType::Mod) continue;
+        if (!entry.enabled || !entry.isManagedCache) continue;
         failures += deployMod(entry, m_gameDir, linker, record, conflicts, ciOwners);
         ++done;
         if (onProgress) onProgress(done, total);

@@ -142,8 +142,13 @@ void ModListModel::rebuildVisibleRows() {
     if (m_searchExpandAll) {
         int modPos = 0;
         for (int i = 0; i < m_profile->modList().count(); ++i) {
-            if (m_profile->modList().at(i).type == EntryType::Mod)
-                m_priorityByRaw.insert(i, ++modPos);
+            const auto& e = m_profile->modList().at(i);
+            // The hidden managed shader-cache mod never appears in the list, but it
+            // still counts toward the Mod priority numbering (it's a real mod).
+            if (e.type == EntryType::Mod) ++modPos;
+            if (e.isManagedCache) continue;
+            if (e.type == EntryType::Mod)
+                m_priorityByRaw.insert(i, modPos);
             m_visibleRows.append(i);
         }
         m_visibleRows.append(-1); // Overwrite always at bottom
@@ -163,7 +168,13 @@ void ModListModel::rebuildVisibleRows() {
     for (int i = 0; i < m_profile->modList().count(); ++i) {
         const auto& e = m_profile->modList().at(i);
         if (e.type == EntryType::Mod)
-            m_priorityByRaw.insert(i, ++modPos);
+            ++modPos;
+        // The hidden managed shader-cache mod is filtered out of the view entirely
+        // (no visible row, no priority slot), but it still consumes a Mod position
+        // above so the remaining mods keep their stable numbering.
+        if (e.isManagedCache) continue;
+        if (e.type == EntryType::Mod)
+            m_priorityByRaw.insert(i, modPos);
         if (e.type == EntryType::Separator) {
             curParentId.clear();
             if (collapsedLevel >= 0 && e.separatorLevel > collapsedLevel)

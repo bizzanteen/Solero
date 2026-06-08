@@ -33,6 +33,9 @@ public:
     // Persisted preferences
     bool confirmModDeletion() const          { return m_confirmModDeletion; }
     void setConfirmModDeletion(bool v)        { m_confirmModDeletion = v; }
+    // One-time "let Solero manage the Community Shaders cache?" offer was declined.
+    bool shaderCacheDeclined() const          { return m_shaderCacheDeclined; }
+    void setShaderCacheDeclined(bool v)       { m_shaderCacheDeclined = v; }
     bool cycleSeparatorColors() const         { return m_cycleSeparatorColors; }
     void setCycleSeparatorColors(bool v)      { m_cycleSeparatorColors = v; }
     bool dataShowAllFiles() const             { return m_dataShowAllFiles; }
@@ -76,6 +79,7 @@ private:
     QString m_documents;
     QString m_downloads;
     bool m_confirmModDeletion = true;
+    bool m_shaderCacheDeclined = false;
     bool m_cycleSeparatorColors = true;
     bool m_dataShowAllFiles = false;
     bool m_promptAfterBrowserDownload = true;

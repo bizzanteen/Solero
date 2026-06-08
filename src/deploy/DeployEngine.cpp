@@ -4,6 +4,7 @@
 #include "core/Profile.h"
 #include "core/AppConfig.h"
 #include "core/StagingFolder.h"
+#include "core/FileUtil.h"
 #include <QDirIterator>
 #include <QFile>
 #include <QDir>
@@ -131,10 +132,8 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
         iniDir + "/SkyrimCustom.ini"
     };
     for (int i = 0; i < inis.size(); ++i) {
-        if (QFile::exists(inis[i])) {
-            QFile::remove(iniTargets[i]);
-            QFile::copy(inis[i], iniTargets[i]);
-        }
+        if (QFile::exists(inis[i]))
+            copyOverwrite(inis[i], iniTargets[i]);
     }
 
     // JContainers compatibility: it crashes at load (boost::filesystem

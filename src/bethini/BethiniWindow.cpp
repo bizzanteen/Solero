@@ -1,5 +1,6 @@
 #include "BethiniWindow.h"
 #include "core/AppConfig.h"
+#include "core/FileUtil.h"
 #include <QCloseEvent>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -95,10 +96,8 @@ void BethiniWindow::pushInisToLive() const {
         { m_profile->skyrimCustomPath(), iniDir + "/SkyrimCustom.ini" },
     };
     for (const auto& [src, target] : map) {
-        if (QFile::exists(src)) {
-            QFile::remove(target);
-            QFile::copy(src, target);
-        }
+        if (QFile::exists(src))
+            copyOverwrite(src, target);
     }
 }
 

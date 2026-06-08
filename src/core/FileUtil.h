@@ -32,4 +32,25 @@ inline bool atomicWrite(const QString& path, const QByteArray& data) {
     return true;
 }
 
+// Copy `src` over `dst`, never destroying an existing `dst` on a failed copy.
+// Copies to `dst + ".tmp-solero"` first, then atomically renames over `dst`.
+// Returns false (leaving any prior `dst` intact) if the copy or rename fails.
+// Replaces the unsafe `QFile::remove(dst); QFile::copy(src, dst);` pattern.
+inline bool copyOverwrite(const QString& src, const QString& dst) {
+    const QString tmp = dst + ".tmp-solero";
+    QFile::remove(tmp); // clear any leftover from a prior failed run
+    if (!QFile::copy(src, tmp)) {
+        QFile::remove(tmp);
+        return false;
+    }
+    // Remove the existing target (ignore failure) so rename can overwrite on
+    // platforms where it won't, then move the temp into place.
+    QFile::remove(dst);
+    if (!QFile::rename(tmp, dst)) {
+        QFile::remove(tmp);
+        return false;
+    }
+    return true;
+}
+
 } // namespace solero

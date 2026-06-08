@@ -48,7 +48,10 @@ private slots:
         QVERIFY(!QFile::exists(destBase + "/SKSE/Plugins/deployed.dll"));
     }
 
-    // Files older than runStart are ignored entirely.
+    // Files older than runStart are ignored entirely. captureNewFiles floors
+    // runStart to whole seconds (filesystem mtimes are often whole-second), so an
+    // "old" file must predate that floored cutoff - i.e. be at least a couple of
+    // seconds older - to be reliably ignored regardless of mtime granularity.
     void captureIgnoresOldFiles() {
         QTemporaryDir tmp;
         const QString gameDir = tmp.path() + "/game";
@@ -57,9 +60,17 @@ private slots:
         QVERIFY(QDir().mkpath(captureBase));
 
         const QString oldAbs = captureBase + "/old.txt";
-        { QFile f(oldAbs); QVERIFY(f.open(QIODevice::WriteOnly)); f.write("old"); }
-        QTest::qWait(20);
+        // Backdate the old file well before the floored runStart cutoff. setFileTime
+        // requires the file open with write access, so do it before closing.
         const QDateTime runStart = QDateTime::currentDateTime();
+        {
+            QFile f(oldAbs);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("old");
+            f.flush();
+            QVERIFY(f.setFileTime(runStart.addSecs(-5),
+                                  QFileDevice::FileModificationTime));
+        }
 
         QString warning;
         int moved = ToolRunner::captureNewFiles(captureBase, destBase, gameDir,

@@ -136,6 +136,12 @@ int ToolRunner::captureNewFiles(const QString& captureBase, const QString& destB
     QDir dataDir(captureBase);
     QDir gameRoot(gameDir);
     int moved = 0, failures = 0;
+    // Floor runStart to whole seconds: runStart has ms precision but many
+    // filesystems store mtimes at whole-second granularity, so a file written at
+    // 10.8s gets mtime 10.0s, which would compare < a runStart of 10.5s and be
+    // skipped. Widening the window is safe - the deploy-record owner check below
+    // still prevents re-capturing pre-existing managed files.
+    const QDateTime cutoff = runStart.addMSecs(-runStart.time().msec());
     // Single walk: capture every file touched at or after runStart. This catches
     // both newly created files (e.g. Community Shaders' runtime shader cache) and
     // in-place modifications (e.g. xEdit cleaning a master), which the old
@@ -145,7 +151,7 @@ int ToolRunner::captureNewFiles(const QString& captureBase, const QString& destB
     QDirIterator it(captureBase, QDir::Files, QDirIterator::Subdirectories);
     while (it.hasNext()) {
         QString f = it.next();
-        if (it.fileInfo().lastModified() < runStart) continue;
+        if (it.fileInfo().lastModified() < cutoff) continue;
         // relPath relative to gameDir (e.g. "Data/SKSE/Plugins/foo.dll") matches
         // the deploy record's keys; a managed/deployed file is left in place.
         if (!record.ownerOf(gameRoot.relativeFilePath(f)).isEmpty()) continue;

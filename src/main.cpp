@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
     MainWindow w;
     QObject::connect(single, &solero::SingleInstance::messageReceived,
                      &w, &MainWindow::handleNxmUrl);
-    w.show();
+    w.showMaximized();
     if (!nxmArg.isEmpty())
         QTimer::singleShot(0, &w, [&w, nxmArg]{ w.handleNxmUrl(nxmArg); });
     return app.exec();

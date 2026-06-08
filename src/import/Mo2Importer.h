@@ -56,7 +56,8 @@ public:
     // the staging root (so they deploy to <game>/, not <game>/Data). Returns an invalid/
     // empty-id ModEntry if there's no overlay or nothing mod-added to stage.
     static ModEntry stageGameRootOverlay(const QString& instanceDir,
-                                         const QString& stagingRoot, bool symlink);
+                                         const QString& stagingRoot, bool symlink,
+                                         QSet<QString>& taken);
 };
 
 } // namespace solero

@@ -3,6 +3,7 @@
 #include "core/Profile.h"
 #include "core/PluginList.h"
 #include "core/VersionUtil.h"
+#include "core/StagingFolder.h"
 #include <QStringList>
 #include <QUuid>
 #include <QDir>
@@ -207,19 +208,35 @@ static void applyModMeta(const QString& modDir, ModEntry& e) {
     }
 }
 
+// Assign a unique, name-based staging folder to `e` (from its current name),
+// reserving it in `taken` (lowercased) so siblings can't collide. Returns the
+// absolute on-disk staging path the mod's files should be written to. Use this
+// before staging so import produces name-based folders directly (no UUID dirs
+// left for migrateStagingFolders() to rename on the next load).
+static QString assignStagingFolder(ModEntry& e, const QString& stagingRoot,
+                                   QSet<QString>& taken) {
+    e.stagingFolder =
+        uniqueStagingFolder(sanitizeStagingFolder(e.name), taken);
+    taken.insert(e.stagingFolder.toLower());
+    return stagingRoot + "/" + e.stagingFolder;
+}
+
 // Stage a single MO2 mod by name into stagingRoot, returning a ModEntry that
-// references the staged copy (fresh UUID + name). On copy mode, copyFailures is
-// incremented by the number of files that failed to copy. The source folder is
-// assumed to exist (callers check QDir(src).exists() first).
+// references the staged copy (fresh UUID + name + name-based staging folder). On
+// copy mode, copyFailures is incremented by the number of files that failed to
+// copy. The source folder is assumed to exist (callers check QDir(src).exists()
+// first). `taken` carries reserved (lowercased) folder names across the import.
 static ModEntry stageMod(const QString& modName, const QString& mo2ModsDir,
-                         const QString& stagingRoot, bool symlink, int& copyFailures) {
+                         const QString& stagingRoot, bool symlink, int& copyFailures,
+                         QSet<QString>& taken) {
     ModEntry e;
     e.type = EntryType::Mod;
     e.name = modName;
     e.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     const QString src = mo2ModsDir + "/" + modName;
     applyModMeta(src, e);
-    copyFailures += stageModClassified(src, stagingRoot + "/" + e.id, symlink);
+    const QString dest = assignStagingFolder(e, stagingRoot, taken);
+    copyFailures += stageModClassified(src, dest, symlink);
     return e;
 }
 
@@ -397,7 +414,8 @@ static bool isRootCruft(const QString& name) {
 }
 
 ModEntry Mo2Importer::stageGameRootOverlay(const QString& instanceDir,
-                                           const QString& stagingRoot, bool symlink) {
+                                           const QString& stagingRoot, bool symlink,
+                                           QSet<QString>& taken) {
     ModEntry empty; // id stays empty -> "invalid" sentinel
 
     // Find the overlay folder (case-insensitive) among the known names.
@@ -429,7 +447,7 @@ ModEntry Mo2Importer::stageGameRootOverlay(const QString& instanceDir,
     e.enabled = true;
     e.isOutputMod = false;
 
-    const QString destDir = stagingRoot + "/" + e.id;
+    const QString destDir = assignStagingFolder(e, stagingRoot, taken);
     QDir().mkpath(destDir);
     for (const QString& name : keep)
         placeEntry(overlayDir + "/" + name, destDir + "/" + name, symlink);
@@ -455,6 +473,7 @@ Mo2ImportResult Mo2Importer::importProfile(const QString& mo2ProfileDir,
 
     int staged = 0;
     int copyFailures = 0;
+    QSet<QString> taken; // assigned name-based staging folders, kept unique
     for (ModEntry& e : entries) {
         if (e.type == EntryType::Mod) {
             // Skip MO2's non-content artifact folders (e.g. ModGroups).
@@ -462,7 +481,8 @@ Mo2ImportResult Mo2Importer::importProfile(const QString& mo2ProfileDir,
             QString src = mo2ModsDir + "/" + e.name;
             if (QDir(src).exists()) {
                 applyModMeta(src, e);
-                copyFailures += stageModClassified(src, stagingRoot + "/" + e.id, symlinkMods);
+                copyFailures += stageModClassified(
+                    src, assignStagingFolder(e, stagingRoot, taken), symlinkMods);
                 ++staged;
             }
         } else if (e.type == EntryType::Separator) {
@@ -487,7 +507,7 @@ Mo2ImportResult Mo2Importer::importProfile(const QString& mo2ProfileDir,
                 already = true; break;
             }
         if (!already) {
-            ModEntry rootMod = stageGameRootOverlay(instanceDir, stagingRoot, symlinkMods);
+            ModEntry rootMod = stageGameRootOverlay(instanceDir, stagingRoot, symlinkMods, taken);
             if (!rootMod.id.isEmpty()) {
                 p->modList().append(rootMod);
                 // Move to index 0 (lowest priority / top of MO2 load order).
@@ -555,8 +575,9 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
     // Stage each unique mod EXACTLY once; share id+name across all profiles.
     QHash<QString, ModEntry> sharedMods; // lowercased name -> staged ModEntry
     int copyFailures = 0;
+    QSet<QString> taken; // assigned name-based staging folders, kept unique
     for (const QString& name : uniqueOrder) {
-        ModEntry staged = stageMod(name, modsDir, stagingRoot, symlinkMods, copyFailures);
+        ModEntry staged = stageMod(name, modsDir, stagingRoot, symlinkMods, copyFailures, taken);
         sharedMods.insert(name.toLower(), staged);
     }
 
@@ -578,7 +599,7 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
             manualInstallMod.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
             manualInstallMod.enabled = true;
             copyFailures += stageModClassified(
-                manualDir, stagingRoot + "/" + manualInstallMod.id, symlinkMods);
+                manualDir, assignStagingFolder(manualInstallMod, stagingRoot, taken), symlinkMods);
             haveManualInstall = true;
         }
     }
@@ -586,7 +607,7 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
     // Capture the game-root overlay (StockGame / "Game Root" / …) once and share
     // its id across every created profile (lowest priority, like base/SKSE content).
     const ModEntry gameRootMod =
-        stageGameRootOverlay(mo2InstanceDir, stagingRoot, symlinkMods);
+        stageGameRootOverlay(mo2InstanceDir, stagingRoot, symlinkMods, taken);
     const bool haveGameRoot = !gameRootMod.id.isEmpty();
 
     r.modsStaged = sharedMods.size() + (haveManualInstall ? 1 : 0)

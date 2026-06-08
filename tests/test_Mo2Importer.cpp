@@ -64,7 +64,7 @@ private slots:
         // Find the "Cool Textures" mod and verify its staged file is under Data/
         QString texId;
         for (auto it = p->modList().begin(); it != p->modList().end(); ++it)
-            if (it->name == "Cool Textures") texId = it->id;
+            if (it->name == "Cool Textures") texId = it->stagingFolder;
         QVERIFY(!texId.isEmpty());
         QVERIFY(QFile::exists(staging + "/" + texId + "/Data/textures/a.dds"));
         // plugins.txt imported (2 plugins)
@@ -153,7 +153,7 @@ private slots:
             QCOMPARE(p1->modList().at(1).type, EntryType::Separator);
             QCOMPARE(p1->modList().at(1).name, QString("Core"));
             QCOMPARE(p1->modList().at(2).name, QString("ModB"));
-            p1ModA = p1->modList().at(0).id;
+            p1ModA = p1->modList().at(0).stagingFolder;
             // Plugins applied per-profile.
             QCOMPARE(p1->pluginList().count(), 1);
             QCOMPARE(p1->pluginList().at(0).filename, QString("ModA.esp"));
@@ -169,12 +169,12 @@ private slots:
             QCOMPARE(p2->modList().at(1).name, QString("ModB"));
             QCOMPARE(p2->modList().at(1).enabled, false);
             QCOMPARE(p2->modList().at(2).name, QString("ModA"));
-            p2ModA = p2->modList().at(2).id;
+            p2ModA = p2->modList().at(2).stagingFolder;
             QCOMPARE(p2->pluginList().count(), 1);
             QCOMPARE(p2->pluginList().at(0).filename, QString("ModC.esp"));
         }
 
-        // Shared staging: ModA has the same Solero id in both profiles.
+        // Shared staging: ModA resolves to the same staging folder in both profiles.
         QVERIFY(!p1ModA.isEmpty());
         QCOMPARE(p1ModA, p2ModA);
         QVERIFY(QFile::exists(staging + "/" + p1ModA + "/Data/a.txt"));
@@ -286,9 +286,9 @@ private slots:
         QVERIFY(p != nullptr);
         QString enbId, rootId, relId;
         for (auto it = p->modList().begin(); it != p->modList().end(); ++it) {
-            if (it->name == "ENB Mod") enbId = it->id;
-            if (it->name == "RootMod") rootId = it->id;
-            if (it->name == "RootRel") relId = it->id;
+            if (it->name == "ENB Mod") enbId = it->stagingFolder;
+            if (it->name == "RootMod") rootId = it->stagingFolder;
+            if (it->name == "RootRel") relId = it->stagingFolder;
         }
         QVERIFY(!enbId.isEmpty() && !rootId.isEmpty() && !relId.isEmpty());
         // ENB Mod: root dll at root, meshes + esp under Data/.
@@ -357,14 +357,14 @@ private slots:
             QCOMPARE(p1->modList().at(0).name, QString("Manual Install Files"));
             QVERIFY(p1->modList().at(0).enabled);
             QVERIFY(p1->modList().at(0).nexusModId.isEmpty());
-            manualId = p1->modList().at(0).id;
+            manualId = p1->modList().at(0).stagingFolder;
         }
         {
             Profile* p2 = pm.loadProfile("P2");
             QVERIFY(p2 != nullptr);
             QCOMPARE(p2->modList().at(0).name, QString("Manual Install Files"));
-            // Shared once: same id across profiles.
-            QCOMPARE(p2->modList().at(0).id, manualId);
+            // Shared once: same staging folder across profiles.
+            QCOMPARE(p2->modList().at(0).stagingFolder, manualId);
         }
         // Staged: root dll at root, Data content under Data/.
         QVERIFY(QFile::exists(staging + "/" + manualId + "/foo.dll"));
@@ -398,7 +398,7 @@ private slots:
         QString rootId;
         bool enabled = false;
         for (auto it = p->modList().begin(); it != p->modList().end(); ++it)
-            if (it->name == "Game Root Files") { rootId = it->id; enabled = it->enabled; }
+            if (it->name == "Game Root Files") { rootId = it->stagingFolder; enabled = it->enabled; }
         QVERIFY2(!rootId.isEmpty(), "Game Root Files mod must exist in the profile");
         QVERIFY(enabled);
         // It must be at the very top (index 0 / lowest priority).

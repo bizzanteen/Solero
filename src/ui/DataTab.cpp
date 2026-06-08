@@ -67,6 +67,8 @@ DataTab::DataTab(QWidget* parent) : QWidget(parent) {
     m_singleTree = new ModFileTree(this);
     connect(m_singleTree, &ModFileTree::fileActivated, this, &DataTab::onFileActivated);
     connect(m_singleTree, &ModFileTree::hideToggled, this, &DataTab::onHideToggled);
+    connect(m_singleTree, &ModFileTree::renameRequested, this, &DataTab::onRenameRequested);
+    connect(m_singleTree, &ModFileTree::deleteRequested, this, &DataTab::onDeleteRequested);
     m_stack->addWidget(m_singleTree);
 
     // Page 1: placeholder
@@ -93,6 +95,10 @@ DataTab::DataTab(QWidget* parent) : QWidget(parent) {
     connect(m_splitRight, &ModFileTree::filesDropped,  this, &DataTab::onSplitDropped);
     connect(m_splitLeft,  &ModFileTree::hideToggled,   this, &DataTab::onHideToggled);
     connect(m_splitRight, &ModFileTree::hideToggled,   this, &DataTab::onHideToggled);
+    connect(m_splitLeft,  &ModFileTree::renameRequested, this, &DataTab::onRenameRequested);
+    connect(m_splitRight, &ModFileTree::renameRequested, this, &DataTab::onRenameRequested);
+    connect(m_splitLeft,  &ModFileTree::deleteRequested, this, &DataTab::onDeleteRequested);
+    connect(m_splitRight, &ModFileTree::deleteRequested, this, &DataTab::onDeleteRequested);
     m_stack->addWidget(m_splitPage);
 
     layout->addWidget(m_stack);
@@ -285,6 +291,20 @@ void DataTab::onHideToggled(const QString& modId, const QString& relPath, bool h
     m_profile->save();          // persist filerules.json immediately
     emit fileRulesChanged();    // -> MainWindow marks the deployment dirty
     refresh();                  // repaint the tree with the new hidden state
+}
+
+void DataTab::onRenameRequested(const QString& modId, const QString& relPath,
+                                const QString& newName, bool isFolder) {
+    // MainWindow performs the rename on the mod's staging dir (and invalidates
+    // its caches / marks the deployment dirty); then rebuild the tree from disk.
+    emit renameRequested(modId, relPath, newName, isFolder);
+    refresh();
+}
+
+void DataTab::onDeleteRequested(const QString& modId, const QString& relPath,
+                                bool isFolder) {
+    emit deleteRequested(modId, relPath, isFolder);
+    refresh();
 }
 
 } // namespace solero

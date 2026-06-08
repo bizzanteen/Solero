@@ -28,12 +28,20 @@ public:
 signals:
     // A per-file rule changed (hide/unhide) - the deployment is now dirty.
     void fileRulesChanged();
+    // Rename/delete of a staged file or folder bubbles up so MainWindow performs
+    // the filesystem op on the mod's staging dir + invalidates its caches.
+    void renameRequested(const QString& modId, const QString& relPath,
+                         const QString& newName, bool isFolder);
+    void deleteRequested(const QString& modId, const QString& relPath, bool isFolder);
 
 private slots:
     void onFileActivated(const QString& fullPath);
     void onFileSaved(const QString& filePath);
     void onSplitDropped();
     void onHideToggled(const QString& modId, const QString& relPath, bool hide);
+    void onRenameRequested(const QString& modId, const QString& relPath,
+                           const QString& newName, bool isFolder);
+    void onDeleteRequested(const QString& modId, const QString& relPath, bool isFolder);
 
 private:
     Profile*      m_profile = nullptr;

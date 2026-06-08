@@ -13,12 +13,16 @@
 #include <QContextMenuEvent>
 #include <QMenu>
 #include <QPalette>
+#include <QInputDialog>
+#include <QLineEdit>
+#include <QMessageBox>
 #include <functional>
 
 namespace solero {
 
 static constexpr int RoleFullPath = Qt::UserRole;
 static constexpr int RoleRelPath  = Qt::UserRole + 1;
+static constexpr int RoleIsDir    = Qt::UserRole + 2; // true on folder rows
 static const char* kMime = "application/x-solero-file";
 
 ModFileTree::ModFileTree(QWidget* parent) : QTreeWidget(parent) {
@@ -75,6 +79,11 @@ void ModFileTree::buildTree(const QString& rootDir,
                     : new QTreeWidgetItem(this, {parts[i], "", ""});
                 dirItem->setIcon(0, style()->standardIcon(QStyle::SP_DirIcon));
                 dirItem->setExpanded(true);
+                // Record the folder's relative path so the context menu can
+                // rename/delete it. RoleFullPath is left unset so folders stay
+                // out of drag payloads (only files are draggable/droppable).
+                dirItem->setData(0, RoleRelPath, accumulated);
+                dirItem->setData(0, RoleIsDir, true);
                 dirItems[accumulated] = dirItem;
                 parent = dirItem;
             } else {
@@ -232,21 +241,74 @@ void ModFileTree::dropEvent(QDropEvent* e) {
 }
 
 void ModFileTree::contextMenuEvent(QContextMenuEvent* e) {
-    // Hiding applies to a real mod's file (not the game-dir view, and not the
-    // synthetic "__overwrite__"/etc. pseudo-mods whose ids start with "__").
+    // These edits apply to a real mod's staging (not the game-dir view, and not
+    // the synthetic "__overwrite__"/etc. pseudo-mods whose ids start with "__").
     if (m_modId.isEmpty() || m_modId.startsWith("__")) return;
     QTreeWidgetItem* item = itemAt(e->pos());
     if (!item) return;
     const QString relPath = item->data(0, RoleRelPath).toString();
-    if (relPath.isEmpty()) return; // folder row, not a file
+    if (relPath.isEmpty()) return; // a row with no path we can act on
+    const bool isFolder = item->data(0, RoleIsDir).toBool();
+    const QString name  = relPath.section('/', -1); // basename within its parent
 
     QMenu menu(this);
-    const bool hidden = m_hiddenRelPaths.contains(relPath);
-    menu.addAction(hidden ? QStringLiteral("Unhide file")
-                          : QStringLiteral("Hide file in this mod"),
-                   this, [this, relPath, hidden]{
-        emit hideToggled(m_modId, relPath, !hidden);
+    if (!isFolder) {
+        const bool hidden = m_hiddenRelPaths.contains(relPath);
+        menu.addAction(hidden ? QStringLiteral("Unhide file")
+                              : QStringLiteral("Hide file in this mod"),
+                       this, [this, relPath, hidden]{
+            emit hideToggled(m_modId, relPath, !hidden);
+        });
+        menu.addSeparator();
+    }
+
+    // Rename… - basename only, within the same parent dir.
+    menu.addAction(QStringLiteral("Rename") + QChar(0x2026), this,
+                   [this, relPath, name, isFolder]{
+        bool ok = false;
+        const QString input = QInputDialog::getText(
+            this, QStringLiteral("Rename"), QStringLiteral("New name:"),
+            QLineEdit::Normal, name, &ok);
+        if (!ok) return;
+        const QString newName = input.trimmed();
+        if (newName.isEmpty()) {
+            QMessageBox::warning(this, QStringLiteral("Rename"),
+                                 QStringLiteral("The name cannot be empty."));
+            return;
+        }
+        if (newName.contains('/') || newName.contains('\\')) {
+            QMessageBox::warning(this, QStringLiteral("Rename"),
+                QStringLiteral("The name cannot contain path separators."));
+            return;
+        }
+        if (newName == name) return; // unchanged
+        // Reject a collision with an existing sibling in the same parent dir.
+        const int slash = relPath.lastIndexOf('/');
+        const QString parentRel = slash >= 0 ? relPath.left(slash + 1) : QString();
+        if (QFileInfo::exists(m_stagingRoot + "/" + parentRel + newName)) {
+            QMessageBox::warning(this, QStringLiteral("Rename"),
+                QStringLiteral("'%1' already exists here.").arg(newName));
+            return;
+        }
+        emit renameRequested(m_modId, relPath, newName, isFolder);
     });
+
+    // Delete - confirm first; defaults to No.
+    menu.addAction(QStringLiteral("Delete"), this,
+                   [this, relPath, name, isFolder]{
+        const QString msg = isFolder
+            ? QStringLiteral("Are you sure you want to delete '%1'?\n"
+                             "This deletes the folder and its contents from the "
+                             "mod's files.").arg(name)
+            : QStringLiteral("Are you sure you want to delete '%1'?\n"
+                             "This removes it from the mod's files.").arg(name);
+        if (QMessageBox::question(this, QStringLiteral("Delete"), msg,
+                                  QMessageBox::Yes | QMessageBox::No,
+                                  QMessageBox::No) != QMessageBox::Yes)
+            return;
+        emit deleteRequested(m_modId, relPath, isFolder);
+    });
+
     menu.exec(e->globalPos());
 }
 

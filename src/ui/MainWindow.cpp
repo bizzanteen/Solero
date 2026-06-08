@@ -75,6 +75,7 @@
 #include <QApplication>
 #include <QFile>
 #include <QCryptographicHash>
+#include <algorithm>
 #include <QDir>
 #include <QDirIterator>
 #include <QFileInfo>
@@ -608,6 +609,12 @@ void MainWindow::setupCentralWidget() {
         if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
         updatePluginNotice();
     });
+    // Rename / delete of a staged file or folder from the Data tab: perform the
+    // filesystem op on the mod's staging dir, then refresh + mark dirty.
+    connect(m_rightPane, &solero::RightPane::renameRequested,
+            this, &MainWindow::onDataRename);
+    connect(m_rightPane, &solero::RightPane::deleteRequested,
+            this, &MainWindow::onDataDelete);
 
     m_bottomPanel = new solero::BottomPanel(outer);
     connect(m_modListView, &solero::ModListView::modsSelected,
@@ -952,6 +959,15 @@ void MainWindow::refreshHealthIndicator() {
         issues = solero::collect(*profile, m_lastConflicts, in);
     }
 
+    // The Problems panel + indicator surface only actionable problems, so drop
+    // Info-level notices (conflicts-resolved-by-load-order, deploy state) here -
+    // collect() still computes them, the UI just ignores them. With only Info
+    // items the list goes empty and the indicator reads "No Problems".
+    issues.erase(std::remove_if(issues.begin(), issues.end(),
+        [](const solero::HealthIssue& i) {
+            return i.severity == solero::HealthSeverity::Info;
+        }), issues.end());
+
     const int worst = solero::worstSeverity(issues);
     if (issues.isEmpty()) {
         m_problemsBtn->setText("No Problems");
@@ -988,6 +1004,51 @@ void MainWindow::onShowProblems() {
     m_problemsDialog->show();
     m_problemsDialog->raise();
     m_problemsDialog->activateWindow();
+}
+
+void MainWindow::onDataRename(const QString& modId, const QString& relPath,
+                              const QString& newName, bool isFolder) {
+    // relPath is relative to the mod's staging root (stagingDir/<modId>), so it
+    // already carries the "Data/…" prefix shown in the tree.
+    const QString root = solero::AppConfig::instance().stagingDir() + "/" + modId;
+    const QString src  = root + "/" + relPath;
+    const int slash = relPath.lastIndexOf('/');
+    const QString parentRel = slash >= 0 ? relPath.left(slash + 1) : QString();
+    const QString dst = root + "/" + parentRel + newName;
+
+    const bool ok = isFolder ? QDir().rename(src, dst) : QFile::rename(src, dst);
+    if (!ok) {
+        QMessageBox::warning(this, "Rename Failed",
+                             QString("Could not rename '%1'.").arg(relPath));
+        return;
+    }
+    // Staged files for this mod changed - drop its cached scans and mark dirty.
+    m_modListView->invalidateModCache(modId);
+    m_rightPane->invalidateModPluginCache(modId);
+    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+    updatePluginNotice();
+    refreshHealthIndicator();
+}
+
+void MainWindow::onDataDelete(const QString& modId, const QString& relPath,
+                              bool isFolder) {
+    const QString root = solero::AppConfig::instance().stagingDir() + "/" + modId;
+    const QString path = root + "/" + relPath;
+
+    // Staged files may be symlinks (Fluorine/Wabbajack): removing the link/dir
+    // removes it from the mod without touching the source target.
+    const bool ok = isFolder ? QDir(path).removeRecursively()
+                             : QFile::remove(path);
+    if (!ok) {
+        QMessageBox::warning(this, "Delete Failed",
+                             QString("Could not delete '%1'.").arg(relPath));
+        return;
+    }
+    m_modListView->invalidateModCache(modId);
+    m_rightPane->invalidateModPluginCache(modId);
+    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+    updatePluginNotice();
+    refreshHealthIndicator();
 }
 
 void MainWindow::updatePluginNotice() {

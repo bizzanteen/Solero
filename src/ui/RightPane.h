@@ -60,6 +60,11 @@ signals:
     // Emitted when a per-file rule (hide / winner override) changed in the Data
     // or Conflicts tab - MainWindow uses it to mark the deployment dirty.
     void fileRulesChanged();
+    // Forwarded from the Data tab: rename/delete a staged file or folder.
+    // MainWindow performs the filesystem op on the mod's staging dir.
+    void renameRequested(const QString& modId, const QString& relPath,
+                         const QString& newName, bool isFolder);
+    void deleteRequested(const QString& modId, const QString& relPath, bool isFolder);
 
 public slots:
     void onSelectionChanged(const QStringList& ids);

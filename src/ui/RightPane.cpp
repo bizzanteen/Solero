@@ -75,6 +75,8 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     // bubble up so MainWindow can flag the deployment as dirty.
     connect(m_dataTab,      &DataTab::fileRulesChanged,      this, &RightPane::fileRulesChanged);
     connect(m_conflictsTab, &ConflictsTab::fileRulesChanged, this, &RightPane::fileRulesChanged);
+    connect(m_dataTab,      &DataTab::renameRequested,       this, &RightPane::renameRequested);
+    connect(m_dataTab,      &DataTab::deleteRequested,       this, &RightPane::deleteRequested);
 }
 
 void RightPane::showDownloadsTab() {

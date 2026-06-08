@@ -41,6 +41,12 @@ signals:
     void filesDropped(); // a file was dropped in from another tree
     // Right-click "Hide/Unhide file in this mod" toggled. nowHidden = the new state.
     void hideToggled(const QString& modId, const QString& relPath, bool nowHidden);
+    // Right-click "Rename…" on a file or folder. newName is a validated basename
+    // (no separators, no collision) within the same parent directory.
+    void renameRequested(const QString& modId, const QString& relPath,
+                         const QString& newName, bool isFolder);
+    // Right-click "Delete" on a file or folder (already confirmed by the user).
+    void deleteRequested(const QString& modId, const QString& relPath, bool isFolder);
 
 protected:
     QStringList mimeTypes() const override;

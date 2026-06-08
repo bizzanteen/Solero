@@ -81,6 +81,11 @@ private:
     // (a shallow dependency scan, no recursion); not wired to per-keystroke events.
     void refreshHealthIndicator();
     void onShowProblems();       // open (or refresh) the non-modal Problems panel
+    // Data-tab rename/delete of a staged file or folder, applied to the mod's
+    // staging dir (stagingDir/<modId>/<relPath>).
+    void onDataRename(const QString& modId, const QString& relPath,
+                      const QString& newName, bool isFolder);
+    void onDataDelete(const QString& modId, const QString& relPath, bool isFolder);
     void updatePluginNotice();   // show/hide the Plugins-tab staleness notice
     void updateSortButton();     // enable "Sort Now" only when deployed && load order dirty
     void onLoadOrderChanged();   // user manually reordered a plugin -> mark order dirty

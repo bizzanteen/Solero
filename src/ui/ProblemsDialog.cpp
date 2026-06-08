@@ -94,28 +94,29 @@ ProblemsDialog::ProblemsDialog(QWidget* parent) : QDialog(parent) {
 void ProblemsDialog::setIssues(const QList<HealthIssue>& issues) {
     m_tree->clear();
 
-    int errors = 0, warnings = 0, infos = 0;
+    // Info-level notices aren't actionable problems, so the panel ignores them
+    // (the indicator does the same in MainWindow::refreshHealthIndicator).
+    int errors = 0, warnings = 0;
     for (const auto& i : issues) {
         switch (i.severity) {
             case HealthSeverity::Error:   ++errors;   break;
             case HealthSeverity::Warning: ++warnings; break;
-            case HealthSeverity::Info:    ++infos;    break;
+            case HealthSeverity::Info:    break; // excluded from the panel
         }
     }
 
-    if (issues.isEmpty()) {
+    if (errors == 0 && warnings == 0) {
         m_summary->setText(QStringLiteral("No problems found."));
         return;
     }
-    m_summary->setText(QStringLiteral("%1 error(s), %2 warning(s), %3 info.")
-                           .arg(errors).arg(warnings).arg(infos));
+    m_summary->setText(QStringLiteral("%1 error(s), %2 warning(s).")
+                           .arg(errors).arg(warnings));
 
     // Group headers in worst-first order; only add a group that has children.
     struct Group { HealthSeverity sev; QString title; QTreeWidgetItem* node = nullptr; };
     Group groups[] = {
         { HealthSeverity::Error,   QStringLiteral("Errors") },
         { HealthSeverity::Warning, QStringLiteral("Warnings") },
-        { HealthSeverity::Info,    QStringLiteral("Information") },
     };
 
     auto groupFor = [&](HealthSeverity sev) -> QTreeWidgetItem* {
@@ -134,6 +135,7 @@ void ProblemsDialog::setIssues(const QList<HealthIssue>& issues) {
     };
 
     for (const auto& issue : issues) {
+        if (issue.severity == HealthSeverity::Info) continue; // not shown
         QTreeWidgetItem* parent = groupFor(issue.severity);
         auto* item = new QTreeWidgetItem(parent);
         item->setIcon(0, severityIcon(issue.severity));

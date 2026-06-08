@@ -10,6 +10,7 @@
 #include "core/AppConfig.h"
 #include "core/ModList.h"
 #include "core/StagingFolder.h"
+#include "core/FileUtil.h"
 #include "core/ShaderCache.h"
 #include "core/VersionUtil.h"
 #include "core/LoadOrderBackup.h"
@@ -2817,7 +2818,7 @@ void MainWindow::onPlay() {
             const QStringList iniSrc = { prof->skyrimIniPath(), prof->skyrimPrefsPath(), prof->skyrimCustomPath() };
             const QStringList iniDst = { iniDir + "/Skyrim.ini", iniDir + "/SkyrimPrefs.ini", iniDir + "/SkyrimCustom.ini" };
             for (int i = 0; i < iniSrc.size(); ++i)
-                if (QFile::exists(iniSrc[i])) { QFile::remove(iniDst[i]); QFile::copy(iniSrc[i], iniDst[i]); }
+                if (QFile::exists(iniSrc[i])) solero::copyOverwrite(iniSrc[i], iniDst[i]);
         }
     }
 
@@ -2927,6 +2928,11 @@ void MainWindow::onPlay() {
             const int captured = solero::captureShaderCache(gameDir, cacheStaging);
             if (captured > 0) {
                 m_modListView->invalidateModCache(cm->id);
+                // The cache mod's staging now holds new shaders; mark deploy dirty
+                // so the next Play re-deploys them (otherwise deploy is skipped when
+                // already deployed-and-clean and the captured shaders never reach
+                // the live game dir). Mirrors onClearShaderCache.
+                if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
                 statusBar()->showMessage(
                     QString("Captured %1 new shader cache file(s).").arg(captured));
             }

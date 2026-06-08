@@ -52,8 +52,10 @@ int captureShaderCache(const QString& gameDir, const QString& cacheStagingDir) {
     const QString stagingData = cacheStagingDir + "/Data";
 
     int moved = 0;
+    // Don't follow symlinks: the runtime shader cache is never symlink-staged, so
+    // following links would risk moving files from outside the tree.
     QDirIterator it(srcRoot, QDir::Files | QDir::NoDotAndDotDot,
-                    QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
+                    QDirIterator::Subdirectories);
     while (it.hasNext()) {
         const QString srcPath = it.next();
         const QString rel = srcPath.mid(gameData.length() + 1); // e.g. ShaderCache/foo.bin

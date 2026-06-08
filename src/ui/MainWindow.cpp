@@ -2721,17 +2721,14 @@ void MainWindow::onPlay() {
     exe.runtime    = solero::RuntimeType::Proton;          // launch through the Skyrim Proton prefix
     exe.winePrefix = QDir(gameDir + "/../..").canonicalPath() + "/compatdata/489830";
     // No VFS: files the game writes at runtime (e.g. Community Shaders' shader
-    // cache) land in the real Data folder. Capture them after the session into
-    // the Overwrite folder (empty outputModId) so they don't pollute the game
-    // dir; the capture skips files owned by the deploy record.
-    exe.isCapturingOutput = true;
+    // cache) land in the real Data folder and stay there - they are not captured
+    // or moved into Overwrite.
 
     // Lock the UI (MO2-style) while the game runs; ToolRunner blocks via an event
     // loop until the process exits, then we unlock.
     m_toolRunning = true;
     showRunLock(exe.name);
-    statusBar()->showMessage("Launching " + exe.name
-        + " - new files created during play move to Overwrite\xe2\x80\xa6");
+    statusBar()->showMessage("Launching " + exe.name + "\xe2\x80\xa6");
     QElapsedTimer runTimer; runTimer.start();
     auto res = solero::ToolRunner::run(exe, gameDir, solero::AppConfig::instance().stagingDir());
     const qint64 ranMs = runTimer.elapsed();
@@ -2759,20 +2756,8 @@ void MainWindow::onPlay() {
         statusBar()->showMessage("Game closed.");
     }
 
-    // The capture just moved new runtime files into Overwrite, so they no longer
-    // exist in the game dir. If the profile is deployed, incrementally link the
-    // Overwrite folder back into gameDir/Data and append it to the on-disk deploy
-    // record - otherwise files created while playing would be stranded (present in
-    // Overwrite but missing from the game). Now-owned by __overwrite__, they also
-    // won't be re-captured next run. Relinking already-present files is idempotent.
-    if (m_deployed) {
-        solero::DeployEngine::deployOverwriteIncremental(
-            gameDir, solero::AppConfig::instance().deployMode());
-    }
-
-    // Runtime files written during play were captured into Overwrite - invalidate
-    // cached scans and rebuild so the Overwrite entry reflects the new files
-    // (mirrors the post-run refresh in onRunTool).
+    // Refresh cached scans after the session (mirrors the post-run refresh in
+    // onRunTool) so the mod list and plugin view reflect the current on-disk state.
     m_modListView->invalidateModCache();
     m_rightPane->invalidateModPluginCache();
     if (auto* p = m_profileMgr->activeProfile()) { m_rightPane->refreshPlugins(p); m_modListView->setProfile(p); }

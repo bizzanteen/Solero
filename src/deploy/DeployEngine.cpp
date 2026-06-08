@@ -72,14 +72,6 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     // normal load-order loop so a chosen mod wins regardless of its priority.
     applyWinnerOverrides(profile, m_gameDir, linker, record, conflicts, ciOwners);
 
-    // Deploy the Overwrite folder last so it wins every conflict (MO2-style: the
-    // capture/Overwrite layer sits above all mods). Its contents are Data-relative.
-    {
-        const QString overwriteDir = m_overwriteDir.isEmpty()
-            ? (AppConfig::dataRoot() + "/overwrite") : m_overwriteDir;
-        failures += deployOverwrite(m_gameDir, overwriteDir, linker, record, conflicts, ciOwners);
-    }
-
     // Sort plugins with LOOT (if enabled) before writing plugins.txt. The mod
     // files must already be deployed above so LOOT can read the plugin headers.
     // A locked load order skips the auto-sort entirely and deploys the current
@@ -321,108 +313,6 @@ void DeployEngine::applyWinnerOverrides(Profile& profile,
         record.add(relPath, modId);
         ciOwners.insert(ciKey, relPath);
     }
-}
-
-int DeployEngine::deployOverwrite(const QString& gameDir,
-                                  const QString& overwriteDir,
-                                  const Linker& linker,
-                                  DeployRecord& record,
-                                  ConflictIndex& conflicts,
-                                  QHash<QString, QString>& ciOwners) {
-    if (overwriteDir.isEmpty() || !QDir(overwriteDir).exists()) return 0;
-    const QString owner = overwriteOwnerId();
-
-    int failures = 0;
-    QDirIterator it(overwriteDir, QDir::Files | QDir::NoDotAndDotDot,
-                    QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
-    while (it.hasNext()) {
-        QString srcPath = it.next();
-
-        // Skip Solero metadata markers; they must never deploy.
-        if (QFileInfo(srcPath).fileName().startsWith(".solero")) continue;
-
-        // The Overwrite folder is Data-relative: a file at <overwrite>/R belongs at
-        // gameDir/Data/R and is recorded gameDir-relative ("Data/R"), exactly like
-        // every mod file (which stages Data/... and records "Data/...").
-        const QString r       = srcPath.mid(overwriteDir.length() + 1);
-        const QString relPath = "Data/" + r;
-        const QString dstPath = gameDir + "/Data/" + r;
-
-        const QString ciKey = relPath.toLower();
-        const QString priorRel = ciOwners.value(ciKey);   // earlier-deployed path at this CI path, if any
-        QString previousOwner = priorRel.isEmpty() ? QString() : record.ownerOf(priorRel);
-
-        // Overwrite wins everything: drop any case-variant a mod already deployed
-        // (Wine/Proton is case-insensitive, so both would otherwise be visible).
-        if (!priorRel.isEmpty() && priorRel != relPath) {
-            QFile::remove(gameDir + "/" + priorRel);
-            record.remove(priorRel);
-        }
-
-        // First Solero owner here and a file already sits there: it's a genuine
-        // pre-existing original - back it up so undeploy can restore it (mirrors
-        // deployMod). Mod-owned files are left to be overwritten in place.
-        if (previousOwner.isEmpty() && QFile::exists(dstPath)) {
-            QString backupPath = gameDir + "/" + backupDirName() + "/" + relPath;
-            if (!QFile::exists(backupPath)) {
-                QDir().mkpath(QFileInfo(backupPath).path());
-                if (!QFile::rename(dstPath, backupPath)) {
-                    if (QFile::copy(dstPath, backupPath))
-                        QFile::remove(dstPath);
-                }
-            }
-        }
-
-        // Resolve symlinks so we hardlink/copy the real file (see deployMod).
-        QString realSrc = QFileInfo(srcPath).canonicalFilePath();
-        if (realSrc.isEmpty()) realSrc = srcPath;
-        if (!linker.deploy(realSrc, dstPath)) {
-            qWarning() << "Overwrite deploy failed for" << relPath;
-            ++failures;
-            continue; // do not record a failed link as deployed
-        }
-
-        // Overwrite wins: any prior owner becomes a loser of this path.
-        if (!previousOwner.isEmpty() && previousOwner != owner)
-            conflicts.recordConflict(relPath, owner, previousOwner);
-        else
-            conflicts.setWinner(relPath, owner);
-        record.add(relPath, owner);
-        ciOwners.insert(ciKey, relPath);
-    }
-    return failures;
-}
-
-void DeployEngine::deployOverwriteIncremental(const QString& gameDir, DeployMode mode,
-                                              const QString& overwriteDir) {
-    const QString owDir = overwriteDir.isEmpty()
-        ? (AppConfig::dataRoot() + "/overwrite") : overwriteDir;
-    if (owDir.isEmpty() || !QDir(owDir).exists()) return;
-
-    const QString normGameDir = QDir::cleanPath(gameDir);
-    DeployRecord record = DeployRecord::loadFromFile(recordPath(normGameDir));
-    Linker linker(mode);
-    const QString owner = overwriteOwnerId();
-
-    bool changed = false;
-    QDirIterator it(owDir, QDir::Files | QDir::NoDotAndDotDot,
-                    QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
-    while (it.hasNext()) {
-        QString srcPath = it.next();
-        if (QFileInfo(srcPath).fileName().startsWith(".solero")) continue;
-
-        const QString r       = srcPath.mid(owDir.length() + 1);
-        const QString relPath = "Data/" + r;
-        const QString dstPath = normGameDir + "/Data/" + r;
-
-        QString realSrc = QFileInfo(srcPath).canonicalFilePath();
-        if (realSrc.isEmpty()) realSrc = srcPath;
-        if (linker.deploy(realSrc, dstPath)) {     // relinking is idempotent
-            record.add(relPath, owner);
-            changed = true;
-        }
-    }
-    if (changed) record.saveToFile(recordPath(normGameDir));
 }
 
 bool DeployEngine::undeploy(const QString& gameDir, const std::function<void(int,int)>& onProgress) {

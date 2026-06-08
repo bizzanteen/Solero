@@ -2705,6 +2705,24 @@ void MainWindow::onPlay() {
         }
     }
 
+    // Reconcile the active profile's INIs to the live (prefix Documents) copies
+    // on every launch. Deploy syncs them, but deploy is skipped above when the
+    // modlist is already deployed-and-clean - and the game reads the live copy,
+    // not the profile. Without this, a stale live SkyrimPrefs.ini (e.g. one an
+    // in-game graphics-settings save overwrote) silently overrides the BethINI
+    // preset the user applied. Idempotent if deploy just did the same copy.
+    if (auto* prof = m_profileMgr->activeProfile()) {
+        QString docs = solero::AppConfig::instance().documentsDir();
+        QString iniDir = docs.isEmpty() ? solero::AppConfig::instance().gameDir() : docs;
+        if (!iniDir.isEmpty()) {
+            QDir().mkpath(iniDir);
+            const QStringList iniSrc = { prof->skyrimIniPath(), prof->skyrimPrefsPath(), prof->skyrimCustomPath() };
+            const QStringList iniDst = { iniDir + "/Skyrim.ini", iniDir + "/SkyrimPrefs.ini", iniDir + "/SkyrimCustom.ini" };
+            for (int i = 0; i < iniSrc.size(); ++i)
+                if (QFile::exists(iniSrc[i])) { QFile::remove(iniDst[i]); QFile::copy(iniSrc[i], iniDst[i]); }
+        }
+    }
+
     const QString gameDir = solero::AppConfig::instance().gameDir();
     // Find a launch target in the game root, case-insensitively. Prefer the SKSE
     // loader so script-extender plugins load; fall back to the base game exe.

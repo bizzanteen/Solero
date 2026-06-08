@@ -501,7 +501,16 @@ void BethiniWindow::applyPresetToRow(RowWidget& rw, const QString& presetName) {
                 if (anyPreset && allMatch) { combo->setCurrentIndex(ci); return; }
             }
         }
-        return; // no preset data for this dropdown
+        // Plain-`choices` combo (empty settingChoices): match the preset value
+        // directly against the item text, mirroring loadRow(). Without this the
+        // preset was silently skipped and the combo kept its prior value - e.g.
+        // iShadowMapResolution / iMaxDesired stayed above the chosen tier.
+        QString pv = rw.row.iniKeys.first().presets.value(presetName);
+        if (!pv.isEmpty()) {
+            int idx = combo->findText(pv);
+            if (idx >= 0) combo->setCurrentIndex(idx);
+        }
+        return;
     }
 
     QString pv = rw.row.iniKeys.first().presets.value(presetName);

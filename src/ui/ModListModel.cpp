@@ -579,10 +579,11 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
     auto& list = m_profile->modList();
 
     // Destination raw index. The Overwrite row (visible) maps to raw -1; treat a
-    // drop there as "append to the end of the real mod list" (raw == count), i.e.
-    // just above the pinned Overwrite. Any other invalid dst aborts.
+    // drop there as "append to the end of the real mod list", i.e. just above the
+    // pinned Overwrite but BELOW... no: above the trailing managed-cache mod, which
+    // must stay last. Any other invalid dst aborts.
     int dstRaw = rawIndexForRow(dst);
-    if (dstRaw == -1) dstRaw = list.count();
+    if (dstRaw == -1) dstRaw = list.firstTrailingManagedCacheIndex();
     else if (dstRaw < 0) return false;
 
     const bool draggingSeparator =
@@ -649,9 +650,11 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
     }
 
     // QList::move() needs a valid destination index in [0, count-1]. A drop at the
-    // end (dstRaw == count, i.e. just above Overwrite) maps to the last raw slot.
+    // end maps to the last real slot ABOVE the trailing managed-cache run, so the
+    // cache mod stays pinned last. Guard the empty/all-cache case.
     int moveTo = dstRaw;
-    if (moveTo >= list.count()) moveTo = list.count() - 1;
+    const int ceiling = list.firstTrailingManagedCacheIndex();
+    if (moveTo >= ceiling) moveTo = qMax(0, qMin(moveTo, ceiling - 1));
     if (moveTo == srcRaw) return false; // no-op
 
     beginMoveRows({}, src, src, {}, dst > src ? dst + 1 : dst);
@@ -761,9 +764,10 @@ bool ModListModel::moveSelection(const QList<int>& srcVisibleRows, int dstVisibl
     std::sort(orderedSrcRaws.begin(), orderedSrcRaws.end());
     if (orderedSrcRaws.isEmpty()) return false;
 
-    // 4. Destination raw index. Overwrite (-1) -> append to the end.
+    // 4. Destination raw index. Overwrite (-1) -> append to the end, but ABOVE the
+    // trailing managed-cache run so the cache mod stays pinned last.
     int dstRaw = rawIndexForRow(dstVisible);
-    if (dstRaw == -1) dstRaw = list.count();
+    if (dstRaw == -1) dstRaw = list.firstTrailingManagedCacheIndex();
     else if (dstRaw < 0) return false;
 
     // 5. Snap off a group-child boundary so a non-moved group isn't split.

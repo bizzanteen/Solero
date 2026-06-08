@@ -531,11 +531,14 @@ void ModListView::onAddSeparatorAt(int visibleRow) {
     AppConfig::instance().setLastSeparatorColor(chosen);
     AppConfig::instance().save();
 
-    // Insert at the given visible row position in the raw list
+    // Insert at the given visible row position in the raw list. The Overwrite row
+    // maps to raw -1; "append to the end" must land ABOVE the trailing
+    // managed-cache mod (which stays pinned last), not at count().
     int rawPos = m_model->rawIndexForRow(visibleRow);
-    if (rawPos < 0) rawPos = m_model->profile()->modList().count();
+    if (rawPos < 0) rawPos = m_model->profile()->modList().firstTrailingManagedCacheIndex();
 
     // Append then move to position
+    const QString sepId = sep.id;
     m_model->profile()->modList().append(sep);
     int newRaw = m_model->profile()->modList().count() - 1;
     if (rawPos < newRaw)
@@ -543,8 +546,15 @@ void ModListView::onAddSeparatorAt(int visibleRow) {
     m_model->profile()->save();
     m_model->rebuild();
 
-    // Open edit dialog immediately so user can pick colour/icon
-    onEditSeparator(m_model->rawToVisible(rawPos));
+    // Open edit dialog immediately so user can pick colour/icon. Resolve the
+    // separator's row by its id after the rebuild - rawPos may no longer point at
+    // it once managed-cache pinning / other entries shift things around.
+    const auto& entries = m_model->profile()->modList().entries();
+    int sepRaw = -1;
+    for (int i = 0; i < entries.size(); ++i)
+        if (entries.at(i).id == sepId) { sepRaw = i; break; }
+    if (sepRaw >= 0)
+        onEditSeparator(m_model->rawToVisible(sepRaw));
 }
 
 void ModListView::onEditSeparator(int visibleRow) {

@@ -64,6 +64,12 @@ public:
     // nullptr if none exists.
     const ModEntry* findManagedCache() const;
 
+    // Index of the first entry in the trailing contiguous run of managed-cache
+    // mods - i.e. the position a new real mod/separator should be appended or
+    // clamped to so the managed-cache mod stays pinned last. Returns count() when
+    // there are no trailing managed-cache mods.
+    int firstTrailingManagedCacheIndex() const;
+
     QJsonDocument toJson() const;
     static ModList fromJson(const QJsonDocument& doc);
 

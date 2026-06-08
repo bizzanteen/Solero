@@ -217,6 +217,12 @@ const ModEntry* ModList::findManagedCache() const {
     return nullptr;
 }
 
+int ModList::firstTrailingManagedCacheIndex() const {
+    int idx = m_entries.size();
+    while (idx > 0 && m_entries[idx - 1].isManagedCache) --idx;
+    return idx;
+}
+
 static QJsonObject entryToJson(const ModEntry& e) {
     QJsonObject o;
     o["type"]            = (e.type == EntryType::Mod) ? "mod" : "separator";

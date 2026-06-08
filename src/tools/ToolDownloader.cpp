@@ -101,22 +101,45 @@ QString ToolDownloader::githubDownloadUrl(const ToolPreset& pr, QString* fileNam
 }
 
 bool ToolDownloader::curlDownload(const QString& url, const QString& dest,
-                                  const QString& header, const std::function<void(int)>& onProgress) {
+                                  const QString& header, const std::function<void(int)>& onProgress,
+                                  QString* errorOut) {
     QDir().mkpath(QFileInfo(dest).path());
     // URL-encode spaces (Nexus CDN URLs contain them).
     QString safe = QString::fromLatin1(QUrl(url).toEncoded());
     QProcess p;
-    QStringList args; args << "-L" << "--fail";
+    // GitHub's release CDN intermittently returns transient 5xx (e.g. 504 Gateway
+    // Timeout) and connections occasionally stall; let curl handle retries itself.
+    // --retry-all-errors makes it retry HTTP 5xx too (plain --retry only covers
+    // connection-level failures), and -sS keeps it quiet while still printing the
+    // real error to stderr so we can surface it.
+    QStringList args; args << "-L" << "--fail"
+                          << "-sS" << "--retry" << "4" << "--retry-all-errors"
+                          << "--retry-delay" << "2" << "--connect-timeout" << "30"
+                          << "--retry-max-time" << "300";
     if (!header.isEmpty()) args << "-H" << header;
     args << "-o" << dest << safe;
     p.start("curl", args);
-    if (!p.waitForStarted(15000)) { QFile::remove(dest); return false; }
+    if (!p.waitForStarted(15000)) {
+        QFile::remove(dest);
+        if (errorOut) *errorOut = "curl failed to start";
+        return false;
+    }
     while (p.state() != QProcess::NotRunning) {
         p.waitForFinished(200);
         if (onProgress) onProgress(-1); // indeterminate (curl progress parsing omitted)
     }
     const bool ok = p.exitCode() == 0 && QFileInfo(dest).size() > 0;
-    if (!ok) QFile::remove(dest);   // never leave a partial/empty archive behind
+    if (!ok) {
+        QFile::remove(dest);   // never leave a partial/empty archive behind
+        if (errorOut) {
+            const QString stderrText = QString::fromUtf8(p.readAllStandardError()).trimmed();
+            QString lastLine;
+            for (const QString& line : stderrText.split('\n', Qt::SkipEmptyParts))
+                if (!line.trimmed().isEmpty()) lastLine = line.trimmed();
+            *errorOut = "curl exit " + QString::number(p.exitCode())
+                      + (lastLine.isEmpty() ? "" : ": " + lastLine);
+        }
+    }
     return ok;
 }
 
@@ -150,9 +173,10 @@ ToolDownloadResult ToolDownloader::fetch(const ToolPreset& preset, const QString
     if (ext.isEmpty()) ext = ".zip";  // last-resort default
     QString archive = downloadsDir + "/" + preset.id + ext;
     QString header = preset.source == ToolSource::Nexus ? ("apikey: " + nexusApiKey()) : QString();
-    if (!curlDownload(url, archive, header, onProgress)) {
+    QString dlErr;
+    if (!curlDownload(url, archive, header, onProgress, &dlErr)) {
         QFile::remove(archive);   // ensure no partial/empty archive lingers for re-extract
-        r.error = "Download failed.";
+        r.error = dlErr.isEmpty() ? "Download failed." : "Download failed - " + dlErr;
         return r;
     }
 

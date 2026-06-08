@@ -19,7 +19,8 @@ public:
     static QString nexusDownloadUrl(const ToolPreset& p, QString* error = nullptr,
                                     QString* fileName = nullptr);
     static bool curlDownload(const QString& url, const QString& dest,
-                             const QString& header, const std::function<void(int)>& onProgress);
+                             const QString& header, const std::function<void(int)>& onProgress,
+                             QString* errorOut = nullptr);
 private:
     static QString githubDownloadUrl(const ToolPreset& p, QString* fileName = nullptr);  // "" on failure
 };

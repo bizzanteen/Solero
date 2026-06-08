@@ -35,16 +35,6 @@ private slots:
         QVERIFY(out[0].fixHint.contains("12345")); // Nexus id surfaced in the hint
     }
 
-    void fomodRerun_warningPerMod() {
-        QList<QPair<QString, QString>> in{ {"modF", "FOMOD Mod"} };
-        auto out = health::fomodRerunIssues(in);
-        QCOMPARE(out.size(), 1);
-        QCOMPARE(out[0].severity, HealthSeverity::Warning);
-        QCOMPARE(out[0].category, HealthCategory::FomodNeedsRerun);
-        QCOMPARE(out[0].targetModId, QString("modF"));
-        QVERIFY(!out[0].fixHint.isEmpty());
-    }
-
     void conflicts_infoWhenAny_noneWhenZero() {
         QVERIFY(health::conflictIssues(0, {}).isEmpty());
         auto out = health::conflictIssues(3, {"ModA", "ModB"});
@@ -93,13 +83,20 @@ private slots:
         QTemporaryDir tmp;
         Profile profile("Test", tmp.path());
 
-        // Plugins: a present master, plus a child whose master is absent.
+        // Plugins: a present master, plus an enabled child whose master is
+        // absent (a real problem), plus a DISABLED child whose master is also
+        // absent (won't load -> must not be flagged).
         PluginEntry base; base.filename = "Base.esm"; base.isMaster = true;
         profile.pluginList().append(base);
-        PluginEntry child; child.filename = "Child.esp"; child.masters = {"Absent.esm"};
+        PluginEntry child; child.filename = "Child.esp"; child.enabled = true;
+        child.masters = {"Absent.esm"};
         profile.pluginList().append(child);
+        PluginEntry off; off.filename = "Disabled.esp"; off.enabled = false;
+        off.masters = {"AlsoAbsent.esm"};
+        profile.pluginList().append(off);
 
-        // Mods: one flagged needs-rerun, one ordinary dependency target.
+        // Mods: one flagged needs-rerun (no longer a health issue), one ordinary
+        // dependency target.
         ModEntry f; f.type = EntryType::Mod; f.id = "modF"; f.name = "Fomod Mod";
         f.enabled = true; f.fomodStatus = "needs-rerun";
         profile.modList().append(f);
@@ -121,12 +118,18 @@ private slots:
         auto countCat = [&](HealthCategory c) {
             int n = 0; for (const auto& i : issues) if (i.category == c) ++n; return n;
         };
+        // Only the enabled child is flagged; the disabled one is silent.
         QCOMPARE(countCat(HealthCategory::MissingMaster),     1);
         QCOMPARE(countCat(HealthCategory::MissingDependency), 1);
-        QCOMPARE(countCat(HealthCategory::FomodNeedsRerun),   1);
         QCOMPARE(countCat(HealthCategory::DeployWarning),     1);
         QCOMPARE(countCat(HealthCategory::DeployState),       1);
         QCOMPARE(countCat(HealthCategory::Conflict),          1);
+
+        // A mod whose FOMOD choices can't be reconstructed is not a health issue;
+        // it must not surface in the Problems panel (only the disabled-plugin and
+        // FOMOD-needs-rerun states are intentionally absent).
+        for (const auto& i : issues)
+            QVERIFY(i.targetPlugin != "Disabled.esp");
 
         // Sorted worst-first: the first issue must be the Error (missing master).
         QVERIFY(!issues.isEmpty());

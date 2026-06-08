@@ -17,7 +17,6 @@ enum class HealthSeverity { Info = 0, Warning = 1, Error = 2 };
 enum class HealthCategory {
     MissingMaster,      // a plugin's master file isn't present (load will fail)
     MissingDependency,  // a mod's runtime dep is absent (SKSE / Address Library)
-    FomodNeedsRerun,    // flag-driven FOMOD whose choices couldn't be recovered
     Conflict,           // informational: N files won/lost between mods
     DeployWarning,      // the last deploy reported a non-fatal warning
     DeployState,        // not deployed / pending redeploy
@@ -52,7 +51,9 @@ namespace health {
 // Each takes already-extracted data so it can be unit-tested without the app.
 
 // pluginMasters: {pluginFilename, missingMasterFilenames}. Only entries whose
-// missing list is non-empty yield an Error issue (targetPlugin set).
+// missing list is non-empty yield an Error issue (targetPlugin set). Callers
+// should pass only enabled plugins - a disabled plugin won't load, so its
+// missing masters aren't a problem.
 QList<HealthIssue> missingMasterIssues(
     const QList<QPair<QString, QStringList>>& pluginMasters);
 
@@ -62,10 +63,6 @@ QList<HealthIssue> dependencyIssues(
     const QHash<QString, QStringList>& warnings,
     const QHash<QString, QString>& modNames,
     const QHash<QString, QString>& modNexusIds = {});
-
-// mods: {modId, displayName} for each mod whose fomodStatus == "needs-rerun".
-QList<HealthIssue> fomodRerunIssues(
-    const QList<QPair<QString, QString>>& mods);
 
 // One Info issue when conflictedPathCount > 0. involvedModNames is for the detail.
 QList<HealthIssue> conflictIssues(int conflictedPathCount,

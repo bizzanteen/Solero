@@ -56,26 +56,6 @@ QList<HealthIssue> dependencyIssues(
     return out;
 }
 
-QList<HealthIssue> fomodRerunIssues(
-    const QList<QPair<QString, QString>>& mods) {
-    QList<HealthIssue> out;
-    for (const auto& m : mods) {
-        HealthIssue i;
-        i.severity    = HealthSeverity::Warning;
-        i.category    = HealthCategory::FomodNeedsRerun;
-        i.targetModId = m.first;
-        i.title       = QStringLiteral("%1: FOMOD choices not recorded").arg(m.second);
-        i.detail      = QStringLiteral(
-            "This is a flag-driven FOMOD installer whose options couldn't be "
-            "reconstructed from the installed files.");
-        i.fixHint = QStringLiteral("Re-run the installer (right-click the mod ")
-            + QChar(0x2192) // -> arrow
-            + QStringLiteral(" Reinstall) to record the chosen options.");
-        out.append(i);
-    }
-    return out;
-}
-
 QList<HealthIssue> conflictIssues(int conflictedPathCount,
                                   const QStringList& involvedModNames) {
     QList<HealthIssue> out;
@@ -192,6 +172,8 @@ QList<HealthIssue> collect(const Profile& profile, const ConflictIndex& conflict
     for (int i = 0; i < pl.count(); ++i) {
         const PluginEntry& p = pl.at(i);
         if (p.enabled) (p.isLight ? light : regular)++;
+        // Disabled plugins won't load, so their missing masters aren't a problem.
+        if (!p.enabled) continue;
         if (p.masters.isEmpty()) continue;
         QStringList missing;
         for (const QString& m : p.masters)
@@ -203,19 +185,13 @@ QList<HealthIssue> collect(const Profile& profile, const ConflictIndex& conflict
 
     // Missing dependencies (from DependencyChecker, passed in)
     QHash<QString, QString> modNames, modNexusIds;
-    QList<QPair<QString, QString>> fomodRerun;
     const ModList& ml = profile.modList();
     for (const auto& e : ml) {
         if (e.type != EntryType::Mod) continue;
         modNames.insert(e.id, e.name);
         if (!e.nexusModId.isEmpty()) modNexusIds.insert(e.id, e.nexusModId);
-        if (e.enabled && e.fomodStatus == QStringLiteral("needs-rerun"))
-            fomodRerun.append({e.id, e.name});
     }
     all += health::dependencyIssues(inputs.dependencyWarnings, modNames, modNexusIds);
-
-    // FOMOD needs-rerun
-    all += health::fomodRerunIssues(fomodRerun);
 
     // Deploy warning + state
     all += health::deployWarningIssues(inputs.lastDeployWarning);

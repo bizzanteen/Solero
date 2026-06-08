@@ -2457,10 +2457,17 @@ QString MainWindow::chooseOutputMod(const QString& defaultName, const QString& t
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) return {};
 
-    // Exact-name match -> reuse silently (e.g. a mod we created before).
+    // Exact-name match -> reuse silently (e.g. a mod we created before, or an
+    // imported list's output mod). Tag it as an output mod so it gets the output
+    // styling/capture semantics (the fuzzy path below does the same).
     for (const auto& m : profile->modList())
-        if (m.type == solero::EntryType::Mod && m.name == defaultName)
+        if (m.type == solero::EntryType::Mod && m.name == defaultName) {
+            if (!m.isOutputMod) {
+                solero::ModEntry up = m; up.isOutputMod = true;
+                profile->modList().update(up.id, up); profile->save();
+            }
             return m.id;
+        }
 
     // Fuzzy: an imported/Wabbajack list usually ships the tool's output mod under
     // a slightly different name. Suggest mods that share the tool's keyword and

@@ -219,9 +219,19 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
     list->setIconSize(QSize(32, 32));
     list->setMinimumWidth(260);
     list->setMaximumWidth(260);
+    // A preset is "installed" if a tool with the same id is already in the store.
+    auto isInstalled = [this](const QString& id) {
+        for (const auto& t : m_store->tools()) if (t.id == id) return true;
+        return false;
+    };
     for (const auto& p : ToolCatalog::presets()) {
         auto* item = new QListWidgetItem(QIcon(p.iconResource), p.name, list);
         item->setData(Qt::UserRole, p.id);
+        if (isInstalled(p.id)) {
+            item->setText(p.name + " (installed)");
+            item->setToolTip("Already set up.");
+            item->setFlags(item->flags() & ~Qt::ItemIsEnabled & ~Qt::ItemIsSelectable);
+        }
     }
     auto* custom = new QListWidgetItem(QIcon::fromTheme("list-add"),
                                        "Add Custom Tool\xe2\x80\xa6", list);
@@ -249,8 +259,6 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
     docsLbl->setTextFormat(Qt::RichText);
     docsLbl->setOpenExternalLinks(true);
     auto* openBtn = new QPushButton("Open mod page", detailsW);
-    auto* endorseBtn = new QPushButton("Endorse", detailsW);
-    endorseBtn->setEnabled(false);
     details->addWidget(iconLbl);
     details->addWidget(nameLbl);
     details->addWidget(authorLbl);
@@ -258,7 +266,6 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
     details->addWidget(docsLbl);
     details->addStretch();
     details->addWidget(openBtn);
-    details->addWidget(endorseBtn);
     body->addWidget(detailsW);
     outer->addLayout(body);
 
@@ -289,7 +296,6 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
             docsLbl->clear();
             docsLbl->hide();
             openBtn->setEnabled(false);
-            endorseBtn->setEnabled(false);
             return;
         }
         const ToolPreset* p = selectedPreset();
@@ -297,7 +303,6 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
             iconLbl->clear();
             nameLbl->clear(); authorLbl->clear(); descLbl->clear(); docsLbl->clear();
             openBtn->setEnabled(false);
-            endorseBtn->setEnabled(false);
             return;
         }
         iconLbl->setPixmap(QPixmap(p->iconResource));
@@ -317,19 +322,20 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
             docsLbl->show();
         }
         openBtn->setEnabled(!p->creditUrl.isEmpty());
-        // Endorse only Nexus tools that carry a mod id; GitHub/custom can't be endorsed.
-        endorseBtn->setEnabled(p->source == ToolSource::Nexus && !p->nexusModId.isEmpty());
     };
     connect(list, &QListWidget::currentItemChanged, this, [=]{ updateDetails(); });
-    if (list->count() > 0) list->setCurrentRow(0);
+    // Disabled (already-installed) items can't be selected by click, so start on
+    // the first enabled row (the "Add Custom Tool…" item is always enabled).
+    for (int i = 0; i < list->count(); ++i) {
+        if (list->item(i)->flags() & Qt::ItemIsEnabled) {
+            list->setCurrentRow(i);
+            break;
+        }
+    }
 
     connect(openBtn, &QPushButton::clicked, this, [=]{
         if (const ToolPreset* p = selectedPreset())
             QDesktopServices::openUrl(QUrl(p->creditUrl));
-    });
-    connect(endorseBtn, &QPushButton::clicked, this, [=]{
-        if (selectedId() == "__custom__") return;
-        endorsePreset(selectedPreset(), this);
     });
     connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
 
@@ -347,6 +353,9 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
         }
         const ToolPreset* p = selectedPreset();
         if (!p) return;
+        // Belt-and-suspenders: never re-set-up an already-installed preset, even
+        // if a disabled item somehow became the current selection.
+        if (isInstalled(p->id)) return;
 
         const QString downloadsDir = AppConfig::instance().downloadsDir();
         const QString toolsRoot = AppConfig::instance().toolsDir();

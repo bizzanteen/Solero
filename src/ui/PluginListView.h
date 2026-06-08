@@ -17,6 +17,8 @@ public:
 signals:
     // Forwarded from the model: the user manually reordered the load order.
     void loadOrderChanged();
+    // Forwarded from the model: a plugin's enabled state was toggled.
+    void pluginEnabledChanged();
 private slots:
     void onSortChanged(int col, Qt::SortOrder order);
 protected:

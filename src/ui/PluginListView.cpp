@@ -79,6 +79,8 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
             this, &PluginListView::onSortChanged);
     connect(m_model, &PluginListModel::loadOrderChanged,
             this, &PluginListView::loadOrderChanged);
+    connect(m_model, &PluginListModel::pluginEnabledChanged,
+            this, &PluginListView::pluginEnabledChanged);
     // Resizing another column lets the Plugin column absorb the slack (no gap).
     connect(horizontalHeader(), &QHeaderView::sectionResized, this, [this](int idx, int, int) {
         if (idx != PluginListModel::ColName) fillNameColumn();

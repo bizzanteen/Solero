@@ -594,6 +594,10 @@ void MainWindow::setupCentralWidget() {
     // Plugins tab: manual reorder marks the load order dirty; "Sort Now" runs LOOT.
     connect(m_rightPane->pluginsView(), &solero::PluginListView::loadOrderChanged,
             this, &MainWindow::onLoadOrderChanged);
+    // Enable/disable a plugin -> recompute the health indicator / Problems panel
+    // live (missing-master warnings appear/clear immediately).
+    connect(m_rightPane->pluginsView(), &solero::PluginListView::pluginEnabledChanged,
+            this, &MainWindow::refreshHealthIndicator);
     connect(m_rightPane, &solero::RightPane::sortRequested,
             this, &MainWindow::onSortRequested);
     connect(m_rightPane, &solero::RightPane::lockOrderToggled,

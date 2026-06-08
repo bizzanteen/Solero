@@ -3,6 +3,7 @@
 #include "install/PluginScanner.h"
 #include "IconUtil.h"
 #include <QFont>
+#include <QBrush>
 #include <QMimeData>
 #include <QByteArray>
 #include <QStringList>
@@ -157,7 +158,9 @@ int PluginListModel::rowCount(const QModelIndex& parent) const {
 // Master filenames (lowercased) declared by `p` that are not present in the
 // current plugin list - i.e. missing dependencies.
 QStringList PluginListModel::missingMasters(const PluginEntry& p) const {
-    if (p.masters.isEmpty() || !m_profile) return {};
+    // A disabled plugin isn't loaded, so its missing masters aren't a problem -
+    // no red text, no tooltip warning, and (via HealthCheck) no Problems entry.
+    if (!p.enabled || p.masters.isEmpty() || !m_profile) return {};
     QSet<QString> present;
     const PluginList& pl = m_profile->pluginList();
     for (int i = 0; i < pl.count(); ++i) present.insert(pl.at(i).filename.toLower());
@@ -174,8 +177,10 @@ QVariant PluginListModel::data(const QModelIndex& idx, int role) const {
     if (role == Qt::TextAlignmentRole && idx.column() == ColPriority)
         return QVariant(Qt::AlignCenter);
 
-    if (role == Qt::DecorationRole && idx.column() == ColName) {
-        if (!missingMasters(p).isEmpty()) return redBangIcon();
+    // Missing masters are now surfaced as red text (Qt::ForegroundRole below),
+    // not a decoration icon - so no DecorationRole is returned for them.
+    if (role == Qt::ForegroundRole && idx.column() == ColName) {
+        if (!missingMasters(p).isEmpty()) return QBrush(QColor(0xD0, 0x40, 0x40));
         return {};
     }
     if (role == Qt::ToolTipRole) {
@@ -240,6 +245,14 @@ bool PluginListModel::setData(const QModelIndex& idx, const QVariant& value, int
         m_profile->pluginList().setEnabled(p.filename, value.toInt() == Qt::Checked);
         m_profile->save();
         emit dataChanged(idx, idx, {role});
+        // Toggling enabled changes this plugin's missing-master state, so repaint
+        // the Name column (red text / tooltip) for every row immediately, and let
+        // the health indicator / Problems panel recompute live.
+        const int last = m_profile->pluginList().count() - 1;
+        if (last >= 0)
+            emit dataChanged(index(0, ColName), index(last, ColName),
+                             {Qt::ForegroundRole, Qt::ToolTipRole, Qt::DisplayRole});
+        emit pluginEnabledChanged();
         return true;
     }
     return false;

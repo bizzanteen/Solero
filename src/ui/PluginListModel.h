@@ -40,6 +40,9 @@ signals:
     // Emitted after a SUCCESSFUL manual reorder so the load order can be marked
     // dirty (LOOT may need to re-sort).
     void loadOrderChanged();
+    // Emitted when a plugin's enabled state is toggled - lets the health
+    // indicator / Problems panel recompute live (without marking the order dirty).
+    void pluginEnabledChanged();
 
 private:
     // Master files declared by `p` that are absent from the current plugin list.

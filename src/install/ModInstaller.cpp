@@ -142,7 +142,18 @@ InstallPrep ModInstaller::prepare(const QString& archivePath,
             prep.fullyExtracted = true;
             locate();
         }
+        // The module root that the FOMOD's image/source paths are relative to is
+        // the PARENT of the `fomod` folder - which is extractDir for a flat
+        // archive but a wrapper subdir (e.g. "Skyland AIO/") when the archive
+        // nests everything one level deep. Derive it from the located config so
+        // the wizard resolves images against the right base.
+        if (!prep.fomodConfigPath.isEmpty()) {
+            QDir fd(QFileInfo(prep.fomodConfigPath).absolutePath()); // .../fomod
+            fd.cdUp();                                               // module root
+            prep.fomodBase = fd.absolutePath();
+        }
     }
+    if (prep.fomodBase.isEmpty()) prep.fomodBase = prep.extractDir;
     prep.ok = true;
     return prep;
 }

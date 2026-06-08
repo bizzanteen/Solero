@@ -33,6 +33,38 @@ private slots:
         QCOMPARE(r.modName, QString("CoolTextures"));
         QVERIFY(QFile::exists(staging + "/" + r.modId + "/Data/textures/sky.dds"));
     }
+    // Regression: a FOMOD whose contents are wrapped in a top-level folder
+    // (like Skyland AIO: "Skyland AIO/fomod/...") must report a fomodBase that
+    // is the parent of the `fomod` dir, not the raw extractDir. The wizard
+    // resolves image paths (e.g. "fomod/screens/a.jpg") against fomodBase; if it
+    // used extractDir it would look one level too shallow and show no images.
+    void prepare_wrappedFomod_baseResolvesImages() {
+        QTemporaryDir tmp;
+        // Wrapper dir "Skylandish" mirrors Skyland's archive-root folder.
+        QString src = tmp.path() + "/srcmod";
+        writeFile(src + "/Skylandish/fomod/ModuleConfig.xml",
+                  "<config><moduleName>X</moduleName></config>");
+        writeFile(src + "/Skylandish/fomod/screens/a.jpg", "img");
+        writeFile(src + "/Skylandish/textures/x.dds", "tex");
+        QString archive = tmp.path() + "/Skylandish.7z";
+        QProcess z; z.setWorkingDirectory(src);
+        z.start("7z", {"a", archive, "."});
+        QVERIFY(z.waitForFinished(60000));
+
+        auto prep = ModInstaller::prepare(archive);
+        QVERIFY2(prep.ok, prep.errorMessage.toUtf8());
+        QVERIFY(prep.layout.isFomod);
+        QVERIFY(!prep.fomodConfigPath.isEmpty());
+        QVERIFY(!prep.fomodBase.isEmpty());
+        // The image referenced as "fomod/screens/a.jpg" must resolve under
+        // fomodBase (the wrapper dir), which is where the wizard will look.
+        QVERIFY2(QFile::exists(prep.fomodBase + "/fomod/screens/a.jpg"),
+                 ("fomodBase=" + prep.fomodBase).toUtf8());
+        // And it is genuinely deeper than extractDir - proving the old
+        // extractDir-based lookup (the bug) would have missed it.
+        QVERIFY(!QFile::exists(prep.extractDir + "/fomod/screens/a.jpg"));
+        QVERIFY(prep.fomodBase != prep.extractDir);
+    }
     void install_gameRoot_noWrap() {
         QTemporaryDir tmp;
         QString src = tmp.path() + "/srcmod";

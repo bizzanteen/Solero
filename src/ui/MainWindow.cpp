@@ -1376,7 +1376,7 @@ void MainWindow::installFromArchive(const QString& archive) {
                         return true;
                 return false;
             });
-            solero::FomodWizard wizard(&engine, prep.extractDir, this);
+            solero::FomodWizard wizard(&engine, prep.fomodBase, this);
             if (wizard.exec() != QDialog::Accepted) { statusBar()->showMessage("Install cancelled."); return; }
             solero::ProgressModal stageProg(this, "Install", "Installing files...");
             stageProg.show(); stageProg.pump();
@@ -1603,7 +1603,7 @@ void MainWindow::onReinstallMod(const QString& modId) {
                         return true;
                 return false;
             });
-            solero::FomodWizard wizard(&engine, prep.extractDir, this);
+            solero::FomodWizard wizard(&engine, prep.fomodBase, this);
             if (wizard.exec() != QDialog::Accepted) { statusBar()->showMessage("Reinstall cancelled."); return; }
             solero::ProgressModal stageProg(this, "Reinstall", "Installing files...");
             stageProg.show(); stageProg.pump();

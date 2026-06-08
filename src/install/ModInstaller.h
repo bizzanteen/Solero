@@ -27,6 +27,11 @@ struct InstallPrep {
     QString modName;
     InstallLayout layout;
     QString fomodConfigPath;
+    // Module root the FOMOD's image/source paths are relative to - i.e. the
+    // parent of the `fomod` folder. Differs from extractDir when the archive
+    // wraps everything in a top-level folder (e.g. "Skyland AIO/fomod/..."),
+    // so the wizard must resolve images against this, not extractDir.
+    QString fomodBase;
     bool fullyExtracted = false;
     bool ok = false;
     QString errorMessage;

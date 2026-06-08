@@ -271,6 +271,13 @@ target_include_directories(test_StagingFolder PRIVATE ../src ${CMAKE_BINARY_DIR}
 target_link_libraries(test_StagingFolder PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_StagingFolder COMMAND test_StagingFolder)
 
+add_executable(test_ShaderCache test_ShaderCache.cpp
+  ../src/core/ShaderCache.cpp
+  ../src/core/ModList.cpp)
+target_include_directories(test_ShaderCache PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_ShaderCache PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_ShaderCache COMMAND test_ShaderCache)
+
 # ModListModel pulls in Qt Widgets/Svg (IconUtil) and AppConfig for its data()
 # disk scans; the drag-drop tests only exercise moveRows/dropMimeData but still
 # link the full unit.

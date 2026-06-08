@@ -56,6 +56,9 @@ signals:
     // Right-click the Overwrite row -> "Create Mod from Overwrite…": promote the
     // captured overwrite files into a new, named, sortable mod (MO2 parity).
     void createModFromOverwriteRequested();
+    // Right-click the Community Shaders base mod -> "Clear Shader Cache": wipe the
+    // compiled shader cache (CS recompiles it on next launch).
+    void clearShaderCacheRequested(const QString& modId);
 
 protected:
     void contextMenuEvent(QContextMenuEvent* event) override;

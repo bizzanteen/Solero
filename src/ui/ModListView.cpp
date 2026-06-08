@@ -490,6 +490,14 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         menu.addSeparator();
         menu.addAction("Enable selected",  [this]{ setSelectedModsEnabled(true); });
         menu.addAction("Disable selected", [this]{ setSelectedModsEnabled(false); });
+        // Community Shaders base mod: offer to wipe its compiled shader cache.
+        if (!entry->isManagedCache
+            && (entry->nexusModId == "86492"
+                || entry->name.compare("Community Shaders", Qt::CaseInsensitive) == 0)) {
+            menu.addSeparator();
+            menu.addAction("Clear Shader Cache",
+                           [this, id = entry->id]{ emit clearShaderCacheRequested(id); });
+        }
         menu.addSeparator();
         menu.addAction("Add Separator Above", [this, row = idx.row()]{ onAddSeparatorAt(row); });
     }

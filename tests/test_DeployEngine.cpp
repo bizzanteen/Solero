@@ -1,6 +1,7 @@
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QFile>
+#include <QDirIterator>
 #include "deploy/DeployEngine.h"
 #include "deploy/DeployRecord.h"
 #include "deploy/ConflictIndex.h"
@@ -223,6 +224,119 @@ private slots:
         QCOMPARE(record.ownerOf("Data/x.dll"), QString("aaa"));
         QCOMPARE(result.conflicts.winnerOf("Data/x.dll"), QString("aaa"));
         QVERIFY(result.conflicts.losersOf("Data/x.dll").contains("bbb"));
+    }
+    void deploy_normalizesDirectoryCaseToSingleVariant() {
+        // Two mods stage DIFFERENT files under a same-named dir with different
+        // case (textures vs Textures). Wine/Proton is case-insensitive but the
+        // Linux game dir is case-sensitive, so a naive deploy creates TWO real
+        // sibling dirs and the game only sees one - files in the other vanish.
+        // The engine must funnel both into a single on-disk directory casing.
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QDir().mkpath(gameDir);
+        writeFile(stagingRoot + "/aaa/textures/landscape/a.dds", "A");
+        writeFile(stagingRoot + "/bbb/Textures/architecture/b.dds", "B");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry ma; ma.type = EntryType::Mod; ma.id = "aaa"; ma.name = "Low";  ma.enabled = true;
+        ModEntry mb; mb.type = EntryType::Mod; mb.id = "bbb"; mb.name = "High"; mb.enabled = true;
+        profile.modList().append(ma);
+        profile.modList().append(mb);
+
+        DeployEngine engine(gameDir, stagingRoot);
+        auto result = engine.deploy(profile, DeployMode::Copy);
+        QVERIFY(result.success);
+
+        // Exactly one directory under gameDir matches "textures" case-insensitively.
+        QStringList dirs = QDir(gameDir).entryList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden);
+        int texCount = 0;
+        QString texName;
+        for (const auto& d : dirs)
+            if (d.compare("textures", Qt::CaseInsensitive) == 0) { ++texCount; texName = d; }
+        QCOMPARE(texCount, 1);
+
+        // Both files present under that single dir (subfolders keep their own casing).
+        QVERIFY(QFile::exists(gameDir + "/" + texName + "/landscape/a.dds"));
+        QVERIFY(QFile::exists(gameDir + "/" + texName + "/architecture/b.dds"));
+    }
+    void deploy_caseVariantFile_collapsesToOneWinner() {
+        // Regression guard: two mods stage the same file with different case;
+        // exactly one survives (the higher-priority one), with its content.
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QDir().mkpath(gameDir);
+        writeFile(stagingRoot + "/aaa/Data/SKSE/Plugins/QUI.dll", "old");
+        writeFile(stagingRoot + "/bbb/Data/SKSE/Plugins/qui.dll", "new");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry ma; ma.type = EntryType::Mod; ma.id = "aaa"; ma.name = "Low";  ma.enabled = true;
+        ModEntry mb; mb.type = EntryType::Mod; mb.id = "bbb"; mb.name = "High"; mb.enabled = true;
+        profile.modList().append(ma);
+        profile.modList().append(mb);
+
+        DeployEngine engine(gameDir, stagingRoot);
+        auto result = engine.deploy(profile, DeployMode::Copy);
+        QVERIFY(result.success);
+
+        QStringList dlls = QDir(gameDir + "/Data/SKSE/Plugins")
+                               .entryList(QStringList() << "*.dll", QDir::Files);
+        int quiCount = 0;
+        QString quiName;
+        for (const auto& d : dlls)
+            if (d.compare("qui.dll", Qt::CaseInsensitive) == 0) { ++quiCount; quiName = d; }
+        QCOMPARE(quiCount, 1);
+        QFile f(gameDir + "/Data/SKSE/Plugins/" + quiName);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QCOMPARE(f.readAll(), QByteArray("new"));
+    }
+    void deploy_preExistingFileFoundDespiteCaseDifference() {
+        // A genuine vanilla file sits at capital-S Scripts/. A mod stages the
+        // same file under lowercase scripts/. The engine must resolve the
+        // destination against the existing casing so it (a) backs up the
+        // vanilla original and (b) does not create a second scripts/ dir.
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QDir().mkpath(gameDir);
+        writeFile(gameDir + "/Data/Scripts/foo.pex", "ORIGINAL");
+        writeFile(stagingRoot + "/aaa/Data/scripts/foo.pex", "MODDED");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry m; m.type = EntryType::Mod; m.id = "aaa"; m.name = "M"; m.enabled = true;
+        profile.modList().append(m);
+
+        DeployEngine engine(gameDir, stagingRoot);
+        engine.deploy(profile, DeployMode::Copy);
+
+        // Exactly one case-insensitive "Scripts" dir under Data/ (no split).
+        QStringList dirs = QDir(gameDir + "/Data").entryList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden);
+        int scriptsCount = 0;
+        QString scriptsName;
+        for (const auto& d : dirs)
+            if (d.compare("scripts", Qt::CaseInsensitive) == 0) { ++scriptsCount; scriptsName = d; }
+        QCOMPARE(scriptsCount, 1);
+
+        // Deployed content is the mod's; vanilla original is in the backup tree.
+        { QFile f(gameDir + "/Data/" + scriptsName + "/foo.pex"); QVERIFY(f.open(QIODevice::ReadOnly));
+          QCOMPARE(f.readAll(), QByteArray("MODDED")); }
+        // Find the backed-up original (case-insensitive walk of the backup tree).
+        QString backupFile;
+        QDirIterator bit(gameDir + "/.solero-backup", QDir::Files, QDirIterator::Subdirectories);
+        while (bit.hasNext()) { QString p = bit.next(); if (p.endsWith("foo.pex", Qt::CaseInsensitive)) backupFile = p; }
+        QVERIFY(!backupFile.isEmpty());
+        { QFile f(backupFile); QVERIFY(f.open(QIODevice::ReadOnly));
+          QCOMPARE(f.readAll(), QByteArray("ORIGINAL")); }
+
+        engine.undeploy(gameDir);
+
+        // Original restored at its (single) Scripts path; no lingering modded file.
+        QString restored = gameDir + "/Data/" + scriptsName + "/foo.pex";
+        QVERIFY(QFile::exists(restored));
+        { QFile f(restored); QVERIFY(f.open(QIODevice::ReadOnly));
+          QCOMPARE(f.readAll(), QByteArray("ORIGINAL")); }
+        QVERIFY(!QDir(gameDir + "/.solero-backup").exists());
     }
     void redeploy_removesOrphanedFiles() {
         QTemporaryDir tmp;

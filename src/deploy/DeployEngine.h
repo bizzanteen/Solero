@@ -66,6 +66,19 @@ private:
                   ConflictIndex& conflicts,
                   QHash<QString, QString>& ciOwners);
 
+    // Resolve a staged relPath against the live game dir, adopting existing
+    // on-disk directory casing component-by-component (Wine/Proton is
+    // case-insensitive but the Linux game dir is case-sensitive, so all mods
+    // must funnel into a single casing per directory). New components keep their
+    // staged casing. Uses the per-deploy caches below; cleared in deploy().
+    QString canonicalizeRelPath(const QString& gameDir, const QString& relPath);
+
+    // Per-deploy case-folding caches for canonicalizeRelPath(). Keyed by
+    // absolute dir -> (lowercased child name -> actual on-disk name). Cleared at
+    // the start of each deploy(). m_dirCaseScanned tracks which dirs are read.
+    mutable QHash<QString, QHash<QString, QString>> m_dirCaseIndex;
+    mutable QSet<QString> m_dirCaseScanned;
+
     // Backup dir living inside the game dir; holds pre-existing (non-Solero)
     // originals that mods were deployed over, so undeploy can restore them.
     static QString backupDirName() { return ".solero-backup"; }

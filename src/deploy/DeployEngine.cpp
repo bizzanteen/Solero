@@ -53,6 +53,12 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     // mods staging the same path with different case must collapse to one file.
     QHash<QString, QString> ciOwners;
 
+    // Reset the per-deploy directory case-folding caches. canonicalizeRelPath()
+    // populates these as it walks the (post-undeploy) live game dir, so all mods
+    // funnel into a single on-disk casing per directory.
+    m_dirCaseIndex.clear();
+    m_dirCaseScanned.clear();
+
     int total = 0;
     for (const auto& entry : profile.modList())
         if (entry.type == EntryType::Mod && entry.enabled) ++total;
@@ -171,7 +177,6 @@ int DeployEngine::deployMod(const ModEntry& mod,
     while (it.hasNext()) {
         QString srcPath = it.next();
         QString relPath = srcPath.mid(modRoot.length() + 1);
-        QString dstPath = gameDir + "/" + relPath;
 
         // Skip per-mod metadata: the hidden .solero marker(s) and any legacy
         // fomod-choices.json. These live in the staging root and must never
@@ -189,6 +194,14 @@ int DeployEngine::deployMod(const ModEntry& mod,
                 continue;
         }
 
+        // Resolve the destination against existing on-disk directory casing so
+        // all mods funnel into a single case per directory (Wine/Proton is
+        // case-insensitive). Also lets the backup check below find a pre-existing
+        // vanilla file of differing case. ciKey stays the lowercased relPath
+        // (== destRel.toLower()); conflict/hidden rules keep the staged relPath.
+        const QString destRel = canonicalizeRelPath(gameDir, relPath);
+        QString dstPath = gameDir + "/" + destRel;
+
         const QString ciKey = relPath.toLower();
         const QString priorRel = ciOwners.value(ciKey);   // earlier-deployed path at this CI path, if any
         QString previousOwner = priorRel.isEmpty() ? QString() : record.ownerOf(priorRel);
@@ -197,7 +210,7 @@ int DeployEngine::deployMod(const ModEntry& mod,
         // of this path (e.g. QUI.dll vs qui.dll) would both be visible to the game and
         // load twice. The current mod is later in the load order = higher priority =
         // winner, so drop the stale variant and let this file take its place.
-        if (!priorRel.isEmpty() && priorRel != relPath) {
+        if (!priorRel.isEmpty() && priorRel != destRel) {
             QFile::remove(gameDir + "/" + priorRel);
             record.remove(priorRel);
         }
@@ -207,7 +220,7 @@ int DeployEngine::deployMod(const ModEntry& mod,
         // so any Solero-owned file at this path is already gone). Move it to
         // the backup tree so undeploy can restore it later.
         if (previousOwner.isEmpty() && QFile::exists(dstPath)) {
-            QString backupPath = gameDir + "/" + backupDirName() + "/" + relPath;
+            QString backupPath = gameDir + "/" + backupDirName() + "/" + destRel;
             // Don't clobber an existing backup (e.g. from an interrupted run);
             // the first one we saw is the true original.
             if (!QFile::exists(backupPath)) {
@@ -237,8 +250,8 @@ int DeployEngine::deployMod(const ModEntry& mod,
         } else {
             conflicts.setWinner(relPath, modId);
         }
-        record.add(relPath, modId);
-        ciOwners.insert(ciKey, relPath);
+        record.add(destRel, modId);
+        ciOwners.insert(ciKey, destRel);
     }
     return failures;
 }
@@ -275,17 +288,20 @@ void DeployEngine::applyWinnerOverrides(Profile& profile,
             continue;
         }
 
+        // Resolve to the canonical on-disk casing (mirrors deployMod).
+        const QString destRel = canonicalizeRelPath(gameDir, relPath);
+
         const QString ciKey  = relPath.toLower();
         const QString priorRel = ciOwners.value(ciKey);
         const QString currentOwner = priorRel.isEmpty() ? QString() : record.ownerOf(priorRel);
-        if (currentOwner == modId && priorRel == relPath)
+        if (currentOwner == modId && priorRel == destRel)
             continue; // already the winner at this exact path - nothing to do
 
-        const QString dstPath = gameDir + "/" + relPath;
+        const QString dstPath = gameDir + "/" + destRel;
 
         // Drop any stale case-variant the load-order loop deployed (Wine/Proton is
         // case-insensitive, so both would otherwise be visible to the game).
-        if (!priorRel.isEmpty() && priorRel != relPath) {
+        if (!priorRel.isEmpty() && priorRel != destRel) {
             QFile::remove(gameDir + "/" + priorRel);
             record.remove(priorRel);
         }
@@ -293,7 +309,7 @@ void DeployEngine::applyWinnerOverrides(Profile& profile,
         // No Solero owner yet but a file sits at the slot -> it's a pre-existing
         // original; back it up so undeploy can restore it (mirrors deployMod).
         if (currentOwner.isEmpty() && QFile::exists(dstPath)) {
-            QString backupPath = gameDir + "/" + backupDirName() + "/" + relPath;
+            QString backupPath = gameDir + "/" + backupDirName() + "/" + destRel;
             if (!QFile::exists(backupPath)) {
                 QDir().mkpath(QFileInfo(backupPath).path());
                 if (!QFile::rename(dstPath, backupPath)) {
@@ -314,8 +330,8 @@ void DeployEngine::applyWinnerOverrides(Profile& profile,
             conflicts.recordConflict(relPath, modId, currentOwner);
         else
             conflicts.setWinner(relPath, modId);
-        record.add(relPath, modId);
-        ciOwners.insert(ciKey, relPath);
+        record.add(destRel, modId);
+        ciOwners.insert(ciKey, destRel);
     }
 }
 
@@ -373,6 +389,32 @@ bool DeployEngine::undeploy(const QString& gameDir, const std::function<void(int
 
     QFile::remove(recPath);
     return true;
+}
+
+QString DeployEngine::canonicalizeRelPath(const QString& gameDir, const QString& relPath) {
+    const QStringList parts = relPath.split('/', Qt::SkipEmptyParts);
+    QString absDir = gameDir;
+    QStringList out;
+    out.reserve(parts.size());
+    for (const QString& want : parts) {
+        QHash<QString, QString>& bucket = m_dirCaseIndex[absDir];
+        if (!m_dirCaseScanned.contains(absDir)) {
+            const QStringList entries = QDir(absDir).entryList(
+                QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
+            for (const QString& e : entries)
+                bucket.insert(e.toLower(), e);
+            m_dirCaseScanned.insert(absDir);
+        }
+        const QString lower = want.toLower();
+        QString actual = bucket.value(lower);
+        if (actual.isEmpty()) {
+            actual = want;
+            bucket.insert(lower, actual); // siblings created later reuse this casing
+        }
+        out.append(actual);
+        absDir = absDir + "/" + actual;
+    }
+    return out.join('/');
 }
 
 } // namespace solero

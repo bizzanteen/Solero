@@ -31,6 +31,10 @@ struct ModEntry {
     bool enabled = true;
     bool hasFomodChoices = false;
     bool isOutputMod = false;
+    // The hidden, Solero-managed Community Shaders shader-cache mod. Captured after
+    // play (Data/ShaderCache only), deployed last (last-wins), hidden from the list,
+    // and cleared via the CS mod's right-click "Clear Shader Cache" action.
+    bool isManagedCache = false;
     // FOMOD detection (back-filled by the load-order FOMOD scan). isFomod is true
     // when the mod's source archive carries a fomod/ModuleConfig.xml. fomodStatus
     // tracks how its choices were recovered: "" (unknown/none), "reconstructed"

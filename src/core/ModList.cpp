@@ -201,6 +201,22 @@ ModEntry* ModList::findByName(const QString& name, const QString& skipId) {
     return nullptr;
 }
 
+const ModEntry* ModList::findCommunityShaders() const {
+    for (const auto& e : m_entries) {
+        if (e.type != EntryType::Mod || e.isManagedCache) continue;
+        if (e.nexusModId == "86492"
+            || e.name.compare("Community Shaders", Qt::CaseInsensitive) == 0)
+            return &e;
+    }
+    return nullptr;
+}
+
+const ModEntry* ModList::findManagedCache() const {
+    for (const auto& e : m_entries)
+        if (e.type == EntryType::Mod && e.isManagedCache) return &e;
+    return nullptr;
+}
+
 static QJsonObject entryToJson(const ModEntry& e) {
     QJsonObject o;
     o["type"]            = (e.type == EntryType::Mod) ? "mod" : "separator";
@@ -219,6 +235,7 @@ static QJsonObject entryToJson(const ModEntry& e) {
     o["isFomod"]         = e.isFomod;
     o["fomodStatus"]     = e.fomodStatus;
     o["isOutputMod"]     = e.isOutputMod;
+    o["isManagedCache"]  = e.isManagedCache;
     o["sourceArchive"]   = e.sourceArchive;
     o["stagingFolder"]   = e.stagingFolder;
     o["note"]            = e.note;
@@ -246,6 +263,7 @@ static ModEntry entryFromJson(const QJsonObject& o) {
     e.isFomod         = o["isFomod"].toBool(false);     // absent in older files -> false
     e.fomodStatus     = o["fomodStatus"].toString();    // absent in older files -> empty
     e.isOutputMod     = o["isOutputMod"].toBool(false);
+    e.isManagedCache  = o["isManagedCache"].toBool(false); // absent in older files -> false
     e.sourceArchive   = o["sourceArchive"].toString();
     e.stagingFolder   = o["stagingFolder"].toString(); // absent in older files -> empty (backfilled by migration)
     e.note            = o["note"].toString(); // absent in older files -> empty

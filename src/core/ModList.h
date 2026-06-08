@@ -56,6 +56,14 @@ public:
     // Find a Mod entry by display name (case-insensitive; skip the given id).
     ModEntry* findByName(const QString& name, const QString& skipId = {});
 
+    // Find the Community Shaders BASE mod: the first Mod with nexusModId=="86492"
+    // or name "Community Shaders" (case-insensitive), excluding the managed-cache
+    // mod itself. Returns nullptr if absent.
+    const ModEntry* findCommunityShaders() const;
+    // Find the hidden Solero-managed shader-cache mod (isManagedCache==true), or
+    // nullptr if none exists.
+    const ModEntry* findManagedCache() const;
+
     QJsonDocument toJson() const;
     static ModList fromJson(const QJsonDocument& doc);
 

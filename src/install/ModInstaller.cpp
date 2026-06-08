@@ -1,12 +1,14 @@
 #include "ModInstaller.h"
 #include "ArchiveTool.h"
 #include "DataDirDetector.h"
+#include "core/AppConfig.h"
 #include "fomod/FomodTypes.h"
 #include <QUuid>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <algorithm>
 
@@ -15,6 +17,22 @@ namespace solero {
 QString ModInstaller::baseName(const QString& archivePath) {
     QString base = QFileInfo(archivePath).completeBaseName();
     return base.isEmpty() ? "New Mod" : base;
+}
+
+// Template path for extraction temp dirs. The system temp dir (/tmp) is often a
+// small tmpfs (e.g. 7 GB on this box) - large texture archives like Skyland AIO
+// unpack to >10 GB and overflow it, surfacing as "Extraction failed.". Root the
+// temp dir alongside the staging tree instead: it's on the big modding disk, so
+// extraction has room and the final stage becomes a same-filesystem rename
+// rather than a cross-device copy. Falls back to the system temp dir if no
+// staging dir is configured yet.
+QString ModInstaller::extractTmpTemplate() {
+    const QString staging = AppConfig::instance().stagingDir();
+    QString base = staging;
+    if (base.isEmpty() || !QFileInfo(base).isDir())
+        base = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    QDir().mkpath(base);
+    return base + "/.solero-extract-XXXXXX";
 }
 
 bool ModInstaller::moveNormalized(const QString& extractDir,
@@ -57,7 +75,7 @@ InstallResult ModInstaller::installArchive(const QString& archivePath,
     InstallLayout layout = DataDirDetector::detect(entries);
     r.isFomod = layout.isFomod;
 
-    QTemporaryDir extractTmp;
+    QTemporaryDir extractTmp(extractTmpTemplate());
     if (!extractTmp.isValid()) { r.errorMessage = "No temp dir."; return r; }
     if (!ArchiveTool::extract(archivePath, extractTmp.path())) { r.errorMessage = "Extraction failed."; return r; }
 
@@ -86,7 +104,7 @@ InstallPrep ModInstaller::prepare(const QString& archivePath,
     prep.layout = DataDirDetector::detect(entries);
     prep.modName = baseName(archivePath);
     prep.archivePath = archivePath;
-    prep.tempDir = std::make_shared<QTemporaryDir>();
+    prep.tempDir = std::make_shared<QTemporaryDir>(extractTmpTemplate());
     if (!prep.tempDir->isValid()) { prep.errorMessage = "No temp dir."; return prep; }
     prep.extractDir = prep.tempDir->path();
     if (prep.layout.isFomod) {
@@ -245,7 +263,7 @@ bool ModInstaller::installOptionFiles(const QString& archivePath, const QString&
                                       const std::function<void(int)>& onProgress) {
     if (files.isEmpty()) return true;
     if (!ArchiveTool::sevenZipAvailable()) return false;
-    QTemporaryDir tmp;
+    QTemporaryDir tmp(extractTmpTemplate());
     if (!tmp.isValid()) return false;
     // Extract the whole archive so all candidate source files are available
     // (option sources may be solid/scattered); the temp dir auto-cleans.

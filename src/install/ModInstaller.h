@@ -57,6 +57,9 @@ public:
                                    const std::function<void(int)>& onProgress = {});
 private:
     static QString baseName(const QString& archivePath);
+    // QTemporaryDir template rooted on the staging disk (not the small /tmp
+    // tmpfs) so multi-GB archives have room to extract. See the .cpp for why.
+    static QString extractTmpTemplate();
     static bool moveNormalized(const QString& extractDir,
                                const QString& modDir,
                                const InstallLayout& layout);

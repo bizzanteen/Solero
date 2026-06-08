@@ -100,6 +100,14 @@ void ModListModel::rebuild() {
     endResetModel();
 }
 
+void ModListModel::setSearchExpandAll(bool on) {
+    if (m_searchExpandAll == on) return;
+    beginResetModel();
+    m_searchExpandAll = on;
+    rebuildVisibleRows();
+    endResetModel();
+}
+
 void ModListModel::setDependencyWarnings(const QHash<QString,QStringList>& w) {
     m_depWarnings = w;
     if (rowCount() > 0)
@@ -123,6 +131,20 @@ void ModListModel::rebuildVisibleRows() {
     // enable/move/rename/collapse - none of which change staged files. Caches are
     // only dropped in setProfile() or via invalidateModCache().
     if (!m_profile) return;
+
+    // Search mode: ignore collapse entirely so a name/state filter can reach mods
+    // inside collapsed separators / group parents. Every entry is a visible row;
+    // persisted collapse state is left untouched (this branch never reads it).
+    if (m_searchExpandAll) {
+        int modPos = 0;
+        for (int i = 0; i < m_profile->modList().count(); ++i) {
+            if (m_profile->modList().at(i).type == EntryType::Mod)
+                m_priorityByRaw.insert(i, ++modPos);
+            m_visibleRows.append(i);
+        }
+        m_visibleRows.append(-1); // Overwrite always at bottom
+        return;
+    }
 
     // Level-aware separator collapse: collapsedLevel holds the depth of the
     // currently-collapsing separator (or -1 = nothing collapsed). A separator

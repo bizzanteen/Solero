@@ -663,8 +663,11 @@ void ModListView::applyFilter() {
     // hidden too (no empty sections). The Overwrite row always stays visible.
     // rebuild() clears hidden state, so callers that rebuild re-apply the filter.
     const QModelIndex root;
-    const int rows = m_model->rowCount();
     const bool filtering = !m_filter.isEmpty() || m_stateFilter != StateFilter::All;
+    // Reveal collapsed-section mods while filtering so they become candidate rows;
+    // restores normal collapse when the filter clears (early-returns if unchanged).
+    m_model->setSearchExpandAll(filtering);
+    const int rows = m_model->rowCount();
 
     QList<bool> hidden(rows, false);
     for (int row = 0; row < rows; ++row) {

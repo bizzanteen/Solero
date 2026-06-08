@@ -322,6 +322,44 @@ private slots:
         QCOMPARE(order(prof), QString("m1,m3,m0,m2,m4"));
     }
 
+    void searchExpandAll_revealsCollapsedSectionMods_withoutMutatingState() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        // [sepA(L0, collapsed), m0, m1, sepB(L0), m2]. sepA collapsed -> m0,m1 hidden.
+        ModEntry sepA; sepA.type = EntryType::Separator; sepA.id = "sepA";
+        sepA.name = "A"; sepA.separatorLevel = 0; sepA.collapsed = true;
+        ModEntry m0; m0.type = EntryType::Mod; m0.id = "m0"; m0.name = "Mod0"; m0.enabled = true;
+        ModEntry m1; m1.type = EntryType::Mod; m1.id = "m1"; m1.name = "Mod1"; m1.enabled = true;
+        ModEntry sepB; sepB.type = EntryType::Separator; sepB.id = "sepB";
+        sepB.name = "B"; sepB.separatorLevel = 0;
+        ModEntry m2; m2.type = EntryType::Mod; m2.id = "m2"; m2.name = "Mod2"; m2.enabled = true;
+        prof.modList().append(sepA);
+        prof.modList().append(m0);
+        prof.modList().append(m1);
+        prof.modList().append(sepB);
+        prof.modList().append(m2);
+        ModListModel model;
+        model.setProfile(&prof);
+
+        // Default (collapse-aware): sepA collapsed hides m0,m1.
+        // Visible: sepA, sepB, m2, Overwrite.
+        QCOMPARE(visibleIds(model),
+                 QStringList({"sepA", "sepB", "m2", "__overwrite__"}));
+
+        // Search expand-all: every entry becomes a visible row, collapsed mods included.
+        model.setSearchExpandAll(true);
+        QCOMPARE(visibleIds(model),
+                 QStringList({"sepA", "m0", "m1", "sepB", "m2", "__overwrite__"}));
+        // Persisted collapse state must be untouched.
+        QVERIFY(prof.modList().findById("sepA")->collapsed);
+
+        // Clearing the flag returns to the collapse-aware view.
+        model.setSearchExpandAll(false);
+        QCOMPARE(visibleIds(model),
+                 QStringList({"sepA", "sepB", "m2", "__overwrite__"}));
+        QVERIFY(prof.modList().findById("sepA")->collapsed);
+    }
+
     void moveRows_endMappingAppends() {
         // Direct moveRows: dst at the Overwrite visible row maps to end-of-list.
         QTemporaryDir tmp;

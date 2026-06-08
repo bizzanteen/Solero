@@ -50,6 +50,11 @@ public:
     // Count of the contiguous run of child Mods after a parent.
     int groupChildCount(int parentRaw) const;
     void rebuild();  // call after any structural change
+    // While searching, reveal mods inside collapsed separators / collapsed group
+    // parents so a name/state filter can match them. Toggling this does a model
+    // reset and rebuilds the visible rows; it never mutates persisted collapse
+    // state (normal collapse behaviour resumes when turned off).
+    void setSearchExpandAll(bool on);
     void setDependencyWarnings(const QHash<QString,QStringList>& w);
     // Mark mods that have a newer version available. Key = mod id; value =
     // {installedVersion, latestVersion}. Only includes mods with an update.
@@ -93,6 +98,7 @@ private:
     QSet<QString> m_overwrittenMods; // mods that lose ≥1 file conflict (overwritten)
     mutable QHash<QString,bool> m_emptyCache;
     mutable int m_overwriteHasFiles = -1; // tri-state cache: -1 unknown, 0 no, 1 yes
+    bool m_searchExpandAll = false; // ignore collapse while filtering (state untouched)
 
     void rebuildVisibleRows();
     bool isModEmpty(const QString& id) const;

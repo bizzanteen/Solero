@@ -123,6 +123,9 @@ private:
     // Generate a name like "<base> (2)" that doesn't collide with any mod in the
     // profile (case-insensitive). Returns base unchanged if it's already free.
     QString uniqueModName(const QString& base, solero::Profile* profile) const;
+    // Resolve a mod id to its on-disk staging root (stagingDir/<stagingFolder>,
+    // falling back to the id). Uses the active profile's mod list.
+    QString stagingRootForId(const QString& modId) const;
     void onEndorseMod(const QString& modId);
     void onUpdateMod(const QString& modId);
     void onCheckUpdates();

@@ -15,7 +15,12 @@ struct ModEntry {
     EntryType type = EntryType::Mod;
 
     // Common
-    QString id;          // stable UUID, generated on install
+    QString id;          // stable UUID, generated on install - internal key
+    // On-disk staging folder name (sanitized, unique mod name). The id remains
+    // the stable internal key; this decouples the folder name from it so the
+    // staging dir is human-readable. Empty on older saves -> backfilled by
+    // Profile::migrateStagingFolders(). Resolve paths via stagingPathFor().
+    QString stagingFolder;
 
     // Mod fields
     QString name;

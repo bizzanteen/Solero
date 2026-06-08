@@ -72,6 +72,7 @@ set(SOLERO_SOURCES
   src/app/SingleInstance.cpp
   src/app/NxmRegister.cpp
   src/core/ModList.cpp
+  src/core/StagingFolder.cpp
   src/core/PluginList.cpp
   src/core/HealthCheck.cpp
   src/core/FileMove.cpp

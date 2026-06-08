@@ -117,7 +117,8 @@ void ModListModel::setDependencyWarnings(const QHash<QString,QStringList>& w) {
 bool ModListModel::isModEmpty(const QString& id) const {
     auto it = m_emptyCache.constFind(id);
     if (it != m_emptyCache.constEnd()) return it.value();
-    QDirIterator di(AppConfig::instance().stagingDir() + "/" + id,
+    const QString folder = m_profile ? m_profile->stagingFolderFor(id) : id;
+    QDirIterator di(AppConfig::instance().stagingDir() + "/" + folder,
                     QDir::Files, QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
     bool empty = !di.hasNext();
     m_emptyCache.insert(id, empty);

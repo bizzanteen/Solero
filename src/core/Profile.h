@@ -55,6 +55,18 @@ public:
     bool save() const;
     bool load();
 
+    // Resolve the on-disk staging folder name for a mod id via the active mod
+    // list. Returns empty if the id is unknown or the mod has no stagingFolder
+    // (older saves before migration).
+    QString stagingFolderFor(const QString& id) const;
+
+    // Backfill ModEntry.stagingFolder and rename UUID-named staging folders to
+    // their sanitized, unique mod names. Idempotent: a second run is a no-op.
+    // Reads the staging dir from AppConfig. Backs up the modlist and records a
+    // reversible id->folder mapping before the first rename. Returns true if any
+    // entry was changed (caller should save the profile).
+    bool migrateStagingFolders();
+
 private:
     QString m_name;
     QString m_path;
@@ -72,6 +84,8 @@ private:
     // these persist it alongside the plugin list. Missing file == unlocked, no pins.
     bool saveLoadOrderState() const;
     bool loadLoadOrderState();
+    // Append/update an id->folder entry in staging-folder-migration.json.
+    void appendMigrationMapping(const QString& id, const QString& folder);
 };
 
 } // namespace solero

@@ -1,6 +1,7 @@
 #include "DependencyChecker.h"
 #include "core/ModList.h"
 #include "core/Types.h"
+#include "core/StagingFolder.h"
 #include <QDir>
 #include <QFileInfo>
 
@@ -47,7 +48,7 @@ QHash<QString, QStringList> DependencyChecker::check(const ModList& list, const 
     bool haveSkse = false, haveAddrLib = false;
     for (const auto& e : list) {
         if (e.type != EntryType::Mod || !e.enabled) continue;
-        QString dir = stagingRoot + "/" + e.id;
+        QString dir = stagingPathFor(stagingRoot, e);
         if (!haveSkse && dirHasSkseLoader(dir)) haveSkse = true;
         if (!haveAddrLib && dirHasAddressLib(dir)) haveAddrLib = true;
         if (haveSkse && haveAddrLib) break;
@@ -56,7 +57,7 @@ QHash<QString, QStringList> DependencyChecker::check(const ModList& list, const 
     QHash<QString, QStringList> result;
     for (const auto& e : list) {
         if (e.type != EntryType::Mod || !e.enabled) continue;
-        QString dir = stagingRoot + "/" + e.id;
+        QString dir = stagingPathFor(stagingRoot, e);
         if (!dirHasSksePluginDll(dir)) continue; // only SKSE-plugin mods carry these deps
         QStringList warns;
         if (!haveSkse)    warns << "Requires SKSE64 (not installed/enabled)";

@@ -8,7 +8,7 @@
 #include <QSet>
 #include <functional>
 
-namespace solero { class Profile; }
+namespace solero { class Profile; struct ModEntry; }
 
 namespace solero {
 
@@ -59,7 +59,7 @@ private:
 
     // Deploys one mod's files. Returns the number of files that FAILED to link.
     // record/conflicts are only updated for files that actually deployed.
-    int deployMod(const QString& modId,
+    int deployMod(const ModEntry& mod,
                   const QString& gameDir,
                   const Linker& linker,
                   DeployRecord& record,

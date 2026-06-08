@@ -2,6 +2,7 @@
 #include "core/Profile.h"
 #include "core/ModList.h"
 #include "core/AppConfig.h"
+#include "core/StagingFolder.h"
 #include "tools/ToolCatalog.h"
 
 #include <QDir>
@@ -167,7 +168,7 @@ void ModInfoWidget::showMod(Profile* profile, const QString& id) {
         m_note->setPlainText(entry->note);
     }
 
-    const QString staging = AppConfig::instance().stagingDir() + "/" + id;
+    const QString staging = solero::stagingPathFor(AppConfig::instance().stagingDir(), *entry);
 
     // Output mods: match against the tool catalog and show the tool image
     if (entry->isOutputMod) {

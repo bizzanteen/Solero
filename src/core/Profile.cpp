@@ -1,10 +1,14 @@
 #include "Profile.h"
 #include "FileUtil.h"
+#include "StagingFolder.h"
+#include "AppConfig.h"
 #include <QDir>
 #include <QFile>
+#include <QSet>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QDebug>
 
 namespace solero {
 
@@ -38,7 +42,96 @@ bool Profile::load() {
     loadExecutables();
     loadFileRules();
     loadLoadOrderState(); // after the plugin list - state is applied onto it
+    // Backfill staging-folder names and rename UUID folders on disk. Save if
+    // anything changed so the new names persist.
+    if (migrateStagingFolders())
+        save();
     return true;
+}
+
+QString Profile::stagingFolderFor(const QString& id) const {
+    const ModEntry* e = m_modList.findById(id);
+    if (!e) return id; // unknown id: fall back to the id itself (caller built a path)
+    return e->stagingFolder.isEmpty() ? id : e->stagingFolder;
+}
+
+bool Profile::migrateStagingFolders() {
+    const QString stagingDir = AppConfig::instance().stagingDir();
+    auto& entries = m_modList.entries();
+
+    // Build the set of folder names already taken (case-insensitive), so newly
+    // assigned names don't collide with each other or with pre-set ones.
+    QSet<QString> taken;
+    for (const auto& e : entries)
+        if (e.type == EntryType::Mod && !e.stagingFolder.isEmpty())
+            taken.insert(e.stagingFolder.toLower());
+
+    bool changed = false;
+    bool backedUp = false; // back up the modlist + start the mapping once, lazily
+
+    for (auto& e : entries) {
+        if (e.type != EntryType::Mod) continue;
+
+        const QString uuidPath   = stagingDir + "/" + e.id;
+        const bool uuidExists    = !stagingDir.isEmpty() && QDir(uuidPath).exists();
+        const bool folderSet     = !e.stagingFolder.isEmpty();
+        const bool folderOnDisk  = folderSet && !stagingDir.isEmpty()
+                                   && QDir(stagingPathFor(stagingDir, e)).exists();
+
+        // Already migrated: name set and (its folder exists OR there's no UUID
+        // folder to migrate from). Skip.
+        if (folderSet && (folderOnDisk || !uuidExists))
+            continue;
+
+        // Need a name. If one is already set but its folder is missing while the
+        // UUID folder still exists, we keep the existing name and just rename.
+        QString newFolder = e.stagingFolder;
+        if (newFolder.isEmpty()) {
+            newFolder = uniqueStagingFolder(sanitizeStagingFolder(e.name), taken);
+        }
+
+        if (uuidExists) {
+            // If the target name is already on disk (e.g. a partial prior run),
+            // pick the next free suffix.
+            if (QDir(stagingDir + "/" + newFolder).exists())
+                newFolder = uniqueStagingFolder(newFolder, taken);
+
+            // Lazily back up before the first physical rename in this run.
+            if (!backedUp) {
+                QFile::copy(modlistPath(), modlistPath() + ".bak-stagingmigration");
+                backedUp = true;
+            }
+            if (!QDir().rename(uuidPath, stagingDir + "/" + newFolder)) {
+                qWarning() << "migrateStagingFolders: rename failed for" << e.id
+                           << "->" << newFolder << "; keeping UUID folder";
+                // Keep files: leave stagingFolder pointing at the UUID so the
+                // resolver still finds the data on disk.
+                if (e.stagingFolder != e.id) { e.stagingFolder = e.id; changed = true; }
+                taken.insert(e.id.toLower());
+                continue;
+            }
+            appendMigrationMapping(e.id, newFolder);
+        }
+
+        if (e.stagingFolder != newFolder) {
+            e.stagingFolder = newFolder;
+            changed = true;
+        }
+        taken.insert(newFolder.toLower());
+    }
+    return changed;
+}
+
+void Profile::appendMigrationMapping(const QString& id, const QString& folder) {
+    const QString mapPath = m_path + "/staging-folder-migration.json";
+    QJsonObject obj;
+    QFile f(mapPath);
+    if (f.open(QIODevice::ReadOnly)) {
+        obj = QJsonDocument::fromJson(f.readAll()).object();
+        f.close();
+    }
+    obj.insert(id, folder);
+    atomicWrite(mapPath, QJsonDocument(obj).toJson(QJsonDocument::Indented));
 }
 
 bool Profile::isFileHidden(const QString& modId, const QString& relPath) const {

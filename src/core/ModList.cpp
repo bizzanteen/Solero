@@ -220,6 +220,7 @@ static QJsonObject entryToJson(const ModEntry& e) {
     o["fomodStatus"]     = e.fomodStatus;
     o["isOutputMod"]     = e.isOutputMod;
     o["sourceArchive"]   = e.sourceArchive;
+    o["stagingFolder"]   = e.stagingFolder;
     o["note"]            = e.note;
     QJsonArray tags;
     for (const auto& t : e.tags) tags.append(t);
@@ -246,6 +247,7 @@ static ModEntry entryFromJson(const QJsonObject& o) {
     e.fomodStatus     = o["fomodStatus"].toString();    // absent in older files -> empty
     e.isOutputMod     = o["isOutputMod"].toBool(false);
     e.sourceArchive   = o["sourceArchive"].toString();
+    e.stagingFolder   = o["stagingFolder"].toString(); // absent in older files -> empty (backfilled by migration)
     e.note            = o["note"].toString(); // absent in older files -> empty
     for (const auto& t : o["tags"].toArray()) e.tags.append(t.toString());
     return e;

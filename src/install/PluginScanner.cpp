@@ -1,6 +1,7 @@
 #include "PluginScanner.h"
 #include "core/ModList.h"
 #include "core/Types.h"
+#include "core/StagingFolder.h"
 #include <QDir>
 #include <QFile>
 namespace solero {
@@ -15,7 +16,7 @@ QStringList PluginScanner::scan(const ModList& list, const QString& stagingRoot)
     QStringList out;
     for (const auto& e : list) {
         if (e.type != EntryType::Mod || !e.enabled) continue;
-        QString data = childCI(stagingRoot + "/" + e.id, "Data");
+        QString data = childCI(stagingPathFor(stagingRoot, e), "Data");
         if (data.isEmpty()) continue;
         QDir d(data);
         const auto plugins = d.entryList({"*.esp","*.esm","*.esl","*.ESP","*.ESM","*.ESL"},

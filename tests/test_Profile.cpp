@@ -2,8 +2,23 @@
 #include <QTemporaryDir>
 #include <QFile>
 #include <QDir>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include "core/ProfileManager.h"
+#include "core/AppConfig.h"
+#include "core/ModList.h"
+#include "core/StagingFolder.h"
 using namespace solero;
+
+// Build a staging dir with one UUID folder per mod (each holding a marker file),
+// and a profile whose modlist references those mods by id.
+static ModEntry mkMod(const QString& id, const QString& name) {
+    ModEntry e;
+    e.type = EntryType::Mod;
+    e.id = id;
+    e.name = name;
+    return e;
+}
 
 class TestProfile : public QObject {
     Q_OBJECT
@@ -73,6 +88,93 @@ private slots:
         QVERIFY(p.load()); // no filerules.json -> backward compatible, no rules
         QVERIFY(!p.isFileHidden("anyMod", "Data/x.dll"));
         QVERIFY(p.winnerOverride("Data/x.dll").isEmpty());
+    }
+
+    // Staging-folder migration
+    void migrate_renamesUuidFoldersToNames() {
+        QTemporaryDir profiles, staging;
+        AppConfig::instance().setStagingDir(staging.path());
+
+        const QString id1 = "0032bcc7-aaaa";
+        const QString id2 = "1142ddee-bbbb";
+        // Create UUID folders on disk with a marker file inside each.
+        QDir().mkpath(staging.path() + "/" + id1 + "/Data");
+        QDir().mkpath(staging.path() + "/" + id2 + "/Data");
+        QFile m1(staging.path() + "/" + id1 + "/Data/marker.esp"); m1.open(QIODevice::WriteOnly); m1.write("1"); m1.close();
+
+        Profile p("Mig", profiles.path());
+        p.modList().append(mkMod(id1, "SkyUI"));
+        p.modList().append(mkMod(id2, "Cool/Mod:Bad")); // illegal chars
+        QVERIFY(p.save());
+
+        QVERIFY(p.migrateStagingFolders());
+
+        // Folders renamed to sanitized names; UUID folders gone.
+        QVERIFY(QDir(staging.path() + "/SkyUI").exists());
+        QVERIFY(QFile::exists(staging.path() + "/SkyUI/Data/marker.esp"));
+        QVERIFY(!QDir(staging.path() + "/" + id1).exists());
+        QVERIFY(QDir(staging.path() + "/Cool_Mod_Bad").exists());
+        QVERIFY(!QDir(staging.path() + "/" + id2).exists());
+
+        // stagingFolder fields backfilled.
+        QCOMPARE(p.stagingFolderFor(id1), QString("SkyUI"));
+        QCOMPARE(p.stagingFolderFor(id2), QString("Cool_Mod_Bad"));
+
+        // Mapping + backup written.
+        QVERIFY(QFile::exists(profiles.path() + "/Mig/staging-folder-migration.json"));
+        QVERIFY(QFile::exists(profiles.path() + "/Mig/modlist.json.bak-stagingmigration"));
+        QFile mf(profiles.path() + "/Mig/staging-folder-migration.json");
+        QVERIFY(mf.open(QIODevice::ReadOnly));
+        auto obj = QJsonDocument::fromJson(mf.readAll()).object();
+        QCOMPARE(obj[id1].toString(), QString("SkyUI"));
+        QCOMPARE(obj[id2].toString(), QString("Cool_Mod_Bad"));
+    }
+
+    void migrate_sameNameGetsSuffix() {
+        QTemporaryDir profiles, staging;
+        AppConfig::instance().setStagingDir(staging.path());
+        const QString id1 = "uuid-aaaa", id2 = "uuid-bbbb";
+        QDir().mkpath(staging.path() + "/" + id1);
+        QDir().mkpath(staging.path() + "/" + id2);
+
+        Profile p("Dup", profiles.path());
+        p.modList().append(mkMod(id1, "My Mod"));
+        p.modList().append(mkMod(id2, "My Mod"));
+        QVERIFY(p.save());
+        QVERIFY(p.migrateStagingFolders());
+
+        QCOMPARE(p.stagingFolderFor(id1), QString("My Mod"));
+        QCOMPARE(p.stagingFolderFor(id2), QString("My Mod (2)"));
+        QVERIFY(QDir(staging.path() + "/My Mod").exists());
+        QVERIFY(QDir(staging.path() + "/My Mod (2)").exists());
+    }
+
+    void migrate_idempotentSecondRunIsNoOp() {
+        QTemporaryDir profiles, staging;
+        AppConfig::instance().setStagingDir(staging.path());
+        const QString id1 = "uuid-cccc";
+        QDir().mkpath(staging.path() + "/" + id1);
+
+        Profile p("Idem", profiles.path());
+        p.modList().append(mkMod(id1, "Some Mod"));
+        QVERIFY(p.save());
+        QVERIFY(p.migrateStagingFolders());      // first run: changed
+        QVERIFY(!p.migrateStagingFolders());     // second run: no-op
+        QCOMPARE(p.stagingFolderFor(id1), QString("Some Mod"));
+    }
+
+    void migrate_missingFolderJustRecordsName() {
+        QTemporaryDir profiles, staging;
+        AppConfig::instance().setStagingDir(staging.path());
+        const QString id1 = "uuid-dddd"; // no folder on disk
+
+        Profile p("Missing", profiles.path());
+        p.modList().append(mkMod(id1, "Ghost Mod"));
+        QVERIFY(p.save());
+        QVERIFY(p.migrateStagingFolders());
+        QCOMPARE(p.stagingFolderFor(id1), QString("Ghost Mod"));
+        // No rename happened -> no backup file created.
+        QVERIFY(!QFile::exists(profiles.path() + "/Missing/modlist.json.bak-stagingmigration"));
     }
 };
 QTEST_MAIN(TestProfile)

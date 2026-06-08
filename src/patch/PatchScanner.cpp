@@ -3,6 +3,7 @@
 #include "core/Profile.h"
 #include "core/Types.h"
 #include "core/AppConfig.h"
+#include "core/StagingFolder.h"
 #include "install/ModInstaller.h"
 #include "install/PluginScanner.h"
 #include <QDir>
@@ -377,7 +378,7 @@ QList<PatchCandidate> scanProfile(const Profile& profile,
     QSet<QString> looseFiles = recursiveRelSet(gameDir + "/Data");
     for (const auto& m : profile.modList()) {
         if (m.type != EntryType::Mod || !m.enabled) continue;
-        const QString data = childCI(stagingRoot + "/" + m.id, "Data");
+        const QString data = childCI(stagingPathFor(stagingRoot, m), "Data");
         if (!data.isEmpty()) looseFiles.unite(recursiveRelSet(data));
     }
 
@@ -397,7 +398,7 @@ QList<PatchCandidate> scanProfile(const Profile& profile,
         id.modId = m.id;
         id.name = m.name;
         id.nexusName = m.name; // we only persist a numeric nexus id; reuse display name
-        id.pluginBasenames = topLevelPlugins(childCI(stagingRoot + "/" + m.id, "Data"));
+        id.pluginBasenames = topLevelPlugins(childCI(stagingPathFor(stagingRoot, m), "Data"));
         id.normalizedName = normalizeName(m.name);
         installedMods.append(id);
     }
@@ -409,7 +410,7 @@ QList<PatchCandidate> scanProfile(const Profile& profile,
         if (!m.hasFomodChoices) continue; // only FOMOD-installed mods carry patches
         if (progress) progress(m.name);
 
-        const QString modDir = stagingRoot + "/" + m.id;
+        const QString modDir = stagingPathFor(stagingRoot, m);
 
         // Prefer the source archive (we can install from it). Fall back to a staged
         // fomod/ModuleConfig.xml (imports/Wabbajack) - surface-only, no install.

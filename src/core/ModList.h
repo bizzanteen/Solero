@@ -44,6 +44,9 @@ public:
 
     int count() const { return m_entries.size(); }
     const ModEntry& at(int index) const { return m_entries.at(index); }
+    // Direct access to the backing list (e.g. for staging-folder migration).
+    QList<ModEntry>& entries() { return m_entries; }
+    const QList<ModEntry>& entries() const { return m_entries; }
     ModEntry* findById(const QString& id);
     const ModEntry* findById(const QString& id) const;
     // Find a Mod entry by its Nexus mod id (skip the entry whose id == skipId, so

@@ -9,6 +9,7 @@
 #include "app/Application.h"
 #include "core/AppConfig.h"
 #include "core/ModList.h"
+#include "core/StagingFolder.h"
 #include "core/VersionUtil.h"
 #include "core/LoadOrderBackup.h"
 #include "core/FileMove.h"
@@ -862,7 +863,10 @@ void MainWindow::runPostDeployTools() {
         statusBar()->showMessage("Running post-deploy tool: " + exe.name);
         m_toolRunning = true;
         showRunLock(exe.name);
-        auto res = solero::ToolRunner::run(exe, gameDir, stagingDir);
+        QString outFolder;
+        if (auto* p = m_profileMgr->activeProfile(); p && !exe.outputModId.isEmpty())
+            outFolder = p->stagingFolderFor(exe.outputModId);
+        auto res = solero::ToolRunner::run(exe, gameDir, stagingDir, outFolder);
         hideRunLock();
         m_toolRunning = false;
         // Don't abort the rest of the queue if one tool fails - record it.
@@ -1008,9 +1012,9 @@ void MainWindow::onShowProblems() {
 
 void MainWindow::onDataRename(const QString& modId, const QString& relPath,
                               const QString& newName, bool isFolder) {
-    // relPath is relative to the mod's staging root (stagingDir/<modId>), so it
-    // already carries the "Data/…" prefix shown in the tree.
-    const QString root = solero::AppConfig::instance().stagingDir() + "/" + modId;
+    // relPath is relative to the mod's staging root, so it already carries the
+    // "Data/…" prefix shown in the tree.
+    const QString root = stagingRootForId(modId);
     const QString src  = root + "/" + relPath;
     const int slash = relPath.lastIndexOf('/');
     const QString parentRel = slash >= 0 ? relPath.left(slash + 1) : QString();
@@ -1032,7 +1036,7 @@ void MainWindow::onDataRename(const QString& modId, const QString& relPath,
 
 void MainWindow::onDataDelete(const QString& modId, const QString& relPath,
                               bool isFolder) {
-    const QString root = solero::AppConfig::instance().stagingDir() + "/" + modId;
+    const QString root = stagingRootForId(modId);
     const QString path = root + "/" + relPath;
 
     // Staged files may be symlinks (Fluorine/Wabbajack): removing the link/dir
@@ -1364,7 +1368,7 @@ void MainWindow::installFromArchive(const QString& archive) {
                 auto* p = m_profileMgr->activeProfile();
                 if (p) for (const auto& m : p->modList())
                     if (m.type == solero::EntryType::Mod && m.enabled
-                        && ciExists(solero::AppConfig::instance().stagingDir() + "/" + m.id + "/Data", file))
+                        && ciExists(solero::stagingPathFor(solero::AppConfig::instance().stagingDir(), m) + "/Data", file))
                         return true;
                 return false;
             });
@@ -1591,7 +1595,7 @@ void MainWindow::onReinstallMod(const QString& modId) {
                 auto* p = m_profileMgr->activeProfile();
                 if (p) for (const auto& m : p->modList())
                     if (m.type == solero::EntryType::Mod && m.enabled
-                        && ciExists(solero::AppConfig::instance().stagingDir() + "/" + m.id + "/Data", file))
+                        && ciExists(solero::stagingPathFor(solero::AppConfig::instance().stagingDir(), m) + "/Data", file))
                         return true;
                 return false;
             });
@@ -1707,6 +1711,24 @@ QString MainWindow::uniqueModName(const QString& base, solero::Profile* profile)
     }
 }
 
+// Gather the set of staging folder names already taken in a profile
+// (case-insensitive), so a newly created mod can be assigned a unique folder.
+static QSet<QString> takenStagingFolders(solero::Profile* profile) {
+    QSet<QString> taken;
+    if (!profile) return taken;
+    for (const auto& e : profile->modList())
+        if (e.type == solero::EntryType::Mod && !e.stagingFolder.isEmpty())
+            taken.insert(e.stagingFolder.toLower());
+    return taken;
+}
+
+QString MainWindow::stagingRootForId(const QString& modId) const {
+    const QString stagingDir = solero::AppConfig::instance().stagingDir();
+    if (auto* p = m_profileMgr->activeProfile())
+        return stagingDir + "/" + p->stagingFolderFor(modId);
+    return stagingDir + "/" + modId; // no profile: fall back to the id
+}
+
 void MainWindow::onCreateModFromOverwrite() {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) { statusBar()->showMessage("No active profile."); return; }
@@ -1735,8 +1757,11 @@ void MainWindow::onCreateModFromOverwrite() {
     mod.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     mod.name = name;
     mod.enabled = true;
+    mod.stagingFolder = solero::uniqueStagingFolder(
+        solero::sanitizeStagingFolder(name), takenStagingFolders(profile));
 
-    const QString destData = solero::AppConfig::instance().stagingDir() + "/" + mod.id + "/Data";
+    const QString destData = solero::stagingPathFor(
+        solero::AppConfig::instance().stagingDir(), mod) + "/Data";
     QDir().mkpath(destData);
 
     // Move (not copy) the overwrite contents in; cross-fs safe, leaves Overwrite empty.
@@ -1905,7 +1930,7 @@ bool MainWindow::skseInstalledFor(solero::Profile* profile) const {
         const QString stagingDir = solero::AppConfig::instance().stagingDir();
         for (const solero::ModEntry& m : profile->modList()) {
             if (m.type != solero::EntryType::Mod || !m.enabled) continue;
-            const QString modDir = stagingDir + "/" + m.id;
+            const QString modDir = solero::stagingPathFor(stagingDir, m);
             if (!QDir(modDir).exists()) continue;
             QDirIterator it(modDir, QDir::Files,
                             QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
@@ -2377,8 +2402,11 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     // so the re-entrancy guards remain active until the run actually finishes.
     m_toolRunning = true;
     showRunLock(exe.name);
+    QString outFolder;
+    if (auto* p = m_profileMgr->activeProfile(); p && !exe.outputModId.isEmpty())
+        outFolder = p->stagingFolderFor(exe.outputModId);
     auto res = solero::ToolRunner::run(exe, solero::AppConfig::instance().gameDir(),
-                                       solero::AppConfig::instance().stagingDir());
+                                       solero::AppConfig::instance().stagingDir(), outFolder);
     hideRunLock();
     m_toolRunning = false;
 
@@ -2443,8 +2471,11 @@ QString MainWindow::ensureOutputMod(const QString& name) {
     mod.name = name;
     mod.enabled = true;
     mod.isOutputMod = true;
+    mod.stagingFolder = solero::uniqueStagingFolder(
+        solero::sanitizeStagingFolder(name), takenStagingFolders(profile));
 
-    QDir().mkpath(solero::AppConfig::instance().stagingDir() + "/" + mod.id + "/Data");
+    QDir().mkpath(solero::stagingPathFor(
+        solero::AppConfig::instance().stagingDir(), mod) + "/Data");
 
     profile->modList().append(mod);
     profile->save();
@@ -2737,7 +2768,10 @@ void MainWindow::onPlay() {
     showRunLock(exe.name);
     statusBar()->showMessage("Launching " + exe.name + "\xe2\x80\xa6");
     QElapsedTimer runTimer; runTimer.start();
-    auto res = solero::ToolRunner::run(exe, gameDir, solero::AppConfig::instance().stagingDir());
+    QString outFolder;
+    if (auto* p = m_profileMgr->activeProfile(); p && !exe.outputModId.isEmpty())
+        outFolder = p->stagingFolderFor(exe.outputModId);
+    auto res = solero::ToolRunner::run(exe, gameDir, solero::AppConfig::instance().stagingDir(), outFolder);
     const qint64 ranMs = runTimer.elapsed();
     hideRunLock();
     m_toolRunning = false;
@@ -2797,20 +2831,29 @@ QString MainWindow::modNameAnywhere(const QString& id) const {
 }
 
 void MainWindow::removeModEverywhere(const QString& id) {
-    // Staged files are profile-independent - delete them once.
-    QDir(solero::AppConfig::instance().stagingDir() + "/" + id).removeRecursively();
+    // Resolve the on-disk staging folder name (name-based after migration) from
+    // whichever profile holds the mod, *before* the entry is removed. Staged
+    // files are profile-independent, so we delete them once at the end.
+    QString folder;
+    auto captureFolder = [&](const solero::ModEntry* e) {
+        if (e && folder.isEmpty() && !e->stagingFolder.isEmpty()) folder = e->stagingFolder;
+    };
     auto* active = m_profileMgr->activeProfile();
     for (const QString& name : m_profileMgr->profileNames()) {
         if (active && name == active->name()) {
+            captureFolder(active->modList().findById(id));
             active->modList().remove(id);
             active->save();
         } else {
             QString path = profilesRoot() + "/" + name + "/modlist.json";
             solero::ModList ml = solero::ModList::loadFromFile(path);
+            captureFolder(ml.findById(id));
             ml.remove(id);
             ml.saveToFile(path);
         }
     }
+    if (folder.isEmpty()) folder = id; // pre-migration mods (or unknown) used the id
+    QDir(solero::AppConfig::instance().stagingDir() + "/" + folder).removeRecursively();
 }
 
 void MainWindow::onRemoveTool(const QString& id) {

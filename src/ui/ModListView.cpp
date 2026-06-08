@@ -450,7 +450,8 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
                 QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
         }
         menu.addAction("Open in File Manager", [this, id = entry->id]{
-            QString dir = AppConfig::instance().stagingDir() + "/" + id;
+            const QString folder = m_model->profile() ? m_model->profile()->stagingFolderFor(id) : id;
+            QString dir = AppConfig::instance().stagingDir() + "/" + folder;
             QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
         });
         menu.addAction(entry->hasFomodChoices ? "Reinstall (FOMOD)..." : "Reinstall...",
@@ -625,7 +626,10 @@ void ModListView::deleteSelectedMods() {
 
     const QString stagingDir = AppConfig::instance().stagingDir();
     for (const QString& id : ids) {
-        QDir(stagingDir + "/" + id).removeRecursively();
+        // Resolve the on-disk folder (name-based after migration) before removing
+        // the entry, then delete it.
+        const QString folder = m_model->profile() ? m_model->profile()->stagingFolderFor(id) : id;
+        QDir(stagingDir + "/" + folder).removeRecursively();
         m_model->profile()->modList().remove(id);
         m_model->invalidateModCache(id); // its staged files are now gone
     }

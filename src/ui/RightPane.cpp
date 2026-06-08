@@ -160,7 +160,8 @@ void RightPane::onSelectionChanged(const QStringList& ids) {
             if (id == "__separator__" || id == "__overwrite__") continue;
             auto it = m_modPluginCache.constFind(id);
             if (it == m_modPluginCache.constEnd()) {
-                QString data = AppConfig::instance().stagingDir() + "/" + id + "/Data";
+                QString data = AppConfig::instance().stagingDir() + "/"
+                             + m_currentProfile->stagingFolderFor(id) + "/Data";
                 QDir d(data);
                 QStringList files = d.entryList({"*.esp","*.esm","*.esl"}, QDir::Files);
                 it = m_modPluginCache.insert(id, files);

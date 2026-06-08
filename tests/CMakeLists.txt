@@ -5,6 +5,8 @@ function(add_solero_test name)
     ../src/core/LoadOrderBackup.cpp
     ../src/core/Profile.cpp
     ../src/core/ProfileManager.cpp
+    ../src/core/AppConfig.cpp
+    ../src/core/StagingFolder.cpp
     ../src/ai/AITransaction.cpp
   )
   target_include_directories(${name} PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
@@ -28,6 +30,8 @@ add_executable(test_HealthCheck test_HealthCheck.cpp
   ../src/core/LoadOrderBackup.cpp
   ../src/core/Profile.cpp
   ../src/core/ProfileManager.cpp
+  ../src/core/AppConfig.cpp
+  ../src/core/StagingFolder.cpp
   ../src/ai/AITransaction.cpp
 )
 target_include_directories(test_HealthCheck PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
@@ -48,6 +52,7 @@ function(add_solero_deploy_test name)
     ../src/core/ProfileManager.cpp
     ../src/ai/AITransaction.cpp
     ../src/core/AppConfig.cpp
+    ../src/core/StagingFolder.cpp
   )
   target_include_directories(${name} PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
   target_link_libraries(${name} PRIVATE Qt6::Core Qt6::Test libloot::libloot)
@@ -75,6 +80,7 @@ add_executable(test_ToolRunner test_ToolRunner.cpp
   ../src/core/ProfileManager.cpp
   ../src/ai/AITransaction.cpp
   ../src/core/AppConfig.cpp
+  ../src/core/StagingFolder.cpp
 )
 target_include_directories(test_ToolRunner PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_ToolRunner PRIVATE Qt6::Core Qt6::Test libloot::libloot)
@@ -91,6 +97,7 @@ function(add_solero_install_test name)
     ../src/core/ProfileManager.cpp
     ../src/ai/AITransaction.cpp
     ../src/core/AppConfig.cpp
+    ../src/core/StagingFolder.cpp
   )
   target_include_directories(${name} PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
   target_link_libraries(${name} PRIVATE Qt6::Core Qt6::Test)
@@ -132,6 +139,7 @@ add_executable(test_FomodScanner test_FomodScanner.cpp
   ../src/core/ProfileManager.cpp
   ../src/ai/AITransaction.cpp
   ../src/core/AppConfig.cpp
+  ../src/core/StagingFolder.cpp
 )
 target_include_directories(test_FomodScanner PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_FomodScanner PRIVATE Qt6::Core Qt6::Xml Qt6::Test)
@@ -154,6 +162,7 @@ add_executable(test_PatchScanner test_PatchScanner.cpp
   ../src/core/ProfileManager.cpp
   ../src/ai/AITransaction.cpp
   ../src/core/AppConfig.cpp
+  ../src/core/StagingFolder.cpp
 )
 target_include_directories(test_PatchScanner PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_PatchScanner PRIVATE Qt6::Core Qt6::Xml Qt6::Test)
@@ -164,6 +173,7 @@ function(add_solero_tools_test name)
     ../src/tools/ToolStore.cpp
     ../src/install/DependencyChecker.cpp
     ../src/core/AppConfig.cpp
+    ../src/core/StagingFolder.cpp
     ../src/core/ModList.cpp ../src/core/PluginList.cpp
     ../src/core/Profile.cpp ../src/core/ProfileManager.cpp ../src/ai/AITransaction.cpp
   )
@@ -181,6 +191,7 @@ function(add_solero_import_test name)
     ../src/core/ModList.cpp ../src/core/PluginList.cpp
     ../src/core/Profile.cpp ../src/core/ProfileManager.cpp
     ../src/ai/AITransaction.cpp ../src/core/AppConfig.cpp
+    ../src/core/StagingFolder.cpp
   )
   target_include_directories(${name} PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
   target_link_libraries(${name} PRIVATE Qt6::Core Qt6::Test)
@@ -193,6 +204,7 @@ add_executable(test_ProfileManifest test_ProfileManifest.cpp
   ../src/io/ProfileManifest.cpp
   ../src/core/ModList.cpp ../src/core/PluginList.cpp
   ../src/core/Profile.cpp ../src/core/ProfileManager.cpp
+  ../src/core/StagingFolder.cpp ../src/core/AppConfig.cpp
   ../src/ai/AITransaction.cpp)
 target_include_directories(test_ProfileManifest PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_ProfileManifest PRIVATE Qt6::Core Qt6::Test)
@@ -200,7 +212,7 @@ add_test(NAME test_ProfileManifest COMMAND test_ProfileManifest)
 
 add_executable(test_PluginScanner test_PluginScanner.cpp
   ../src/install/PluginScanner.cpp
-  ../src/core/ModList.cpp ../src/core/PluginList.cpp)
+  ../src/core/ModList.cpp ../src/core/PluginList.cpp ../src/core/StagingFolder.cpp)
 target_include_directories(test_PluginScanner PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_PluginScanner PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_PluginScanner COMMAND test_PluginScanner)
@@ -232,6 +244,7 @@ add_executable(test_WabbajackEngine test_WabbajackEngine.cpp
   ../src/tools/ToolCatalog.cpp
   ../src/install/ArchiveTool.cpp
   ../src/core/AppConfig.cpp
+  ../src/core/StagingFolder.cpp
   ../src/core/ModList.cpp ../src/core/PluginList.cpp
   ../src/core/Profile.cpp ../src/core/ProfileManager.cpp
   ../src/ai/AITransaction.cpp)
@@ -253,6 +266,11 @@ target_include_directories(test_FileMove PRIVATE ../src ${CMAKE_BINARY_DIR}/incl
 target_link_libraries(test_FileMove PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_FileMove COMMAND test_FileMove)
 
+add_executable(test_StagingFolder test_StagingFolder.cpp ../src/core/StagingFolder.cpp)
+target_include_directories(test_StagingFolder PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_StagingFolder PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_StagingFolder COMMAND test_StagingFolder)
+
 # ModListModel pulls in Qt Widgets/Svg (IconUtil) and AppConfig for its data()
 # disk scans; the drag-drop tests only exercise moveRows/dropMimeData but still
 # link the full unit.
@@ -260,6 +278,7 @@ add_executable(test_ModListModel test_ModListModel.cpp
   ../src/ui/ModListModel.cpp
   ../src/deploy/ConflictIndex.cpp
   ../src/core/AppConfig.cpp
+  ../src/core/StagingFolder.cpp
   ../src/core/ModList.cpp ../src/core/PluginList.cpp
   ../src/core/Profile.cpp ../src/core/ProfileManager.cpp
   ../src/ai/AITransaction.cpp)

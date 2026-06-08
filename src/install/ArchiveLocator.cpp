@@ -2,6 +2,7 @@
 #include "core/Types.h"
 #include "core/Profile.h"
 #include "core/AppConfig.h"
+#include "core/StagingFolder.h"
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -78,7 +79,7 @@ void ArchiveLocator::ensureDownloadDirs() {
 }
 
 QString ArchiveLocator::resolveSourceFolder(const ModEntry& mod) const {
-    const QString modDir = m_stagingRoot + "/" + mod.id;
+    const QString modDir = stagingPathFor(m_stagingRoot, mod);
     if (!QFileInfo(modDir).isDir()) return {};
     // Find the first staged file that is a symlink; its target points into the
     // origin mod folder (MO2/Wabbajack instance mods/<Name>/…).

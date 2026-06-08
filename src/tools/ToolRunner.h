@@ -8,7 +8,11 @@ class ToolRunner {
 public:
     struct Result { bool launched=false; QString error; QString output; };
     // gameDir/stagingDir used for output capture. Blocks until the tool exits.
-    static Result run(const Executable& exe, const QString& gameDir, const QString& stagingRoot);
+    // outputModFolder is the on-disk staging folder name for exe.outputModId
+    // (resolve via Profile::stagingFolderFor); when empty it falls back to the
+    // id so callers that haven't migrated still work.
+    static Result run(const Executable& exe, const QString& gameDir, const QString& stagingRoot,
+                      const QString& outputModFolder = {});
 
     // Move every file under captureBase whose mtime is >= runStart into destBase,
     // preserving its path relative to captureBase. Files owned by the deploy

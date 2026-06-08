@@ -41,7 +41,8 @@ QStringList ToolRunner::tokenizeArgs(const QString& s) {
 }
 
 ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir,
-                                   const QString& stagingRoot) {
+                                   const QString& stagingRoot,
+                                   const QString& outputModFolder) {
     Result r;
     QString captureBase = gameDir + "/Data";
     bool capture = exe.isCapturingOutput;
@@ -112,9 +113,13 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
         r.output += QString("\n[exit code %1]").arg(proc.exitCode());
 
     if (capture) {
+        // Resolve the output mod's on-disk staging folder: the caller-provided
+        // (name-based) folder when known, else the id as a fallback.
+        const QString outFolder = outputModFolder.isEmpty() ? exe.outputModId
+                                                            : outputModFolder;
         QString destBase = exe.outputModId.isEmpty()
             ? (AppConfig::dataRoot() + "/overwrite") // canonical Overwrite location
-            : (stagingRoot + "/" + exe.outputModId + "/Data");
+            : (stagingRoot + "/" + outFolder + "/Data");
         // Skip files owned by the active deployment so a deployed mod file isn't
         // moved into the capture target merely because its mtime was bumped.
         DeployRecord rec = DeployRecord::loadFromFile(DeployEngine::recordPath(gameDir));

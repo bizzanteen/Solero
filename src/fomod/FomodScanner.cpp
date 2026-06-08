@@ -3,6 +3,7 @@
 #include "core/Profile.h"
 #include "core/AppConfig.h"
 #include "core/Types.h"
+#include "core/StagingFolder.h"
 #include "install/ArchiveLocator.h"
 #include "install/ArchiveTool.h"
 #include "install/ModInstaller.h"
@@ -289,7 +290,7 @@ FomodScanSummary scanProfile(Profile& profile,
         }
 
         // Direct-file: build the present-file model from the staged Data tree.
-        const QString modData = childCI(stagingRoot + "/" + id, "Data");
+        const QString modData = childCI(stagingPathFor(stagingRoot, *mod), "Data");
         QSet<QString> installed;
         QHash<QString, QString> realByLower;
         if (!modData.isEmpty()) {

@@ -3,6 +3,7 @@
 #include "loot/LootSorter.h"
 #include "core/Profile.h"
 #include "core/AppConfig.h"
+#include "core/StagingFolder.h"
 #include <QDirIterator>
 #include <QFile>
 #include <QDir>
@@ -63,7 +64,7 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     for (const auto& entry : profile.modList()) {
         if (entry.type != EntryType::Mod) continue;
         if (!entry.enabled) continue;
-        failures += deployMod(entry.id, m_gameDir, linker, record, conflicts, ciOwners);
+        failures += deployMod(entry, m_gameDir, linker, record, conflicts, ciOwners);
         ++done;
         if (onProgress) onProgress(done, total);
     }
@@ -152,13 +153,16 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     return result;
 }
 
-int DeployEngine::deployMod(const QString& modId,
+int DeployEngine::deployMod(const ModEntry& mod,
                              const QString& gameDir,
                              const Linker& linker,
                              DeployRecord& record,
                              ConflictIndex& conflicts,
                              QHash<QString, QString>& ciOwners) {
-    QString modRoot = m_stagingRoot + "/" + modId;
+    // The id remains the deploy-record owner key; the on-disk folder is resolved
+    // via the (name-based) staging folder.
+    const QString modId = mod.id;
+    QString modRoot = stagingPathFor(m_stagingRoot, mod);
     if (!QDir(modRoot).exists()) return 0;
 
     int failures = 0;
@@ -264,7 +268,7 @@ void DeployEngine::applyWinnerOverrides(Profile& profile,
                 continue;
         }
         // Validate the mod actually stages this path.
-        const QString srcPath = m_stagingRoot + "/" + modId + "/" + relPath;
+        const QString srcPath = stagingPathFor(m_stagingRoot, *entry) + "/" + relPath;
         if (!QFile::exists(srcPath)) {
             qWarning() << "Winner override skipped: mod" << modId
                        << "does not provide" << relPath;

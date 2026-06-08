@@ -522,6 +522,11 @@ void BethiniWindow::applyPresetToRow(RowWidget& rw, const QString& presetName) {
 void BethiniWindow::applyPreset(const QString& presetName) {
     if (!m_profile) { showStatus("No profile loaded"); return; }
     for (auto& rw : m_rows) applyPresetToRow(rw, presetName);
+    // applyPresetToRow only changes the widgets; harvest those values into the
+    // INI cache (same path as onSave) so saveAllInis() actually writes them.
+    // Without this, presets visually update the UI but write nothing to disk.
+    for (auto& rw : m_rows)
+        if (rowDiffersFromIni(rw)) saveRow(rw);
     saveAllInis();
     pushInisToLive();
     resetDirty();

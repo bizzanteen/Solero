@@ -3,6 +3,8 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QFile>
+#include <QSet>
+#include <algorithm>
 
 namespace solero {
 
@@ -29,6 +31,51 @@ void ModList::moveSection(int from, int count, int to) {
     if (to < 0) to = 0;
     if (to > m_entries.size()) to = m_entries.size();
     for (int i = 0; i < count; ++i) m_entries.insert(to + i, block.at(i));
+}
+
+bool ModList::reorder(QList<int> srcRaws, int dstRaw) {
+    const int n = m_entries.size();
+    // 1. Sort+dedupe, drop out-of-range.
+    std::sort(srcRaws.begin(), srcRaws.end());
+    srcRaws.erase(std::unique(srcRaws.begin(), srcRaws.end()), srcRaws.end());
+    srcRaws.removeIf([&](int i){ return i < 0 || i >= n; });
+    if (srcRaws.isEmpty()) return false;
+
+    QSet<int> srcSet(srcRaws.begin(), srcRaws.end());
+
+    // Snapshot the original order so we can detect whether anything actually moved.
+    QList<ModEntry> before = m_entries;
+
+    // 2. Clamp dstRaw.
+    if (dstRaw < 0) dstRaw = 0;
+    if (dstRaw > n) dstRaw = n;
+
+    // 3. Anchor by identity: first index >= dstRaw not in the src set.
+    bool anchorEnd = true;
+    QString anchorId;
+    for (int i = dstRaw; i < n; ++i) {
+        if (!srcSet.contains(i)) { anchorEnd = false; anchorId = m_entries.at(i).id; break; }
+    }
+
+    // 4. Copy the block (ascending src order), then remove high->low.
+    QList<ModEntry> block;
+    block.reserve(srcRaws.size());
+    for (int i : srcRaws) block.append(m_entries.at(i));
+    for (int k = srcRaws.size() - 1; k >= 0; --k) m_entries.removeAt(srcRaws.at(k));
+
+    // 5. Resolve insertion index against the post-removal list.
+    int insertAt = m_entries.size();
+    if (!anchorEnd) {
+        for (int i = 0; i < m_entries.size(); ++i)
+            if (m_entries.at(i).id == anchorId) { insertAt = i; break; }
+    }
+    for (int i = 0; i < block.size(); ++i) m_entries.insert(insertAt + i, block.at(i));
+
+    // 6. Did the order actually change?
+    if (m_entries.size() != before.size()) return true;
+    for (int i = 0; i < m_entries.size(); ++i)
+        if (m_entries.at(i).id != before.at(i).id) return true;
+    return false;
 }
 
 void ModList::update(const QString& id, const ModEntry& updated) {

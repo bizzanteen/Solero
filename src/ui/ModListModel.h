@@ -96,6 +96,10 @@ private:
 
     void rebuildVisibleRows();
     bool isModEmpty(const QString& id) const;
+    // Drag a non-contiguous multi-selection: expand each visible source row into
+    // its unit (mod / group block / separator section), lift them all and drop
+    // them as one contiguous block at dstVisible. Returns true iff anything moved.
+    bool moveSelection(const QList<int>& srcVisibleRows, int dstVisible);
 };
 
 } // namespace solero

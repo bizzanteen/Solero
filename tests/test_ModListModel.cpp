@@ -14,6 +14,16 @@ static QMimeData* modMime(int srcVisible) {
     return m;
 }
 
+// Helper: build a QMimeData carrying multiple source VISIBLE rows (ascending,
+// comma-separated) in the mod-row format.
+static QMimeData* modMimeMulti(const QList<int>& rows) {
+    QStringList parts;
+    for (int r : rows) parts << QString::number(r);
+    auto* m = new QMimeData;
+    m->setData("application/x-solero-mod-row", parts.join(',').toLatin1());
+    return m;
+}
+
 class TestModListModel : public QObject {
     Q_OBJECT
 private:
@@ -296,6 +306,20 @@ private slots:
         QScopedPointer<QMimeData> mime(modMime(2));
         QVERIFY(!model.dropMimeData(mime.data(), Qt::MoveAction, 6, 0, {}));
         QCOMPARE(order(prof), QString("sepA,mA0,sepC,mC0,sepB,mB0"));
+    }
+
+    void dropMimeData_multiNonContiguous_dropsAsBlock() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        addMods(prof, 5); // m0,m1,m2,m3,m4 (+ Overwrite at visible row 5)
+        ModListModel model;
+        model.setProfile(&prof);
+        // Select non-adjacent m1 (row 1) and m3 (row 3); drop at the front (row 0).
+        // They lift together and land as a contiguous block in original order,
+        // giving m1,m3,m0,m2,m4.
+        QScopedPointer<QMimeData> mime(modMimeMulti({1, 3}));
+        QVERIFY(!model.dropMimeData(mime.data(), Qt::MoveAction, 0, 0, {}));
+        QCOMPARE(order(prof), QString("m1,m3,m0,m2,m4"));
     }
 
     void moveRows_endMappingAppends() {

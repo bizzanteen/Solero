@@ -592,9 +592,16 @@ QStringList ModListModel::mimeTypes() const { return { QString::fromLatin1(kModM
 
 QMimeData* ModListModel::mimeData(const QModelIndexList& indexes) const {
     auto* mime = new QMimeData;
-    int row = -1;
-    for (const auto& idx : indexes) { if (idx.isValid()) { row = idx.row(); break; } }
-    mime->setData(QString::fromLatin1(kModMime), QByteArray::number(row));
+    // Collect every UNIQUE valid selected row (the index list repeats each row
+    // once per column), then encode them ascending and comma-separated so a
+    // non-contiguous multi-selection can be dragged together.
+    QSet<int> rows;
+    for (const auto& idx : indexes) if (idx.isValid()) rows.insert(idx.row());
+    QList<int> sorted(rows.begin(), rows.end());
+    std::sort(sorted.begin(), sorted.end());
+    QStringList parts;
+    for (int r : sorted) parts << QString::number(r);
+    mime->setData(QString::fromLatin1(kModMime), parts.join(',').toLatin1());
     return mime;
 }
 
@@ -607,10 +614,18 @@ bool ModListModel::canDropMimeData(const QMimeData* data, Qt::DropAction,
 bool ModListModel::dropMimeData(const QMimeData* data, Qt::DropAction,
                                 int row, int, const QModelIndex& parent) {
     if (!m_profile || !data->hasFormat(QString::fromLatin1(kModMime))) return false;
-    const int srcVisible = data->data(QString::fromLatin1(kModMime)).toInt();
 
-    // Never drag the pinned Overwrite row.
-    if (rawIndexForRow(srcVisible) == -1) return false;
+    // The payload is a comma-separated list of source VISIBLE rows (ascending).
+    QList<int> srcVisibleRows;
+    for (const auto& part : data->data(QString::fromLatin1(kModMime)).split(',')) {
+        bool ok = false;
+        const int r = part.toInt(&ok);
+        if (!ok) continue;
+        // Never drag the pinned Overwrite row.
+        if (rawIndexForRow(r) == -1) continue;
+        srcVisibleRows << r;
+    }
+    if (srcVisibleRows.isEmpty()) return false;
 
     // Destination VISIBLE insertion row.
     int dstVisible;
@@ -623,10 +638,71 @@ bool ModListModel::dropMimeData(const QMimeData* data, Qt::DropAction,
     if (dstVisible < 0) dstVisible = 0;
     if (dstVisible > rowCount() - 1) dstVisible = rowCount() - 1;
 
-    // moveRows performs the move, persists, refreshes, and emits modsChanged().
+    if (srcVisibleRows.size() <= 1) {
+        // Single-row drag: unchanged path. moveRows performs the move, persists,
+        // refreshes, and emits modsChanged().
+        moveRows({}, srcVisibleRows.first(), 1, {}, dstVisible);
+    } else {
+        // Multi-row drag: lift all selected units and drop them as one block.
+        moveSelection(srcVisibleRows, dstVisible);
+    }
     // Return false either way so the view doesn't additionally removeRows.
-    moveRows({}, srcVisible, 1, {}, dstVisible);
     return false;
+}
+
+bool ModListModel::moveSelection(const QList<int>& srcVisibleRows, int dstVisible) {
+    if (!m_profile) return false;
+    auto& list = m_profile->modList();
+
+    // 2. Expand each source visible row into the raw UNITS it carries.
+    QSet<int> rawSet;
+    for (int vr : srcVisibleRows) {
+        int srcRaw = rawIndexForRow(vr);
+        if (srcRaw < 0) continue; // Overwrite or invalid.
+        if (isGroupChild(srcRaw)) continue; // carried by its parent.
+        const auto& e = list.at(srcRaw);
+        if (e.type == EntryType::Separator) {
+            // The separator owns itself + every following entry up to (not
+            // including) the next separator whose level <= its own.
+            const int srcLevel = e.separatorLevel;
+            int end = srcRaw + 1;
+            for (; end < list.count(); ++end) {
+                const auto& n = list.at(end);
+                if (n.type == EntryType::Separator && n.separatorLevel <= srcLevel) break;
+            }
+            for (int i = srcRaw; i < end; ++i) rawSet.insert(i);
+        } else if (isGroupParent(srcRaw)) {
+            const int end = srcRaw + 1 + groupChildCount(srcRaw);
+            for (int i = srcRaw; i < end; ++i) rawSet.insert(i);
+        } else {
+            rawSet.insert(srcRaw); // plain Mod.
+        }
+    }
+
+    // 3. Ordered set of raw indices to lift.
+    QList<int> orderedSrcRaws(rawSet.begin(), rawSet.end());
+    std::sort(orderedSrcRaws.begin(), orderedSrcRaws.end());
+    if (orderedSrcRaws.isEmpty()) return false;
+
+    // 4. Destination raw index. Overwrite (-1) -> append to the end.
+    int dstRaw = rawIndexForRow(dstVisible);
+    if (dstRaw == -1) dstRaw = list.count();
+    else if (dstRaw < 0) return false;
+
+    // 5. Snap off a group-child boundary so a non-moved group isn't split.
+    while (dstRaw < list.count()
+           && list.at(dstRaw).type == EntryType::Mod
+           && !list.at(dstRaw).parentId.isEmpty())
+        ++dstRaw;
+
+    // 6. Reorder, persist, refresh.
+    beginResetModel();
+    bool ok = m_profile->modList().reorder(orderedSrcRaws, dstRaw);
+    if (ok) m_profile->save();
+    rebuildVisibleRows();
+    endResetModel();
+    if (ok) emit modsChanged();
+    return ok;
 }
 
 } // namespace solero

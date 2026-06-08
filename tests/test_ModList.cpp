@@ -221,6 +221,48 @@ private slots:
         QCOMPARE(restored.count(), 1);
         QCOMPARE(restored.at(0).separatorLevel, 0);
     }
+
+    // --- Multi-row reorder (non-contiguous drag) ------------------------------
+    static ModList makeNumbered(int n) {
+        ModList list;
+        for (int i = 0; i < n; ++i) list.append(makeMod(QString::number(i)));
+        return list;
+    }
+
+    void reorder_nonContiguous_dropAtFront() {
+        // [0,1,2,3,4], lift {1,3}, drop just before index 0 -> [1,3,0,2,4].
+        ModList list = makeNumbered(5);
+        QVERIFY(list.reorder({1, 3}, 0));
+        QCOMPARE(rawOrder(list), QString("1,3,0,2,4"));
+    }
+
+    void reorder_dropAtEnd() {
+        // [0,1,2,3,4], lift {0,2}, drop past the end (5) -> [1,3,4,0,2].
+        ModList list = makeNumbered(5);
+        QVERIFY(list.reorder({0, 2}, 5));
+        QCOMPARE(rawOrder(list), QString("1,3,4,0,2"));
+    }
+
+    void reorder_anchorByIdentity() {
+        // [0,1,2,3,4], lift {0,1}, dstRaw=4 (anchor = id "4") -> [2,3,0,1,4].
+        ModList list = makeNumbered(5);
+        QVERIFY(list.reorder({0, 1}, 4));
+        QCOMPARE(rawOrder(list), QString("2,3,0,1,4"));
+    }
+
+    void reorder_contiguousBlock() {
+        // [0,1,2,3], lift {1,2}, drop at front -> [1,2,0,3].
+        ModList list = makeNumbered(4);
+        QVERIFY(list.reorder({1, 2}, 0));
+        QCOMPARE(rawOrder(list), QString("1,2,0,3"));
+    }
+
+    void reorder_inputOrderIndependent() {
+        // {3,1} must behave exactly like {1,3}.
+        ModList list = makeNumbered(5);
+        QVERIFY(list.reorder({3, 1}, 0));
+        QCOMPARE(rawOrder(list), QString("1,3,0,2,4"));
+    }
 };
 QTEST_MAIN(TestModList)
 #include "test_ModList.moc"

@@ -14,6 +14,15 @@ public:
     // the list with the block removed). Used to drag a separator together with
     // every mod in its section.
     void moveSection(int from, int count, int to);
+    // Lift the entries at the given raw indices (treated as a SET: sorted ascending
+    // and deduped; out-of-range indices ignored) and reinsert them as one contiguous
+    // block, in their original relative (ascending-index) order, at the position
+    // indicated by `dstRaw`. `dstRaw` is interpreted against the original list as
+    // "insert the block just before whatever entry currently sits at dstRaw", using
+    // anchor-by-identity so it survives the lift. dstRaw >= count appends. Returns
+    // true iff the list order actually changed. Used to drag a non-contiguous
+    // multi-selection so the selected mods drop together as a contiguous block.
+    bool reorder(QList<int> srcRaws, int dstRaw);
     void setEnabled(const QString& id, bool enabled);
     void update(const QString& id, const ModEntry& updated);
 

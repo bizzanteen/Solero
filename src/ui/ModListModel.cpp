@@ -10,8 +10,11 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include "core/AppConfig.h"
+#include "core/StagingFolder.h"
 #include "core/VersionUtil.h"
 #include "ui/IconUtil.h"
+#include <QSet>
+#include <QDebug>
 
 namespace solero {
 
@@ -472,6 +475,46 @@ bool ModListModel::setData(const QModelIndex& idx, const QVariant& value, int ro
         if (nn.isEmpty()) return false;
         ModEntry e = cur;
         e.name = nn;
+        // For MODS only, keep the on-disk staging folder name-based: derive a new
+        // unique folder from the new name and rename it on disk. Separators have no
+        // staging folder, so they keep the simple rename above.
+        if (cur.type == EntryType::Mod) {
+            const QString stagingDir = AppConfig::instance().stagingDir();
+            // Every OTHER mod's folder is "taken" (lowercased), so the new folder
+            // can't collide. Skip the entry being renamed (its own old folder is
+            // free to give up).
+            QSet<QString> taken;
+            for (const auto& other : m_profile->modList()) {
+                if (other.id == e.id) continue;
+                if (other.type != EntryType::Mod) continue;
+                const QString f = other.stagingFolder.isEmpty() ? other.id
+                                                                : other.stagingFolder;
+                if (!f.isEmpty()) taken.insert(f.toLower());
+            }
+            const QString oldFolder =
+                cur.stagingFolder.isEmpty() ? cur.id : cur.stagingFolder;
+            const QString newFolder =
+                solero::uniqueStagingFolder(solero::sanitizeStagingFolder(nn), taken);
+            if (newFolder != oldFolder) {
+                const QString oldPath = stagingDir + "/" + oldFolder;
+                const QString newPath = stagingDir + "/" + newFolder;
+                if (QDir(oldPath).exists()) {
+                    if (QDir().rename(oldPath, newPath)) {
+                        e.stagingFolder = newFolder;
+                    } else {
+                        qWarning() << "rename: staging folder rename failed for"
+                                   << e.id << oldPath << "->" << newPath
+                                   << "; keeping old folder";
+                        e.stagingFolder = oldFolder;
+                    }
+                } else {
+                    // Nothing staged yet - just record the name-based folder.
+                    e.stagingFolder = newFolder;
+                }
+            } else {
+                e.stagingFolder = oldFolder;
+            }
+        }
         m_profile->modList().update(e.id, e);
         m_profile->save();
         emit dataChanged(idx, idx);

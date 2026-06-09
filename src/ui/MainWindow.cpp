@@ -2712,7 +2712,7 @@ void MainWindow::onAddTool2() {
         bool changed = false;
         if (preset->producesOutput && exe.outputModId.isEmpty()) {
             exe.outputModId = chooseOutputMod(preset->outputModName, preset->name);
-            exe.isCapturingOutput = true;
+            exe.isCapturingOutput = !preset->writesOutputDirectly;
             changed = true;
         }
         // secondary actions: match by index to the preset's extraActions
@@ -2779,7 +2779,7 @@ void MainWindow::setUpImportedTools(const QList<solero::ImportedTool>& tools) {
             // Wire the primary output mod (match-or-create against this profile).
             if (p->producesOutput) {
                 e.outputModId = chooseOutputMod(p->outputModName, p->name);
-                e.isCapturingOutput = true;
+                e.isCapturingOutput = !p->writesOutputDirectly;
             }
             // Wire secondary-action output mods (match preset extraActions by index).
             for (int i = 0; i < e.extraActions.size() && i < p->extraActions.size(); ++i) {

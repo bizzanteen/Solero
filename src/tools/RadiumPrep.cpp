@@ -54,6 +54,24 @@ bool prepare(const Profile& profile,
     if (!atomicWrite(profDir + "/modlist.txt", QByteArray()))
         return fail("Could not write modlist.txt");
 
+    // ModOrganizer.ini: the GUI's MO2 Setup panel requires this file at the
+    // mo2_folder root to detect the game and enumerate profiles - manual_mode
+    // does not bypass it (the CLI path does, but we drive the GUI). Radium reads
+    // gameName + selected_profile; gamePath is a Wine-style path where it maps a
+    // doubled backslash back to a forward slash, so each '/' becomes "\\".
+    QString winePath = gameDir;
+    winePath.replace('/', QStringLiteral("\\\\"));
+    const QString ini =
+        "[General]\n"
+        "gameName=Skyrim Special Edition\n"
+        "gamePath=@ByteArray(Z:" + winePath + ")\n"
+        "game_edition=Steam\n"
+        "selected_profile=@ByteArray(solero)\n"
+        "version=2.5.2\n"
+        "first_start=false\n";
+    if (!atomicWrite(fakeMo2 + "/ModOrganizer.ini", ini.toUtf8()))
+        return fail("Could not write ModOrganizer.ini");
+
     QJsonObject obj;
     {
         QFile f(settingsPath);

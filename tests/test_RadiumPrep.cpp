@@ -63,6 +63,16 @@ private slots:
         QCOMPARE(readAll(prof + "/archives.txt"), QString("AAA.bsa\nZZZ.bsa\n"));
         QCOMPARE(readAll(prof + "/modlist.txt"), QString(""));
 
+        // ModOrganizer.ini at the fake-mo2 root so Radium's GUI MO2 Setup panel
+        // detects the game + profile. gamePath is the Wine-style game path
+        // (each '/' doubled to "\\").
+        const QString ini = readAll(installDir + "/fake-mo2/ModOrganizer.ini");
+        QVERIFY(ini.contains("gameName=Skyrim Special Edition"));
+        QVERIFY(ini.contains("selected_profile=@ByteArray(solero)"));
+        QString expectWine = gameDir; expectWine.replace('/', QStringLiteral("\\\\"));
+        QVERIFY2(ini.contains("gamePath=@ByteArray(Z:" + expectWine + ")"),
+                 qPrintable(ini));
+
         QJsonObject o = readJson(settings);
         QCOMPARE(o["manual_mode"].toBool(), true);
         QCOMPARE(o["game"].toString(), QString("SkyrimSE"));

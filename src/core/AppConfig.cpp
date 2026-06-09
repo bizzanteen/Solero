@@ -132,6 +132,7 @@ bool AppConfig::save() const {
     obj["deployMode"] = (m_deployMode == DeployMode::SymLink) ? "symlink"
                       : (m_deployMode == DeployMode::Copy)    ? "copy"
                                                               : "hardlink";
+    obj["lastProfile"] = m_lastProfile;
     QJsonArray hidden;
     for (int c : m_hiddenColumns) hidden.append(c);
     obj["hiddenColumns"] = hidden;

@@ -49,6 +49,99 @@ QList<ModEntry> Mo2Importer::parseModlist(const QString& modlistTxt) {
     return out;
 }
 
+// Normalize a ModOrganizer.ini binary/path value into a native absolute path:
+// MO2 (under Proton) stores Windows-style values like
+//   Z:/var/home/.../tools/xEdit/SSEEdit.exe   or
+//   Z:\\var\\home\\...\\StockGame\\skse64_loader.exe
+// Strip a leading Wine drive letter ("Z:") and convert backslashes to forward
+// slashes so the result is a Unix path. Leaves an already-Unix path untouched.
+static QString normalizeWinePath(QString v) {
+    v = v.trimmed();
+    v.replace('\\', '/');
+    // Strip a leading single-letter Wine drive ("Z:/..." -> "/...").
+    if (v.size() >= 2 && v.at(1) == ':' && v.at(0).isLetter())
+        v = v.mid(2);
+    return v;
+}
+
+// Resolve a normalized ModOrganizer.ini binary path to where it will live after
+// import. The ini's paths point into the original instance dir; rebase any path
+// that sits under that original prefix onto `instanceDir` (the staged/installed
+// instance). The original prefix is inferred as the leading portion of the path
+// that ends just before a known instance-relative segment (tools/, mods/,
+// StockGame/, Stock Game/, Game Root/, Root/, profiles/, overwrite/,
+// downloads/). If nothing matches, return the path unchanged.
+static QString rebaseInstanceBinary(const QString& normPath, const QString& instanceDir) {
+    if (instanceDir.isEmpty()) return normPath;
+    static const char* kSegs[] = {
+        "/tools/", "/mods/", "/StockGame/", "/Stock Game/", "/Game Root/",
+        "/Root/", "/profiles/", "/overwrite/", "/downloads/",
+    };
+    for (const char* seg : kSegs) {
+        const int at = normPath.indexOf(QLatin1String(seg), 0, Qt::CaseInsensitive);
+        if (at >= 0) {
+            // Keep the segment + remainder; graft onto the real instance dir.
+            const QString rel = normPath.mid(at); // starts with "/<seg>…"
+            return QDir::cleanPath(instanceDir + rel);
+        }
+    }
+    return normPath;
+}
+
+QList<ImportedTool> Mo2Importer::parseCustomExecutables(const QString& iniContent,
+                                                        const QString& instanceDir) {
+    // Collect title/binary/arguments per numeric index within the
+    // [customExecutables] section. MO2 writes keys like "1\title=", "1\binary=",
+    // "1\arguments=". We parse the section linearly (QSettings would mangle the
+    // backslash-laden Windows paths), preserving the numeric index ORDER.
+    struct Raw { QString title, binary, args; };
+    QHash<int, Raw> byIndex;
+    QList<int> order; // first-seen numeric indices, in file order
+
+    bool inSection = false;
+    for (const QString& lineRaw : iniContent.split('\n')) {
+        QString line = lineRaw;
+        // Strip a trailing CR (CRLF files) without touching interior content.
+        if (line.endsWith('\r')) line.chop(1);
+        const QString trimmed = line.trimmed();
+        if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+            inSection = (trimmed.compare("[customExecutables]", Qt::CaseInsensitive) == 0);
+            continue;
+        }
+        if (!inSection || trimmed.isEmpty()) continue;
+
+        const int eq = line.indexOf('=');
+        if (eq < 0) continue;
+        const QString key = line.left(eq).trimmed();
+        const QString val = line.mid(eq + 1); // keep value verbatim (paths/quotes)
+
+        const int bs = key.indexOf('\\');
+        if (bs < 0) continue; // e.g. "size=13" - not an indexed entry
+        bool ok = false;
+        const int idx = key.left(bs).toInt(&ok);
+        if (!ok) continue;
+        const QString field = key.mid(bs + 1).trimmed();
+
+        if (!byIndex.contains(idx)) { byIndex.insert(idx, Raw{}); order << idx; }
+        Raw& r = byIndex[idx];
+        if (field.compare("title", Qt::CaseInsensitive) == 0)          r.title = val.trimmed();
+        else if (field.compare("binary", Qt::CaseInsensitive) == 0)    r.binary = val.trimmed();
+        else if (field.compare("arguments", Qt::CaseInsensitive) == 0) r.args = val.trimmed();
+    }
+
+    QList<ImportedTool> out;
+    for (int idx : order) {
+        const Raw& r = byIndex.value(idx);
+        if (r.title.isEmpty() || r.binary.isEmpty()) continue;
+        ImportedTool t;
+        t.name = r.title;
+        t.binary = rebaseInstanceBinary(normalizeWinePath(r.binary), instanceDir);
+        t.args = r.args;
+        out << t;
+    }
+    return out;
+}
+
 // A game-root file is one that the game loads from the folder next to
 // SkyrimSE.exe rather than from Data/ - primarily native binaries: SKSE's
 // skse64_loader.exe, ENB/ASI DLLs, d3dx9_42.dll (Engine Fixes), etc. We
@@ -617,6 +710,15 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
     QString selectedMo2;
     const QString iniPath = mo2InstanceDir + "/ModOrganizer.ini";
     if (QFileInfo::exists(iniPath)) {
+        // Discover the instance's configured tools ([customExecutables]), rebasing
+        // each binary onto this (installed) instance dir. QSettings can't be used
+        // for this section (its backslash-laden Windows paths get mangled), so the
+        // parser reads the raw ini text.
+        QFile iniFile(iniPath);
+        if (iniFile.open(QIODevice::ReadOnly))
+            r.tools = parseCustomExecutables(
+                QString::fromUtf8(iniFile.readAll()), mo2InstanceDir);
+
         QSettings ini(iniPath, QSettings::IniFormat);
         // NOTE: QSettings folds the INI's special [General] section into the
         // top level, so read without a "General/" group prefix (a beginGroup

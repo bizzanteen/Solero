@@ -29,6 +29,8 @@
 #include "ui/PatchWizardDialog.h"
 #include "tools/ToolRunner.h"
 #include "tools/ToolCatalog.h"
+#include "tools/ToolNameMap.h"
+#include "tools/ToolSetup.h"
 #include "fomod/FomodEngine.h"
 #include "fomod/FomodScanner.h"
 #include "loot/LootSorter.h"
@@ -2516,9 +2518,12 @@ void MainWindow::selectImportedProfile(const QString& name) {
 void MainWindow::onInstallWabbajack() {
     solero::WabbajackDialog dlg(m_profileMgr, this);
     connect(&dlg, &solero::WabbajackDialog::profileImported, this,
-            [this](const QString& name) {
+            [this](const QString& name, const QList<solero::ImportedTool>& tools) {
         selectImportedProfile(name);
         statusBar()->showMessage(QString("Imported Wabbajack modlist '%1'.").arg(name));
+        // The profile is now active - auto-configure the modlist's tools against
+        // it (output mods belong to this profile; tools go to the global store).
+        setUpImportedTools(tools);
         // After the profile switch settles, detect a missing SKSE and offer it.
         QTimer::singleShot(0, this, &MainWindow::maybeOfferSkse);
     });
@@ -2722,6 +2727,123 @@ void MainWindow::onAddTool2() {
         if (changed) { m_toolStore->update(exe); m_toolStore->save(); }
     }
     rebuildToolsMenu();
+}
+
+void MainWindow::setUpImportedTools(const QList<solero::ImportedTool>& tools) {
+    if (tools.isEmpty()) return;
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return;
+
+    // Skyrim Proton prefix (compatdata/489830), derived from localAppData up to
+    // /pfx - same derivation the Set-Up-Tool wizard uses.
+    QString lad = solero::AppConfig::instance().localAppDataDir();
+    const int pfxAt = lad.indexOf("/pfx");
+    const QString winePrefix = pfxAt > 0 ? lad.left(pfxAt) : QString();
+
+    // Existing tool ids/names in the global store (idempotency: don't duplicate
+    // on a re-import of the same list).
+    QSet<QString> haveIds, haveNames;
+    for (const auto& t : m_toolStore->tools()) {
+        haveIds.insert(t.id);
+        haveNames.insert(t.name.toLower());
+    }
+
+    QStringList configured;  // "xEdit -> SSEEdit (xEdit)" lines for the summary
+    QStringList unresolved;  // "<name> - <reason>" lines for the summary
+    bool storeChanged = false;
+
+    for (const solero::ImportedTool& it : tools) {
+        const QString presetId = solero::presetIdForToolName(it.name, it.binary);
+        const bool present = QFileInfo::exists(it.binary);
+
+        // Idempotent skip: already configured by id (mapped) or by name (custom).
+        if ((!presetId.isEmpty() && haveIds.contains(presetId))
+            || haveNames.contains(it.name.toLower())) {
+            continue;
+        }
+
+        if (!presetId.isEmpty()) {
+            const solero::ToolPreset* p = solero::ToolCatalog::byId(presetId);
+            if (!p) { continue; }
+            if (!present) {
+                // DEFAULT: don't auto-download a mapped tool the list didn't ship.
+                unresolved << QString("%1 - not shipped by the list; install it via "
+                                      "Tools ▸ Add tool").arg(p->name);
+                continue;
+            }
+            solero::Executable e = solero::ToolSetup::buildExecutable(*p, it.binary, winePrefix);
+            // Carry the list's own configured arguments when it set any (they often
+            // pin -D:"…/Data"); otherwise keep the preset's defaults.
+            if (!it.args.trimmed().isEmpty()) e.arguments = it.args;
+
+            // Wire the primary output mod (match-or-create against this profile).
+            if (p->producesOutput) {
+                e.outputModId = chooseOutputMod(p->outputModName, p->name);
+                e.isCapturingOutput = true;
+            }
+            // Wire secondary-action output mods (match preset extraActions by index).
+            for (int i = 0; i < e.extraActions.size() && i < p->extraActions.size(); ++i) {
+                if (!p->extraActions[i].outputModName.isEmpty()) {
+                    e.extraActions[i].outputModId = chooseOutputMod(
+                        p->extraActions[i].outputModName,
+                        p->name + " (" + p->extraActions[i].label + ")");
+                }
+            }
+            m_toolStore->update(e);
+            haveIds.insert(presetId);
+            haveNames.insert(e.name.toLower());
+            storeChanged = true;
+            configured << QString("%1 → %2").arg(it.name, p->name);
+        } else {
+            // Unmapped tool.
+            if (!present) {
+                unresolved << QString("%1 - binary not found").arg(it.name);
+                continue;
+            }
+            solero::Executable e;
+            e.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            e.name = it.name;
+            e.binaryPath = it.binary;
+            e.arguments = it.args;
+            // Imported MO2 binaries are Windows exes run under Proton.
+            e.runtime = it.binary.endsWith(".exe", Qt::CaseInsensitive)
+                            ? solero::RuntimeType::Proton : solero::RuntimeType::Native;
+            e.protonVersion = QFileInfo(
+                solero::AppConfig::instance().detectProtonDir()).fileName();
+            e.winePrefix = winePrefix;
+            e.runThroughDeployer = false;
+            // Wire output only if the list already ships a matching "…Output" mod
+            // (no create for custom tools - leave Overwrite otherwise).
+            const QString outId = solero::findOutputModId(profile->modList().entries(), it.name);
+            if (!outId.isEmpty()) { e.outputModId = outId; e.isCapturingOutput = true; }
+            m_toolStore->update(e);
+            haveNames.insert(e.name.toLower());
+            storeChanged = true;
+            configured << QString("%1 (custom)").arg(it.name);
+        }
+    }
+
+    if (storeChanged) { m_toolStore->save(); rebuildToolsMenu(); }
+
+    // Summary (non-blocking; skipped when nothing was discovered/actionable).
+    if (configured.isEmpty() && unresolved.isEmpty()) return;
+    QString body;
+    if (!configured.isEmpty())
+        body += QString("Set up %1 tool%2:\n  • %3\n")
+                    .arg(configured.size())
+                    .arg(configured.size() == 1 ? "" : "s")
+                    .arg(configured.join("\n  • "));
+    if (!unresolved.isEmpty()) {
+        if (!body.isEmpty()) body += "\n";
+        body += QString("Couldn't set up %1:\n  • %2")
+                    .arg(unresolved.size())
+                    .arg(unresolved.join("\n  • "));
+    }
+    auto* box = new QMessageBox(QMessageBox::Information, "Modlist tools", body,
+                                QMessageBox::Ok, this);
+    box->setAttribute(Qt::WA_DeleteOnClose);
+    box->setModal(false);
+    box->show();
 }
 
 void MainWindow::rebuildToolsMenu() {

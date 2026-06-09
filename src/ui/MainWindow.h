@@ -17,6 +17,7 @@
 #include "ui/ExecutableDialog.h"
 #include "nexus/DownloadManager.h"
 #include "nexus/NxmHandler.h"
+#include "import/Mo2Importer.h"
 
 class QSplitter;
 class QComboBox;
@@ -181,6 +182,12 @@ private:
     // Pick a tool's output mod: suggest an existing load-order mod whose name
     // matches (so imported lists' output mods are reused), else create one.
     QString chooseOutputMod(const QString& defaultName, const QString& toolName);
+    // Auto-configure a freshly-imported Wabbajack modlist's tools (discovered from
+    // ModOrganizer.ini [customExecutables]) against the now-active profile: map
+    // each to a ToolCatalog preset (or register a custom executable), wire output
+    // mods, add to the global ToolStore, then show a summary. Idempotent: skips
+    // tools already present in the ToolStore.
+    void setUpImportedTools(const QList<solero::ImportedTool>& tools);
     // Tools are global but their output mods live in whichever profile was active
     // at setup - so resolve/remove a mod across all profiles, not just the active one.
     QString modNameAnywhere(const QString& id) const;

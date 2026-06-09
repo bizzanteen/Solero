@@ -432,6 +432,66 @@ private slots:
         QCOMPARE(r.profileNames.first(), QString("P1 (MyList)"));
         QCOMPARE(r.primaryProfile, QString("P1 (MyList)"));
     }
+
+    void parsesCustomExecutables() {
+        // Real-shaped MO2 [customExecutables]: indexed N\title / N\binary /
+        // N\arguments keys, Wine "Z:" drive + Windows-style binary paths pointing
+        // into the original instance dir. Mixed with non-tool entries (size=, a
+        // plain "Play" loader, an explorer). Resolution rebases tool binaries onto
+        // the staged instance dir.
+        const QString ini =
+            "[General]\n"
+            "gameName=Skyrim Special Edition\n"
+            "\n"
+            "[customExecutables]\n"
+            "size=3\n"
+            "1\\arguments=-D:\\\"Z:\\\\old\\\\StockGame\\\\Data\\\" -IKnowWhatImDoing\n"
+            "1\\binary=Z:/old/Instance/tools/xEdit/SSEEdit.exe\n"
+            "1\\title=xEdit\n"
+            "1\\toolbar=true\n"
+            "2\\arguments=\n"
+            "2\\binary=Z:/old/Instance/mods/Nemesis/Nemesis Unlimited Behavior Engine.exe\n"
+            "2\\title=Nemesis Unlimited Behavior Engine\n"
+            "3\\arguments=\n"
+            "3\\binary=Z:/old/Instance/tools/DynDOLOD/DynDOLODx64.exe\n"
+            "3\\title=DynDOLOD\n"
+            "\n"
+            "[Settings]\n"
+            "x=1\n";
+
+        const QString inst = "/new/staged/instance";
+        auto tools = Mo2Importer::parseCustomExecutables(ini, inst);
+        QCOMPARE(tools.size(), 3);
+
+        QCOMPARE(tools[0].name, QString("xEdit"));
+        QCOMPARE(tools[0].binary, QString("/new/staged/instance/tools/xEdit/SSEEdit.exe"));
+        QCOMPARE(tools[0].args, QString("-D:\\\"Z:\\\\old\\\\StockGame\\\\Data\\\" -IKnowWhatImDoing"));
+
+        QCOMPARE(tools[1].name, QString("Nemesis Unlimited Behavior Engine"));
+        QCOMPARE(tools[1].binary,
+                 QString("/new/staged/instance/mods/Nemesis/Nemesis Unlimited Behavior Engine.exe"));
+        QVERIFY(tools[1].args.isEmpty());
+
+        QCOMPARE(tools[2].name, QString("DynDOLOD"));
+        QCOMPARE(tools[2].binary, QString("/new/staged/instance/tools/DynDOLOD/DynDOLODx64.exe"));
+    }
+
+    void parseCustomExecutablesSkipsEmptyAndUnindexed() {
+        // No [customExecutables] -> empty. And an entry missing title/binary is
+        // skipped while siblings still parse.
+        QCOMPARE(Mo2Importer::parseCustomExecutables("[General]\nx=1\n").size(), 0);
+
+        const QString ini =
+            "[customExecutables]\n"
+            "size=2\n"
+            "1\\binary=Z:/i/tools/Foo/Foo.exe\n"   // no title -> skipped
+            "2\\title=Bar\n"
+            "2\\binary=Z:/i/tools/Bar/Bar.exe\n";
+        auto tools = Mo2Importer::parseCustomExecutables(ini, "/inst");
+        QCOMPARE(tools.size(), 1);
+        QCOMPARE(tools[0].name, QString("Bar"));
+        QCOMPARE(tools[0].binary, QString("/inst/tools/Bar/Bar.exe"));
+    }
 };
 QTEST_MAIN(TestMo2Importer)
 #include "test_Mo2Importer.moc"

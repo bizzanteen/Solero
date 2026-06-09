@@ -1,6 +1,7 @@
 #pragma once
 #include "wabbajack/WabbajackModlist.h"
 #include "wabbajack/WabbajackEngine.h"
+#include "import/Mo2Importer.h"
 #include <QDialog>
 #include <QList>
 #include <QHash>
@@ -40,7 +41,11 @@ protected:
     void reject() override;
 
 signals:
-    void profileImported(const QString& profileName);
+    // Emitted after a successful Wabbajack install + import. `tools` carries the
+    // modlist's discovered ModOrganizer.ini [customExecutables] so MainWindow can
+    // auto-configure them against the freshly-imported profile.
+    void profileImported(const QString& profileName,
+                         const QList<ImportedTool>& tools);
 
 private slots:
     void onModlistsReady(const QList<WabbajackModlist>& modlists);

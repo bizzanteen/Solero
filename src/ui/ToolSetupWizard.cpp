@@ -1,6 +1,7 @@
 #include "ToolSetupWizard.h"
 #include "tools/ToolCatalog.h"
 #include "tools/ToolDownloader.h"
+#include "tools/ToolSetup.h"
 #include "tools/ToolStore.h"
 #include "ui/ProgressModal.h"
 #include "ui/ExecutableDialog.h"
@@ -404,39 +405,16 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
             return;
         }
 
-        Executable e;
-        e.id = p->id;
-        e.name = p->name;
-        e.binaryPath = res.exePath;
-        e.arguments = p->args;
-        e.runtime = p->proton ? RuntimeType::Proton : RuntimeType::Native;
-        e.iconPath = res.iconPath.isEmpty() ? p->iconResource : res.iconPath;
-        e.protonVersion = QFileInfo(AppConfig::instance().detectProtonDir()).fileName();
         // Wine prefix = the Skyrim Proton prefix (compatdata/489830), derived from
         // localAppData up to /pfx.
         QString lad = AppConfig::instance().localAppDataDir();
         int pfx = lad.indexOf("/pfx");
-        e.winePrefix = pfx > 0 ? lad.left(pfx) : QString();
-        e.runThroughDeployer = false;
+        const QString winePrefix = pfx > 0 ? lad.left(pfx) : QString();
 
-        // Build extra actions: resolve each secondary exe in the same install dir.
-        QString instDir = QFileInfo(res.exePath).path();
-        for (const auto& pa : p->extraActions) {
-            QString actExe = instDir + "/" + pa.exeRelPath;
-            if (!QFile::exists(actExe)) { // case-insensitive shallow search
-                for (const QString& f : QDir(instDir).entryList(QDir::Files))
-                    if (f.compare(pa.exeRelPath, Qt::CaseInsensitive) == 0) {
-                        actExe = instDir + "/" + f;
-                        break;
-                    }
-            }
-            ToolAction a;
-            a.label = pa.label;
-            a.binaryPath = actExe;
-            a.arguments = pa.args;
-            a.outputModId = QString();
-            e.extraActions.append(a);
-        }
+        // Build the Executable (incl. extra actions) via the shared headless
+        // helper, then override the icon with the freshly-downloaded one if any.
+        Executable e = ToolSetup::buildExecutable(*p, res.exePath, winePrefix);
+        if (!res.iconPath.isEmpty()) e.iconPath = res.iconPath;
 
         m_store->update(e); // update = add-or-replace by id
         m_store->save();

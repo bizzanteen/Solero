@@ -862,7 +862,7 @@ void WabbajackDialog::doImport() {
             .arg(r.profileNames.join(", "))
             .arg(r.modsStaged)
             .arg(m_installDir));
-    emit profileImported(r.primaryProfile);
+    emit profileImported(r.primaryProfile, r.tools);
     accept();
 }
 

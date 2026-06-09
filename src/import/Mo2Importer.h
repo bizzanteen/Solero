@@ -9,6 +9,16 @@ namespace solero { class ProfileManager; class Profile; }
 
 namespace solero {
 
+// A tool discovered in the MO2 instance's ModOrganizer.ini [customExecutables]
+// section. `binary` is resolved to the path it will live at after import (inside
+// the staged instance / game-root overlay) when that can be determined, else the
+// raw INI value. `args` is the configured argument string (may be empty).
+struct ImportedTool {
+    QString name;     // [customExecutables] title=  (e.g. "DynDOLOD")
+    QString binary;   // resolved absolute binary path (post-import), or raw value
+    QString args;     // configured arguments
+};
+
 struct Mo2ImportResult {
     bool success = false;
     QString profileName;
@@ -21,6 +31,7 @@ struct Mo2InstanceImportResult {
     QStringList profileNames;   // created Solero profile names, in instance order
     QString primaryProfile;     // the one to switch to (MO2 selected_profile if found, else first)
     int modsStaged = 0;         // unique mods staged
+    QList<ImportedTool> tools;  // tools from ModOrganizer.ini [customExecutables]
     QString errorMessage;
 };
 
@@ -28,6 +39,15 @@ class Mo2Importer {
 public:
     // Parse modlist.txt content into a Solero-ordered ModList (index0 = lowest priority).
     static QList<ModEntry> parseModlist(const QString& modlistTxt);
+
+    // Parse a ModOrganizer.ini's [customExecutables] section into ImportedTool
+    // entries (one per `N\title` / `N\binary` / `N\arguments` group), in index
+    // order. `instanceDir` (if non-empty) is used to resolve each binary to its
+    // post-import path: an MO2 "%baseDir%"/instance-relative binary is rewritten
+    // to live inside `instanceDir`. Binaries that resolve to an absolute existing
+    // path are kept as-is. Entries with an empty title or binary are skipped.
+    static QList<ImportedTool> parseCustomExecutables(const QString& iniContent,
+                                                      const QString& instanceDir = {});
 
     // Full import: read <mo2ProfileDir>/modlist.txt + plugins.txt, stage each mod
     // folder from <mo2ModsDir>/<ModName> into stagingRoot, create a Solero profile.

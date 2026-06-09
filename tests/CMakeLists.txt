@@ -241,6 +241,13 @@ target_include_directories(test_ToolCatalog PRIVATE ../src ${CMAKE_BINARY_DIR}/i
 target_link_libraries(test_ToolCatalog PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_ToolCatalog COMMAND test_ToolCatalog)
 
+# ProtonRuntime is a header-only pure classifier (off-site requirement → runtime
+# name), so the test needs no extra sources.
+add_executable(test_ProtonRuntime test_ProtonRuntime.cpp)
+target_include_directories(test_ProtonRuntime PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_ProtonRuntime PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_ProtonRuntime COMMAND test_ProtonRuntime)
+
 add_executable(test_ToolNameMap test_ToolNameMap.cpp ../src/tools/ToolNameMap.cpp)
 target_include_directories(test_ToolNameMap PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_ToolNameMap PRIVATE Qt6::Core Qt6::Test)

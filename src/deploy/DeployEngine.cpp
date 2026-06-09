@@ -21,6 +21,11 @@ bool onDifferentFilesystems(const QString& a, const QString& b) {
     if (::stat(b.toLocal8Bit().constData(), &sb) != 0) return false;
     return sa.st_dev != sb.st_dev;
 }
+
+// Sentinel deploy-record owner for engine-generated artifacts (Plugins.txt,
+// loadorder.txt, copied INIs) that land inside gameDir. Lets undeploy() remove
+// them like any other recorded path without attributing them to a real mod.
+const QString kGeneratedArtifactOwner = QStringLiteral("__solero_generated__");
 }
 
 namespace solero {
@@ -109,6 +114,20 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
 
     // Plugins.txt belongs in the game's local appdata folder (inside the Proton
     // prefix), where Skyrim actually reads it. Fall back to Data/ if unknown.
+    // Record generated artifacts (Plugins.txt/loadorder.txt, copied INIs) under a
+    // sentinel owner WHEN they land inside gameDir (the appdata/docs-not-found
+    // fallback), so undeploy() removes them instead of orphaning them. Artifacts
+    // written into the Proton prefix (localAppData/docs) are outside gameDir and
+    // are intentionally not recorded (their relPath isn't gameDir-relative).
+    const QString normGameDirForRec = QDir::cleanPath(m_gameDir);
+    auto recordIfInGameDir = [&](const QString& target) {
+        const QString norm = QDir::cleanPath(target);
+        if (norm.startsWith(normGameDirForRec + "/")) {
+            const QString rel = norm.mid(normGameDirForRec.length() + 1);
+            record.add(rel, kGeneratedArtifactOwner);
+        }
+    };
+
     QString localAppData = AppConfig::instance().localAppDataDir();
     QString pluginsDir = localAppData.isEmpty() ? (m_gameDir + "/Data") : localAppData;
     QDir().mkpath(pluginsDir);
@@ -116,6 +135,8 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     // loadorder.txt records the full order (all plugins, no prefix) so the game
     // and tools agree on the master/light/esp ordering, not just what's active.
     profile.pluginList().saveLoadOrderToFile(pluginsDir + "/loadorder.txt");
+    recordIfInGameDir(pluginsDir + "/Plugins.txt");
+    recordIfInGameDir(pluginsDir + "/loadorder.txt");
 
     // INIs belong in the game's My Games documents folder. Fall back to gameDir.
     QString docsDir = AppConfig::instance().documentsDir();
@@ -132,8 +153,10 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
         iniDir + "/SkyrimCustom.ini"
     };
     for (int i = 0; i < inis.size(); ++i) {
-        if (QFile::exists(inis[i]))
+        if (QFile::exists(inis[i])) {
             copyOverwrite(inis[i], iniTargets[i]);
+            recordIfInGameDir(iniTargets[i]);
+        }
     }
 
     // JContainers compatibility: it crashes at load (boost::filesystem
@@ -216,10 +239,19 @@ int DeployEngine::deployMod(const ModEntry& mod,
         const QString priorRel = ciOwners.value(ciKey);   // earlier-deployed path at this CI path, if any
         QString previousOwner = priorRel.isEmpty() ? QString() : record.ownerOf(priorRel);
 
+        // The conflict index is keyed by the CANONICAL case-folded path so a
+        // case-variant collision (QUI.dll vs qui.dll) maps to one conflict entry,
+        // matching the case-insensitive on-disk collapse. Keying by the raw staged
+        // relPath would split a case-variant pair into two entries and leave a stale
+        // setWinner(loser) under the variant the Conflicts tab then shows winning.
+        const QString conflictKey = ciKey;
+
         // Wine/Proton is case-insensitive: a file already deployed at a case-variant
         // of this path (e.g. QUI.dll vs qui.dll) would both be visible to the game and
         // load twice. The current mod is later in the load order = higher priority =
-        // winner, so drop the stale variant and let this file take its place.
+        // winner, so drop the stale variant and let this file take its place. Because
+        // the conflict index already keys by conflictKey, the prior owner is recorded
+        // as a real loser below (no stale setWinner under the displaced variant).
         if (!priorRel.isEmpty() && priorRel != destRel) {
             QFile::remove(gameDir + "/" + priorRel);
             record.remove(priorRel);
@@ -256,9 +288,9 @@ int DeployEngine::deployMod(const ModEntry& mod,
         }
 
         if (!previousOwner.isEmpty()) {
-            conflicts.recordConflict(relPath, modId, previousOwner);
+            conflicts.recordConflict(conflictKey, modId, previousOwner);
         } else {
-            conflicts.setWinner(relPath, modId);
+            conflicts.setWinner(conflictKey, modId);
         }
         record.add(destRel, modId);
         ciOwners.insert(ciKey, destRel);
@@ -336,10 +368,12 @@ void DeployEngine::applyWinnerOverrides(Profile& profile,
             continue;
         }
         // The displaced load-order winner becomes a loser of the forced choice.
+        // Key the conflict index by the canonical case-folded path (== ciKey),
+        // consistent with deployMod, so case-variants map to one entry.
         if (!currentOwner.isEmpty() && currentOwner != modId)
-            conflicts.recordConflict(relPath, modId, currentOwner);
+            conflicts.recordConflict(ciKey, modId, currentOwner);
         else
-            conflicts.setWinner(relPath, modId);
+            conflicts.setWinner(ciKey, modId);
         record.add(destRel, modId);
         ciOwners.insert(ciKey, destRel);
     }

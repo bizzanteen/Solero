@@ -128,16 +128,19 @@ void ModFileTree::showModFiles(const QString& stagingRoot,
         }
         QString status;
         QColor color;
-        if (conflicts.hasConflict(relPath)) {
-            if (conflicts.winnerOf(relPath) == modId) {
-                auto losers = conflicts.losersOf(relPath);
+        // The conflict index is keyed by the canonical case-folded path, so look up
+        // the lowercased relPath (Wine/Proton collapses case-variants on disk).
+        const QString cKey = relPath.toLower();
+        if (conflicts.hasConflict(cKey)) {
+            if (conflicts.winnerOf(cKey) == modId) {
+                auto losers = conflicts.losersOf(cKey);
                 QString first = losers.isEmpty() ? QString() : disp(*losers.begin());
                 status = losers.size() > 1
                     ? QString("Overwrites %1 +%2 more").arg(first).arg(losers.size() - 1)
                     : QString("Overwrites %1").arg(first);
                 color  = QColor("#27ae60");
             } else {
-                status = "Overwritten by " + disp(conflicts.winnerOf(relPath));
+                status = "Overwritten by " + disp(conflicts.winnerOf(cKey));
                 color  = QColor("#c0392b");
             }
         }

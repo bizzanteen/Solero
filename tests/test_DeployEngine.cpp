@@ -59,8 +59,9 @@ private slots:
         DeployEngine engine(gameDir, stagingRoot);
         auto result = engine.deploy(profile, DeployMode::Copy);
         QVERIFY(result.success);
-        QCOMPARE(result.conflicts.winnerOf("Data/foo.nif"), QString("bbb"));
-        QVERIFY(result.conflicts.losersOf("Data/foo.nif").contains("aaa"));
+        // The conflict index is keyed by the canonical case-folded path.
+        QCOMPARE(result.conflicts.winnerOf("data/foo.nif"), QString("bbb"));
+        QVERIFY(result.conflicts.losersOf("data/foo.nif").contains("aaa"));
         QFile f(gameDir + "/Data/foo.nif"); f.open(QIODevice::ReadOnly);
         QCOMPARE(f.readAll(), QByteArray("high"));
     }
@@ -160,10 +161,47 @@ private slots:
         f.open(QIODevice::ReadOnly);
         QCOMPARE(f.readAll(), QByteArray("v4-update"));
 
-        // The record holds exactly one entry for this path (no duplicate).
+        // The record holds exactly one entry for the case-variant file (no
+        // duplicate). Count only the dll path - generated artifacts like
+        // Plugins.txt/loadorder.txt may also be recorded under gameDir in tests
+        // (no Proton appdata), so don't assert on the total record count.
         DeployRecord record = DeployRecord::loadFromFile(
             DeployEngine::recordPath(gameDir));
-        QCOMPARE(record.count(), 1);
+        int dllEntries = 0;
+        for (const QString& p : record.allPaths())
+            if (p.endsWith(".dll", Qt::CaseInsensitive)) ++dllEntries;
+        QCOMPARE(dllEntries, 1);
+    }
+    void caseVariantConflict_winnerOnCanonicalKey() {
+        // Regression (conflict UI correctness): mod A stages textures/foo.dds, mod B
+        // (higher priority) stages Textures/foo.dds. On disk these collapse case-
+        // insensitively; the conflict index must report one entry on the canonical
+        // (case-folded) key with B winning and A as a loser - not a stale
+        // setWinner(A) under the lowercase variant.
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QDir().mkpath(gameDir);
+        writeFile(stagingRoot + "/aaa/Data/textures/foo.dds", "A");
+        writeFile(stagingRoot + "/bbb/Data/Textures/foo.dds", "B");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry ma; ma.type = EntryType::Mod; ma.id = "aaa"; ma.name = "A"; ma.enabled = true;
+        ModEntry mb; mb.type = EntryType::Mod; mb.id = "bbb"; mb.name = "B"; mb.enabled = true;
+        profile.modList().append(ma);
+        profile.modList().append(mb);
+
+        DeployEngine engine(gameDir, stagingRoot);
+        auto result = engine.deploy(profile, DeployMode::Copy);
+        QVERIFY(result.success);
+
+        // Canonical key (case-folded): B wins, A is the loser. Exactly one entry.
+        const QString key = "data/textures/foo.dds";
+        QCOMPARE(result.conflicts.winnerOf(key), QString("bbb"));
+        QVERIFY(result.conflicts.losersOf(key).contains("aaa"));
+        QCOMPARE(result.conflicts.conflictedPaths().size(), 1);
+        // No stale entry under a case-variant of the key claiming A won.
+        QVERIFY(!result.conflicts.winningFilesOf("aaa").contains(key));
     }
     void hiddenFile_notDeployed() {
         // A (low prio) and B (high prio) both stage Data/x.dll. Normally B wins.
@@ -222,8 +260,8 @@ private slots:
         // Record owner = A; conflict winner = A, with B recorded as a loser.
         DeployRecord record = DeployRecord::loadFromFile(DeployEngine::recordPath(gameDir));
         QCOMPARE(record.ownerOf("Data/x.dll"), QString("aaa"));
-        QCOMPARE(result.conflicts.winnerOf("Data/x.dll"), QString("aaa"));
-        QVERIFY(result.conflicts.losersOf("Data/x.dll").contains("bbb"));
+        QCOMPARE(result.conflicts.winnerOf("data/x.dll"), QString("aaa"));
+        QVERIFY(result.conflicts.losersOf("data/x.dll").contains("bbb"));
     }
     void deploy_normalizesDirectoryCaseToSingleVariant() {
         // Two mods stage DIFFERENT files under a same-named dir with different

@@ -1,5 +1,6 @@
 #pragma once
 #include "wabbajack/WabbajackModlist.h"
+#include "wabbajack/WabbajackEngine.h"
 #include <QDialog>
 #include <QList>
 #include <QHash>
@@ -47,6 +48,7 @@ private slots:
     void onProgress(const QString& op, const QString& file, double pct);
     void onLogLine(const QString& line);
     void onInstallFinished(bool ok, int exitCode);
+    void onInstallFailed(int exitCode, const QList<FailedArchive>& failed);
 
 private:
     void buildGalleryPage();
@@ -61,6 +63,8 @@ private:
     // Kick off (or resume) the install with the remembered m_install* parameters.
     void startInstallRun();
     void doImport();
+    // Build + show the classified failure report for the given parsed archives.
+    void showFailureReport(int exitCode, const QList<FailedArchive>& failed);
     // Returns true if it's OK to close/reject (not installing, or user confirmed
     // cancelling the in-progress install - in which case the engine is cancelled).
     bool confirmCloseWhileInstalling();

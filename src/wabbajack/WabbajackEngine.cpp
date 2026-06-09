@@ -149,6 +149,66 @@ bool WabbajackEngine::parseProgressLine(const QString& lineRaw, QString& op,
     return false;
 }
 
+QList<FailedArchive> WabbajackEngine::parseFailedArchives(const QString& log) {
+    QList<FailedArchive> out;
+
+    // Each failure is one line of the shape:
+    //   "Unable to download <name> (<Descriptor>)"
+    // where <Descriptor> identifies the source and carries '|'-separated fields.
+    // The trailing ')' may be followed by extra text (an error reason), so the
+    // capture is non-greedy up to the matching descriptor close. <name> can
+    // contain spaces/dots; it ends at " (" before the descriptor.
+    static const QRegularExpression lineRe(
+        QStringLiteral(R"(Unable to download (.+?) \(([A-Za-z]+(?:Downloader)?(?:\+State)?)\|([^)]*)\))"));
+
+    auto it = lineRe.globalMatch(log);
+    while (it.hasNext()) {
+        const auto m = it.next();
+        FailedArchive fa;
+        fa.name = m.captured(1).trimmed();
+        const QString tag = m.captured(2);
+        const QString rest = m.captured(3);
+        const QStringList parts = rest.split('|');
+
+        if (tag.startsWith(QStringLiteral("GameFileSource"))) {
+            fa.source = FailedSource::GameFileSource;
+            // <game>|<version>|<relative\path>
+            if (parts.size() > 0) fa.game    = parts.at(0).trimmed();
+            if (parts.size() > 1) fa.version = parts.at(1).trimmed();
+            if (parts.size() > 2) fa.path    = parts.mid(2).join('|').trimmed();
+        } else if (tag.startsWith(QStringLiteral("Mega"))) {
+            fa.source = FailedSource::Mega;
+            fa.url = rest.trimmed();
+        } else if (tag.startsWith(QStringLiteral("WabbajackCDN"))) {
+            fa.source = FailedSource::WabbajackCDN;
+            fa.url = rest.trimmed();
+        } else if (tag.startsWith(QStringLiteral("Nexus"))) {
+            fa.source = FailedSource::Nexus;
+        } else if (tag.startsWith(QStringLiteral("Http"))) {
+            fa.source = FailedSource::Http;
+            fa.url = rest.trimmed();
+        } else {
+            fa.source = FailedSource::Other;
+        }
+        out << fa;
+    }
+
+    // Also recognize Nexus failures phrased as "… from Nexus (…)", which don't
+    // use the "(<Downloader>+State|…)" descriptor shape above.
+    static const QRegularExpression nexusRe(
+        QStringLiteral(R"(Unable to download (.+?) from Nexus\b)"));
+    auto nit = nexusRe.globalMatch(log);
+    while (nit.hasNext()) {
+        const auto m = nit.next();
+        FailedArchive fa;
+        fa.name = m.captured(1).trimmed();
+        fa.source = FailedSource::Nexus;
+        out << fa;
+    }
+
+    return out;
+}
+
 static QProcessEnvironment engineEnv() {
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert("DOTNET_SYSTEM_GLOBALIZATION_INVARIANT", "1");
@@ -225,6 +285,8 @@ void WabbajackEngine::install(const QString& machineUrlOrFile, bool isLocalFile,
     proc->setProcessEnvironment(engineEnv());
     proc->setProcessChannelMode(QProcess::MergedChannels);
 
+    m_log.clear();  // fresh capture for this run's failure parsing
+
     // The engine rewrites progress lines in place with bare '\r' (no '\n'), so
     // QProcess::canReadLine() won't split them. Read whatever bytes are available,
     // buffer any partial trailing fragment, and split on both '\r' and '\n'.
@@ -237,6 +299,8 @@ void WabbajackEngine::install(const QString& machineUrlOrFile, bool isLocalFile,
         for (int i = 0; i + 1 < segs.size(); ++i) {
             const QString line = segs.at(i).trimmed();
             if (line.isEmpty()) continue;
+            m_log += line;
+            m_log += QLatin1Char('\n');
             emit logLine(line);
             QString op; double pct = -1;
             if (parseProgressLine(line, op, pct))
@@ -252,6 +316,8 @@ void WabbajackEngine::install(const QString& machineUrlOrFile, bool isLocalFile,
         // Flush any trailing fragment with no terminator.
         const QString tail = buf->trimmed();
         if (!tail.isEmpty()) {
+            m_log += tail;
+            m_log += QLatin1Char('\n');
             emit logLine(tail);
             QString op; double pct = -1;
             if (parseProgressLine(tail, op, pct))
@@ -259,6 +325,7 @@ void WabbajackEngine::install(const QString& machineUrlOrFile, bool isLocalFile,
         }
         bool ok = (status == QProcess::NormalExit && exitCode == 0);
         emit installFinished(ok, exitCode);
+        if (!ok) emit installFailed(exitCode, parseFailedArchives(m_log));
         if (m_proc == proc) m_proc = nullptr;
         proc->deleteLater();
     });
@@ -266,6 +333,7 @@ void WabbajackEngine::install(const QString& machineUrlOrFile, bool isLocalFile,
             [this, proc](QProcess::ProcessError) {
         emit logLine(QStringLiteral("Failed to start engine: ") + proc->errorString());
         emit installFinished(false, -1);
+        emit installFailed(-1, QList<FailedArchive>());
         if (m_proc == proc) m_proc = nullptr;
         proc->deleteLater();
     });

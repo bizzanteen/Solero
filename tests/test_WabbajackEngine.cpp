@@ -139,6 +139,95 @@ private slots:
         QVERIFY(!WabbajackEngine::parseProgressLine("", op, pct));
     }
 
+    void parseFailedArchives_anvilShapes() {
+        // Representative slice of a real Anvil (WakingDreams/ANVIL) failure log:
+        // several Tools_* Creation-Kit (GameFileSource) lines, one MEGA line, and
+        // one Wabbajack-CDN line. Interleaved with ordinary progress/log noise.
+        const QString log = QStringLiteral(
+            "=== Downloading ===\n"
+            "Downloading Mod Archives (0/50) - 20.3MB/s - 12.0GB remaining\n"
+            "Unable to download Tools_CreationKit (GameFileSourceDownloader+State|SkyrimSpecialEdition|1.6.1170.0|Tools\\Pad\\CreationKit.exe)\n"
+            "Unable to download Tools_Papyrus (GameFileSourceDownloader+State|SkyrimSpecialEdition|1.6.1170.0|Papyrus Compiler\\PapyrusCompiler.exe)\n"
+            "Unable to download Tools_LexDict (GameFileSourceDownloader+State|SkyrimSpecialEdition|1.6.1170.0|Tools\\lex_en.dic)\n"
+            "Unable to download High Poly Head 1.4 SE.7z (MegaDownloader+State|https://mega.nz/file/abc123#KEYKEYKEY)\n"
+            "Unable to download xLODGen.130.7z (WabbajackCDNDownloader+State|https://wabbajack.b-cdn.net/xLODGen.130.7z)\n"
+            "Some other unrelated log line\n");
+
+        const auto failed = WabbajackEngine::parseFailedArchives(log);
+
+        QCOMPARE(failed.size(), 5);
+
+        int gfs = 0, mega = 0, cdn = 0;
+        for (const auto& fa : failed) {
+            switch (fa.source) {
+            case FailedSource::GameFileSource: ++gfs; break;
+            case FailedSource::Mega:           ++mega; break;
+            case FailedSource::WabbajackCDN:   ++cdn; break;
+            default: break;
+            }
+        }
+        QVERIFY2(gfs >= 3, qPrintable(QString::number(gfs)));
+        QCOMPARE(mega, 1);
+        QCOMPARE(cdn, 1);
+
+        // GameFileSource field extraction (first CK row).
+        const FailedArchive* ck = nullptr;
+        for (const auto& fa : failed)
+            if (fa.source == FailedSource::GameFileSource) { ck = &fa; break; }
+        QVERIFY(ck);
+        QCOMPARE(ck->name, QString("Tools_CreationKit"));
+        QCOMPARE(ck->game, QString("SkyrimSpecialEdition"));
+        QCOMPARE(ck->version, QString("1.6.1170.0"));
+        QCOMPARE(ck->path, QString("Tools\\Pad\\CreationKit.exe")); // backslashes preserved
+
+        // MEGA url extraction.
+        const FailedArchive* mg = nullptr;
+        for (const auto& fa : failed)
+            if (fa.source == FailedSource::Mega) { mg = &fa; break; }
+        QVERIFY(mg);
+        QCOMPARE(mg->name, QString("High Poly Head 1.4 SE.7z"));
+        QCOMPARE(mg->url, QString("https://mega.nz/file/abc123#KEYKEYKEY"));
+
+        // Wabbajack-CDN url extraction.
+        const FailedArchive* wc = nullptr;
+        for (const auto& fa : failed)
+            if (fa.source == FailedSource::WabbajackCDN) { wc = &fa; break; }
+        QVERIFY(wc);
+        QCOMPARE(wc->name, QString("xLODGen.130.7z"));
+        QCOMPARE(wc->url, QString("https://wabbajack.b-cdn.net/xLODGen.130.7z"));
+    }
+
+    void parseFailedArchives_httpAndNexusAndOther() {
+        const QString log = QStringLiteral(
+            "Unable to download SomeMod.zip (HttpDownloader|https://example.com/SomeMod.zip)\n"
+            "Unable to download NexusMod-1234 (NexusDownloader+State|12345|67890)\n"
+            "Unable to download Mystery.dat (WeirdDownloader+State|foo|bar)\n"
+            "Unable to download Skimpy Outfit from Nexus (adult content gated)\n");
+
+        const auto failed = WabbajackEngine::parseFailedArchives(log);
+
+        int http = 0, nexus = 0, other = 0;
+        const FailedArchive* httpFa = nullptr;
+        for (const auto& fa : failed) {
+            switch (fa.source) {
+            case FailedSource::Http:  ++http; httpFa = &fa; break;
+            case FailedSource::Nexus: ++nexus; break;
+            case FailedSource::Other: ++other; break;
+            default: break;
+            }
+        }
+        QCOMPARE(http, 1);
+        QVERIFY2(nexus >= 1, qPrintable(QString::number(nexus)));
+        QCOMPARE(other, 1);
+        QVERIFY(httpFa);
+        QCOMPARE(httpFa->url, QString("https://example.com/SomeMod.zip"));
+    }
+
+    void parseFailedArchives_empty() {
+        QVERIFY(WabbajackEngine::parseFailedArchives(
+            "no failures here, all good\n").isEmpty());
+    }
+
     void findEngine_configuredPath() {
         QTemporaryDir tmp;
         QVERIFY(tmp.isValid());

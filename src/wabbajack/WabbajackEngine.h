@@ -8,6 +8,21 @@ class QProcess;
 
 namespace solero {
 
+// Classification of a download source that the engine failed to fetch from.
+enum class FailedSource { GameFileSource, Nexus, Mega, WabbajackCDN, Http, Other };
+
+// One archive the engine was unable to download, parsed from the failure log.
+// `game`/`version`/`path` are populated for GameFileSource (Creation-Kit) rows;
+// `url` is populated for the network sources (Mega/WabbajackCDN/Http) when present.
+struct FailedArchive {
+    QString name;
+    FailedSource source = FailedSource::Other;
+    QString game;
+    QString version;
+    QString path;
+    QString url;
+};
+
 // Wraps the jackify-engine CLI (a Linux-native .NET fork of wabbajack-cli)
 // as a subprocess: lists the gallery and drives installs. Async via QProcess.
 class WabbajackEngine : public QObject {
@@ -34,6 +49,11 @@ public:
     // Returns true if the line is a recognized progress/phase line; false otherwise.
     static bool parseProgressLine(const QString& line, QString& op, double& pct);
 
+    // Pure parser: scans the captured engine output for "Unable to download …"
+    // failure lines and classifies each by its (Downloader+State|…) descriptor.
+    // Unit-testable without a process.
+    static QList<FailedArchive> parseFailedArchives(const QString& log);
+
     // Async: run `list-modlists -json -sort-by title`, emit modlistsReady/failed.
     void fetchModlists();
 
@@ -50,9 +70,14 @@ signals:
     void logLine(const QString& line);
     void progress(const QString& op, const QString& file, double pct);
     void installFinished(bool ok, int exitCode);
+    // Emitted (in addition to installFinished(false,…)) when an install fails,
+    // carrying the archives parsed out of the captured log so the UI can show a
+    // classified, actionable report. `failed` may be empty for unknown failures.
+    void installFailed(int exitCode, const QList<FailedArchive>& failed);
 
 private:
     QProcess* m_proc = nullptr;
+    QString m_log;  // full captured output of the current install, for failure parsing
 };
 
 } // namespace solero

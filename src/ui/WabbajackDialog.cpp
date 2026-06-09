@@ -21,6 +21,9 @@
 #include <QSplitter>
 #include <QDialogButtonBox>
 #include <QMessageBox>
+#include <QScrollArea>
+#include <QGroupBox>
+#include <QListWidget>
 #include <QFileDialog>
 #include <QDesktopServices>
 #include <QUrl>
@@ -52,6 +55,7 @@ WabbajackDialog::WabbajackDialog(ProfileManager* profiles, QWidget* parent)
     connect(m_engine, &WabbajackEngine::progress, this, &WabbajackDialog::onProgress);
     connect(m_engine, &WabbajackEngine::logLine, this, &WabbajackDialog::onLogLine);
     connect(m_engine, &WabbajackEngine::installFinished, this, &WabbajackDialog::onInstallFinished);
+    connect(m_engine, &WabbajackEngine::installFailed, this, &WabbajackDialog::onInstallFailed);
 
     auto* layout = new QVBoxLayout(this);
     m_stack = new QStackedWidget(this);
@@ -648,21 +652,172 @@ void WabbajackDialog::onInstallFinished(bool ok, int exitCode) {
     m_progBar->setRange(0, 100);
 
     if (!ok) {
+        // The classified report is shown from onInstallFailed (always emitted
+        // alongside this signal on failure); just surface the log + controls here.
         m_progLog->appendPlainText(
             QString("\n--- Install failed (exit code %1) ---").arg(exitCode));
         m_progBar->setValue(0);
         m_backBtn->setVisible(true);
         if (m_retryInstallBtn) m_retryInstallBtn->setVisible(true);
-        QMessageBox::warning(this, "Install failed",
-            QString("Install failed (exit code %1) - see log.\n\n"
-                    "You can Retry / Resume to continue from where it left off.")
-                .arg(exitCode));
         return;
     }
 
     m_progBar->setValue(100);
     m_progOp->setText("Install complete - importing as a Solero profile\xe2\x80\xa6");
     doImport();
+}
+
+void WabbajackDialog::onInstallFailed(int exitCode, const QList<FailedArchive>& failed) {
+    if (failed.isEmpty()) {
+        // Unknown failure - fall back to the bare exit-code message.
+        QMessageBox::warning(this, "Install failed",
+            QString("Install failed (exit code %1) - see log.\n\n"
+                    "You can Retry / Resume to continue from where it left off.")
+                .arg(exitCode));
+        return;
+    }
+    showFailureReport(exitCode, failed);
+}
+
+void WabbajackDialog::showFailureReport(int exitCode,
+                                        const QList<FailedArchive>& failed) {
+    // Partition by group.
+    QList<FailedArchive> ck;       // Creation-Kit (GameFileSource)
+    QList<FailedArchive> manual;   // Mega / WabbajackCDN / Http / Nexus / Other
+    for (const auto& fa : failed) {
+        if (fa.source == FailedSource::GameFileSource) ck << fa;
+        else manual << fa;
+    }
+
+    QDialog dlg(this);
+    dlg.setWindowTitle("Some downloads couldn't be completed");
+    dlg.resize(620, 560);
+    auto* outer = new QVBoxLayout(&dlg);
+
+    auto* intro = new QLabel(
+        QString("This modlist couldn't finish installing - %1 file%2 "
+                "could not be downloaded. The engine can't skip required files, "
+                "so resolve the items below, then Retry / Resume.")
+            .arg(failed.size()).arg(failed.size() == 1 ? "" : "s"), &dlg);
+    intro->setWordWrap(true);
+    outer->addWidget(intro);
+
+    // Scrollable body so long file lists don't blow up the dialog.
+    auto* scroll = new QScrollArea(&dlg);
+    scroll->setWidgetResizable(true);
+    auto* body = new QWidget(scroll);
+    auto* bodyL = new QVBoxLayout(body);
+
+    // Creation Kit group
+    if (!ck.isEmpty()) {
+        const QString version = ck.first().version;
+        const QString gameDir = AppConfig::instance().gameDir();
+        const bool ckInstalled =
+            !gameDir.isEmpty() &&
+            QFileInfo::exists(gameDir + "/CreationKit.exe");
+
+        auto* box = new QGroupBox("Creation Kit files", body);
+        auto* gl = new QVBoxLayout(box);
+
+        auto* heading = new QLabel(box);
+        heading->setWordWrap(true);
+        heading->setStyleSheet("font-weight:bold;");
+        if (ckInstalled) {
+            heading->setText(QString(
+                "Creation Kit is installed but version-mismatched - "
+                "these %1 file%2 must be placed manually.")
+                .arg(ck.size()).arg(ck.size() == 1 ? "" : "s"));
+        } else {
+            heading->setText(QString(
+                "This list needs the Creation Kit - %1 file%2 missing%3.")
+                .arg(ck.size())
+                .arg(ck.size() == 1 ? "" : "s")
+                .arg(version.isEmpty() ? QString()
+                                       : QString(" (game v%1)").arg(version)));
+        }
+        gl->addWidget(heading);
+
+        if (ckInstalled) {
+            // Show the file list so the user knows what to place.
+            auto* list = new QListWidget(box);
+            list->setMaximumHeight(180);
+            for (const auto& fa : ck) {
+                const QString label = fa.path.isEmpty() ? fa.name
+                                        : fa.name + "  (" + fa.path + ")";
+                list->addItem(label);
+            }
+            gl->addWidget(list);
+        } else {
+            auto* caveat = new QLabel(QString(
+                "Install the Creation Kit from Steam, then Retry. Note: this list "
+                "is pinned to a specific game version%1, so a newer CK build may "
+                "still mismatch - you may need to place these files manually.")
+                .arg(version.isEmpty() ? QString()
+                                       : QString(" (v%1)").arg(version)), box);
+            caveat->setWordWrap(true);
+            caveat->setStyleSheet("color:#aaa;");
+            gl->addWidget(caveat);
+
+            auto* btn = new QPushButton("Install Creation Kit", box);
+            connect(btn, &QPushButton::clicked, &dlg, [] {
+                QDesktopServices::openUrl(QUrl("steam://install/1946180"));
+            });
+            auto* btnRow = new QHBoxLayout;
+            btnRow->addWidget(btn);
+            btnRow->addStretch();
+            gl->addLayout(btnRow);
+        }
+        bodyL->addWidget(box);
+    }
+
+    // Manual-download group
+    if (!manual.isEmpty()) {
+        QString downloadsDir = m_installDownloadsDir;
+        if (downloadsDir.isEmpty()) downloadsDir = AppConfig::instance().downloadsDir();
+
+        auto* box = new QGroupBox("Manual downloads", body);
+        auto* gl = new QVBoxLayout(box);
+
+        auto* heading = new QLabel(QString(
+            "%1 file%2 must be downloaded manually, then placed in the downloads "
+            "folder:\n%3")
+            .arg(manual.size()).arg(manual.size() == 1 ? "" : "s")
+            .arg(downloadsDir.isEmpty() ? "(downloads directory)" : downloadsDir),
+            box);
+        heading->setWordWrap(true);
+        gl->addWidget(heading);
+
+        for (const auto& fa : manual) {
+            auto* row = new QHBoxLayout;
+            auto* nameLbl = new QLabel(fa.name, box);
+            nameLbl->setWordWrap(true);
+            row->addWidget(nameLbl, 1);
+            if (!fa.url.isEmpty()) {
+                auto* open = new QPushButton("Open", box);
+                const QString url = fa.url;
+                connect(open, &QPushButton::clicked, &dlg, [url] {
+                    QDesktopServices::openUrl(QUrl(url));
+                });
+                row->addWidget(open);
+            }
+            gl->addLayout(row);
+        }
+        bodyL->addWidget(box);
+    }
+
+    bodyL->addStretch();
+    scroll->setWidget(body);
+    outer->addWidget(scroll, 1);
+
+    auto* bb = new QDialogButtonBox(&dlg);
+    auto* retryBtn = bb->addButton("Retry / Resume", QDialogButtonBox::AcceptRole);
+    bb->addButton(QDialogButtonBox::Close);
+    connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    connect(retryBtn, &QPushButton::clicked, &dlg, &QDialog::accept);
+    outer->addWidget(bb);
+
+    if (dlg.exec() == QDialog::Accepted && !m_installTarget.isEmpty())
+        startInstallRun();
 }
 
 void WabbajackDialog::doImport() {

@@ -376,9 +376,9 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
             tips << QString::fromUtf8("\xf0\x9f\x93\x9d Note: ") + entry.note; // 📝 (non-BMP -> fromUtf8)
         if (entry.isFomod) {
             if (entry.fomodStatus == "needs-rerun") {
-                tips << QStringLiteral(
-                    "FOMOD installer - choices not reconstructable; "
-                    "re-run the installer to record them");
+                tips << (QStringLiteral("FOMOD installer ") + QChar('-')
+                    + QStringLiteral(" choices not reconstructable; "
+                                     "re-run the installer to record them"));
             } else {
                 const QString sum = fomodChoicesSummary(entry.id);
                 tips << (sum.isEmpty()

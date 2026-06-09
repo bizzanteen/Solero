@@ -268,9 +268,10 @@ void ModListView::paintEvent(QPaintEvent* event) {
         painter.setPen(palette().color(QPalette::Disabled, QPalette::Text));
         const QRect r = viewport()->rect().adjusted(40, 40, -40, -40);
         painter.drawText(r, Qt::AlignCenter | Qt::TextWordWrap,
-            QStringLiteral("No mods yet.\n\nAdd mods via the Downloads tab, "
-                           "\xe2\x86\x92 Browse Nexus, or Install Wabbajack "
-                           "Modlist\xe2\x80\xa6 (\xe2\x9a\x99 menu)."));
+            QStringLiteral("No mods yet.\n\nAdd mods via the Downloads tab, ")
+                + QChar(0x2192) + QStringLiteral(" Browse Nexus, or Install Wabbajack Modlist")
+                + QChar(0x2026) + QStringLiteral(" (") + QChar(0x2699)
+                + QStringLiteral(" menu)."));
     }
 }
 

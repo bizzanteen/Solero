@@ -87,6 +87,24 @@ target_include_directories(test_ToolRunner PRIVATE ../src ${CMAKE_BINARY_DIR}/in
 target_link_libraries(test_ToolRunner PRIVATE Qt6::Core Qt6::Test libloot::libloot)
 add_test(NAME test_ToolRunner COMMAND test_ToolRunner)
 
+# RadiumPrep reads a Profile's plugin list and writes a fake-mo2 tree +
+# settings.json. Compile it with the core model sources (same set the simple
+# add_solero_test helper uses) so Profile/PluginList resolve.
+add_executable(test_RadiumPrep test_RadiumPrep.cpp
+  ../src/tools/RadiumPrep.cpp
+  ../src/core/ModList.cpp
+  ../src/core/PluginList.cpp
+  ../src/core/LoadOrderBackup.cpp
+  ../src/core/Profile.cpp
+  ../src/core/ProfileManager.cpp
+  ../src/core/AppConfig.cpp
+  ../src/core/StagingFolder.cpp
+  ../src/ai/AITransaction.cpp
+)
+target_include_directories(test_RadiumPrep PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_RadiumPrep PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_RadiumPrep COMMAND test_RadiumPrep)
+
 function(add_solero_install_test name)
   add_executable(${name} ${name}.cpp
     ../src/install/ArchiveTool.cpp

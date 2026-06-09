@@ -130,6 +130,7 @@ set(SOLERO_SOURCES
   src/tools/ToolDownloader.cpp
   src/tools/ToolNameMap.cpp
   src/tools/ToolSetup.cpp
+  src/tools/RadiumPrep.cpp
   src/nexus/NxmHandler.cpp
   src/nexus/NexusApi.cpp
   src/nexus/DownloadManager.cpp

@@ -1335,7 +1335,7 @@ void MainWindow::installFromArchive(const QString& archive) {
     // Duplicate detection (MO2-style Replace / Rename)
     // Read any Nexus sidecar up front (also reused for tagging the mod below) so we
     // can recognise a re-install of a mod that already exists in this profile.
-    QString sidecarModId, sidecarFileId, sidecarVersion;
+    QString sidecarModId, sidecarFileId, sidecarVersion, sidecarName, sidecarGame;
     {
         QFile sf(archive + ".solero-nexus.json");
         if (sf.open(QIODevice::ReadOnly)) {
@@ -1343,9 +1343,33 @@ void MainWindow::installFromArchive(const QString& archive) {
             sidecarModId   = meta["modId"].toString();
             sidecarFileId  = meta["fileId"].toString();
             sidecarVersion = meta["version"].toString();
+            sidecarName    = meta["name"].toString();
+            sidecarGame    = meta["game"].toString();
         }
     }
-    const QString proposedName = cleanModName(prep.modName, sidecarModId);
+    // Prefer the real Nexus catalog name over the archive filename. Older sidecars
+    // (and the nxm path) don't carry a name, so fetch it once here and cache it back
+    // to the sidecar; the archive-filename clean is only a fallback for local/offline
+    // installs with no Nexus identity.
+    if (sidecarName.isEmpty() && !sidecarModId.isEmpty()) {
+        const QString game = sidecarGame.isEmpty()
+            ? QString(solero::NexusApi::kDefaultGame) : sidecarGame;
+        const QString fetched = solero::NexusApi::modInfo(sidecarModId, game).name;
+        if (!fetched.isEmpty()) {
+            sidecarName = fetched;
+            QFile sf(archive + ".solero-nexus.json");
+            if (sf.open(QIODevice::ReadOnly)) {
+                QJsonObject meta = QJsonDocument::fromJson(sf.readAll()).object();
+                sf.close();
+                meta["name"] = sidecarName;
+                if (sf.open(QIODevice::WriteOnly | QIODevice::Truncate))
+                    sf.write(QJsonDocument(meta).toJson(QJsonDocument::Indented));
+            }
+        }
+    }
+    // A Nexus name wins outright; otherwise strip Nexus's "-<modId>-..." filename tail.
+    const QString proposedName = sidecarName.isEmpty()
+        ? cleanModName(prep.modName, sidecarModId) : sidecarName;
 
     QString existingModId;     // non-empty -> Replace the existing mod in place
     QString stagingOverride;   // full mod dir for Replace (migrated staging folder)
@@ -1495,7 +1519,8 @@ void MainWindow::installFromArchive(const QString& archive) {
             if (!sidecarModId.isEmpty())   existing->nexusModId  = sidecarModId;
             if (!sidecarFileId.isEmpty())  existing->nexusFileId = sidecarFileId;
             if (!sidecarVersion.isEmpty()) existing->version     = sidecarVersion;
-            existing->name = cleanModName(existing->name, existing->nexusModId);
+            existing->name = sidecarName.isEmpty()
+                ? cleanModName(existing->name, existing->nexusModId) : sidecarName;
         }
         profile->save();
     } else {
@@ -1512,9 +1537,10 @@ void MainWindow::installFromArchive(const QString& archive) {
         mod.nexusModId  = sidecarModId;
         mod.nexusFileId = sidecarFileId;
         if (!sidecarVersion.isEmpty()) mod.version = sidecarVersion;
-        // Strip the trailing "-<modId>-<version>-<timestamp>" tail Nexus appends to
-        // archive names, now that mod.nexusModId is known.
-        mod.name = cleanModName(mod.name, mod.nexusModId);
+        // Prefer the real Nexus name; else strip the "-<modId>-<version>-<timestamp>"
+        // tail Nexus appends to archive names, now that mod.nexusModId is known.
+        mod.name = sidecarName.isEmpty()
+            ? cleanModName(mod.name, mod.nexusModId) : sidecarName;
         // Rename-on-collision -> use the de-duplicated name chosen above.
         if (!overrideName.isEmpty()) mod.name = overrideName;
         profile->modList().append(mod);

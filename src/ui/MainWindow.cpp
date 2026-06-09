@@ -2349,7 +2349,7 @@ void MainWindow::checkRequirementsAfterInstall(solero::Profile* profile,
         if (have) continue;
         // SKSE (30379) also lives at the game root outside the mod list.
         if (r.modId == "30379" && skseInstalledFor(profile)) continue;
-        missing.append({r.modId, r.modName, r.notes, r.external});
+        missing.append({r.modId, r.modName, r.notes, r.url, r.external});
     }
     if (missing.isEmpty()) return;
 

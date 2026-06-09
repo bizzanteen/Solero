@@ -12,7 +12,7 @@ namespace solero {
 class RequirementsDialog : public QDialog {
     Q_OBJECT
 public:
-    struct Item { QString modId, modName, notes; bool external = false; };
+    struct Item { QString modId, modName, notes, url; bool external = false; };
     RequirementsDialog(const QString& dependentName, const QList<Item>& missing,
                        QWidget* parent = nullptr);
 signals:

@@ -42,7 +42,9 @@ public:
     // Lists a mod's Nexus mod requirements (v2 GraphQL). external == true marks
     // an off-site requirement that isn't a Nexus mod on this game. Returns empty
     // on any failure (network, errors, not-found).
-    struct ModRequirement { QString modId, modName, notes; bool external = false; };
+    // external == true -> off-site (not a Nexus mod for this game); url points to the
+    // off-site page and modId is a meaningless "0". For Nexus reqs, url is empty.
+    struct ModRequirement { QString modId, modName, notes, url; bool external = false; };
     static QList<ModRequirement> modRequirements(const QString& modId, const QString& game = kDefaultGame);
 
     // First mirror URI from v1 download_link.json. Premium accounts get this

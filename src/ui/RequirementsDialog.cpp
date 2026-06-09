@@ -27,13 +27,33 @@ RequirementsDialog::RequirementsDialog(const QString& dependentName,
         auto* row = new QHBoxLayout(rowFrame);
         row->setContentsMargins(0, 2, 0, 2);
 
-        // Name (+ optional notes as a dim secondary line).
+        // Name (+ optional notes as a dim secondary line). Off-site requirements
+        // have no usable Nexus name/id (modId is "0"), so show the off-site page as
+        // a clickable link, falling back to its name/notes.
         auto* nameBox = new QVBoxLayout();
         nameBox->setContentsMargins(0, 0, 0, 0);
         nameBox->setSpacing(0);
-        auto* nameLbl = new QLabel(item.modName.isEmpty() ? item.modId : item.modName, rowFrame);
+        auto* nameLbl = new QLabel(rowFrame);
+        if (item.external) {
+            const QString label = !item.modName.isEmpty() ? item.modName
+                                : !item.notes.isEmpty()   ? item.notes
+                                                          : item.url;
+            if (!item.url.isEmpty()) {
+                nameLbl->setText(QString("<a href=\"%1\">%2</a>")
+                                     .arg(item.url.toHtmlEscaped(), label.toHtmlEscaped()));
+                nameLbl->setTextFormat(Qt::RichText);
+                nameLbl->setOpenExternalLinks(true);
+                nameLbl->setToolTip(item.url);
+            } else {
+                nameLbl->setText(label);
+            }
+        } else {
+            nameLbl->setText(item.modName.isEmpty() ? item.modId : item.modName);
+        }
         nameBox->addWidget(nameLbl);
-        if (!item.notes.isEmpty()) {
+        // Notes render as a dim secondary line - but for off-site rows they're
+        // already folded into the label above, so don't repeat them.
+        if (!item.notes.isEmpty() && !item.external) {
             auto* notesLbl = new QLabel(item.notes, rowFrame);
             notesLbl->setWordWrap(true);
             notesLbl->setStyleSheet("color: gray; font-size: 11px;");

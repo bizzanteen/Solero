@@ -262,7 +262,7 @@ QList<NexusApi::ModRequirement> NexusApi::modRequirements(const QString& modId, 
     const QString gameId = numericGameId(game);
     const QString q = QString(
         "query{mod(modId:\"%1\",gameId:\"%2\"){modRequirements{"
-        "nexusRequirements{nodes{modId modName externalRequirement notes}}}}}")
+        "nexusRequirements{nodes{modId modName externalRequirement notes url}}}}}")
         .arg(modId, gameId);
     QJsonObject reqObj; reqObj["query"] = q;
     QByteArray reqBody = QJsonDocument(reqObj).toJson(QJsonDocument::Compact);
@@ -285,11 +285,19 @@ QList<NexusApi::ModRequirement> NexusApi::modRequirements(const QString& modId, 
     for (const auto& v : nodes) {
         auto o = v.toObject();
         ModRequirement r;
-        r.modId = idOf(o);
-        if (r.modId.isEmpty()) continue;
-        r.modName = o["modName"].toString();
+        r.modId    = idOf(o);
+        r.modName  = o["modName"].toString();
         r.external = o["externalRequirement"].toBool();
-        r.notes = o["notes"].toString();
+        r.notes    = o["notes"].toString();
+        r.url      = o["url"].toString();
+        if (r.external) {
+            // Off-site requirement: modId is a meaningless "0". Keep it only if it
+            // carries something to show/click (url/name/notes), else it's useless.
+            if (r.url.isEmpty() && r.modName.isEmpty() && r.notes.isEmpty()) continue;
+        } else {
+            // A Nexus requirement needs a real mod id ("0"/empty is not installable).
+            if (r.modId.isEmpty() || r.modId == "0") continue;
+        }
         out.append(r);
     }
     return out;

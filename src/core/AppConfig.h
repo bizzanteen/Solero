@@ -58,6 +58,9 @@ public:
     void setJackifyEnginePath(const QString& v) { m_jackifyEnginePath = v; }
     DeployMode deployMode() const             { return m_deployMode; }
     void setDeployMode(DeployMode v)          { m_deployMode = v; }
+    // Name of the profile active when Solero last closed; restored on next launch.
+    const QString& lastProfile() const        { return m_lastProfile; }
+    void setLastProfile(const QString& v)     { m_lastProfile = v; }
     // Hidden mod-list columns (ModListModel::Column indices). Name is never hidden.
     const QList<int>& hiddenColumns() const   { return m_hiddenColumns; }
     void setHiddenColumns(const QList<int>& v) { m_hiddenColumns = v; }
@@ -103,6 +106,7 @@ private:
     QString m_lastSeparatorColor;
     QString m_jackifyEnginePath;
     DeployMode m_deployMode = DeployMode::HardLink;
+    QString m_lastProfile;
     QList<int> m_hiddenColumns;
 };
 

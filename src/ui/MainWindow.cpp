@@ -231,7 +231,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         statusBar()->showMessage("Downloading SKSE\xe2\x80\xa6");
     });
 
-    switchProfile(m_profileMgr->profileNames().first());
+    // Restore the profile active at last close; fall back to the first profile
+    // (alphabetical) only when none was saved or it no longer exists on disk.
+    const QStringList profileNames = m_profileMgr->profileNames();
+    const QString savedProfile = solero::AppConfig::instance().lastProfile();
+    switchProfile(profileNames.contains(savedProfile) ? savedProfile : profileNames.first());
     migrateLegacyOverwrite();   // one-time: fold legacy global Overwrite into this profile
     refreshDeployState(); // reflect any existing deployment from a previous run
 
@@ -774,6 +778,12 @@ void MainWindow::switchProfile(const QString& name) {
         statusBar()->showMessage(QString("Switched to '%1' (redeployed %2 files).").arg(name).arg(result.filesDeployed));
     } else {
         statusBar()->showMessage(QString("Loaded profile: %1").arg(name));
+    }
+    // Persist the active profile so the next launch restores it instead of
+    // defaulting to the first profile alphabetically.
+    if (solero::AppConfig::instance().lastProfile() != name) {
+        solero::AppConfig::instance().setLastProfile(name);
+        solero::AppConfig::instance().save();
     }
     // A profile switch starts from a clean (just-loaded or just-deployed) order.
     m_loadOrderDirty = false;

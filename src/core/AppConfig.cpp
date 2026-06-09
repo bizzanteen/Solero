@@ -103,6 +103,7 @@ bool AppConfig::load() {
     m_deployMode = (dm == "symlink") ? DeployMode::SymLink
                  : (dm == "copy")    ? DeployMode::Copy
                                      : DeployMode::HardLink;
+    m_lastProfile = obj["lastProfile"].toString();
     m_hiddenColumns.clear();
     for (const auto& v : obj["hiddenColumns"].toArray())
         m_hiddenColumns.append(v.toInt());

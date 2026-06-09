@@ -2572,6 +2572,15 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     // current.)
     if (exe.id == "radium") {
         auto* p = m_profileMgr->activeProfile();
+        // Radium writes into its output mod's staging Data/; without an output
+        // mod wired we'd misdirect its result to the staging root. Fail clearly.
+        if (outFolder.isEmpty()) {
+            hideRunLock();
+            m_toolRunning = false;
+            QMessageBox::warning(this, "Radium Textures",
+                "No output mod is configured for Radium. Re-add it via Tools \xe2\x96\xb8 Add tool.");
+            return;
+        }
         const QString gameDir = solero::AppConfig::instance().gameDir();
         const QString outDataDir =
             solero::AppConfig::instance().stagingDir() + "/" + outFolder + "/Data";

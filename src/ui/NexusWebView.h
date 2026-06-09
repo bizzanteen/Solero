@@ -33,6 +33,10 @@ signals:
 
 private:
     QWebEngineView* currentView() const;
+    // Build a fully-wired tab (view + NxmPage + signal connections) and add it to
+    // the tab bar, raising it only when foreground. Does not load a URL - used both
+    // by addTab() and by NxmPage::createWindow() for ctrl/middle/_blank new tabs.
+    QWebEngineView* createTabView(bool foreground);
     QWebEngineView* addTab(const QUrl& url);
     void loadAddress();
     // Read the clipboard, validate it as a Nexus API key, store it, and report

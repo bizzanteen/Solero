@@ -27,8 +27,10 @@ namespace solero {
 class NxmPage : public QWebEnginePage {
 public:
     NxmPage(QWebEngineProfile* profile, QObject* parent,
-            std::function<void(const QString&)> onNxm)
-        : QWebEnginePage(profile, parent), m_onNxm(std::move(onNxm)) {}
+            std::function<void(const QString&)> onNxm,
+            std::function<QWebEnginePage*(bool background)> onNewTab)
+        : QWebEnginePage(profile, parent),
+          m_onNxm(std::move(onNxm)), m_onNewTab(std::move(onNewTab)) {}
 protected:
     bool acceptNavigationRequest(const QUrl& url, NavigationType type, bool isMainFrame) override {
         if (url.scheme().compare("nxm", Qt::CaseInsensitive) == 0) {
@@ -37,8 +39,18 @@ protected:
         }
         return QWebEnginePage::acceptNavigationRequest(url, type, isMainFrame);
     }
+    // createWindow is the hook QtWebEngine calls for links that want a new view:
+    // middle-click, Ctrl-click (both WebBrowserBackgroundTab) and target="_blank"
+    // (WebBrowserTab/WebDialog). We hand back a real new-tab page so the engine
+    // loads the target into it; returning nullptr is what made those clicks no-op.
+    QWebEnginePage* createWindow(WebWindowType type) override {
+        if (!m_onNewTab) return nullptr;
+        const bool background = (type == QWebEnginePage::WebBrowserBackgroundTab);
+        return m_onNewTab(background);
+    }
 private:
     std::function<void(const QString&)> m_onNxm;
+    std::function<QWebEnginePage*(bool background)> m_onNewTab;
 };
 
 QUrl NexusWebView::homepageUrl() {
@@ -157,10 +169,18 @@ QWebEngineView* NexusWebView::currentView() const {
     return qobject_cast<QWebEngineView*>(m_tabs->currentWidget());
 }
 
-QWebEngineView* NexusWebView::addTab(const QUrl& url) {
+QWebEngineView* NexusWebView::createTabView(bool foreground) {
     auto* view = new QWebEngineView(m_tabs);
+    // The onNewTab callback captures `this` (not `view`): when a link inside this
+    // page opens a new tab it asks the NexusWebView to build another fully-wired
+    // tab and hands its page back to the engine. No infinite recursion - the
+    // callback only fires on a real user click, never during construction here.
     auto* page = new NxmPage(m_profile, view,
-                             [this](const QString& u){ emit nxmRequested(u); });
+                             [this](const QString& u){ emit nxmRequested(u); },
+                             [this](bool background) -> QWebEnginePage* {
+                                 auto* v = createTabView(!background);
+                                 return v->page();
+                             });
     view->setPage(page);
 
     connect(view, &QWebEngineView::urlChanged, this, [this, view](const QUrl& u){
@@ -186,8 +206,13 @@ QWebEngineView* NexusWebView::addTab(const QUrl& url) {
     });
 
     int idx = m_tabs->addTab(view, QStringLiteral("Nexus"));
+    if (foreground) m_tabs->setCurrentIndex(idx);
+    return view;
+}
+
+QWebEngineView* NexusWebView::addTab(const QUrl& url) {
+    auto* view = createTabView(true);
     view->load(url);
-    m_tabs->setCurrentIndex(idx);
     return view;
 }
 

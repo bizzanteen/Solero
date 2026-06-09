@@ -19,6 +19,15 @@ QString AppConfig::dataRoot() {
     return QDir::homePath() + "/.local/share/solero";
 }
 
+QString AppConfig::overwriteDir(const QString& profileName) {
+    const QString base = dataRoot() + "/overwrite";
+    if (profileName.isEmpty()) return base; // legacy/global fallback
+    // Sanitize for use as a single path component.
+    QString safe = profileName;
+    safe.replace('/', '_').replace('\\', '_');
+    return base + "/" + safe;
+}
+
 QString AppConfig::configPath() {
     return dataRoot() + "/config.json";
 }

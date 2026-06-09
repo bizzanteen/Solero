@@ -20,7 +20,7 @@ struct ShaderCacheClearResult {
 // Nothing outside these three ShaderCache directories is touched. Returns the
 // directories removed plus the total bytes freed.
 ShaderCacheClearResult clearShaderCache(const QString& gameDir,
-                                        const QString& dataRoot,
+                                        const QString& overwriteDir,
                                         const QString& cacheStagingDir);
 
 // Capture newly-compiled shaders after a play session. Walk

@@ -12,8 +12,10 @@ public:
     // outputModFolder is the on-disk staging folder name for exe.outputModId
     // (resolve via Profile::stagingFolderFor); when empty it falls back to the
     // id so callers that haven't migrated still work.
+    // overwriteDir is the capture sink for files written when there's no output mod
+    // (per-profile; see AppConfig::overwriteDir). Empty -> legacy global overwrite.
     static Result run(const Executable& exe, const QString& gameDir, const QString& stagingRoot,
-                      const QString& outputModFolder = {});
+                      const QString& outputModFolder = {}, const QString& overwriteDir = {});
 
     // Snapshot the absolute-path -> mtime(ms) of every file under captureBase. Taken
     // before launch so the post-run walk can distinguish a genuinely new/modified

@@ -63,6 +63,9 @@ public:
     void setHiddenColumns(const QList<int>& v) { m_hiddenColumns = v; }
 
     static QString dataRoot();   // ~/.local/share/solero
+    // Per-profile Overwrite capture dir: dataRoot()/overwrite/<sanitized profileName>.
+    // Falls back to the legacy global dataRoot()/overwrite when profileName is empty.
+    static QString overwriteDir(const QString& profileName);
     static QString configPath();
     static QStringList detectSkyrimPaths();
     // Pure parser: extract every Steam library "path" value from the textual VDF

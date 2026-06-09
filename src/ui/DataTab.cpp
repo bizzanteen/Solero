@@ -121,7 +121,7 @@ QColor DataTab::accentColor() const {
 
 QString DataTab::stagingRootFor(const QString& modId) const {
     if (modId == "__overwrite__")
-        return AppConfig::dataRoot() + "/overwrite"; // canonical Overwrite location
+        return AppConfig::overwriteDir(m_profile ? m_profile->name() : QString()); // per-profile Overwrite
     return AppConfig::instance().stagingDir() + "/" + modId;
 }
 

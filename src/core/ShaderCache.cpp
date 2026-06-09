@@ -30,11 +30,11 @@ void removeIfPresent(const QString& dir, ShaderCacheClearResult& result) {
 } // namespace
 
 ShaderCacheClearResult clearShaderCache(const QString& gameDir,
-                                        const QString& dataRoot,
+                                        const QString& overwriteDir,
                                         const QString& cacheStagingDir) {
     ShaderCacheClearResult result;
     removeIfPresent(gameDir + "/Data/ShaderCache", result);
-    removeIfPresent(dataRoot + "/overwrite/ShaderCache", result);
+    removeIfPresent(overwriteDir + "/ShaderCache", result);
     if (!cacheStagingDir.isEmpty())
         removeIfPresent(cacheStagingDir + "/Data/ShaderCache", result);
     return result;

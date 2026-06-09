@@ -26,6 +26,8 @@
 #include <QStyledItemDelegate>
 #include <QStyleOptionViewItem>
 #include <QStyle>
+#include <QPainter>
+#include <QApplication>
 #include <QIcon>
 #include <QLineEdit>
 #include <QShowEvent>
@@ -47,6 +49,47 @@ public:
             le->setText(idx.data(Qt::EditRole).toString());
             le->end(false); // cursor at end, nothing selected (instead of select-all)
         } else { QStyledItemDelegate::setEditorData(editor, idx); }
+    }
+
+    // The synthetic [Overwrite] row renders as "[Overwrite] - <ProfileName>": the
+    // bracket keeps the model's colour (red when it has files, dark-yellow when
+    // empty) and bold, while the profile name is appended in grey italics. A single
+    // DisplayRole string can't carry two styles, so paint it ourselves.
+    void paint(QPainter* p, const QStyleOptionViewItem& option,
+               const QModelIndex& idx) const override {
+        const QString prof = idx.data(ModListModel::OverwriteProfileRole).toString();
+        if (prof.isEmpty()) { QStyledItemDelegate::paint(p, option, idx); return; }
+
+        QStyleOptionViewItem opt(option);
+        initStyleOption(&opt, idx);
+        opt.text.clear(); // draw background/selection only; we render the text below
+        QStyle* style = opt.widget ? opt.widget->style() : QApplication::style();
+        style->drawControl(QStyle::CE_ItemViewItem, &opt, p, opt.widget);
+
+        const QString bracket = idx.data(Qt::DisplayRole).toString(); // "[Overwrite]"
+        QColor fg = qvariant_cast<QColor>(idx.data(Qt::ForegroundRole));
+        if (!fg.isValid()) fg = opt.palette.color(QPalette::Text);
+        QFont bf = qvariant_cast<QFont>(idx.data(Qt::FontRole));
+
+        p->save();
+        const QRect r = opt.rect.adjusted(4, 0, -4, 0);
+        int x = r.left();
+
+        QFontMetrics bfm(bf);
+        p->setFont(bf);
+        p->setPen(fg);
+        p->drawText(QRect(x, r.top(), bfm.horizontalAdvance(bracket), r.height()),
+                    Qt::AlignVCenter | Qt::AlignLeft, bracket);
+        x += bfm.horizontalAdvance(bracket);
+
+        const QString suffix = QStringLiteral("  - ") + prof; // "  - Name"
+        QFont sf = bf; sf.setBold(false); sf.setItalic(true);
+        QFontMetrics sfm(sf);
+        p->setFont(sf);
+        p->setPen(QColor(0x88, 0x88, 0x88)); // grey, regardless of the bracket colour
+        p->drawText(QRect(x, r.top(), sfm.horizontalAdvance(suffix), r.height()),
+                    Qt::AlignVCenter | Qt::AlignLeft, suffix);
+        p->restore();
     }
 };
 
@@ -399,8 +442,9 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
 
     const auto* entry = m_model->entryAt(idx.row());
     if (!entry) {
-        // Overwrite row
-        const QString ow = AppConfig::dataRoot() + "/overwrite";
+        // Overwrite row (per-profile capture dir)
+        auto* owProfile = m_model->profile();
+        const QString ow = AppConfig::overwriteDir(owProfile ? owProfile->name() : QString());
         // Enabled only when the overwrite dir actually holds files.
         bool hasFiles = false;
         {

@@ -299,9 +299,12 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
             if (idx.column() == ColName)     return "[Overwrite]";
             if (idx.column() == ColPriority) return QVariant();
         }
+        // Hand the active profile's name to the ColName delegate for the styled suffix.
+        if (role == OverwriteProfileRole && idx.column() == ColName)
+            return m_profile ? m_profile->name() : QString();
         if (role == Qt::ForegroundRole || role == Qt::FontRole) {
             if (m_overwriteHasFiles < 0) {
-                QString owDir = AppConfig::dataRoot() + "/overwrite";
+                QString owDir = AppConfig::overwriteDir(m_profile ? m_profile->name() : QString());
                 QDirIterator it(owDir, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
                 m_overwriteHasFiles = it.hasNext() ? 1 : 0;
             }

@@ -42,7 +42,8 @@ QStringList ToolRunner::tokenizeArgs(const QString& s) {
 
 ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir,
                                    const QString& stagingRoot,
-                                   const QString& outputModFolder) {
+                                   const QString& outputModFolder,
+                                   const QString& overwriteDir) {
     Result r;
     bool capture = exe.isCapturingOutput;
 
@@ -143,7 +144,8 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
         const QString outFolder = outputModFolder.isEmpty() ? exe.outputModId
                                                             : outputModFolder;
         QString destBase = exe.outputModId.isEmpty()
-            ? (AppConfig::dataRoot() + "/overwrite") // canonical Overwrite location
+            ? (overwriteDir.isEmpty() ? (AppConfig::dataRoot() + "/overwrite") // legacy fallback
+                                      : overwriteDir)                          // per-profile Overwrite
             : (stagingRoot + "/" + outFolder + "/Data");
         // Skip files owned by the active deployment so a deployed mod file isn't
         // moved into the capture target merely because its mtime was bumped.

@@ -232,6 +232,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     });
 
     switchProfile(m_profileMgr->profileNames().first());
+    migrateLegacyOverwrite();   // one-time: fold legacy global Overwrite into this profile
     refreshDeployState(); // reflect any existing deployment from a previous run
 
     // Retroactive one-time scan: if the loaded profile already has Community
@@ -920,10 +921,12 @@ void MainWindow::runPostDeployTools() {
         statusBar()->showMessage("Running post-deploy tool: " + exe.name);
         m_toolRunning = true;
         showRunLock(exe.name);
-        QString outFolder;
-        if (auto* p = m_profileMgr->activeProfile(); p && !exe.outputModId.isEmpty())
-            outFolder = p->stagingFolderFor(exe.outputModId);
-        auto res = solero::ToolRunner::run(exe, gameDir, stagingDir, outFolder);
+        QString outFolder, owDir;
+        if (auto* p = m_profileMgr->activeProfile()) {
+            if (!exe.outputModId.isEmpty()) outFolder = p->stagingFolderFor(exe.outputModId);
+            owDir = solero::AppConfig::overwriteDir(p->name());
+        }
+        auto res = solero::ToolRunner::run(exe, gameDir, stagingDir, outFolder, owDir);
         hideRunLock();
         m_toolRunning = false;
         // Don't abort the rest of the queue if one tool fails - record it.
@@ -1852,11 +1855,49 @@ QString MainWindow::stagingRootForId(const QString& modId) const {
     return stagingDir + "/" + modId; // no profile: fall back to the id
 }
 
+void MainWindow::migrateLegacyOverwrite() {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return;
+    const QString base = solero::AppConfig::dataRoot() + "/overwrite";
+    QDir baseDir(base);
+    if (!baseDir.exists()) return;
+
+    // Sanitized names of all known profiles - their subdirs are already per-profile
+    // Overwrite folders and must be left alone (never moved into another profile).
+    QSet<QString> profileDirs;
+    for (const QString& n : m_profileMgr->profileNames()) {
+        QString safe = n; safe.replace('/', '_').replace('\\', '_');
+        profileDirs.insert(safe);
+    }
+
+    const auto entries = baseDir.entryInfoList(
+        QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
+    const QString dest = solero::AppConfig::overwriteDir(profile->name());
+    int moved = 0;
+    bool madeDest = false;
+    for (const QFileInfo& fi : entries) {
+        if (fi.isDir() && profileDirs.contains(fi.fileName())) continue; // already per-profile
+        if (!madeDest) { QDir().mkpath(dest); madeDest = true; }
+        const QString target = dest + "/" + fi.fileName();
+        if (!QFileInfo::exists(target)) {
+            if (QDir().rename(fi.absoluteFilePath(), target)) ++moved;
+        } else if (fi.isDir()) {
+            // Merge into an existing same-named dir, then drop the emptied source.
+            moved += solero::moveTreeContents(fi.absoluteFilePath(), target);
+            QDir(fi.absoluteFilePath()).removeRecursively();
+        } // existing file: keep the profile's copy, leave the legacy one in place
+    }
+    if (moved > 0)
+        statusBar()->showMessage(
+            QString("Moved %1 legacy Overwrite item(s) into profile '%2'.")
+                .arg(moved).arg(profile->name()));
+}
+
 void MainWindow::onCreateModFromOverwrite() {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) { statusBar()->showMessage("No active profile."); return; }
 
-    const QString overwriteDir = solero::AppConfig::dataRoot() + "/overwrite";
+    const QString overwriteDir = solero::AppConfig::overwriteDir(profile->name());
     // The context action is disabled when Overwrite is empty, but guard anyway.
     {
         QDirIterator probe(overwriteDir,
@@ -1922,9 +1963,10 @@ void MainWindow::onClearShaderCache(const QString& modId) {
             cacheStaging = solero::stagingPathFor(
                 solero::AppConfig::instance().stagingDir(), *cm);
 
+    auto* scP = m_profileMgr->activeProfile();
     const auto result = solero::clearShaderCache(
         solero::AppConfig::instance().gameDir(),
-        solero::AppConfig::dataRoot(),
+        solero::AppConfig::overwriteDir(scP ? scP->name() : QString()),
         cacheStaging);
 
     m_modListView->invalidateModCache(); // staged/overwrite contents changed
@@ -2785,8 +2827,10 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
         }
     }
 
+    auto* owP = m_profileMgr->activeProfile();
     auto res = solero::ToolRunner::run(exe, solero::AppConfig::instance().gameDir(),
-                                       solero::AppConfig::instance().stagingDir(), outFolder);
+                                       solero::AppConfig::instance().stagingDir(), outFolder,
+                                       owP ? solero::AppConfig::overwriteDir(owP->name()) : QString());
     hideRunLock();
     m_toolRunning = false;
 
@@ -3269,10 +3313,13 @@ void MainWindow::onPlay() {
     showRunLock(exe.name);
     statusBar()->showMessage("Launching " + exe.name + "\xe2\x80\xa6");
     QElapsedTimer runTimer; runTimer.start();
-    QString outFolder;
-    if (auto* p = m_profileMgr->activeProfile(); p && !exe.outputModId.isEmpty())
-        outFolder = p->stagingFolderFor(exe.outputModId);
-    auto res = solero::ToolRunner::run(exe, gameDir, solero::AppConfig::instance().stagingDir(), outFolder);
+    QString outFolder, owDir;
+    if (auto* p = m_profileMgr->activeProfile()) {
+        if (!exe.outputModId.isEmpty()) outFolder = p->stagingFolderFor(exe.outputModId);
+        owDir = solero::AppConfig::overwriteDir(p->name());
+    }
+    auto res = solero::ToolRunner::run(exe, gameDir, solero::AppConfig::instance().stagingDir(),
+                                       outFolder, owDir);
     const qint64 ranMs = runTimer.elapsed();
     hideRunLock();
     m_toolRunning = false;

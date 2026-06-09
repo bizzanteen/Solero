@@ -29,33 +29,33 @@ private slots:
         QTemporaryDir tmp;
         QVERIFY(tmp.isValid());
         const QString root = tmp.path();
-        const QString gameDir  = root + "/game";
-        const QString dataRoot = root + "/dataroot";
-        const QString staging  = root + "/staging/cachemod";
+        const QString gameDir   = root + "/game";
+        const QString overwrite = root + "/dataroot/overwrite/MyProfile"; // per-profile Overwrite
+        const QString staging   = root + "/staging/cachemod";
 
         // ShaderCache files in all three locations.
-        writeFile(gameDir  + "/Data/ShaderCache/a.bin", QByteArray(100, 'a'));
-        writeFile(dataRoot + "/overwrite/ShaderCache/b.bin", QByteArray(50, 'b'));
-        writeFile(staging  + "/Data/ShaderCache/c.bin", QByteArray(25, 'c'));
+        writeFile(gameDir   + "/Data/ShaderCache/a.bin", QByteArray(100, 'a'));
+        writeFile(overwrite + "/ShaderCache/b.bin", QByteArray(50, 'b'));
+        writeFile(staging   + "/Data/ShaderCache/c.bin", QByteArray(25, 'c'));
 
         // Bystanders that must survive.
-        writeFile(gameDir  + "/Data/Skyrim.esm");
-        writeFile(gameDir  + "/Data/Textures/x.dds");
-        writeFile(dataRoot + "/overwrite/SKSE/foo.dll");
-        writeFile(staging  + "/Data/meshes/y.nif");
+        writeFile(gameDir   + "/Data/Skyrim.esm");
+        writeFile(gameDir   + "/Data/Textures/x.dds");
+        writeFile(overwrite + "/SKSE/foo.dll");
+        writeFile(staging   + "/Data/meshes/y.nif");
 
-        const ShaderCacheClearResult r = clearShaderCache(gameDir, dataRoot, staging);
+        const ShaderCacheClearResult r = clearShaderCache(gameDir, overwrite, staging);
 
         // The three ShaderCache dirs are gone.
-        QVERIFY(!QDir(gameDir  + "/Data/ShaderCache").exists());
-        QVERIFY(!QDir(dataRoot + "/overwrite/ShaderCache").exists());
-        QVERIFY(!QDir(staging  + "/Data/ShaderCache").exists());
+        QVERIFY(!QDir(gameDir   + "/Data/ShaderCache").exists());
+        QVERIFY(!QDir(overwrite + "/ShaderCache").exists());
+        QVERIFY(!QDir(staging   + "/Data/ShaderCache").exists());
 
         // Everything else survives.
-        QVERIFY(QFile::exists(gameDir  + "/Data/Skyrim.esm"));
-        QVERIFY(QFile::exists(gameDir  + "/Data/Textures/x.dds"));
-        QVERIFY(QFile::exists(dataRoot + "/overwrite/SKSE/foo.dll"));
-        QVERIFY(QFile::exists(staging  + "/Data/meshes/y.nif"));
+        QVERIFY(QFile::exists(gameDir   + "/Data/Skyrim.esm"));
+        QVERIFY(QFile::exists(gameDir   + "/Data/Textures/x.dds"));
+        QVERIFY(QFile::exists(overwrite + "/SKSE/foo.dll"));
+        QVERIFY(QFile::exists(staging   + "/Data/meshes/y.nif"));
 
         // Reports all three removals and the summed byte count.
         QCOMPARE(r.removedPaths.size(), 3);
@@ -66,11 +66,11 @@ private slots:
     void clear_emptyStagingSkipped() {
         QTemporaryDir tmp;
         QVERIFY(tmp.isValid());
-        const QString gameDir  = tmp.path() + "/game";
-        const QString dataRoot = tmp.path() + "/dataroot";
+        const QString gameDir   = tmp.path() + "/game";
+        const QString overwrite = tmp.path() + "/dataroot/overwrite/MyProfile";
         writeFile(gameDir + "/Data/ShaderCache/a.bin");
 
-        const ShaderCacheClearResult r = clearShaderCache(gameDir, dataRoot, QString());
+        const ShaderCacheClearResult r = clearShaderCache(gameDir, overwrite, QString());
         QVERIFY(!QDir(gameDir + "/Data/ShaderCache").exists());
         QCOMPARE(r.removedPaths.size(), 1);
     }

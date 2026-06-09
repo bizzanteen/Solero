@@ -175,6 +175,9 @@ private:
     void installSkseVersion(const QString& fileId, const QString& version); // a specific build
     // SKSE version currently installed for the active profile (empty if none).
     QString installedSkseVersion(solero::Profile* profile) const;
+    // One-time: move any legacy global Overwrite content (dataRoot/overwrite/*) that
+    // isn't already a per-profile subdir into the active profile's Overwrite dir.
+    void migrateLegacyOverwrite();
     // After a Nexus mod installs, query its requirements and, for any that aren't
     // already installed, offer to install them (placed just above the dependent mod).
     void checkRequirementsAfterInstall(solero::Profile* profile,

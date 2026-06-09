@@ -14,6 +14,11 @@ class ModListModel : public QAbstractItemModel {
 public:
     enum Column { ColEnabled = 0, ColPriority, ColName, ColVersion, ColFlags, ColCount };
 
+    // For the synthetic [Overwrite] row only: the active profile's name, so the
+    // ColName delegate can render "[Overwrite] - <ProfileName>" with the name styled.
+    // Invalid QVariant for every other row.
+    enum Role { OverwriteProfileRole = Qt::UserRole + 1 };
+
     explicit ModListModel(QObject* parent = nullptr);
     void setProfile(Profile* profile);
     Profile* profile() const { return m_profile; }

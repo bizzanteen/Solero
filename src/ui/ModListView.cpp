@@ -535,9 +535,8 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         menu.addAction("Enable selected",  [this]{ setSelectedModsEnabled(true); });
         menu.addAction("Disable selected", [this]{ setSelectedModsEnabled(false); });
         // Community Shaders base mod: offer to wipe its compiled shader cache.
-        if (!entry->isManagedCache
-            && (entry->nexusModId == "86492"
-                || entry->name.compare("Community Shaders", Qt::CaseInsensitive) == 0)) {
+        if (entry->nexusModId == "86492"
+            || entry->name.compare("Community Shaders", Qt::CaseInsensitive) == 0) {
             menu.addSeparator();
             menu.addAction("Clear Shader Cache",
                            [this, id = entry->id]{ emit clearShaderCacheRequested(id); });
@@ -576,10 +575,9 @@ void ModListView::onAddSeparatorAt(int visibleRow) {
     AppConfig::instance().save();
 
     // Insert at the given visible row position in the raw list. The Overwrite row
-    // maps to raw -1; "append to the end" must land ABOVE the trailing
-    // managed-cache mod (which stays pinned last), not at count().
+    // maps to raw -1; "append to the end" lands at count().
     int rawPos = m_model->rawIndexForRow(visibleRow);
-    if (rawPos < 0) rawPos = m_model->profile()->modList().firstTrailingManagedCacheIndex();
+    if (rawPos < 0) rawPos = m_model->profile()->modList().count();
 
     // Append then move to position
     const QString sepId = sep.id;

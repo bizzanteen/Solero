@@ -46,22 +46,6 @@ private:
     }
 
 private slots:
-    // A hidden managed shader-cache mod must not consume a priority slot, even when
-    // it sits at the top of the raw order: the first VISIBLE mod is #1, not #2.
-    void priority_excludesHiddenManagedCache() {
-        QTemporaryDir tmp;
-        Profile prof("P", tmp.path());
-        { ModEntry e; e.type = EntryType::Mod; e.id = "cache";
-          e.name = "Community Shaders - Shader Cache"; e.enabled = true;
-          e.isManagedCache = true; prof.modList().append(e); }
-        addMods(prof, 3); // m0,m1,m2 after the hidden cache mod
-        ModListModel model;
-        model.setProfile(&prof);
-        QCOMPARE(model.data(model.index(0, ModListModel::ColPriority), Qt::DisplayRole).toInt(), 1);
-        QCOMPARE(model.data(model.index(1, ModListModel::ColPriority), Qt::DisplayRole).toInt(), 2);
-        QCOMPARE(model.data(model.index(2, ModListModel::ColPriority), Qt::DisplayRole).toInt(), 3);
-    }
-
     void dropMimeData_moveDown() {
         QTemporaryDir tmp;
         Profile prof("P", tmp.path());
@@ -411,82 +395,6 @@ private slots:
         QCOMPARE(order(prof), QString("m1,m2,m0"));
     }
 
-    // --- Managed-cache mod stays pinned last ----------------------------------
-    // Append a hidden managed-cache mod (isManagedCache==true) at the end. The
-    // model hides it from the view, so it never occupies a visible row.
-    static void addManagedCache(Profile& p) {
-        ModEntry e; e.type = EntryType::Mod;
-        e.id = "cache"; e.name = "Shader Cache"; e.enabled = true;
-        e.isManagedCache = true;
-        p.modList().append(e);
-    }
-    static int rawIndexOfId(const Profile& p, const QString& id) {
-        for (int i = 0; i < p.modList().count(); ++i)
-            if (p.modList().at(i).id == id) return i;
-        return -1;
-    }
-
-    void managedCache_singleDropAtEnd_landsAboveCache() {
-        QTemporaryDir tmp;
-        Profile prof("P", tmp.path());
-        addMods(prof, 3); // m0,m1,m2
-        addManagedCache(prof); // raw 3, hidden
-        ModListModel model;
-        model.setProfile(&prof);
-        // Visible: 0=m0,1=m1,2=m2,3=Overwrite (cache hidden). Drop m0 at the
-        // Overwrite row: it must land as the last visible mod but ABOVE the cache.
-        QScopedPointer<QMimeData> mime(modMime(0));
-        QVERIFY(!model.dropMimeData(mime.data(), Qt::MoveAction, 3, 0, {}));
-        QCOMPARE(order(prof), QString("m1,m2,m0,cache"));
-        // Cache still truly last.
-        QCOMPARE(rawIndexOfId(prof, "cache"), prof.modList().count() - 1);
-        QVERIFY(prof.modList().at(prof.modList().count() - 1).isManagedCache);
-    }
-
-    void managedCache_multiDropToEnd_staysAboveCache() {
-        QTemporaryDir tmp;
-        Profile prof("P", tmp.path());
-        addMods(prof, 4); // m0,m1,m2,m3
-        addManagedCache(prof); // raw 4, hidden
-        ModListModel model;
-        model.setProfile(&prof);
-        // Visible: 0..3 mods, 4=Overwrite. Multi-select m0,m1 and drop at the end.
-        QScopedPointer<QMimeData> mime(modMimeMulti({0, 1}));
-        QVERIFY(!model.dropMimeData(mime.data(), Qt::MoveAction, 4, 0, {}));
-        QCOMPARE(order(prof), QString("m2,m3,m0,m1,cache"));
-        QCOMPARE(rawIndexOfId(prof, "cache"), prof.modList().count() - 1);
-        QVERIFY(prof.modList().at(prof.modList().count() - 1).isManagedCache);
-    }
-
-    void managedCache_helperIndex() {
-        QTemporaryDir tmp;
-        Profile prof("P", tmp.path());
-        addMods(prof, 2); // m0,m1
-        // No trailing cache yet -> index == count().
-        QCOMPARE(prof.modList().firstTrailingManagedCacheIndex(), prof.modList().count());
-        addManagedCache(prof); // raw 2
-        // One trailing cache -> first trailing index is its position (2).
-        QCOMPARE(prof.modList().firstTrailingManagedCacheIndex(), 2);
-    }
-
-    void managedCache_addSeparatorAtEnd_landsAboveCache() {
-        // Mirrors ModListView::onAddSeparatorAt's "append to end" path: the new
-        // separator is appended then moved to firstTrailingManagedCacheIndex(), so
-        // it lands above the pinned managed-cache mod.
-        QTemporaryDir tmp;
-        Profile prof("P", tmp.path());
-        addMods(prof, 2); // m0,m1
-        addManagedCache(prof); // raw 2
-        auto& list = prof.modList();
-        ModEntry sep; sep.type = EntryType::Separator; sep.id = "sepX"; sep.name = "X";
-        const int rawPos = list.firstTrailingManagedCacheIndex(); // 2
-        list.append(sep);
-        const int newRaw = list.count() - 1;
-        if (rawPos < newRaw) list.move(newRaw, rawPos);
-        QCOMPARE(order(prof), QString("m0,m1,sepX,cache"));
-        QCOMPARE(rawIndexOfId(prof, "cache"), list.count() - 1);
-        QVERIFY(list.at(list.count() - 1).isManagedCache);
-    }
 };
 QTEST_MAIN(TestModListModel)
 #include "test_ModListModel.moc"

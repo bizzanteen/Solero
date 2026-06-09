@@ -24,6 +24,7 @@ QString Profile::executablesPath()   const { return m_path + "/executables.json"
 QString Profile::lootUserlistPath()  const { return m_path + "/loot-userlist.yaml"; }
 QString Profile::fileRulesPath()     const { return m_path + "/filerules.json"; }
 QString Profile::loadOrderStatePath() const { return m_path + "/loadorder-state.json"; }
+QString Profile::shaderCachePath()    const { return m_path + "/shadercache.json"; }
 
 bool Profile::save() const {
     QDir().mkpath(m_path);
@@ -31,7 +32,48 @@ bool Profile::save() const {
     if (!m_pluginList.saveToFile(pluginsPath())) return false;
     if (!saveExecutables()) return false;
     if (!saveFileRules()) return false;
+    if (!saveShaderCache()) return false;
     return saveLoadOrderState();
+}
+
+bool Profile::saveShaderCache() const {
+    // Only persist when active; otherwise remove a stale file so an un-managed
+    // profile has no shadercache.json lying around.
+    if (!m_shaderCache.active()) {
+        QFile::remove(shaderCachePath());
+        return true;
+    }
+    QJsonObject root;
+    root["managed"]       = m_shaderCache.managed;
+    root["stagingFolder"] = m_shaderCache.stagingFolder;
+    return atomicWrite(shaderCachePath(), QJsonDocument(root).toJson(QJsonDocument::Indented));
+}
+
+bool Profile::loadShaderCache() {
+    m_shaderCache = {};
+    QFile f(shaderCachePath());
+    if (!f.open(QIODevice::ReadOnly)) return false; // missing == not managed
+    const auto root = QJsonDocument::fromJson(f.readAll()).object();
+    m_shaderCache.managed       = root["managed"].toBool(false);
+    m_shaderCache.stagingFolder = root["stagingFolder"].toString();
+    return true;
+}
+
+bool Profile::migrateManagedCacheEntry() {
+    // Legacy profiles stored the managed cache as a hidden mod-list entry. Lift the
+    // first such entry into m_shaderCache and drop it from the list. The staged
+    // shaders on disk are untouched - only the bookkeeping moves.
+    auto& entries = m_modList.entries();
+    for (int i = 0; i < entries.size(); ++i) {
+        if (entries[i].type != EntryType::Mod || !entries[i].isManagedCache) continue;
+        if (!m_shaderCache.active()) { // don't clobber state already in shadercache.json
+            m_shaderCache.managed       = entries[i].enabled;
+            m_shaderCache.stagingFolder = entries[i].stagingFolder;
+        }
+        m_modList.remove(entries[i].id);
+        return true;
+    }
+    return false;
 }
 
 bool Profile::load() {
@@ -41,11 +83,13 @@ bool Profile::load() {
         m_pluginList = PluginList::loadFromFile(pluginsPath());
     loadExecutables();
     loadFileRules();
+    loadShaderCache();
     loadLoadOrderState(); // after the plugin list - state is applied onto it
-    // Backfill staging-folder names and rename UUID folders on disk. Save if
-    // anything changed so the new names persist.
-    if (migrateStagingFolders())
-        save();
+    // Lift any legacy isManagedCache mod-list entry into m_shaderCache.
+    bool dirty = migrateManagedCacheEntry();
+    // Backfill staging-folder names and rename UUID folders on disk.
+    dirty = migrateStagingFolders() || dirty;
+    if (dirty) save(); // persist migrations (new shadercache.json + cleaned modlist)
     return true;
 }
 

@@ -206,24 +206,12 @@ ModEntry* ModList::findByName(const QString& name, const QString& skipId) {
 
 const ModEntry* ModList::findCommunityShaders() const {
     for (const auto& e : m_entries) {
-        if (e.type != EntryType::Mod || e.isManagedCache) continue;
+        if (e.type != EntryType::Mod) continue;
         if (e.nexusModId == "86492"
             || e.name.compare("Community Shaders", Qt::CaseInsensitive) == 0)
             return &e;
     }
     return nullptr;
-}
-
-const ModEntry* ModList::findManagedCache() const {
-    for (const auto& e : m_entries)
-        if (e.type == EntryType::Mod && e.isManagedCache) return &e;
-    return nullptr;
-}
-
-int ModList::firstTrailingManagedCacheIndex() const {
-    int idx = m_entries.size();
-    while (idx > 0 && m_entries[idx - 1].isManagedCache) --idx;
-    return idx;
 }
 
 static QJsonObject entryToJson(const ModEntry& e) {
@@ -244,7 +232,8 @@ static QJsonObject entryToJson(const ModEntry& e) {
     o["isFomod"]         = e.isFomod;
     o["fomodStatus"]     = e.fomodStatus;
     o["isOutputMod"]     = e.isOutputMod;
-    o["isManagedCache"]  = e.isManagedCache;
+    // isManagedCache is no longer written - the cache is profile-level state now
+    // (Profile::shaderCache). entryFromJson still READS it for one-time migration.
     o["sourceArchive"]   = e.sourceArchive;
     o["stagingFolder"]   = e.stagingFolder;
     o["note"]            = e.note;

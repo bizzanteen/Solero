@@ -176,6 +176,58 @@ private slots:
         // No rename happened -> no backup file created.
         QVERIFY(!QFile::exists(profiles.path() + "/Missing/modlist.json.bak-stagingmigration"));
     }
+
+    // The managed shader cache round-trips as first-class Profile state.
+    void shaderCache_roundTrip() {
+        QTemporaryDir profiles, staging;
+        AppConfig::instance().setStagingDir(staging.path());
+        {
+            Profile p("RT", profiles.path());
+            p.shaderCache().managed       = true;
+            p.shaderCache().stagingFolder = "MyCacheFolder";
+            QVERIFY(p.save());
+            QVERIFY(QFile::exists(p.shaderCachePath()));
+        }
+        Profile p2("RT", profiles.path());
+        QVERIFY(p2.load());
+        QVERIFY(p2.shaderCache().managed);
+        QVERIFY(p2.shaderCache().active());
+        QCOMPARE(p2.shaderCache().stagingFolder, QString("MyCacheFolder"));
+    }
+
+    // A legacy profile stored the cache as a hidden isManagedCache mod-list entry;
+    // load() lifts it into shaderCache state and drops it from the list.
+    void shaderCache_migratesLegacyEntry() {
+        QTemporaryDir profiles, staging;
+        AppConfig::instance().setStagingDir(staging.path());
+        const QString dir = profiles.path() + "/Legacy";
+        QVERIFY(QDir().mkpath(dir));
+        const QByteArray legacy = R"([
+          {"type":"mod","id":"m0","name":"Mod0","enabled":true,"stagingFolder":"Mod0"},
+          {"type":"mod","id":"cache","name":"CS Cache","enabled":true,
+           "isManagedCache":true,"stagingFolder":"CSCacheFolder"}
+        ])";
+        QFile f(dir + "/modlist.json");
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(legacy); f.close();
+
+        Profile p("Legacy", profiles.path());
+        QVERIFY(p.load());
+        // Cache entry lifted out of the list…
+        QVERIFY(p.modList().findById("cache") == nullptr);
+        QCOMPARE(p.modList().count(), 1);
+        // …into shaderCache state.
+        QVERIFY(p.shaderCache().managed);
+        QCOMPARE(p.shaderCache().stagingFolder, QString("CSCacheFolder"));
+        QVERIFY(QFile::exists(p.shaderCachePath()));
+
+        // Persisted: a fresh reload still has the cache out of the list.
+        Profile p2("Legacy", profiles.path());
+        QVERIFY(p2.load());
+        QVERIFY(p2.modList().findById("cache") == nullptr);
+        QVERIFY(p2.shaderCache().managed);
+        QCOMPARE(p2.shaderCache().stagingFolder, QString("CSCacheFolder"));
+    }
 };
 QTEST_MAIN(TestProfile)
 #include "test_Profile.moc"

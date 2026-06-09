@@ -68,26 +68,31 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     int total = 0;
     for (const auto& entry : profile.modList())
         if (entry.type == EntryType::Mod && entry.enabled) ++total;
+    if (profile.shaderCache().active()) ++total; // deployed last, below
     total += 1; // finalize/LOOT step
     int done = 0;
     if (onProgress) onProgress(0, total);
 
     int failures = 0;
-    // First pass: every enabled mod EXCEPT managed shader-cache mods.
+    // Deploy every enabled mod in list order.
     for (const auto& entry : profile.modList()) {
         if (entry.type != EntryType::Mod) continue;
         if (!entry.enabled) continue;
-        if (entry.isManagedCache) continue; // deployed last (see below)
         failures += deployMod(entry, m_gameDir, linker, record, conflicts, ciOwners);
         ++done;
         if (onProgress) onProgress(done, total);
     }
-    // Second pass: managed shader-cache mods deploy after everything else so their
-    // captured shaders win all conflicts (last-wins), regardless of list position.
-    for (const auto& entry : profile.modList()) {
-        if (entry.type != EntryType::Mod) continue;
-        if (!entry.enabled || !entry.isManagedCache) continue;
-        failures += deployMod(entry, m_gameDir, linker, record, conflicts, ciOwners);
+    // The managed shader cache (profile-level state, not a list entry) deploys after
+    // everything else so its captured shaders win all conflicts (last-wins). Applied
+    // via a synthetic ModEntry pointing at its staging folder.
+    if (profile.shaderCache().active()) {
+        ModEntry cacheEntry;
+        cacheEntry.type          = EntryType::Mod;
+        cacheEntry.id            = QStringLiteral("__shadercache__");
+        cacheEntry.name          = QStringLiteral("Shader Cache");
+        cacheEntry.enabled       = true;
+        cacheEntry.stagingFolder = profile.shaderCache().stagingFolder;
+        failures += deployMod(cacheEntry, m_gameDir, linker, record, conflicts, ciOwners);
         ++done;
         if (onProgress) onProgress(done, total);
     }

@@ -400,6 +400,32 @@ private slots:
         QVERIFY(QFile::exists(gameDir + "/Data/keep.nif"));
         QVERIFY(!QFile::exists(gameDir + "/Data/orphan.nif"));
     }
+
+    // The managed shader cache (profile state, not a list mod) deploys last, so its
+    // copy of a conflicting ShaderCache file wins over a real mod's.
+    void managedShaderCache_deploysLastAndWins() {
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QDir().mkpath(gameDir);
+        writeFile(stagingRoot + "/aaa/Data/ShaderCache/x.bin", "MOD");
+        writeFile(stagingRoot + "/cachefolder/Data/ShaderCache/x.bin", "CACHE");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry mod; mod.type = EntryType::Mod; mod.id = "aaa";
+        mod.name = "RealMod"; mod.enabled = true; // staging folder falls back to id
+        profile.modList().append(mod);
+        profile.shaderCache().managed       = true;
+        profile.shaderCache().stagingFolder = "cachefolder";
+        profile.save();
+
+        DeployEngine engine(gameDir, stagingRoot);
+        auto result = engine.deploy(profile, DeployMode::Copy);
+        QVERIFY(result.success);
+        QFile f(gameDir + "/Data/ShaderCache/x.bin");
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QCOMPARE(f.readAll(), QByteArray("CACHE")); // cache deployed last -> wins
+    }
 };
 QTEST_MAIN(TestDeployEngine)
 #include "test_DeployEngine.moc"

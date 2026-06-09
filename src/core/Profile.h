@@ -25,6 +25,11 @@ public:
     QList<Executable>& executables() { return m_executables; }
     const QList<Executable>& executables() const { return m_executables; }
 
+    // Managed Community Shaders shader cache (first-class state, not a mod-list
+    // entry). Deployed last so its shaders win; invisible in the mod list.
+    ManagedShaderCache& shaderCache() { return m_shaderCache; }
+    const ManagedShaderCache& shaderCache() const { return m_shaderCache; }
+
     QString modlistPath()       const;
     QString pluginsPath()       const;
     QString skyrimIniPath()     const;
@@ -34,6 +39,7 @@ public:
     QString lootUserlistPath()  const;
     QString fileRulesPath()     const;
     QString loadOrderStatePath() const;
+    QString shaderCachePath()    const;
 
     // Per-file conflict resolution (MO2 ".mohidden" + Vortex per-file winner).
     // relPath is in the same form DeployEngine uses: path relative to the mod
@@ -75,9 +81,15 @@ private:
     QList<Executable> m_executables;
     QHash<QString, QSet<QString>> m_hiddenFiles;  // modId  -> hidden relPaths
     QHash<QString, QString>       m_fileOverrides; // relPath -> forced winner modId
+    ManagedShaderCache            m_shaderCache;
 
     bool saveExecutables() const;
     bool loadExecutables();
+    bool saveShaderCache() const;
+    bool loadShaderCache();
+    // One-time: lift a legacy isManagedCache mod-list entry into m_shaderCache and
+    // drop it from the list. Returns true if a migration happened (caller saves).
+    bool migrateManagedCacheEntry();
     bool saveFileRules() const;
     bool loadFileRules();
     // Manual load-order control (lock + pins). The state lives on m_pluginList;

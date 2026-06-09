@@ -56,6 +56,16 @@ struct ModEntry {
     int separatorLevel = 0;
 };
 
+// Managed Community Shaders shader cache
+// First-class per-profile state (not a mod-list entry): the captured shaders live
+// at <stagingDir>/<stagingFolder>/Data/ShaderCache/, are deployed last so they win
+// all conflicts, and are invisible in the mod list. "Active" = managed && folder set.
+struct ManagedShaderCache {
+    bool managed = false;
+    QString stagingFolder;
+    bool active() const { return managed && !stagingFolder.isEmpty(); }
+};
+
 // Plugin list entry
 
 struct PluginEntry {

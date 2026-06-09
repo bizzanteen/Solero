@@ -57,18 +57,10 @@ public:
     ModEntry* findByName(const QString& name, const QString& skipId = {});
 
     // Find the Community Shaders BASE mod: the first Mod with nexusModId=="86492"
-    // or name "Community Shaders" (case-insensitive), excluding the managed-cache
-    // mod itself. Returns nullptr if absent.
+    // or name "Community Shaders" (case-insensitive). Returns nullptr if absent.
+    // (The managed shader cache is no longer a mod-list entry - see
+    // Profile::shaderCache - so there's nothing to exclude here.)
     const ModEntry* findCommunityShaders() const;
-    // Find the hidden Solero-managed shader-cache mod (isManagedCache==true), or
-    // nullptr if none exists.
-    const ModEntry* findManagedCache() const;
-
-    // Index of the first entry in the trailing contiguous run of managed-cache
-    // mods - i.e. the position a new real mod/separator should be appended or
-    // clamped to so the managed-cache mod stays pinned last. Returns count() when
-    // there are no trailing managed-cache mods.
-    int firstTrailingManagedCacheIndex() const;
 
     QJsonDocument toJson() const;
     static ModList fromJson(const QJsonDocument& doc);

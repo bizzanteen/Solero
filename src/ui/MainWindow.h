@@ -117,12 +117,12 @@ private:
     // "Clear Shader Cache" context action on the Community Shaders mod: confirm,
     // then wipe the live + overwrite + managed-cache copies of Data/ShaderCache.
     void onClearShaderCache(const QString& modId);
-    // One-time offer: if CS is present, no managed-cache mod exists yet, and the
+    // One-time offer: if CS is present, the cache isn't already managed, and the
     // user hasn't previously declined, ask whether Solero should manage the cache.
     void maybeOfferShaderCacheManagement();
-    // Create the hidden Solero-managed shader-cache mod (appended last, enabled,
-    // isManagedCache) and stage its empty Data/ShaderCache folder.
-    void createManagedCacheMod();
+    // Turn on managed shader caching for the active profile: set Profile::shaderCache
+    // (a unique staging folder) and stage its empty Data/ShaderCache folder.
+    void enableManagedCache();
     // "Redownload from Nexus" context action: re-fetch the mod's exact archive
     // (Premium -> enqueue into downloadsDir; free/unavailable -> nxm guidance).
     void onRedownloadMod(const QString& modId);

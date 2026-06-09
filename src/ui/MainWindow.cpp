@@ -1845,7 +1845,17 @@ static QSet<QString> takenStagingFolders(solero::Profile* profile) {
     for (const auto& e : profile->modList())
         if (e.type == solero::EntryType::Mod && !e.stagingFolder.isEmpty())
             taken.insert(e.stagingFolder.toLower());
+    // The managed shader cache lives outside the list but owns a staging folder too.
+    if (!profile->shaderCache().stagingFolder.isEmpty())
+        taken.insert(profile->shaderCache().stagingFolder.toLower());
     return taken;
+}
+
+// On-disk staging path of the profile's managed shader cache, or empty if inactive.
+static QString cacheStagingPath(solero::Profile* profile) {
+    if (!profile || !profile->shaderCache().active()) return {};
+    return solero::AppConfig::instance().stagingDir() + "/"
+         + profile->shaderCache().stagingFolder;
 }
 
 QString MainWindow::stagingRootForId(const QString& modId) const {
@@ -1955,15 +1965,11 @@ void MainWindow::onClearShaderCache(const QString& modId) {
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (reply != QMessageBox::Yes) return;
 
-    // Resolve the managed-cache mod's staging root (empty if none -> that copy is
+    // Resolve the managed cache's staging root (empty if not managed -> that copy is
     // skipped, but the live game-dir + Overwrite copies are still cleared).
-    QString cacheStaging;
-    if (auto* p = m_profileMgr->activeProfile())
-        if (const solero::ModEntry* cm = p->modList().findManagedCache())
-            cacheStaging = solero::stagingPathFor(
-                solero::AppConfig::instance().stagingDir(), *cm);
-
     auto* scP = m_profileMgr->activeProfile();
+    const QString cacheStaging = cacheStagingPath(scP);
+
     const auto result = solero::clearShaderCache(
         solero::AppConfig::instance().gameDir(),
         solero::AppConfig::overwriteDir(scP ? scP->name() : QString()),
@@ -1986,7 +1992,7 @@ void MainWindow::maybeOfferShaderCacheManagement() {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) return;
     if (!profile->modList().findCommunityShaders()) return; // CS not installed
-    if (profile->modList().findManagedCache()) return;       // already managed
+    if (profile->shaderCache().managed) return;              // already managed
     if (solero::AppConfig::instance().shaderCacheDeclined()) return; // declined before
 
     auto reply = QMessageBox::question(this, "Community Shaders",
@@ -1996,40 +2002,29 @@ void MainWindow::maybeOfferShaderCacheManagement() {
         "Choose No to leave the cache in the game folder as it is now.",
         QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
     if (reply == QMessageBox::Yes) {
-        createManagedCacheMod();
+        enableManagedCache();
     } else {
         solero::AppConfig::instance().setShaderCacheDeclined(true);
         solero::AppConfig::instance().save();
     }
 }
 
-void MainWindow::createManagedCacheMod() {
+void MainWindow::enableManagedCache() {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) return;
-    if (profile->modList().findManagedCache()) return; // idempotent
+    if (profile->shaderCache().active()) return; // idempotent
 
-    solero::ModEntry mod;
-    mod.type = solero::EntryType::Mod;
-    mod.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    mod.name = "Community Shaders - Shader Cache";
-    mod.enabled = true;
-    mod.isManagedCache = true;
-    mod.stagingFolder = solero::uniqueStagingFolder(
-        solero::sanitizeStagingFolder(mod.name), takenStagingFolders(profile));
+    const QString folder = solero::uniqueStagingFolder(
+        solero::sanitizeStagingFolder("Community Shaders - Shader Cache"),
+        takenStagingFolders(profile));
+    profile->shaderCache().managed       = true;
+    profile->shaderCache().stagingFolder = folder;
 
     // Create the staging dir with an empty Data/ShaderCache so captures land there.
-    const QString modRoot = solero::stagingPathFor(
-        solero::AppConfig::instance().stagingDir(), mod);
+    const QString modRoot = solero::AppConfig::instance().stagingDir() + "/" + folder;
     QDir().mkpath(modRoot + "/Data/ShaderCache");
 
-    // Append -> the managed-cache mod lands last in the list (and deploys last).
-    profile->modList().append(mod);
     profile->save();
-
-    m_modListView->invalidateModCache(mod.id);
-    m_rightPane->invalidateModPluginCache(mod.id);
-    m_modListView->setProfile(profile);
-    if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     statusBar()->showMessage("Solero is now managing the Community Shaders shader cache.");
 }
@@ -3349,13 +3344,11 @@ void MainWindow::onPlay() {
     // newly-compiled shaders out of the live game dir into the managed mod's
     // staging (scoped strictly to Data/ShaderCache). Best-effort; never blocks.
     if (auto* p = m_profileMgr->activeProfile()) {
-        if (const solero::ModEntry* cm = p->modList().findManagedCache(); cm && cm->enabled) {
-            const QString cacheStaging = solero::stagingPathFor(
-                solero::AppConfig::instance().stagingDir(), *cm);
+        const QString cacheStaging = cacheStagingPath(p);
+        if (!cacheStaging.isEmpty()) {
             const int captured = solero::captureShaderCache(gameDir, cacheStaging);
             if (captured > 0) {
-                m_modListView->invalidateModCache(cm->id);
-                // The cache mod's staging now holds new shaders; mark deploy dirty
+                // The cache's staging now holds new shaders; mark deploy dirty
                 // so the next Play re-deploys them (otherwise deploy is skipped when
                 // already deployed-and-clean and the captured shaders never reach
                 // the live game dir). Mirrors onClearShaderCache.

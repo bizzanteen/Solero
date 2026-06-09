@@ -124,8 +124,7 @@ private slots:
         QCOMPARE(captureShaderCache(gameDir, QString()), 0);
     }
 
-    // findCommunityShaders matches nexusModId 86492 and excludes the managed-cache
-    // mod; findManagedCache returns the managed entry.
+    // findCommunityShaders matches nexusModId 86492.
     void modList_findCommunityShaders() {
         ModList list;
         ModEntry plain;
@@ -141,20 +140,9 @@ private slots:
         cs.nexusModId = "86492";
         list.append(cs);
 
-        ModEntry cache;
-        cache.type = EntryType::Mod;
-        cache.id = "cache";
-        cache.name = "Community Shaders - Shader Cache";
-        cache.isManagedCache = true;
-        list.append(cache);
-
         const ModEntry* found = list.findCommunityShaders();
         QVERIFY(found != nullptr);
         QCOMPARE(found->id, QString("cs"));
-
-        const ModEntry* mc = list.findManagedCache();
-        QVERIFY(mc != nullptr);
-        QCOMPARE(mc->id, QString("cache"));
     }
 
     // findCommunityShaders also matches by name (case-insensitive) without a Nexus id.
@@ -168,7 +156,6 @@ private slots:
         const ModEntry* found = list.findCommunityShaders();
         QVERIFY(found != nullptr);
         QCOMPARE(found->id, QString("cs"));
-        QVERIFY(list.findManagedCache() == nullptr);
     }
 };
 

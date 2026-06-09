@@ -143,10 +143,6 @@ void ModListModel::rebuildVisibleRows() {
         int modPos = 0;
         for (int i = 0; i < m_profile->modList().count(); ++i) {
             const auto& e = m_profile->modList().at(i);
-            // The hidden managed shader-cache mod never appears in the list and is
-            // excluded from the priority numbering entirely, so the first VISIBLE
-            // mod is #1 regardless of where the hidden mod sits in the raw order.
-            if (e.isManagedCache) continue;
             if (e.type == EntryType::Mod)
                 m_priorityByRaw.insert(i, ++modPos);
             m_visibleRows.append(i);
@@ -167,10 +163,6 @@ void ModListModel::rebuildVisibleRows() {
     int modPos = 0;            // running 1-based Mod position, raw order
     for (int i = 0; i < m_profile->modList().count(); ++i) {
         const auto& e = m_profile->modList().at(i);
-        // The hidden managed shader-cache mod is filtered out of the view entirely
-        // (no visible row) and is excluded from the priority numbering, so the first
-        // visible mod is #1 wherever the hidden mod happens to sit in the raw order.
-        if (e.isManagedCache) continue;
         if (e.type == EntryType::Mod)
             ++modPos;
         if (e.type == EntryType::Mod)
@@ -582,11 +574,10 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
     auto& list = m_profile->modList();
 
     // Destination raw index. The Overwrite row (visible) maps to raw -1; treat a
-    // drop there as "append to the end of the real mod list", i.e. just above the
-    // pinned Overwrite but BELOW... no: above the trailing managed-cache mod, which
-    // must stay last. Any other invalid dst aborts.
+    // drop there as "append to the end of the real mod list". Any other invalid
+    // dst aborts.
     int dstRaw = rawIndexForRow(dst);
-    if (dstRaw == -1) dstRaw = list.firstTrailingManagedCacheIndex();
+    if (dstRaw == -1) dstRaw = list.count();
     else if (dstRaw < 0) return false;
 
     const bool draggingSeparator =
@@ -672,10 +663,9 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
     }
 
     // QList::move() needs a valid destination index in [0, count-1]. A drop at the
-    // end maps to the last real slot ABOVE the trailing managed-cache run, so the
-    // cache mod stays pinned last. Guard the empty/all-cache case.
+    // end maps to the last real slot. Guard the empty case.
     int moveTo = dstRaw;
-    const int ceiling = list.firstTrailingManagedCacheIndex();
+    const int ceiling = list.count();
     if (moveTo >= ceiling) moveTo = qMax(0, qMin(moveTo, ceiling - 1));
     if (moveTo == srcRaw) return false; // no-op
 
@@ -799,10 +789,9 @@ bool ModListModel::moveSelection(const QList<int>& srcVisibleRows, int dstVisibl
     std::sort(orderedSrcRaws.begin(), orderedSrcRaws.end());
     if (orderedSrcRaws.isEmpty()) return false;
 
-    // 4. Destination raw index. Overwrite (-1) -> append to the end, but ABOVE the
-    // trailing managed-cache run so the cache mod stays pinned last.
+    // 4. Destination raw index. Overwrite (-1) -> append to the end of the list.
     int dstRaw = rawIndexForRow(dstVisible);
-    if (dstRaw == -1) dstRaw = list.firstTrailingManagedCacheIndex();
+    if (dstRaw == -1) dstRaw = list.count();
     else if (dstRaw < 0) return false;
 
     // 5. Snap off a group-child boundary so a non-moved group isn't split.

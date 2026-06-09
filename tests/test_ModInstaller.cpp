@@ -5,6 +5,8 @@
 #include <QDir>
 #include "install/ModInstaller.h"
 #include "install/ArchiveTool.h"
+#include "core/StagingFolder.h"
+#include "core/Types.h"
 using namespace solero;
 
 static void writeFile(const QString& path, const QByteArray& c = "x") {
@@ -80,6 +82,40 @@ private slots:
         QVERIFY(r.success);
         QVERIFY(QFile::exists(staging + "/" + r.modId + "/skse64_loader.exe"));
         QVERIFY(QFile::exists(staging + "/" + r.modId + "/Data/Scripts/a.pex"));
+    }
+    // Regression (data-loss): a Replace/Reinstall whose mod dir was migrated from
+    // its UUID to a human staging-folder name must write into THAT folder (the one
+    // deploy reads via stagingPathFor), not the UUID dir. We pass a
+    // stagingFolderOverride resolved by stagingPathFor and assert files land there.
+    void reinstall_writesIntoStagingFolder_notUuid() {
+        QTemporaryDir tmp;
+        QString src = tmp.path() + "/srcmod";
+        writeFile(src + "/Data/textures/new.dds", "new");
+        QString archive = tmp.path() + "/MyMod.zip";
+        QProcess z; z.setWorkingDirectory(src);
+        z.start("7z", {"a", archive, "."});
+        QVERIFY(z.waitForFinished(60000));
+
+        QString staging = tmp.path() + "/staging";
+
+        // Simulate an existing mod whose dir was migrated to its human name.
+        ModEntry existing;
+        existing.id = "11111111-2222-3333-4444-555555555555";
+        existing.name = "My Cool Mod";
+        existing.stagingFolder = "My Cool Mod";       // migrated, != UUID
+        const QString resolved = stagingPathFor(staging, existing); // staging/My Cool Mod
+        QVERIFY(resolved.endsWith("/My Cool Mod"));
+
+        auto prep = ModInstaller::prepare(archive);
+        QVERIFY2(prep.ok, prep.errorMessage.toUtf8());
+        auto r = ModInstaller::stageSimple(prep, staging, existing.id, {}, resolved);
+        QVERIFY2(r.success, r.errorMessage.toUtf8());
+        QCOMPARE(r.modId, existing.id);
+
+        // Files land in the human-named staging folder (where deploy reads)…
+        QVERIFY(QFile::exists(resolved + "/Data/textures/new.dds"));
+        // …and not in the UUID dir (the old, orphaning bug).
+        QVERIFY(!QDir(staging + "/" + existing.id).exists());
     }
 };
 QTEST_MAIN(TestModInstaller)

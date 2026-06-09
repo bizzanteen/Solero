@@ -44,12 +44,29 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
                                    const QString& stagingRoot,
                                    const QString& outputModFolder) {
     Result r;
-    QString captureBase = gameDir + "/Data";
     bool capture = exe.isCapturingOutput;
+
+    // Capture roots: always Data, plus any extra roots a tool/preset declares
+    // (e.g. DynDOLOD_Output, xEdit root logs) relative to gameDir. Empty extras =
+    // identical behavior to the old Data-only capture.
+    QStringList captureBases;
+    captureBases << gameDir + "/Data";
+    for (const QString& extra : exe.captureRoots) {
+        const QString trimmed = extra.trimmed();
+        if (trimmed.isEmpty()) continue;
+        // Resolve relative roots against gameDir; allow absolute as-is.
+        const QString base = QFileInfo(trimmed).isAbsolute()
+            ? trimmed : (gameDir + "/" + trimmed);
+        if (!captureBases.contains(base)) captureBases << base;
+    }
 
     // Record the launch time so we can capture any file created OR modified
     // during the run via a single post-run mtime walk (no giant before snapshot).
     QDateTime runStart;
+    // Pre-launch mtime snapshot per capture base: lets the post-run walk tell a
+    // genuinely new/modified file from a pre-existing unmanaged loose file that
+    // merely shares the launch whole-second (see captureNewFiles).
+    QHash<QString, QHash<QString, qint64>> preSnapshots;
 
     QProcess proc;
     // Many Windows tools (xEdit, DynDOLOD) expect cwd to be their install dir.
@@ -73,7 +90,11 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
         }
         QFile(exe.binaryPath).setPermissions(QFile(exe.binaryPath).permissions()
             | QFileDevice::ExeOwner | QFileDevice::ExeGroup | QFileDevice::ExeUser);
-        if (capture) runStart = QDateTime::currentDateTime();
+        if (capture) {
+            for (const QString& base : captureBases)
+                preSnapshots.insert(base, snapshotMtimes(base));
+            runStart = QDateTime::currentDateTime();
+        }
         proc.start(exe.binaryPath, args);
     } else {
         // Windows tool via umu-run, reusing the Skyrim Proton prefix.
@@ -101,7 +122,11 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
         env.insert("PROTON_VERB", "waitforexitandrun");
         proc.setProcessEnvironment(env);
         QStringList pargs; pargs << exe.binaryPath; pargs += args;
-        if (capture) runStart = QDateTime::currentDateTime();
+        if (capture) {
+            for (const QString& base : captureBases)
+                preSnapshots.insert(base, snapshotMtimes(base));
+            runStart = QDateTime::currentDateTime();
+        }
         proc.start("umu-run", pargs);
     }
     if (!proc.waitForStarted(15000)) { r.error = "Failed to start: " + exe.binaryPath; return r; }
@@ -124,15 +149,29 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
         // moved into the capture target merely because its mtime was bumped.
         DeployRecord rec = DeployRecord::loadFromFile(DeployEngine::recordPath(gameDir));
         QString warning;
-        captureNewFiles(captureBase, destBase, gameDir, runStart, rec, &warning);
+        for (const QString& base : captureBases)
+            captureNewFiles(base, destBase, gameDir, runStart, rec,
+                            preSnapshots.value(base), &warning);
         r.output += warning;
     }
     return r;
 }
 
+QHash<QString, qint64> ToolRunner::snapshotMtimes(const QString& captureBase) {
+    QHash<QString, qint64> out;
+    QDirIterator it(captureBase, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QString f = it.next();
+        out.insert(f, it.fileInfo().lastModified().toMSecsSinceEpoch());
+    }
+    return out;
+}
+
 int ToolRunner::captureNewFiles(const QString& captureBase, const QString& destBase,
                                 const QString& gameDir, const QDateTime& runStart,
-                                const DeployRecord& record, QString* warning) {
+                                const DeployRecord& record,
+                                const QHash<QString, qint64>& preSnapshot,
+                                QString* warning) {
     QDir dataDir(captureBase);
     QDir gameRoot(gameDir);
     int moved = 0, failures = 0;
@@ -151,7 +190,14 @@ int ToolRunner::captureNewFiles(const QString& captureBase, const QString& destB
     QDirIterator it(captureBase, QDir::Files, QDirIterator::Subdirectories);
     while (it.hasNext()) {
         QString f = it.next();
+        const qint64 mtime = it.fileInfo().lastModified().toMSecsSinceEpoch();
         if (it.fileInfo().lastModified() < cutoff) continue;
+        // Whole-second floor can sweep up an UNMANAGED pre-existing loose file
+        // written in the same second before launch. Guard with the pre-launch
+        // snapshot: capture only if the file is genuinely new (absent from the
+        // snapshot) OR its mtime is strictly greater than its snapshot value.
+        auto snapIt = preSnapshot.constFind(f);
+        if (snapIt != preSnapshot.constEnd() && mtime <= snapIt.value()) continue;
         // relPath relative to gameDir (e.g. "Data/SKSE/Plugins/foo.dll") matches
         // the deploy record's keys; a managed/deployed file is left in place.
         if (!record.ownerOf(gameRoot.relativeFilePath(f)).isEmpty()) continue;

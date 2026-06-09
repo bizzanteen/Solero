@@ -90,6 +90,10 @@ struct Executable {
     // Tool-mode only
     bool isCapturingOutput = false;
     QString outputModId;     // if isCapturingOutput; empty = Overwrite
+    // Extra capture roots (relative to gameDir, or absolute) walked alongside Data
+    // when isCapturingOutput is set - e.g. "DynDOLOD_Output" for DynDOLOD, or an
+    // xEdit root log dir. Empty = capture Data only (unchanged behavior).
+    QStringList captureRoots;
     QString iconPath;
     QList<ToolAction> extraActions;
 };

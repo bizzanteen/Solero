@@ -111,6 +111,9 @@ void ModList::groupUnder(const QString& childId, const QString& parentId) {
     }
     if (parentRaw < 0 || childRaw < 0) return;
     if (m_entries.at(parentRaw).type != EntryType::Mod) return;
+    // Only a plain Mod can be grouped under a parent - never a Separator (it owns
+    // a whole section, not a single entry), which would corrupt the section model.
+    if (m_entries.at(childRaw).type != EntryType::Mod) return;
 
     // Re-parent. (childRunCount uses parentId, so set this first.)
     m_entries[childRaw].parentId = parentId;

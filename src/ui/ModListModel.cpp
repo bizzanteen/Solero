@@ -649,6 +649,25 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
         return true;
     }
 
+    // Snap off a group-child boundary so dropping a single mod into the MIDDLE of
+    // an expanded group lands it after the group, never between two children (which
+    // would orphan the trailing children / split the group). Only snap when the
+    // drop target is a child of a group we're not moving (i.e. a different group),
+    // mirroring the group-parent (~599) and moveSelection (~774) paths.
+    bool snapped = false;
+    if (dstRaw > 0 && dstRaw < list.count()) {
+        const auto& at = list.at(dstRaw);
+        if (at.type == EntryType::Mod && !at.parentId.isEmpty()
+            && at.parentId != list.at(srcRaw).parentId) {
+            while (dstRaw < list.count()
+                   && list.at(dstRaw).type == EntryType::Mod
+                   && !list.at(dstRaw).parentId.isEmpty()) {
+                ++dstRaw;
+                snapped = true;
+            }
+        }
+    }
+
     // QList::move() needs a valid destination index in [0, count-1]. A drop at the
     // end maps to the last real slot ABOVE the trailing managed-cache run, so the
     // cache mod stays pinned last. Guard the empty/all-cache case.
@@ -656,6 +675,19 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
     const int ceiling = list.firstTrailingManagedCacheIndex();
     if (moveTo >= ceiling) moveTo = qMax(0, qMin(moveTo, ceiling - 1));
     if (moveTo == srcRaw) return false; // no-op
+
+    // If the snap pushed the destination past the visible drop row, the raw move
+    // no longer corresponds 1:1 to the visible (src->dst) pair, so use a full reset
+    // (like the group-parent/separator paths) to keep the row mapping consistent.
+    if (snapped) {
+        beginResetModel();
+        list.move(srcRaw, moveTo);
+        m_profile->save();
+        rebuildVisibleRows();
+        endResetModel();
+        emit modsChanged();
+        return true;
+    }
 
     beginMoveRows({}, src, src, {}, dst > src ? dst + 1 : dst);
     list.move(srcRaw, moveTo);

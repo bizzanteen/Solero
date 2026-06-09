@@ -37,7 +37,7 @@ private slots:
 
         QString warning;
         int moved = ToolRunner::captureNewFiles(captureBase, destBase, gameDir,
-                                                runStart, rec, &warning);
+                                                runStart, rec, {}, &warning);
 
         QCOMPARE(moved, 1);
         QVERIFY(warning.isEmpty());
@@ -74,9 +74,49 @@ private slots:
 
         QString warning;
         int moved = ToolRunner::captureNewFiles(captureBase, destBase, gameDir,
-                                                runStart, DeployRecord{}, &warning);
+                                                runStart, DeployRecord{}, {}, &warning);
         QCOMPARE(moved, 0);
         QVERIFY(QFile::exists(oldAbs));
+    }
+
+    // Regression (data-relocation): an UNMANAGED pre-existing loose file written in
+    // the same whole-second before launch must not be captured (the whole-second
+    // floor would otherwise sweep it up). The pre-launch snapshot guards it, while
+    // a genuinely new file in the same second IS still captured.
+    void captureRespectsPreLaunchSnapshot() {
+        QTemporaryDir tmp;
+        const QString gameDir = tmp.path() + "/game";
+        const QString captureBase = gameDir + "/Data";
+        const QString destBase = tmp.path() + "/overwrite";
+        QVERIFY(QDir().mkpath(captureBase));
+
+        // (a) Pre-existing unmanaged loose file, present before launch.
+        const QString preAbs = captureBase + "/loose.ini";
+        { QFile f(preAbs); QVERIFY(f.open(QIODevice::WriteOnly)); f.write("pre"); }
+
+        // Snapshot taken pre-launch (as ToolRunner::run does).
+        const QHash<QString, qint64> snap = ToolRunner::snapshotMtimes(captureBase);
+        QVERIFY(snap.contains(preAbs));
+
+        // runStart in the same whole-second as the pre-existing file's mtime: floor
+        // it to seconds so the pre-existing file would pass the cutoff test (the bug).
+        QDateTime runStart = QDateTime::currentDateTime();
+        runStart = runStart.addMSecs(-runStart.time().msec());
+
+        QTest::qWait(20);
+        // (b) A genuinely new file created after launch.
+        const QString newAbs = captureBase + "/created.bin";
+        { QFile f(newAbs); QVERIFY(f.open(QIODevice::WriteOnly)); f.write("new"); }
+
+        QString warning;
+        int moved = ToolRunner::captureNewFiles(captureBase, destBase, gameDir,
+                                                runStart, DeployRecord{}, snap, &warning);
+        // Only the genuinely new file is captured; the pre-existing loose file stays.
+        QCOMPARE(moved, 1);
+        QVERIFY(QFile::exists(preAbs));                       // untouched
+        QVERIFY(!QFile::exists(destBase + "/loose.ini"));     // never captured
+        QVERIFY(!QFile::exists(newAbs));                      // moved out
+        QVERIFY(QFile::exists(destBase + "/created.bin"));    // captured
     }
 };
 

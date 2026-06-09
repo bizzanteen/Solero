@@ -52,6 +52,17 @@ bool ModInstaller::moveNormalized(const QString& extractDir,
         }
         if (stripped.isEmpty()) continue;
 
+        // Never stage FOMOD installer metadata into the mod: a top-level "fomod"
+        // path component (case-insensitive) holds ModuleConfig.xml/info.xml and
+        // installer images, which would otherwise leak into the game's Data dir
+        // (e.g. on the parse-failure fallback that stages all files). Match a
+        // leading "fomod/" in the stripped path.
+        {
+            const int slash = stripped.indexOf('/');
+            const QString topComp = slash < 0 ? stripped : stripped.left(slash);
+            if (topComp.compare("fomod", Qt::CaseInsensitive) == 0) continue;
+        }
+
         QString target = layout.wrapInData ? ("Data/" + stripped) : stripped;
         QString dst = modDir + "/" + target;
         QDir().mkpath(QFileInfo(dst).path());
@@ -172,14 +183,18 @@ bool ModInstaller::extractFull(InstallPrep& prep, const std::function<void(int)>
 
 InstallResult ModInstaller::stageSimple(InstallPrep& prep, const QString& stagingRoot,
                                         const QString& existingModId,
-                                        const std::function<void(int)>& onProgress) {
+                                        const std::function<void(int)>& onProgress,
+                                        const QString& stagingFolderOverride) {
     InstallResult r;
     if (!prep.ok) { r.errorMessage = prep.errorMessage; return r; }
     if (prep.layout.isFomod && !prep.fullyExtracted) extractFull(prep, onProgress); // wizard only extracted fomod/; rare parse-fail fallback needs all files
     r.modId = existingModId.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : existingModId;
     r.modName = prep.modName;
     r.isFomod = prep.layout.isFomod;
-    QString modDir = stagingRoot + "/" + r.modId;
+    // Replace/Reinstall: write into the existing mod's migrated staging folder when
+    // provided, else fall back to the UUID dir (new installs).
+    QString modDir = stagingFolderOverride.isEmpty()
+        ? (stagingRoot + "/" + r.modId) : stagingFolderOverride;
     if (!existingModId.isEmpty()) {
         // Reinstall: wipe the previous staged files (keep the dir).
         QDir md(modDir);
@@ -200,14 +215,18 @@ InstallResult ModInstaller::stageSimple(InstallPrep& prep, const QString& stagin
 InstallResult ModInstaller::stageFomod(InstallPrep& prep, const QString& stagingRoot,
                                        const QList<FomodFile>& files,
                                        const QString& existingModId,
-                                       const std::function<void(int)>& onProgress) {
+                                       const std::function<void(int)>& onProgress,
+                                       const QString& stagingFolderOverride) {
     InstallResult r;
     if (!prep.ok) { r.errorMessage = prep.errorMessage; return r; }
     if (!prep.fullyExtracted) extractFull(prep, onProgress); // wizard only extracted fomod/; now get the rest
     r.modId = existingModId.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : existingModId;
     r.modName = prep.modName;
     r.isFomod = true;
-    QString modDir = stagingRoot + "/" + r.modId;
+    // Replace/Reinstall: write into the existing mod's migrated staging folder when
+    // provided, else fall back to the UUID dir (new installs).
+    QString modDir = stagingFolderOverride.isEmpty()
+        ? (stagingRoot + "/" + r.modId) : stagingFolderOverride;
     if (!existingModId.isEmpty()) {
         // Reinstall: wipe the previous staged files (keep the dir).
         QDir md(modDir);

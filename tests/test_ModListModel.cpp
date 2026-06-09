@@ -190,6 +190,30 @@ private slots:
         QCOMPARE(order(prof), QString("u0,P0,c0,c1"));
     }
 
+    void group_dropSingleModBetweenChildren_landsAfterGroup() {
+        // Regression: dragging a lone mod into the MIDDLE of an expanded group must
+        // not split the group. It should land after the whole child run.
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        // [x, parent, c0, c1] (+ Overwrite). x is a plain mod; c0,c1 belong to parent.
+        ModEntry x; x.type = EntryType::Mod; x.id = "x"; x.name = "X";
+        ModEntry parent; parent.type = EntryType::Mod; parent.id = "P0"; parent.name = "Parent";
+        ModEntry c0; c0.type = EntryType::Mod; c0.id = "c0"; c0.name = "Child0"; c0.parentId = "P0";
+        ModEntry c1; c1.type = EntryType::Mod; c1.id = "c1"; c1.name = "Child1"; c1.parentId = "P0";
+        prof.modList().append(x);
+        prof.modList().append(parent);
+        prof.modList().append(c0);
+        prof.modList().append(c1);
+        ModListModel model;
+        model.setProfile(&prof);
+        // Visible: 0=x,1=parent,2=c0,3=c1,4=Overwrite. Drop x between c0 and c1
+        // (visible row 3). It must snap past the group, never splitting it.
+        QScopedPointer<QMimeData> mime(modMime(0));
+        QVERIFY(!model.dropMimeData(mime.data(), Qt::MoveAction, 3, 0, {}));
+        // x lands after the group: P0,c0,c1,x - never P0,c0,x,c1.
+        QCOMPARE(order(prof), QString("P0,c0,c1,x"));
+    }
+
     void stateFilterSources_reflectConflictsUpdatesDeps() {
         QTemporaryDir tmp;
         Profile prof("P", tmp.path());

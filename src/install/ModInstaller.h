@@ -44,13 +44,19 @@ public:
 
     static InstallPrep prepare(const QString& archivePath,
                                const std::function<void(int)>& onProgress = {});
+    // stagingFolderOverride: when non-empty, the full on-disk mod directory to
+    // write into (resolve via stagingPathFor() for a Replace/Reinstall whose mod
+    // dir was migrated from its UUID to its human staging-folder name). When empty,
+    // new installs use <stagingRoot>/<modId> as before.
     static InstallResult stageSimple(InstallPrep& prep, const QString& stagingRoot,
                                      const QString& existingModId = {},
-                                     const std::function<void(int)>& onProgress = {});
+                                     const std::function<void(int)>& onProgress = {},
+                                     const QString& stagingFolderOverride = {});
     static InstallResult stageFomod(InstallPrep& prep, const QString& stagingRoot,
                                     const QList<FomodFile>& files,
                                     const QString& existingModId = {},
-                                    const std::function<void(int)>& onProgress = {});
+                                    const std::function<void(int)>& onProgress = {},
+                                    const QString& stagingFolderOverride = {});
     static void extractSubpaths(InstallPrep& prep, const QStringList& subpaths,
                                 const std::function<void(int)>& onProgress = {});
 

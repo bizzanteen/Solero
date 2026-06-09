@@ -94,6 +94,9 @@ struct Executable {
     // when isCapturingOutput is set - e.g. "DynDOLOD_Output" for DynDOLOD, or an
     // xEdit root log dir. Empty = capture Data only (unchanged behavior).
     QStringList captureRoots;
+    // True for tools that write to their own output path (e.g. Radium) - Solero
+    // skips the Data capture walk and relies on the tool's configured output dir.
+    bool writesOutputDirectly = false;
     QString iconPath;
     QList<ToolAction> extraActions;
 };

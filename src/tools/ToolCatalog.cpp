@@ -110,6 +110,7 @@ const QList<ToolPreset>& ToolCatalog::presets() {
             t.proton = false;
             t.producesOutput = true;
             t.outputModName = "Radium Output";
+            t.writesOutputDirectly = true;
             v << t;
         }
 

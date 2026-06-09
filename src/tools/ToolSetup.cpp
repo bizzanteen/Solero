@@ -20,6 +20,7 @@ Executable buildExecutable(const ToolPreset& preset,
     e.protonVersion = QFileInfo(AppConfig::instance().detectProtonDir()).fileName();
     e.winePrefix = winePrefix;
     e.runThroughDeployer = false;
+    e.writesOutputDirectly = preset.writesOutputDirectly;
 
     // Build extra actions: resolve each secondary exe in the same install dir,
     // case-insensitively (the install may have a differently-cased filename).

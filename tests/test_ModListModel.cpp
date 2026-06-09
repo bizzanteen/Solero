@@ -46,6 +46,22 @@ private:
     }
 
 private slots:
+    // A hidden managed shader-cache mod must not consume a priority slot, even when
+    // it sits at the top of the raw order: the first VISIBLE mod is #1, not #2.
+    void priority_excludesHiddenManagedCache() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        { ModEntry e; e.type = EntryType::Mod; e.id = "cache";
+          e.name = "Community Shaders - Shader Cache"; e.enabled = true;
+          e.isManagedCache = true; prof.modList().append(e); }
+        addMods(prof, 3); // m0,m1,m2 after the hidden cache mod
+        ModListModel model;
+        model.setProfile(&prof);
+        QCOMPARE(model.data(model.index(0, ModListModel::ColPriority), Qt::DisplayRole).toInt(), 1);
+        QCOMPARE(model.data(model.index(1, ModListModel::ColPriority), Qt::DisplayRole).toInt(), 2);
+        QCOMPARE(model.data(model.index(2, ModListModel::ColPriority), Qt::DisplayRole).toInt(), 3);
+    }
+
     void dropMimeData_moveDown() {
         QTemporaryDir tmp;
         Profile prof("P", tmp.path());

@@ -143,12 +143,12 @@ void ModListModel::rebuildVisibleRows() {
         int modPos = 0;
         for (int i = 0; i < m_profile->modList().count(); ++i) {
             const auto& e = m_profile->modList().at(i);
-            // The hidden managed shader-cache mod never appears in the list, but it
-            // still counts toward the Mod priority numbering (it's a real mod).
-            if (e.type == EntryType::Mod) ++modPos;
+            // The hidden managed shader-cache mod never appears in the list and is
+            // excluded from the priority numbering entirely, so the first VISIBLE
+            // mod is #1 regardless of where the hidden mod sits in the raw order.
             if (e.isManagedCache) continue;
             if (e.type == EntryType::Mod)
-                m_priorityByRaw.insert(i, modPos);
+                m_priorityByRaw.insert(i, ++modPos);
             m_visibleRows.append(i);
         }
         m_visibleRows.append(-1); // Overwrite always at bottom
@@ -167,12 +167,12 @@ void ModListModel::rebuildVisibleRows() {
     int modPos = 0;            // running 1-based Mod position, raw order
     for (int i = 0; i < m_profile->modList().count(); ++i) {
         const auto& e = m_profile->modList().at(i);
+        // The hidden managed shader-cache mod is filtered out of the view entirely
+        // (no visible row) and is excluded from the priority numbering, so the first
+        // visible mod is #1 wherever the hidden mod happens to sit in the raw order.
+        if (e.isManagedCache) continue;
         if (e.type == EntryType::Mod)
             ++modPos;
-        // The hidden managed shader-cache mod is filtered out of the view entirely
-        // (no visible row, no priority slot), but it still consumes a Mod position
-        // above so the remaining mods keep their stable numbering.
-        if (e.isManagedCache) continue;
         if (e.type == EntryType::Mod)
             m_priorityByRaw.insert(i, modPos);
         if (e.type == EntryType::Separator) {
@@ -371,9 +371,9 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     if (role == Qt::ToolTipRole && !isSep) {
         QStringList tips;
         if (m_overwritingMods.contains(entry.id))
-            tips << QStringLiteral("\xe2\x96\xb2 Overwrites other mods (wins file conflicts)");
+            tips << (QChar(0x25B2) + QStringLiteral(" Overwrites other mods (wins file conflicts)"));
         if (m_overwrittenMods.contains(entry.id))
-            tips << QStringLiteral("\xe2\x96\xbc Overwritten by other mods (loses file conflicts)");
+            tips << (QChar(0x25BC) + QStringLiteral(" Overwritten by other mods (loses file conflicts)"));
         if (m_depWarnings.contains(entry.id))
             tips << m_depWarnings.value(entry.id).join("\n");
         if (m_updates.contains(entry.id)) {
@@ -381,7 +381,7 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
             tips << QString("Update available: %1 \xe2\x86\x92 %2").arg(u.first, u.second);
         }
         if (!entry.note.isEmpty())
-            tips << QStringLiteral("\xf0\x9f\x93\x9d Note: ") + entry.note; // 📝
+            tips << QString::fromUtf8("\xf0\x9f\x93\x9d Note: ") + entry.note; // 📝 (non-BMP -> fromUtf8)
         if (entry.isFomod) {
             if (entry.fomodStatus == "needs-rerun") {
                 tips << QStringLiteral(

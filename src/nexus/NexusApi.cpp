@@ -256,6 +256,45 @@ QList<NexusApi::NexusFile> NexusApi::files(const QString& modId, const QString& 
     return out;
 }
 
+QList<NexusApi::ModRequirement> NexusApi::modRequirements(const QString& modId, const QString& game) {
+    QList<ModRequirement> out;
+    if (modId.isEmpty()) return out;
+    const QString gameId = numericGameId(game);
+    const QString q = QString(
+        "query{mod(modId:\"%1\",gameId:\"%2\"){modRequirements{"
+        "nexusRequirements{nodes{modId modName externalRequirement notes}}}}}")
+        .arg(modId, gameId);
+    QJsonObject reqObj; reqObj["query"] = q;
+    QByteArray reqBody = QJsonDocument(reqObj).toJson(QJsonDocument::Compact);
+    QByteArray body = curlPostJson("https://api.nexusmods.com/v2/graphql", reqBody);
+    if (body.isEmpty()) return out;
+    auto doc = QJsonDocument::fromJson(body);
+    if (!doc.isObject()) return out;
+    auto root = doc.object();
+    if (root.contains("errors")) return out;   // not-found / malformed query
+    // modId may serialize as a JSON number or a string; accept either.
+    auto idOf = [](const QJsonObject& o) -> QString {
+        const QJsonValue v = o["modId"];
+        if (v.isString()) return v.toString();
+        int n = v.toInt();
+        return n > 0 ? QString::number(n) : QString();
+    };
+    auto nodes = root["data"].toObject()["mod"].toObject()
+                     ["modRequirements"].toObject()
+                     ["nexusRequirements"].toObject()["nodes"].toArray();
+    for (const auto& v : nodes) {
+        auto o = v.toObject();
+        ModRequirement r;
+        r.modId = idOf(o);
+        if (r.modId.isEmpty()) continue;
+        r.modName = o["modName"].toString();
+        r.external = o["externalRequirement"].toBool();
+        r.notes = o["notes"].toString();
+        out.append(r);
+    }
+    return out;
+}
+
 QString NexusApi::downloadUrl(const QString& modId, const QString& fileId, const QString& game) {
     if (modId.isEmpty() || fileId.isEmpty()) return {};
     QByteArray body = curlGet(kBase + game + "/mods/" + modId + "/files/" + fileId + "/download_link.json");

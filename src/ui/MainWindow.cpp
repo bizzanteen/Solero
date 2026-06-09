@@ -25,6 +25,7 @@
 #include "ui/ExecutableDialog.h"
 #include "ui/ToolsManagerDialog.h"
 #include "ui/NexusWebView.h"
+#include "ui/RequirementsDialog.h"
 #include "ui/LootRulesEditor.h"
 #include "ui/PatchWizardDialog.h"
 #include "tools/ToolRunner.h"
@@ -1579,6 +1580,22 @@ void MainWindow::installFromArchive(const QString& archive) {
             if (!parentId.isEmpty())
                 profile->modList().groupUnder(mod.id, parentId);
         }
+
+        // If this mod was just installed to satisfy another mod's requirement, move
+        // it to sit directly above that dependent (anchor-by-identity reorder).
+        if (!mod.nexusModId.isEmpty() && m_placeAboveByModId.contains(mod.nexusModId)) {
+            const QString depId = m_placeAboveByModId.take(mod.nexusModId);
+            auto& ml = profile->modList();
+            if (ml.findById(depId)) {
+                int from = -1, to = -1;
+                for (int i = 0; i < ml.count(); ++i) {
+                    if (ml.at(i).id == mod.id)  from = i;
+                    if (ml.at(i).id == depId)   to = i;
+                }
+                if (from >= 0 && to >= 0 && from != to)
+                    ml.reorder({from}, to); // insert just before the dependent
+            }
+        }
         profile->save();
     }
 
@@ -1601,6 +1618,11 @@ void MainWindow::installFromArchive(const QString& archive) {
     // A freshly-installed Community Shaders triggers the one-time managed-cache
     // offer (no-op if CS isn't present, already managed, or previously declined).
     maybeOfferShaderCacheManagement();
+
+    // Fresh Nexus install: check its requirements and offer any that are missing.
+    // (Skip Replace/reinstall - existingModId set - to avoid nagging on every update.)
+    if (existingModId.isEmpty() && !sidecarModId.isEmpty())
+        checkRequirementsAfterInstall(profile, result.modId, sidecarModId, sidecarGame);
 }
 
 void MainWindow::onReinstallMod(const QString& modId) {
@@ -2207,6 +2229,98 @@ void MainWindow::installSkseFromNexus() {
         out.ok = true;
         return out;
     }));
+}
+
+void MainWindow::checkRequirementsAfterInstall(solero::Profile* profile,
+                                               const QString& dependentModId,
+                                               const QString& nexusModId,
+                                               const QString& game) {
+    if (!profile || nexusModId.isEmpty()) return;
+    if (!solero::NexusApi::keyAvailable()) return; // can't query or install without a key
+
+    const QString g = game.isEmpty() ? QString(solero::NexusApi::kDefaultGame) : game;
+    QList<solero::NexusApi::ModRequirement> reqs;
+    {
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+        reqs = solero::NexusApi::modRequirements(nexusModId, g);
+        QApplication::restoreOverrideCursor();
+    }
+    if (reqs.isEmpty()) return;
+
+    // Keep only requirements not already satisfied in this profile.
+    QList<solero::RequirementsDialog::Item> missing;
+    const auto& ml = profile->modList();
+    for (const auto& r : reqs) {
+        // Already present as an enabled mod carrying this Nexus id?
+        bool have = false;
+        for (const auto& e : ml.entries()) {
+            if (e.type != solero::EntryType::Mod || !e.enabled) continue;
+            if (e.nexusModId == r.modId) { have = true; break; }
+        }
+        if (have) continue;
+        // SKSE (30379) also lives at the game root outside the mod list.
+        if (r.modId == "30379" && skseInstalledFor(profile)) continue;
+        missing.append({r.modId, r.modName, r.notes, r.external});
+    }
+    if (missing.isEmpty()) return;
+
+    const solero::ModEntry* dep = ml.findById(dependentModId);
+    const QString depName = dep ? dep->name : QStringLiteral("this mod");
+
+    auto* dlg = new solero::RequirementsDialog(depName, missing, this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dlg, &solero::RequirementsDialog::installRequested, this,
+            [this, dependentModId, g](const QString& modId, const QString& modName) {
+                downloadRequirement(modId, modName, dependentModId, g);
+            });
+    dlg->exec();
+}
+
+void MainWindow::downloadRequirement(const QString& reqModId, const QString& reqName,
+                                     const QString& dependentModId, const QString& game) {
+    const QString g = game.isEmpty() ? QString(solero::NexusApi::kDefaultGame) : game;
+
+    // Pick the requirement's main file at the highest version (fallback: highest overall).
+    QString fileId, version;
+    {
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+        const auto files = solero::NexusApi::files(reqModId, g);
+        QApplication::restoreOverrideCursor();
+        const solero::NexusApi::NexusFile* picked = nullptr;
+        for (const auto& f : files) {
+            if (f.category.compare("MAIN", Qt::CaseInsensitive) != 0) continue;
+            if (!picked || f.version > picked->version) picked = &f;
+        }
+        if (!picked)
+            for (const auto& f : files)
+                if (!picked || f.version > picked->version) picked = &f;
+        if (picked) { fileId = picked->fileId; version = picked->version; }
+    }
+    if (fileId.isEmpty()) {
+        QMessageBox::warning(this, "Install requirement",
+            QString("Couldn't find a downloadable file for \"%1\" on Nexus.").arg(reqName));
+        return;
+    }
+
+    const QString url = solero::NexusApi::downloadUrl(reqModId, fileId, g);
+    if (url.isEmpty()) {
+        QMessageBox::information(this, "Install requirement",
+            QString("In-app download of \"%1\" needs Nexus Premium. Use the mod page's "
+                    "'Mod Manager Download' (nxm) button on the website instead.").arg(reqName));
+        return;
+    }
+    QString fn = QUrl(url).fileName();
+    if (fn.isEmpty()) fn = "nexus-" + reqModId + "-" + fileId + ".archive";
+
+    // Tag for sidecar + auto-install on finish, and record where to place it.
+    m_nxmMeta[fn] = QJsonObject{
+        {"game", g}, {"modId", reqModId}, {"fileId", fileId},
+        {"version", version}, {"name", reqName}};
+    m_autoInstall.insert(fn);
+    m_placeAboveByModId[reqModId] = dependentModId;
+    m_downloads->enqueue(url, fn, solero::AppConfig::instance().downloadsDir());
+    m_rightPane->showDownloadsTab();
+    statusBar()->showMessage("Downloading " + reqName + "\xe2\x80\xa6");
 }
 
 void MainWindow::onCheckUpdates() {

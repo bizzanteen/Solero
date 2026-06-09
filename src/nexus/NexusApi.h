@@ -39,6 +39,12 @@ public:
     struct NexusFile { QString fileId, name, version, category, description; qint64 sizeKb = 0; };
     static QList<NexusFile> files(const QString& modId, const QString& game = kDefaultGame);
 
+    // Lists a mod's Nexus mod requirements (v2 GraphQL). external == true marks
+    // an off-site requirement that isn't a Nexus mod on this game. Returns empty
+    // on any failure (network, errors, not-found).
+    struct ModRequirement { QString modId, modName, notes; bool external = false; };
+    static QList<ModRequirement> modRequirements(const QString& modId, const QString& game = kDefaultGame);
+
     // First mirror URI from v1 download_link.json. Premium accounts get this
     // without an nxm key/expires; non-premium returns "" (caller handles).
     static QString downloadUrl(const QString& modId, const QString& fileId, const QString& game = kDefaultGame);

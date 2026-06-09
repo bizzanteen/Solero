@@ -169,6 +169,15 @@ private:
     bool skseInstalledFor(solero::Profile* profile) const;
     void maybeOfferSkse();
     void installSkseFromNexus();
+    // After a Nexus mod installs, query its requirements and, for any that aren't
+    // already installed, offer to install them (placed just above the dependent mod).
+    void checkRequirementsAfterInstall(solero::Profile* profile,
+                                       const QString& dependentModId,
+                                       const QString& nexusModId, const QString& game);
+    // Resolve a required mod's main file and download+install it via the auto-install
+    // path, recording that it should land directly above dependentModId.
+    void downloadRequirement(const QString& reqModId, const QString& reqName,
+                             const QString& dependentModId, const QString& game);
     void onModsChanged();
     void onZoomIn();
     void onZoomOut();
@@ -258,6 +267,9 @@ private:
     bool m_skseInstalling = false; // guard against re-offering while a SKSE DL is pending
     // Filenames flagged to auto-install once their download finishes (e.g. SKSE).
     QSet<QString> m_autoInstall;
+    // requirement's Nexus modId -> the dependent mod's id it should be placed above,
+    // applied when the requirement finishes installing (see checkRequirementsAfterInstall).
+    QHash<QString, QString> m_placeAboveByModId;
 
     QWidget* m_runOverlay = nullptr;
     QLabel* m_runLockLabel = nullptr;

@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
+#include <QRegularExpression>
 
 namespace solero {
 
@@ -83,6 +84,7 @@ bool AppConfig::load() {
     m_cycleSeparatorColors = obj["cycleSeparatorColors"].toBool(true);
     m_dataShowAllFiles     = obj["dataShowAllFiles"].toBool(false);
     m_promptAfterBrowserDownload = obj["promptAfterBrowserDownload"].toBool(true);
+    m_autoDeployBeforeLaunch = obj["autoDeployBeforeLaunch"].toBool(false);
     m_infoPanelVisible     = obj["infoPanelVisible"].toBool(true);
     m_autoCheckUpdates     = obj["autoCheckUpdates"].toBool(true);
     m_lastUpdateCheckEpoch = static_cast<qint64>(obj["lastUpdateCheckEpoch"].toDouble(0));
@@ -111,6 +113,7 @@ bool AppConfig::save() const {
     obj["cycleSeparatorColors"] = m_cycleSeparatorColors;
     obj["dataShowAllFiles"]     = m_dataShowAllFiles;
     obj["promptAfterBrowserDownload"] = m_promptAfterBrowserDownload;
+    obj["autoDeployBeforeLaunch"] = m_autoDeployBeforeLaunch;
     obj["infoPanelVisible"]     = m_infoPanelVisible;
     obj["autoCheckUpdates"]     = m_autoCheckUpdates;
     obj["lastUpdateCheckEpoch"] = static_cast<double>(m_lastUpdateCheckEpoch);
@@ -152,18 +155,61 @@ QString AppConfig::detectProtonDir() const {
     return first;
 }
 
+QStringList AppConfig::parseLibraryFoldersVdf(const QString& vdfContents) {
+    // Match every  "path"  "<value>"  pair (VDF uses tab/space separators). Both
+    // the legacy flat and modern nested forms expose library roots under "path".
+    static const QRegularExpression re(
+        QStringLiteral("\"path\"\\s*\"((?:[^\"\\\\]|\\\\.)*)\""));
+    QStringList out;
+    auto it = re.globalMatch(vdfContents);
+    while (it.hasNext()) {
+        QString p = it.next().captured(1);
+        p.replace("\\\\", "\\"); // VDF escapes backslashes (Windows paths)
+        if (!p.isEmpty() && !out.contains(p)) out.append(p);
+    }
+    return out;
+}
+
 QStringList AppConfig::detectSkyrimPaths() {
-    QStringList candidates = {
+    // Steam roots to probe for libraryfolders.vdf.
+    const QStringList steamRoots = {
+        QDir::homePath() + "/.local/share/Steam",
+        QDir::homePath() + "/.steam/steam",
+        QDir::homePath() + "/.steam/root",
+        QDir::homePath() + "/.var/app/com.valvesoftware.Steam/data/Steam",
+    };
+
+    // Enumerate every Steam library from libraryfolders.vdf across all Steam roots,
+    // then probe each for the game. This catches games installed on secondary
+    // drives/libraries that the fixed-path list below would miss.
+    QStringList libraryRoots;
+    for (const QString& root : steamRoots) {
+        const QString vdf = root + "/steamapps/libraryfolders.vdf";
+        QFile f(vdf);
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+        const QString contents = QString::fromUtf8(f.readAll());
+        for (const QString& lib : parseLibraryFoldersVdf(contents))
+            if (!libraryRoots.contains(lib)) libraryRoots.append(lib);
+        // The Steam root itself is always an implicit library.
+        if (!libraryRoots.contains(root)) libraryRoots.append(root);
+    }
+
+    QStringList found;
+    auto probe = [&](const QString& gameDir) {
+        if (QFile::exists(gameDir + "/SkyrimSE.exe") && !found.contains(gameDir))
+            found.append(gameDir);
+    };
+    for (const QString& lib : libraryRoots)
+        probe(lib + "/steamapps/common/Skyrim Special Edition");
+
+    // Fixed fallbacks (in case no vdf was readable) - harmless dedupe via probe().
+    const QStringList fixed = {
         QDir::homePath() + "/.local/share/Steam/steamapps/common/Skyrim Special Edition",
         QDir::homePath() + "/.steam/steam/steamapps/common/Skyrim Special Edition",
         QDir::homePath() + "/.steam/root/steamapps/common/Skyrim Special Edition",
         QDir::homePath() + "/.var/app/com.valvesoftware.Steam/data/Steam/steamapps/common/Skyrim Special Edition",
     };
-    QStringList found;
-    for (const auto& p : candidates) {
-        if (QFile::exists(p + "/SkyrimSE.exe"))
-            found.append(p);
-    }
+    for (const QString& p : fixed) probe(p);
     return found;
 }
 

@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QGroupBox>
 #include <QTemporaryFile>
+#include <sys/stat.h>
 
 namespace solero {
 
@@ -31,6 +32,17 @@ bool dirIsWritable(const QString& dir) {
     if (!QDir().mkpath(dir)) return false;
     QTemporaryFile probe(dir + "/.solero-write-test-XXXXXX");
     return probe.open();
+}
+
+// True if both dirs exist and live on the same filesystem (same st_dev). When
+// staging and game differ, the hard-link deploy default silently degrades to
+// copies (extra disk), so we warn. Returns true (no warning) if either can't be
+// stat'd or the staging dir doesn't exist yet (created on save).
+bool onSameFilesystem(const QString& a, const QString& b) {
+    struct stat sa, sb;
+    if (::stat(a.toLocal8Bit().constData(), &sa) != 0) return true;
+    if (::stat(b.toLocal8Bit().constData(), &sb) != 0) return true;
+    return sa.st_dev == sb.st_dev;
 }
 }
 
@@ -66,6 +78,14 @@ SetupPanel::SetupPanel(QWidget* parent) : QWidget(parent) {
                 refreshValidity();
             }
         });
+    } else {
+        // No Steam library yielded a Skyrim SE install - guide the user to browse.
+        auto* noneHint = new QLabel(
+            "No Skyrim Special Edition install was detected in your Steam libraries. "
+            "Use Browse\xe2\x80\xa6 to locate the folder containing SkyrimSE.exe.", gameGroup);
+        noneHint->setWordWrap(true);
+        noneHint->setStyleSheet("color:#aaa;");
+        gameLayout->addWidget(noneHint);
     }
 
     auto* gameRow = new QHBoxLayout;
@@ -173,6 +193,8 @@ bool SetupPanel::isValid() const {
     // Staging must not be the game dir or live inside it (would deploy into
     // itself).
     if (isInsideOrEqual(stagingDir, gameDir)) return false;
+    // Staging dir must be writable (Solero writes mod files there).
+    if (!dirIsWritable(stagingDir)) return false;
     // Downloads dir must be writable.
     if (!dirIsWritable(m_downloadsEdit->text().trimmed())) return false;
     return true;
@@ -192,9 +214,17 @@ void SetupPanel::refreshValidity() {
     } else if (isInsideOrEqual(stagingDir, gameDir)) {
         m_statusLabel->setText("⚠ Staging directory cannot be inside the game directory.");
         m_statusLabel->setStyleSheet("color: red;");
+    } else if (!dirIsWritable(stagingDir)) {
+        m_statusLabel->setText("⚠ Staging directory is not writable.");
+        m_statusLabel->setStyleSheet("color: red;");
     } else if (!dirIsWritable(m_downloadsEdit->text().trimmed())) {
         m_statusLabel->setText("⚠ Downloads directory is not writable.");
         m_statusLabel->setStyleSheet("color: red;");
+    } else if (!onSameFilesystem(stagingDir, gameDir)) {
+        // Not a hard failure: deploy still works, but hard-links degrade to copies.
+        m_statusLabel->setText("⚠ Staging and game dir are on different filesystems "
+                               "- hard-link deploy will fall back to copies (extra disk).");
+        m_statusLabel->setStyleSheet("color: #c8a000;");
     } else {
         m_statusLabel->setText("✓ Skyrim SE found.");
         m_statusLabel->setStyleSheet("color: green;");

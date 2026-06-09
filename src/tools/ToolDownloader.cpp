@@ -40,7 +40,7 @@ static QByteArray curlJson(const QString& url, const QString& header, QString* e
 
 QString ToolDownloader::nexusDownloadUrl(const ToolPreset& pr, QString* error, QString* fileName) {
     QString key = nexusApiKey();
-    if (key.isEmpty()) { if (error) *error = "No Nexus API key configured (~/.nexus_api_key)."; return {}; }
+    if (key.isEmpty()) { if (error) *error = "No Nexus account connected. Connect it in Settings \xe2\x80\xba Nexus Account."; return {}; }
     QString base = "https://api.nexusmods.com/v1/games/" + pr.nexusGame + "/mods/" + pr.nexusModId;
 
     QString curlErr;

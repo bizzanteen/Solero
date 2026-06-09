@@ -151,6 +151,18 @@ private:
     // not throttled (>6h since the last check) and a key is available.
     void maybeAutoCheckUpdates();
     void onIdentifyMod(const QString& modId);
+    // Single canonical "no Nexus key" gate. Returns true if a key is configured;
+    // otherwise shows one dialog pointing the user to Settings -> Nexus Account
+    // (with a button that opens Settings on the Nexus tab) and returns false.
+    // `context` is a short phrase like "download updates" for the message.
+    bool requireNexusKey(const QString& context);
+    // Open the Settings dialog (wired to the Connect-to-Nexus browser flow).
+    void openSettingsDialog();
+    // Shared "deploy required before launching" gate. Returns true if it's safe to
+    // proceed (already deployed, or the user chose to deploy now / always). Honors
+    // AppConfig::autoDeployBeforeLaunch (silent deploy + skip the modal). `reason`
+    // is a short phrase shown in the prompt (e.g. "launching the game").
+    bool ensureDeployed(const QString& reason);
     // SKSE bootstrap: after a Wabbajack import, detect whether SKSE64 is present
     // and, if not, offer to install it from Nexus (mod 30379, Steam build).
     bool skseInstalledFor(solero::Profile* profile) const;

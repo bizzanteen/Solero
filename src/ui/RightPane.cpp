@@ -34,11 +34,11 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     auto* sortRow = new QHBoxLayout();
     sortRow->setContentsMargins(4, 4, 4, 4);
     sortRow->addStretch();
-    auto* backupBtn = new QPushButton("Backup LO", pluginsContainer);
+    auto* backupBtn = new QPushButton("Backup Load Order", pluginsContainer);
     backupBtn->setToolTip("Snapshot the current load order + active state");
     connect(backupBtn, &QPushButton::clicked, this, &RightPane::backupLoRequested);
     sortRow->addWidget(backupBtn);
-    auto* restoreBtn = new QPushButton("Restore LO\xe2\x80\xa6", pluginsContainer);
+    auto* restoreBtn = new QPushButton("Restore Load Order\xe2\x80\xa6", pluginsContainer);
     restoreBtn->setToolTip("Restore a previously saved load-order snapshot");
     connect(restoreBtn, &QPushButton::clicked, this, &RightPane::restoreLoRequested);
     sortRow->addWidget(restoreBtn);

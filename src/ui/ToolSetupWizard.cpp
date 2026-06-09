@@ -193,8 +193,8 @@ static void endorsePreset(const ToolPreset* p, QWidget* parent) {
     }
     if (!NexusApi::keyAvailable()) {
         QMessageBox::warning(parent, "Endorse",
-            "A Nexus API key is required to endorse mods.\n"
-            "Place your personal API key in ~/.nexus_api_key.");
+            "A Nexus account is required to endorse mods.\n"
+            "Connect your Nexus account in Settings \xe2\x80\xba Nexus Account.");
         return;
     }
     QString version = NexusApi::modInfo(p->nexusModId, p->nexusGame).version;

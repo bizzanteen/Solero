@@ -264,7 +264,18 @@ QString MainWindow::startNxmDownload(const QString& url) {
         return {};
     }
     auto link = solero::NxmHandler::parse(url);
-    if (!link.valid) { QMessageBox::warning(this, "Nexus Download", "Couldn't understand that Nexus link:\n" + url); return {}; }
+    if (!link.valid) {
+        // Distinguish a non-Skyrim game domain from a malformed link so the user
+        // understands why an nxm://oblivion/... link won't download here.
+        if (!link.game.isEmpty() && !solero::NxmHandler::isSupportedGame(link.game))
+            QMessageBox::warning(this, "Nexus Download",
+                QString("That link is for \"%1\", which Solero doesn't manage.\n"
+                        "Solero only handles Skyrim Special Edition mods.").arg(link.game));
+        else
+            QMessageBox::warning(this, "Nexus Download",
+                "Couldn't understand that Nexus link:\n" + url);
+        return {};
+    }
 
     // The resolve below does blocking network I/O on the UI thread (we keep the
     // working synchronous flow). Give the user a busy state and make sure the
@@ -451,17 +462,7 @@ void MainWindow::setupToolbar() {
     tb->addSeparator();
 
     // Game settings
-    tb->addAction("\xe2\x9a\x99 Settings", this, [this]{
-        solero::SettingsDialog dlg(this);
-        // "Connect to Nexus": switch the central view to the embedded browser and
-        // jump straight to the personal API-key page (login cookie persists there).
-        connect(&dlg, &solero::SettingsDialog::connectNexusRequested, this, [this]{
-            if (m_browseAction) m_browseAction->setChecked(true);
-            if (m_nexusWeb) m_nexusWeb->openUrl(solero::NexusWebView::apiKeyUrl());
-        });
-        if (dlg.exec() == QDialog::Accepted)
-            statusBar()->showMessage("Settings updated.");
-    });
+    tb->addAction("\xe2\x9a\x99 Settings", this, [this]{ openSettingsDialog(); });
 
     rebuildToolsMenu();
 }
@@ -786,6 +787,45 @@ void MainWindow::refreshProfileCombo() {
     QSignalBlocker blocker(m_profileCombo);
     m_profileCombo->clear();
     m_profileCombo->addItems(m_profileMgr->profileNames());
+}
+
+bool MainWindow::ensureDeployed(const QString& reason) {
+    // Already deployed and clean -> nothing to do.
+    if (m_deployed && !m_deployDirty) return true;
+
+    // Honor the persisted "always deploy before launching" preference: skip the
+    // modal and deploy silently.
+    if (solero::AppConfig::instance().autoDeployBeforeLaunch()) {
+        if (!deployCurrent()) {
+            QMessageBox::critical(this, "Deploy Failed",
+                "Could not deploy - see status bar.");
+            return false;
+        }
+        return true;
+    }
+
+    QMessageBox box(this);
+    box.setWindowTitle("Deploy required");
+    box.setIcon(QMessageBox::Warning);
+    box.setText(QString("Deploy your modlist before %1?").arg(reason));
+    box.setInformativeText(QString("Mods only reach the game once deployed")
+                           + (m_deployDirty ? " (you have undeployed changes)." : "."));
+    QAbstractButton* deployBtn = box.addButton("Deploy", QMessageBox::AcceptRole);
+    box.addButton("Cancel", QMessageBox::RejectRole);
+    QCheckBox* always = new QCheckBox("Don't ask again - always deploy before launching", &box);
+    box.setCheckBox(always);
+    box.exec();
+    if (box.clickedButton() != deployBtn) return false;
+    if (always->isChecked()) {
+        solero::AppConfig::instance().setAutoDeployBeforeLaunch(true);
+        solero::AppConfig::instance().save();
+    }
+    if (!deployCurrent()) {
+        QMessageBox::critical(this, "Deploy Failed",
+            "Could not deploy - see status bar.");
+        return false;
+    }
+    return true;
 }
 
 bool MainWindow::deployCurrent() {
@@ -1123,6 +1163,12 @@ void MainWindow::onSortRequested() {
         return;
     }
 
+    // Auto-snapshot the current (pre-sort) order so "Restore Load Order" can undo
+    // a LOOT sort the user didn't like. Labeled with a timestamp for clarity.
+    const QString preLabel = QStringLiteral("Auto (pre-LOOT %1)")
+        .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm"));
+    solero::LoadOrderBackup::create(*profile, preLabel);
+
     solero::ProgressModal prog(this, "Sort", "Sorting plugins with LOOT\xe2\x80\xa6");
     prog.show(); prog.pump();
 
@@ -1298,7 +1344,8 @@ void MainWindow::installFromArchive(const QString& archive) {
     }
     const QString proposedName = cleanModName(prep.modName, sidecarModId);
 
-    QString existingModId;  // non-empty -> Replace the existing mod in place
+    QString existingModId;     // non-empty -> Replace the existing mod in place
+    QString stagingOverride;   // full mod dir for Replace (migrated staging folder)
     QString overrideName;   // non-empty -> Rename: install new with this name
     {
         auto& ml = profile->modList();
@@ -1327,6 +1374,11 @@ void MainWindow::installFromArchive(const QString& archive) {
             box.exec();
             if (box.clickedButton() == replaceBtn) {
                 existingModId = collide->id;
+                // Resolve the existing mod's real on-disk dir (which may have been
+                // migrated from its UUID to its human staging-folder name) so the
+                // replacement files land where deploy actually reads from.
+                stagingOverride = solero::stagingPathFor(
+                    solero::AppConfig::instance().stagingDir(), *collide);
             } else if (box.clickedButton() == renameBtn) {
                 overrideName = uniqueModName(proposedName, profile);
             } else {
@@ -1351,7 +1403,7 @@ void MainWindow::installFromArchive(const QString& archive) {
             solero::ProgressModal stageProg(this, "Install", "Installing files...");
             stageProg.show(); stageProg.pump();
             result = solero::ModInstaller::stageSimple(prep, staging, existingModId,
-                [&](int pct){ stageProg.setProgress(pct, 100); });
+                [&](int pct){ stageProg.setProgress(pct, 100); }, stagingOverride);
             stageProg.close();
         } else {
             // Extract image directories referenced by the FOMOD so the wizard can show them.
@@ -1390,7 +1442,7 @@ void MainWindow::installFromArchive(const QString& archive) {
             solero::ProgressModal stageProg(this, "Install", "Installing files...");
             stageProg.show(); stageProg.pump();
             result = solero::ModInstaller::stageFomod(prep, staging, wizard.result(), existingModId,
-                [&](int pct){ stageProg.setProgress(pct, 100); });
+                [&](int pct){ stageProg.setProgress(pct, 100); }, stagingOverride);
             stageProg.close();
             const auto sel = wizard.selection();
             const auto& mod = engine.module();
@@ -1411,7 +1463,7 @@ void MainWindow::installFromArchive(const QString& archive) {
         solero::ProgressModal stageProg(this, "Install", "Installing files...");
         stageProg.show(); stageProg.pump();
         result = solero::ModInstaller::stageSimple(prep, staging, existingModId,
-            [&](int pct){ stageProg.setProgress(pct, 100); });
+            [&](int pct){ stageProg.setProgress(pct, 100); }, stagingOverride);
         stageProg.close();
     }
 
@@ -1572,6 +1624,9 @@ void MainWindow::onReinstallMod(const QString& modId) {
     if (!prep.ok) { extractProg->close(); QMessageBox::critical(this, "Reinstall Failed", prep.errorMessage); return; }
 
     const QString staging = solero::AppConfig::instance().stagingDir();
+    // Reinstall writes into the existing mod's real on-disk dir (which may have
+    // been migrated from its UUID to its human staging-folder name), so resolve it.
+    const QString stagingOverride = solero::stagingPathFor(staging, *existing);
     solero::InstallResult result;
     QJsonArray choiceLog;
 
@@ -1582,7 +1637,7 @@ void MainWindow::onReinstallMod(const QString& modId) {
             solero::ProgressModal stageProg(this, "Reinstall", "Installing files...");
             stageProg.show(); stageProg.pump();
             result = solero::ModInstaller::stageSimple(prep, staging, modId,
-                [&](int pct){ stageProg.setProgress(pct, 100); });
+                [&](int pct){ stageProg.setProgress(pct, 100); }, stagingOverride);
             stageProg.close();
         } else {
             // Extract image directories referenced by the FOMOD so the wizard can show them.
@@ -1621,7 +1676,7 @@ void MainWindow::onReinstallMod(const QString& modId) {
             solero::ProgressModal stageProg(this, "Reinstall", "Installing files...");
             stageProg.show(); stageProg.pump();
             result = solero::ModInstaller::stageFomod(prep, staging, wizard.result(), modId,
-                [&](int pct){ stageProg.setProgress(pct, 100); });
+                [&](int pct){ stageProg.setProgress(pct, 100); }, stagingOverride);
             stageProg.close();
             const auto sel = wizard.selection();
             const auto& mod = engine.module();
@@ -1640,7 +1695,7 @@ void MainWindow::onReinstallMod(const QString& modId) {
         solero::ProgressModal stageProg(this, "Reinstall", "Installing files...");
         stageProg.show(); stageProg.pump();
         result = solero::ModInstaller::stageSimple(prep, staging, modId,
-            [&](int pct){ stageProg.setProgress(pct, 100); });
+            [&](int pct){ stageProg.setProgress(pct, 100); }, stagingOverride);
         stageProg.close();
     }
 
@@ -1899,9 +1954,7 @@ void MainWindow::onRedownloadMod(const QString& modId) {
     const QString url = solero::NexusApi::downloadUrl(nexusModId, fileId);
     if (url.isEmpty()) {
         if (!solero::NexusApi::keyAvailable())
-            QMessageBox::information(this, "Redownload from Nexus",
-                "A Nexus API key is required to download from within Solero.\n"
-                "Add your personal API key in Settings.");
+            requireNexusKey("download from within Solero");
         else
             QMessageBox::information(this, "Redownload from Nexus",
                 "This download is unavailable or requires Nexus Premium. Use the "
@@ -1931,18 +1984,40 @@ void MainWindow::onRedownloadMod(const QString& modId) {
     statusBar()->showMessage("Redownloading " + name + "\xe2\x80\xa6");
 }
 
+void MainWindow::openSettingsDialog() {
+    solero::SettingsDialog dlg(this);
+    // "Connect to Nexus": switch the central view to the embedded browser and
+    // jump straight to the personal API-key page (login cookie persists there).
+    connect(&dlg, &solero::SettingsDialog::connectNexusRequested, this, [this]{
+        if (m_browseAction) m_browseAction->setChecked(true);
+        if (m_nexusWeb) m_nexusWeb->openUrl(solero::NexusWebView::apiKeyUrl());
+    });
+    if (dlg.exec() == QDialog::Accepted)
+        statusBar()->showMessage("Settings updated.");
+}
+
+bool MainWindow::requireNexusKey(const QString& context) {
+    if (solero::NexusApi::keyAvailable()) return true;
+    QMessageBox box(QMessageBox::Information, "Nexus Account",
+        QString("A Nexus account is required to %1.\n\n"
+                "Connect your Nexus account in Settings \xe2\x80\xba Nexus Account.")
+            .arg(context.isEmpty() ? QStringLiteral("use this feature") : context),
+        QMessageBox::Close, this);
+    QPushButton* openBtn = box.addButton("Open Settings\xe2\x80\xa6", QMessageBox::AcceptRole);
+    box.setDefaultButton(openBtn);
+    box.exec();
+    if (box.clickedButton() == openBtn) openSettingsDialog();
+    // Re-check: the user may have connected their account from Settings.
+    return solero::NexusApi::keyAvailable();
+}
+
 void MainWindow::onEndorseMod(const QString& modId) {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) return;
     solero::ModEntry* mod = profile->modList().findById(modId);
     if (!mod || mod->nexusModId.isEmpty()) return;
 
-    if (!solero::NexusApi::keyAvailable()) {
-        QMessageBox::warning(this, "Endorse on Nexus",
-            "A Nexus API key is required to endorse mods.\n"
-            "Place your personal API key in ~/.nexus_api_key.");
-        return;
-    }
+    if (!requireNexusKey("endorse mods")) return;
 
     QString version = mod->version;
     if (version.isEmpty())
@@ -1958,12 +2033,7 @@ void MainWindow::onEndorseMod(const QString& modId) {
 }
 
 void MainWindow::onUpdateMod(const QString& modId) {
-    if (!solero::NexusApi::keyAvailable()) {
-        QMessageBox::information(this, "Update Mod",
-            "A Nexus API key is required to download updates.\n"
-            "Place your personal API key in ~/.nexus_api_key.");
-        return;
-    }
+    if (!requireNexusKey("download updates")) return;
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) return;
     solero::ModEntry* mod = profile->modList().findById(modId);
@@ -2123,10 +2193,8 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
     }
 
     if (!solero::NexusApi::keyAvailable()) {
-        if (!silentIfNone)
-            QMessageBox::information(this, "Check for Mod Updates",
-                "A Nexus API key is required to check for updates.\n"
-                "Place your personal API key in ~/.nexus_api_key.");
+        // Silent auto-check must never pop a modal; only the explicit check does.
+        if (!silentIfNone) requireNexusKey("check for updates");
         return;
     }
     auto* profile = m_profileMgr->activeProfile();
@@ -2234,12 +2302,7 @@ void MainWindow::onIdentifyMod(const QString& modId) {
     solero::ModEntry* mod = profile->modList().findById(modId);
     if (!mod) return;
 
-    if (!solero::NexusApi::keyAvailable()) {
-        QMessageBox::information(this, "Identify on Nexus",
-            "A Nexus API key is required to identify mods.\n"
-            "Place your personal API key in ~/.nexus_api_key.");
-        return;
-    }
+    if (!requireNexusKey("identify mods")) return;
 
     // Nexus md5_search matches the uploaded ARCHIVE's md5, so we need the original
     // source archive. Imported mods without one can't be matched.
@@ -2486,19 +2549,7 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
         return;
     }
     // Tools operate on the live Data/ folder, so the modlist must be deployed & current.
-    if (!m_deployed || m_deployDirty) {
-        QMessageBox box(this);
-        box.setWindowTitle("Deploy required");
-        box.setIcon(QMessageBox::Warning);
-        box.setText("Modlist must be deployed first.");
-        box.setInformativeText("Tools run against the game's Data folder, so your mods need to be deployed"
-                               + QString(m_deployDirty ? " (you have undeployed changes)." : "."));
-        QAbstractButton* deployBtn = box.addButton("Deploy", QMessageBox::AcceptRole);
-        box.addButton("Cancel", QMessageBox::RejectRole);
-        box.exec();
-        if (box.clickedButton() != deployBtn) return;
-        if (!deployCurrent()) { QMessageBox::critical(this, "Deploy Failed", "Could not deploy - see status bar."); return; }
-    }
+    if (!ensureDeployed("running this tool")) return;
 
     // Lock the UI (MO2-style) while the tool runs. m_toolRunning stays true for
     // the whole run - even if the user dismisses the overlay via "Unlock Solero" -
@@ -2788,21 +2839,7 @@ void MainWindow::onPlay() {
         return;
     }
     // Mods must be deployed to play with them (same as running a tool).
-    if (!m_deployed || m_deployDirty) {
-        QMessageBox box(this);
-        box.setWindowTitle("Deploy required");
-        box.setIcon(QMessageBox::Warning);
-        box.setText("Deploy your modlist before playing?");
-        box.setInformativeText(QString("Mods only reach the game once deployed")
-                               + (m_deployDirty ? " (you have undeployed changes)." : "."));
-        QAbstractButton* deployBtn = box.addButton("Deploy && Play", QMessageBox::AcceptRole);
-        box.addButton("Cancel", QMessageBox::RejectRole);
-        box.exec();
-        if (box.clickedButton() != deployBtn) return;
-        if (!deployCurrent()) {
-            QMessageBox::critical(this, "Deploy Failed", "Could not deploy - see status bar."); return;
-        }
-    }
+    if (!ensureDeployed("playing")) return;
 
     // Reconcile the active profile's INIs to the live (prefix Documents) copies
     // on every launch. Deploy syncs them, but deploy is skipped above when the

@@ -16,21 +16,34 @@ static bool isNumericish(const QString& s) {
     return true;
 }
 
+bool NxmHandler::isSupportedGame(const QString& game) {
+    // Only the Skyrim games Solero manages. "skyrimspecialedition" is the primary
+    // target; "skyrim" (LE) matches the LE id mapping in NexusApi. Non-Skyrim
+    // domains (e.g. "oblivion", "fallout4") are rejected so they aren't downloaded
+    // as junk. Matched case-insensitively.
+    const QString g = game.toLower();
+    return g == QStringLiteral("skyrimspecialedition")
+        || g == QStringLiteral("skyrim");
+}
+
 NxmLink NxmHandler::parse(const QString& url) {
     NxmLink link;
     QUrl u(url, QUrl::StrictMode);
     link.game = u.host();
-    const QStringList parts = u.path().split('/');
-    // expect ["", "mods", "<modId>", "files", "<fileId>"]
-    if (parts.size() == 5 && parts[1] == "mods" && parts[3] == "files") {
-        link.modId = parts[2];
-        link.fileId = parts[4];
+    // SkipEmptyParts so a trailing slash (or the leading slash) doesn't shift the
+    // path segments: expect ["mods", "<modId>", "files", "<fileId>"].
+    const QStringList parts = u.path().split('/', Qt::SkipEmptyParts);
+    if (parts.size() == 4 && parts[0] == "mods" && parts[2] == "files") {
+        link.modId = parts[1];
+        link.fileId = parts[3];
     }
     QUrlQuery q(u);
     link.key = q.queryItemValue("key");
     link.expires = q.queryItemValue("expires");
     link.userId = q.queryItemValue("user_id");
-    link.valid = !link.game.isEmpty() && isNumericish(link.modId) && isNumericish(link.fileId);
+    // A link is valid only for a Skyrim game domain Solero manages.
+    link.valid = isSupportedGame(link.game)
+              && isNumericish(link.modId) && isNumericish(link.fileId);
     return link;
 }
 

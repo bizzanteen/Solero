@@ -42,6 +42,10 @@ public:
     void setDataShowAllFiles(bool v)          { m_dataShowAllFiles = v; }
     bool promptAfterBrowserDownload() const   { return m_promptAfterBrowserDownload; }
     void setPromptAfterBrowserDownload(bool v){ m_promptAfterBrowserDownload = v; }
+    // When true, deploy silently before launching the game/a tool instead of
+    // popping the "deploy required" modal. Default false (always prompt).
+    bool autoDeployBeforeLaunch() const       { return m_autoDeployBeforeLaunch; }
+    void setAutoDeployBeforeLaunch(bool v)    { m_autoDeployBeforeLaunch = v; }
     const QString& lastSeparatorColor() const { return m_lastSeparatorColor; }
     void setLastSeparatorColor(const QString& v) { m_lastSeparatorColor = v; }
     bool infoPanelVisible() const             { return m_infoPanelVisible; }
@@ -61,6 +65,12 @@ public:
     static QString dataRoot();   // ~/.local/share/solero
     static QString configPath();
     static QStringList detectSkyrimPaths();
+    // Pure parser: extract every Steam library "path" value from the textual VDF
+    // contents of steamapps/libraryfolders.vdf. Returns library root paths (the
+    // dir that contains steamapps/). Tolerant of both the legacy flat form and the
+    // modern nested ("libraryfolders" -> "0" -> {"path": ...}) form. Exposed for
+    // unit testing.
+    static QStringList parseLibraryFoldersVdf(const QString& vdfContents);
 
     // Derive the Proton-prefix local appdata + documents dirs from a game dir
     // (Steam appid 489830). Returns empty strings if not found.
@@ -83,6 +93,7 @@ private:
     bool m_cycleSeparatorColors = true;
     bool m_dataShowAllFiles = false;
     bool m_promptAfterBrowserDownload = true;
+    bool m_autoDeployBeforeLaunch = false;
     bool m_infoPanelVisible = true;
     bool m_autoCheckUpdates = true;
     qint64 m_lastUpdateCheckEpoch = 0;

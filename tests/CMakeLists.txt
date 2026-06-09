@@ -15,6 +15,7 @@ function(add_solero_test name)
 endfunction()
 
 add_solero_test(test_ModList)
+add_solero_test(test_AppConfig)
 add_solero_test(test_VersionUtil)
 add_solero_test(test_PluginList)
 add_solero_test(test_Profile)
@@ -254,6 +255,48 @@ add_test(NAME test_WabbajackEngine COMMAND test_WabbajackEngine)
 # Linking Qt6::Gui (QImage in ToolDownloader) makes QtTest spin up a
 # QGuiApplication, which needs a platform plugin; run headless like ModListModel.
 set_tests_properties(test_WabbajackEngine PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${_qt_plugins}")
+
+# WabbajackDialog filter predicate (pure static helpers passesFilters/collectTags).
+# The TU pulls in the full dialog + Mo2Importer + NexusApi + ToolDownloader chain,
+# so link that set; run headless like the other Widgets-linked tests.
+add_executable(test_WabbajackFilter test_WabbajackFilter.cpp
+  ../src/ui/WabbajackDialog.cpp
+  ../src/wabbajack/WabbajackEngine.cpp
+  ../src/import/Mo2Importer.cpp
+  ../src/nexus/NexusApi.cpp
+  ../src/tools/ToolDownloader.cpp
+  ../src/tools/ToolCatalog.cpp
+  ../src/install/ArchiveTool.cpp
+  ../src/core/AppConfig.cpp
+  ../src/core/StagingFolder.cpp
+  ../src/core/ModList.cpp ../src/core/PluginList.cpp
+  ../src/core/Profile.cpp ../src/core/ProfileManager.cpp
+  ../src/ai/AITransaction.cpp)
+target_include_directories(test_WabbajackFilter PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_WabbajackFilter PRIVATE
+  Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::Test)
+add_test(NAME test_WabbajackFilter COMMAND test_WabbajackFilter)
+set_tests_properties(test_WabbajackFilter PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${_qt_plugins}")
+
+# NxmHandler: the test exercises pure parse()/isSupportedGame(), but the TU links
+# NexusApi + ToolDownloader (curl/QImage), so include that set. Headless for QImage.
+add_executable(test_NxmHandler test_NxmHandler.cpp
+  ../src/nexus/NxmHandler.cpp
+  ../src/nexus/NexusApi.cpp
+  ../src/tools/ToolDownloader.cpp
+  ../src/tools/ToolCatalog.cpp
+  ../src/install/ArchiveTool.cpp
+  ../src/core/AppConfig.cpp
+  ../src/core/StagingFolder.cpp
+  ../src/core/ModList.cpp ../src/core/PluginList.cpp
+  ../src/core/Profile.cpp ../src/core/ProfileManager.cpp
+  ../src/ai/AITransaction.cpp)
+target_include_directories(test_NxmHandler PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_NxmHandler PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Test)
+add_test(NAME test_NxmHandler COMMAND test_NxmHandler)
+set_tests_properties(test_NxmHandler PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${_qt_plugins}")
 
 add_executable(test_IniFile test_IniFile.cpp ../src/bethini/IniFile.cpp)

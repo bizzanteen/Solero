@@ -31,6 +31,7 @@
 #include "tools/ToolCatalog.h"
 #include "tools/ToolNameMap.h"
 #include "tools/ToolSetup.h"
+#include "tools/RadiumPrep.h"
 #include "fomod/FomodEngine.h"
 #include "fomod/FomodScanner.h"
 #include "loot/LootSorter.h"
@@ -2564,6 +2565,30 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     QString outFolder;
     if (auto* p = m_profileMgr->activeProfile(); p && !exe.outputModId.isEmpty())
         outFolder = p->stagingFolderFor(exe.outputModId);
+
+    // Radium expects an MO2 layout. Solero hardlink-deploys into Data/, so feed
+    // it a generated fake-mo2 + a settings.json pointing at the live Data/ and the
+    // managed output mod. (ensureDeployed above guarantees Data/ + load order are
+    // current.)
+    if (exe.id == "radium") {
+        auto* p = m_profileMgr->activeProfile();
+        const QString gameDir = solero::AppConfig::instance().gameDir();
+        const QString outDataDir =
+            solero::AppConfig::instance().stagingDir() + "/" + outFolder + "/Data";
+        QString err;
+        if (!p || !solero::RadiumPrep::prepare(*p, gameDir,
+                                               QFileInfo(exe.binaryPath).path(),
+                                               outDataDir,
+                                               solero::RadiumPrep::defaultSettingsPath(),
+                                               &err)) {
+            hideRunLock();
+            m_toolRunning = false;
+            QMessageBox::warning(this, "Radium Textures",
+                err.isEmpty() ? "Could not prepare Radium's configuration." : err);
+            return;
+        }
+    }
+
     auto res = solero::ToolRunner::run(exe, solero::AppConfig::instance().gameDir(),
                                        solero::AppConfig::instance().stagingDir(), outFolder);
     hideRunLock();

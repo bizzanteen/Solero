@@ -279,7 +279,7 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     auto* skseLayout = new QVBoxLayout(skseGroup);
     auto* skseVersionRow = new QHBoxLayout;
     skseVersionRow->addWidget(new QLabel("Installed version:", skseGroup));
-    m_skseVersionLabel = new QLabel(QStringLiteral("-"), skseGroup);
+    m_skseVersionLabel = new QLabel(QString(QChar('-')), skseGroup);
     skseVersionRow->addWidget(m_skseVersionLabel);
     skseVersionRow->addStretch();
     skseLayout->addLayout(skseVersionRow);
@@ -322,7 +322,7 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
         for (const auto& f : sorted) {
             items << QString("v%1  (%2)  %3 %4")
                          .arg(f.version, f.category,
-                              QStringLiteral("-"), f.name);
+                              QString(QChar('-')), f.name);
         }
 
         bool ok = false;

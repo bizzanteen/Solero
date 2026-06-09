@@ -187,7 +187,8 @@ QVariant PluginListModel::data(const QModelIndex& idx, int role) const {
         QStringList parts;
         const PluginList& pl = m_profile->pluginList();
         if (pl.isPinned(p.filename))
-            parts << (pinGlyph() + QStringLiteral(" Pinned - restored to index %1 after sorts")
+            parts << (pinGlyph() + (QStringLiteral(" Pinned ") + QChar('-')
+                                    + QStringLiteral(" restored to index %1 after sorts"))
                                        .arg(pl.pinnedIndex(p.filename)));
         const QStringList missing = missingMasters(p);
         if (!missing.isEmpty()) {

@@ -82,7 +82,7 @@ public:
                     Qt::AlignVCenter | Qt::AlignLeft, bracket);
         x += bfm.horizontalAdvance(bracket);
 
-        const QString suffix = QStringLiteral("  - ") + prof; // "  - Name"
+        const QString suffix = QStringLiteral("  ") + QChar('-') + QChar(' ') + prof; // "  - Name"
         QFont sf = bf; sf.setBold(false); sf.setItalic(true);
         QFontMetrics sfm(sf);
         p->setFont(sf);
@@ -367,7 +367,7 @@ void ModListView::mousePressEvent(QMouseEvent* event) {
             // 4 leading spaces per nesting level. Offset the arrow hit region by that
             // indent width so the click target tracks the visually-inset glyph.
             const int indentW = fm.horizontalAdvance(QString(entry->separatorLevel * 4, QChar(' ')));
-            int arrowW = fm.horizontalAdvance(QStringLiteral("\xe2\x96\xbc  ")) + 4;
+            int arrowW = fm.horizontalAdvance(QChar(0x25BC) + QStringLiteral("  ")) + 4;
             QRect arrowRect(textRect.left() + indentW, opt.rect.top(), arrowW, opt.rect.height());
             // Order matters: icon picker first, then the disclosure arrow, then fall
             // through to the base handler (preserving selection + drag-to-reorder).

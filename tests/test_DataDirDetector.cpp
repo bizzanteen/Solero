@@ -32,6 +32,18 @@ private slots:
         QCOMPARE(l.stripComponents, 1);
         QCOMPARE(l.wrapInData, true);
     }
+    void communityShaders_shadersRooted_wrap() {
+        // CS feature mods are rooted at Shaders/ and belong at Data/Shaders/.
+        // Shaders/ must not be stripped as a wrapper, else the feature lands at
+        // the game root and Community Shaders never registers it.
+        QStringList files = {
+            "Shaders/Features/Upscaling.ini",
+            "Shaders/Upscaling/Streamline/sl.dlss.dll"
+        };
+        auto l = DataDirDetector::detect(files);
+        QCOMPARE(l.stripComponents, 0);
+        QCOMPARE(l.wrapInData, true);
+    }
     void plugin_at_root_wrap() {
         QStringList files = { "MyMod.esp", "textures/a.dds" };
         auto l = DataDirDetector::detect(files);

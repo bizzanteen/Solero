@@ -6,7 +6,10 @@ namespace solero {
 
 static const QSet<QString> kDataDirs = {
     "meshes","textures","scripts","sound","music","interface","materials",
-    "shadersfx","skse","seq","grass","lodsettings","dialogueviews","source",
+    // "shaders" is Community Shaders' Data/Shaders/Features/ home; without it,
+    // a Shaders/-rooted archive gets stripped as a wrapper and installed to the
+    // game root, so CS never finds the feature.
+    "shaders","shadersfx","skse","seq","grass","lodsettings","dialogueviews","source",
     "calientetools","dyndolod","strings","facegen","video","misc",
     "actors","effects","clutter","architecture"
 };

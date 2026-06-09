@@ -2043,6 +2043,13 @@ void MainWindow::openSettingsDialog() {
         if (m_browseAction) m_browseAction->setChecked(true);
         if (m_nexusWeb) m_nexusWeb->openUrl(solero::NexusWebView::apiKeyUrl());
     });
+    // SKSE section: show the version installed for the active profile, and install a
+    // specific build when the user picks one.
+    dlg.setSkseInstalledVersion(installedSkseVersion(m_profileMgr->activeProfile()));
+    connect(&dlg, &solero::SettingsDialog::skseInstallRequested, this,
+            [this](const QString& fileId, const QString& version) {
+                installSkseVersion(fileId, version);
+            });
     if (dlg.exec() == QDialog::Accepted)
         statusBar()->showMessage("Settings updated.");
 }
@@ -2168,18 +2175,18 @@ bool MainWindow::skseInstalledFor(solero::Profile* profile) const {
     return false;
 }
 
-void MainWindow::maybeOfferSkse() {
-    if (!solero::NexusApi::keyAvailable()) return; // no key -> don't nag
+void MainWindow::ensureSkse() {
+    // Every profile should have SKSE; install it silently when missing rather than
+    // prompting. If there's no Nexus key (or no network), defer quietly - the call
+    // fires again on the next launch / profile switch, so it self-heals later.
     if (m_skseInstalling) return;                  // already downloading SKSE
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) return;
     if (skseInstalledFor(profile)) return;
+    if (!solero::NexusApi::keyAvailable()) return; // defer: retry on next launch/switch
 
-    const auto ans = QMessageBox::question(this, "SKSE not found",
-        "This modlist doesn't include SKSE64 (Skyrim Script Extender), which most "
-        "Skyrim mods require.\n\nInstall it from Nexus now? (current Steam build, v2.2.6)",
-        QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
-    if (ans == QMessageBox::Yes) installSkseFromNexus();
+    statusBar()->showMessage("Setting up SKSE\xe2\x80\xa6");
+    installSkseFromNexus();
 }
 
 void MainWindow::installSkseFromNexus() {
@@ -2229,6 +2236,46 @@ void MainWindow::installSkseFromNexus() {
         out.ok = true;
         return out;
     }));
+}
+
+QString MainWindow::installedSkseVersion(solero::Profile* profile) const {
+    if (!profile) return {};
+    if (const auto* e = profile->modList().findByNexusId("30379"))
+        return e->version;
+    return {};
+}
+
+void MainWindow::installSkseVersion(const QString& fileId, const QString& version) {
+    if (m_skseInstalling || m_skseResolveWatcher.isRunning()) {
+        statusBar()->showMessage("SKSE install already in progress\xe2\x80\xa6");
+        return;
+    }
+    if (fileId.isEmpty()) return;
+    const QString game = "skyrimspecialedition";
+    const QString modId = "30379";
+
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const QString url = solero::NexusApi::downloadUrl(modId, fileId, game);
+    QApplication::restoreOverrideCursor();
+    if (url.isEmpty()) {
+        QMessageBox::warning(this, "Install SKSE",
+            "Couldn't get a download link for that SKSE build "
+            "(Nexus Premium may be required).");
+        return;
+    }
+    QString fn = QUrl(url).fileName();
+    if (fn.isEmpty()) fn = "skse64_" + version + ".7z";
+
+    // Tag with SKSE's Nexus identity so the auto-install path replaces any existing
+    // SKSE mod in place (same modId + name -> Replace) rather than adding a duplicate.
+    m_skseInstalling = true;
+    m_nxmMeta[fn] = QJsonObject{
+        {"game", game}, {"modId", modId}, {"fileId", fileId},
+        {"version", version}, {"name", "Skyrim Script Extender (SKSE64)"}};
+    m_autoInstall.insert(fn);
+    m_downloads->enqueue(url, fn, solero::AppConfig::instance().downloadsDir());
+    m_rightPane->showDownloadsTab();
+    statusBar()->showMessage("Downloading SKSE " + version + "\xe2\x80\xa6");
 }
 
 void MainWindow::checkRequirementsAfterInstall(solero::Profile* profile,
@@ -2573,7 +2620,7 @@ void MainWindow::onImportMo2() {
     statusBar()->showMessage(QString("Imported '%1' - %2 mods staged.").arg(r.profileName).arg(r.modsStaged));
     // MO2 lists often keep SKSE's loader in the game root (outside the mods), so
     // the import won't include it - offer to install SKSE if it's missing.
-    QTimer::singleShot(0, this, &MainWindow::maybeOfferSkse);
+    QTimer::singleShot(0, this, &MainWindow::ensureSkse);
 }
 
 void MainWindow::onExportProfile() {
@@ -2666,7 +2713,7 @@ void MainWindow::onInstallWabbajack() {
         // it (output mods belong to this profile; tools go to the global store).
         setUpImportedTools(tools);
         // After the profile switch settles, detect a missing SKSE and offer it.
-        QTimer::singleShot(0, this, &MainWindow::maybeOfferSkse);
+        QTimer::singleShot(0, this, &MainWindow::ensureSkse);
     });
     dlg.exec();
 }
@@ -3171,7 +3218,7 @@ void MainWindow::onPlay() {
         // launching the bare game would load no script-extender mods). Offer to
         // install it from Nexus rather than starting a broken session.
         statusBar()->showMessage("SKSE not found - it's needed to launch with script-extender mods.");
-        maybeOfferSkse();
+        ensureSkse();
         return;
     }
 

@@ -17,12 +17,15 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QMessageBox>
+#include <QInputDialog>
+#include <QApplication>
 #include <QDesktopServices>
 #include <QUrl>
 #include <QFile>
 #include <QDir>
 #include <QClipboard>
 #include <QGuiApplication>
+#include <algorithm>
 
 namespace solero {
 
@@ -200,8 +203,6 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     nexusBtnRow->addStretch();
     nexusLayout->addLayout(nexusBtnRow);
 
-    nexusLayout->addStretch();
-
     // Only validate on open if a key file already exists, to avoid any blocking
     // network call when the user has never signed in.
     if (QFile::exists(NexusApi::apiKeyPath()))
@@ -273,6 +274,71 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
         QMessageBox::information(this, "Nexus Account", "Signed out.");
     });
 
+    // Script Extender (SKSE) group
+    auto* skseGroup = new QGroupBox("Script Extender (SKSE)", nexus);
+    auto* skseLayout = new QVBoxLayout(skseGroup);
+    auto* skseVersionRow = new QHBoxLayout;
+    skseVersionRow->addWidget(new QLabel("Installed version:", skseGroup));
+    m_skseVersionLabel = new QLabel(QStringLiteral("-"), skseGroup);
+    skseVersionRow->addWidget(m_skseVersionLabel);
+    skseVersionRow->addStretch();
+    skseLayout->addLayout(skseVersionRow);
+    m_skseChangeBtn = new QPushButton("Change version\xe2\x80\xa6", skseGroup);
+    skseLayout->addWidget(m_skseChangeBtn);
+    auto* skseHelp = new QLabel(
+        "Pick a specific SKSE build (needed when the Skyrim runtime is downgraded).",
+        skseGroup);
+    skseHelp->setWordWrap(true);
+    skseHelp->setStyleSheet("color:#888;");
+    skseLayout->addWidget(skseHelp);
+    nexusLayout->addWidget(skseGroup);
+
+    // "Change version…": fetch the SKSE file list from Nexus (blocking), let the
+    // user pick a build, then hand the chosen fileId+version to MainWindow which
+    // does the download+install. Mirrors how "Connect to Nexus" closes the dialog.
+    connect(m_skseChangeBtn, &QPushButton::clicked, this, [this]{
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+        const auto files = solero::NexusApi::files("30379", solero::NexusApi::kDefaultGame);
+        QApplication::restoreOverrideCursor();
+        if (files.isEmpty()) {
+            QMessageBox::warning(this, "SKSE",
+                "Couldn't fetch SKSE versions from Nexus (check your connection / API key).");
+            return;
+        }
+
+        // Sort main-category builds first, then by version descending, so the
+        // most likely choice is the default selection.
+        auto sorted = files;
+        std::stable_sort(sorted.begin(), sorted.end(),
+            [](const NexusApi::NexusFile& a, const NexusApi::NexusFile& b){
+                const bool am = a.category.compare("MAIN", Qt::CaseInsensitive) == 0;
+                const bool bm = b.category.compare("MAIN", Qt::CaseInsensitive) == 0;
+                if (am != bm) return am;
+                return a.version > b.version;
+            });
+
+        QStringList items;
+        items.reserve(sorted.size());
+        for (const auto& f : sorted) {
+            items << QString("v%1  (%2)  %3 %4")
+                         .arg(f.version, f.category,
+                              QStringLiteral("-"), f.name);
+        }
+
+        bool ok = false;
+        const QString chosen = QInputDialog::getItem(
+            this, "Change SKSE version", "Choose an SKSE build to install:",
+            items, 0, false, &ok);
+        if (!ok) return;
+        const int idx = items.indexOf(chosen);
+        if (idx < 0) return;
+
+        emit skseInstallRequested(sorted[idx].fileId, sorted[idx].version);
+        accept();
+    });
+
+    nexusLayout->addStretch();
+
     tabs->addTab(nexus, "Nexus Account");
 
     layout->addWidget(tabs);
@@ -308,6 +374,11 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
         accept();
     });
     connect(btns, &QDialogButtonBox::rejected, this, &QDialog::reject);
+}
+
+void SettingsDialog::setSkseInstalledVersion(const QString& version) {
+    if (!m_skseVersionLabel) return;
+    m_skseVersionLabel->setText(version.isEmpty() ? "Not installed" : version);
 }
 
 } // namespace solero

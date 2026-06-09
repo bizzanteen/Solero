@@ -167,8 +167,14 @@ private:
     // SKSE bootstrap: after a Wabbajack import, detect whether SKSE64 is present
     // and, if not, offer to install it from Nexus (mod 30379, Steam build).
     bool skseInstalledFor(solero::Profile* profile) const;
-    void maybeOfferSkse();
-    void installSkseFromNexus();
+    // Silently install the latest SKSE for the active profile when it's missing
+    // (no prompt). No-ops if SKSE is present, a download is in flight, or there's
+    // no Nexus key/network (deferred - retried on next launch/profile switch).
+    void ensureSkse();
+    void installSkseFromNexus();                 // resolve + install the latest main build
+    void installSkseVersion(const QString& fileId, const QString& version); // a specific build
+    // SKSE version currently installed for the active profile (empty if none).
+    QString installedSkseVersion(solero::Profile* profile) const;
     // After a Nexus mod installs, query its requirements and, for any that aren't
     // already installed, offer to install them (placed just above the dependent mod).
     void checkRequirementsAfterInstall(solero::Profile* profile,

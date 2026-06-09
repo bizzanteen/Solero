@@ -7,6 +7,8 @@
 #include <QStackedWidget>
 #include <QLineEdit>
 #include <QComboBox>
+#include <QMenu>
+#include <QAction>
 #include <QPushButton>
 #include <QListWidget>
 #include <QLabel>
@@ -76,6 +78,19 @@ void WabbajackDialog::buildGalleryPage() {
     m_search->setClearButtonEnabled(true);
     topBar->addWidget(m_search, 1);
 
+    // Official / Unofficial filter.
+    m_officialCombo = new QComboBox(m_galleryPage);
+    m_officialCombo->addItem("All lists",   int(OfficialFilter::All));
+    m_officialCombo->addItem("Official",    int(OfficialFilter::Official));
+    m_officialCombo->addItem("Unofficial",  int(OfficialFilter::Unofficial));
+    topBar->addWidget(m_officialCombo);
+
+    // Tag filter - a dropdown menu of checkable tags (populated on fetch).
+    m_tagBtn = new QPushButton("Tags", m_galleryPage);
+    m_tagMenu = new QMenu(m_tagBtn);
+    m_tagBtn->setMenu(m_tagMenu);
+    topBar->addWidget(m_tagBtn);
+
     // Solero targets Skyrim SE only - the gallery is filtered to it (no game switcher).
     m_refreshBtn = new QPushButton("Refresh", m_galleryPage);
     topBar->addWidget(m_refreshBtn);
@@ -144,6 +159,8 @@ void WabbajackDialog::buildGalleryPage() {
 
     // Connections
     connect(m_search, &QLineEdit::textChanged, this, &WabbajackDialog::applyFilter);
+    connect(m_officialCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int) { applyFilter(); });
     connect(m_refreshBtn, &QPushButton::clicked, this, &WabbajackDialog::startFetch);
     connect(m_retryBtn, &QPushButton::clicked, this, &WabbajackDialog::startFetch);
     connect(m_list, &QListWidget::currentRowChanged, this, &WabbajackDialog::onSelectionChanged);
@@ -202,6 +219,14 @@ void WabbajackDialog::buildProgressPage() {
         m_stack->setCurrentWidget(m_galleryPage);
     });
     btnRow->addWidget(m_backBtn);
+    m_retryInstallBtn = new QPushButton("Retry / Resume", m_progressPage);
+    m_retryInstallBtn->setVisible(false);
+    m_retryInstallBtn->setToolTip("Re-run the install with the same directories "
+                                  "- the engine resumes from the downloads folder.");
+    connect(m_retryInstallBtn, &QPushButton::clicked, this, [this] {
+        if (!m_installTarget.isEmpty()) startInstallRun();
+    });
+    btnRow->addWidget(m_retryInstallBtn);
     btnRow->addStretch();
     m_cancelBtn = new QPushButton("Cancel", m_progressPage);
     connect(m_cancelBtn, &QPushButton::clicked, this, [this] {
@@ -260,7 +285,79 @@ void WabbajackDialog::onModlistsReady(const QList<WabbajackModlist>& modlists) {
     m_all = modlists;
     m_refreshBtn->setEnabled(true);
     m_statusLabel->clear();
+    m_selectedTags.clear();
+    rebuildTagMenu();
     applyFilter();
+}
+
+QStringList WabbajackDialog::collectTags(const QList<WabbajackModlist>& lists) {
+    QSet<QString> set;
+    for (const auto& ml : lists)
+        for (const QString& t : ml.tags)
+            if (!t.trimmed().isEmpty()) set.insert(t.trimmed());
+    QStringList out(set.cbegin(), set.cend());
+    out.sort(Qt::CaseInsensitive);
+    return out;
+}
+
+void WabbajackDialog::rebuildTagMenu() {
+    if (!m_tagMenu) return;
+    m_tagMenu->clear();
+
+    // "Any tag" clears the selection.
+    QAction* anyAct = m_tagMenu->addAction("Any tag");
+    connect(anyAct, &QAction::triggered, this, [this] {
+        m_selectedTags.clear();
+        rebuildTagMenu();
+        applyFilter();
+    });
+    m_tagMenu->addSeparator();
+
+    const QStringList tags = collectTags(m_all);
+    for (const QString& tag : tags) {
+        QAction* act = m_tagMenu->addAction(tag);
+        act->setCheckable(true);
+        act->setChecked(m_selectedTags.contains(tag));
+        connect(act, &QAction::toggled, this, [this, tag](bool on) {
+            if (on) m_selectedTags.insert(tag);
+            else    m_selectedTags.remove(tag);
+            updateTagButtonLabel();
+            applyFilter();
+        });
+    }
+    updateTagButtonLabel();
+}
+
+void WabbajackDialog::updateTagButtonLabel() {
+    if (!m_tagBtn) return;
+    if (m_selectedTags.isEmpty()) m_tagBtn->setText("Tags");
+    else m_tagBtn->setText(QStringLiteral("Tags (%1)").arg(m_selectedTags.size()));
+}
+
+bool WabbajackDialog::passesFilters(const WabbajackModlist& ml, const QString& searchQ,
+                                    OfficialFilter official,
+                                    const QSet<QString>& selectedTags) {
+    // Official / Unofficial.
+    if (official == OfficialFilter::Official && !ml.official) return false;
+    if (official == OfficialFilter::Unofficial && ml.official) return false;
+
+    // Tag filter: list must contain all selected tags (composable and). Empty = any.
+    if (!selectedTags.isEmpty()) {
+        const QSet<QString> listTags(ml.tags.cbegin(), ml.tags.cend());
+        for (const QString& t : selectedTags)
+            if (!listTags.contains(t)) return false;
+    }
+
+    // Search text over title/author/description.
+    const QString q = searchQ.trimmed();
+    if (!q.isEmpty()) {
+        const bool match =
+            ml.title.contains(q, Qt::CaseInsensitive) ||
+            ml.author.contains(q, Qt::CaseInsensitive) ||
+            ml.description.contains(q, Qt::CaseInsensitive);
+        if (!match) return false;
+    }
+    return true;
 }
 
 void WabbajackDialog::onFailed(const QString& error) {
@@ -279,6 +376,9 @@ void WabbajackDialog::applyFilter() {
     const QString q = m_search->text().trimmed();
     // Solero targets Skyrim SE only - the gallery is fixed to it.
     static const QString kGame = QStringLiteral("Skyrim Special Edition");
+    const auto official = m_officialCombo
+        ? OfficialFilter(m_officialCombo->currentData().toInt())
+        : OfficialFilter::All;
 
     m_filtered.clear();
     ++m_thumbGen; // late thumbnail replies for the old view must not apply
@@ -287,13 +387,7 @@ void WabbajackDialog::applyFilter() {
 
     for (const auto& ml : m_all) {
         if (ml.gameHuman != kGame) continue;
-        if (!q.isEmpty()) {
-            const bool match =
-                ml.title.contains(q, Qt::CaseInsensitive) ||
-                ml.author.contains(q, Qt::CaseInsensitive) ||
-                ml.description.contains(q, Qt::CaseInsensitive);
-            if (!match) continue;
-        }
+        if (!passesFilters(ml, q, official, m_selectedTags)) continue;
         m_filtered << ml;
     }
 
@@ -306,6 +400,7 @@ void WabbajackDialog::applyFilter() {
                         .arg(ml.downloadSizeStr, ml.installSizeStr);
         QStringList tags;
         if (ml.official) tags << "Official";
+        if (ml.utility) tags << "Utility/Test";
         if (ml.nsfw) tags << "NSFW";
         QString tagStr = tags.isEmpty() ? QString() : ("  [" + tags.join(", ") + "]");
 
@@ -505,20 +600,32 @@ void WabbajackDialog::triggerInstall(const QString& target, bool isLocalFile,
         return;
     }
 
-    // Switch to the progress page and kick off the install.
+    // Remember everything needed to retry/resume on failure.
     m_installDir = installDir;
     m_installTitle = displayName;
+    m_installTarget = target;
+    m_installIsLocalFile = isLocalFile;
+    m_installDownloadsDir = downloadsDir;
+
+    startInstallRun();
+}
+
+void WabbajackDialog::startInstallRun() {
+    // Switch to the progress page and kick off (or resume) the install using the
+    // remembered parameters. The engine resumes from the downloads dir.
     m_installing = true;
-    m_progTitle->setText("Installing: " + displayName);
+    m_progTitle->setText("Installing: " + m_installTitle);
     m_progBar->setRange(0, 0); // indeterminate until first pct arrives
     m_progBar->setValue(0);
     m_progOp->setText("Starting\xe2\x80\xa6");
     m_progLog->clear();
     m_backBtn->setVisible(false);
+    if (m_retryInstallBtn) m_retryInstallBtn->setVisible(false);
     m_cancelBtn->setEnabled(true);
     m_stack->setCurrentWidget(m_progressPage);
 
-    m_engine->install(target, isLocalFile, installDir, downloadsDir);
+    m_engine->install(m_installTarget, m_installIsLocalFile,
+                      m_installDir, m_installDownloadsDir);
 }
 
 void WabbajackDialog::onProgress(const QString& op, const QString& file, double pct) {
@@ -545,8 +652,11 @@ void WabbajackDialog::onInstallFinished(bool ok, int exitCode) {
             QString("\n--- Install failed (exit code %1) ---").arg(exitCode));
         m_progBar->setValue(0);
         m_backBtn->setVisible(true);
+        if (m_retryInstallBtn) m_retryInstallBtn->setVisible(true);
         QMessageBox::warning(this, "Install failed",
-            QString("Install failed (exit code %1) - see log.").arg(exitCode));
+            QString("Install failed (exit code %1) - see log.\n\n"
+                    "You can Retry / Resume to continue from where it left off.")
+                .arg(exitCode));
         return;
     }
 
@@ -557,9 +667,10 @@ void WabbajackDialog::onInstallFinished(bool ok, int exitCode) {
 
 void WabbajackDialog::doImport() {
     const QString profilesDir = m_installDir + "/profiles";
-    const QString modsDir = m_installDir + "/mods";
 
-    if (!QDir(profilesDir).exists() || !QDir(modsDir).exists()) {
+    // Require only profiles/ - Mo2Importer tolerates a missing mods/ dir (a valid
+    // install can have zero staged mods), so don't hard-gate on mods/ existing.
+    if (!QDir(profilesDir).exists()) {
         m_backBtn->setVisible(true);
         QMessageBox::warning(this, "Import",
             "Install completed but the expected MO2 layout wasn't found at\n" + m_installDir);

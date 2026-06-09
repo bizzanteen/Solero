@@ -25,10 +25,14 @@ public:
     static QList<WabbajackModlist> parseModlistsJson(const QByteArray& stdoutBytes,
                                                      QString* error = nullptr);
 
-    // Parse a `[FILE_PROGRESS] <op>: <file> (<pct>%) ...` line.
-    // Returns true and fills op/file/pct on match; false otherwise.
-    static bool parseFileProgress(const QString& line, QString& op,
-                                  QString& file, double& pct);
+    // Parse a real jackify-engine progress line. The engine emits (\r-terminated):
+    //   "Installing files 819/1497 (233.3MB/276.7MB) - ..."
+    //   "Downloading Mod Archives (0/1) - 20.3MB/s - 0.1GB remaining"
+    //   "=== <Phase> ===" banners
+    // On match, fills `op` with a human label and `pct` with a 0..100 percentage
+    // (pct < 0 means "no percentage for this line, but the op label is valid").
+    // Returns true if the line is a recognized progress/phase line; false otherwise.
+    static bool parseProgressLine(const QString& line, QString& op, double& pct);
 
     // Async: run `list-modlists -json -sort-by title`, emit modlistsReady/failed.
     void fetchModlists();

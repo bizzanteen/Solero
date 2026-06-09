@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QProcessEnvironment>
+#include <memory>
 
 namespace solero {
 
@@ -102,16 +103,50 @@ QList<WabbajackModlist> WabbajackEngine::parseModlistsJson(const QByteArray& std
     return out;
 }
 
-bool WabbajackEngine::parseFileProgress(const QString& line, QString& op,
-                                        QString& file, double& pct) {
-    static const QRegularExpression re(
-        QStringLiteral(R"(^\[FILE_PROGRESS\]\s*([^:]+):\s*(.+?)\s*\((\d+(?:\.\d+)?)%\))"));
-    QRegularExpressionMatch mch = re.match(line);
-    if (!mch.hasMatch()) return false;
-    op   = mch.captured(1).trimmed();
-    file = mch.captured(2).trimmed();
-    pct  = mch.captured(3).toDouble();
-    return true;
+bool WabbajackEngine::parseProgressLine(const QString& lineRaw, QString& op,
+                                        double& pct) {
+    const QString line = lineRaw.trimmed();
+    if (line.isEmpty()) return false;
+
+    // Phase banner: "=== Installing ===" - surface the phase as the op label, no pct.
+    static const QRegularExpression phaseRe(
+        QStringLiteral(R"(^===\s*(.+?)\s*===$)"));
+    if (auto m = phaseRe.match(line); m.hasMatch()) {
+        op  = m.captured(1).trimmed();
+        pct = -1;
+        return true;
+    }
+
+    // "Installing files 819/1497 (233.3MB/276.7MB) - ..." -> pct from n/total.
+    static const QRegularExpression installRe(
+        QStringLiteral(R"(^Installing files\s+(\d+)\s*/\s*(\d+))"));
+    if (auto m = installRe.match(line); m.hasMatch()) {
+        const double n = m.captured(1).toDouble();
+        const double total = m.captured(2).toDouble();
+        pct = (total > 0) ? (100.0 * n / total) : -1;
+        op  = QStringLiteral("Installing files %1/%2")
+                  .arg(m.captured(1), m.captured(2));
+        return true;
+    }
+
+    // "Downloading Mod Archives (0/1) - 20.3MB/s - 0.1GB remaining" -> pct from n/total.
+    static const QRegularExpression dlRe(
+        QStringLiteral(R"(^Downloading\b.*?\((\d+)\s*/\s*(\d+)\))"));
+    if (auto m = dlRe.match(line); m.hasMatch()) {
+        const double n = m.captured(1).toDouble();
+        const double total = m.captured(2).toDouble();
+        pct = (total > 0) ? (100.0 * n / total) : -1;
+        op  = QStringLiteral("Downloading archives %1/%2")
+                  .arg(m.captured(1), m.captured(2));
+        // Append "remaining" hint if present for a richer op label.
+        static const QRegularExpression remRe(
+            QStringLiteral(R"(-\s*([\d.]+\s*\wB remaining))"));
+        if (auto r = remRe.match(line); r.hasMatch())
+            op += QStringLiteral(" - %1").arg(r.captured(1).trimmed());
+        return true;
+    }
+
+    return false;
 }
 
 static QProcessEnvironment engineEnv() {
@@ -190,22 +225,38 @@ void WabbajackEngine::install(const QString& machineUrlOrFile, bool isLocalFile,
     proc->setProcessEnvironment(engineEnv());
     proc->setProcessChannelMode(QProcess::MergedChannels);
 
-    auto drain = [this, proc]() {
+    // The engine rewrites progress lines in place with bare '\r' (no '\n'), so
+    // QProcess::canReadLine() won't split them. Read whatever bytes are available,
+    // buffer any partial trailing fragment, and split on both '\r' and '\n'.
+    auto buf = std::make_shared<QString>();
+    auto drain = [this, proc, buf]() {
         proc->setReadChannel(QProcess::StandardOutput);
-        while (proc->canReadLine()) {
-            QString line = QString::fromUtf8(proc->readLine()).trimmed();
+        *buf += QString::fromUtf8(proc->readAllStandardOutput());
+        // Split into complete segments; keep the last (possibly partial) fragment.
+        const auto segs = buf->split(QRegularExpression(QStringLiteral("[\\r\\n]")));
+        for (int i = 0; i + 1 < segs.size(); ++i) {
+            const QString line = segs.at(i).trimmed();
             if (line.isEmpty()) continue;
             emit logLine(line);
-            QString op, file; double pct = 0;
-            if (parseFileProgress(line, op, file, pct))
-                emit progress(op, file, pct);
+            QString op; double pct = -1;
+            if (parseProgressLine(line, op, pct))
+                emit progress(op, QString(), pct);
         }
+        *buf = segs.isEmpty() ? QString() : segs.last();
     };
     connect(proc, &QProcess::readyReadStandardOutput, this, drain);
 
     connect(proc, &QProcess::finished, this,
-            [this, proc, drain](int exitCode, QProcess::ExitStatus status) {
+            [this, proc, drain, buf](int exitCode, QProcess::ExitStatus status) {
         drain();
+        // Flush any trailing fragment with no terminator.
+        const QString tail = buf->trimmed();
+        if (!tail.isEmpty()) {
+            emit logLine(tail);
+            QString op; double pct = -1;
+            if (parseProgressLine(tail, op, pct))
+                emit progress(op, QString(), pct);
+        }
         bool ok = (status == QProcess::NormalExit && exitCode == 0);
         emit installFinished(ok, exitCode);
         if (m_proc == proc) m_proc = nullptr;

@@ -3,11 +3,14 @@
 #include <QDialog>
 #include <QList>
 #include <QHash>
+#include <QSet>
+#include <QStringList>
 #include <QPixmap>
 
 class QStackedWidget;
 class QLineEdit;
 class QComboBox;
+class QMenu;
 class QPushButton;
 class QListWidget;
 class QListWidgetItem;
@@ -55,12 +58,32 @@ private:
     void loadThumb(QListWidgetItem* item, const QString& url);
     static QString thumbCachePath(const QString& url); // dataRoot()/wabbajack-thumbs/<md5>.png
     void triggerInstall(const QString& target, bool isLocalFile, const QString& displayName);
+    // Kick off (or resume) the install with the remembered m_install* parameters.
+    void startInstallRun();
     void doImport();
     // Returns true if it's OK to close/reject (not installing, or user confirmed
     // cancelling the in-progress install - in which case the engine is cancelled).
     bool confirmCloseWhileInstalling();
 
     static QString sanitize(const QString& s);
+
+public:
+    // Official/Unofficial filter selector.
+    enum class OfficialFilter { All, Official, Unofficial };
+
+    // Pure, headless-testable filter predicate: returns true if `ml` should be
+    // shown given the active search query, official filter, and the set of
+    // selected tags (empty = "any tag"). Composes search + official + tags; the
+    // caller still applies the game filter separately.
+    static bool passesFilters(const WabbajackModlist& ml, const QString& searchQ,
+                              OfficialFilter official, const QSet<QString>& selectedTags);
+
+    // Union of all tags across `lists`, sorted, de-duplicated (case-sensitive keys).
+    static QStringList collectTags(const QList<WabbajackModlist>& lists);
+
+private:
+    void rebuildTagMenu();
+    void updateTagButtonLabel();
 
     ProfileManager* m_profiles = nullptr;
     WabbajackEngine* m_engine = nullptr;
@@ -71,6 +94,10 @@ private:
     // Page 0 - gallery
     QWidget* m_galleryPage = nullptr;
     QLineEdit* m_search = nullptr;
+    QComboBox* m_officialCombo = nullptr;  // All / Official / Unofficial
+    QPushButton* m_tagBtn = nullptr;       // tag filter dropdown
+    QMenu* m_tagMenu = nullptr;
+    QSet<QString> m_selectedTags;          // empty = any tag
     QPushButton* m_refreshBtn = nullptr;
     QListWidget* m_list = nullptr;
     QLabel* m_statusLabel = nullptr;      // "Loading…" / error placeholder
@@ -101,6 +128,12 @@ private:
     QString m_installDir;
     QString m_installTitle;
     bool m_installing = false;
+    // Remembered install args so a failed install can be retried/resumed (the
+    // engine resumes from the downloads dir) with the exact same parameters.
+    QString m_installTarget;
+    bool m_installIsLocalFile = false;
+    QString m_installDownloadsDir;
+    QPushButton* m_retryInstallBtn = nullptr;
 };
 
 } // namespace solero

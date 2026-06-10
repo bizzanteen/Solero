@@ -141,7 +141,13 @@ QColor DataTab::accentColor() const {
 QString DataTab::stagingRootFor(const QString& modId) const {
     if (modId == "__overwrite__")
         return AppConfig::overwriteDir(m_profile ? m_profile->name() : QString()); // per-profile Overwrite
-    return AppConfig::instance().stagingDir() + "/" + modId;
+    // Resolve to the mod's ACTUAL staging folder, exactly as the deploy engine and
+    // every other caller do (stagingFolderFor). Migrated profiles use named folders
+    // (e.g. "SSE Display Tweaks"), not the raw id - using the id pointed the Data
+    // pane at a nonexistent/wrong directory, so edits never reached the deployed
+    // copy and appeared to revert to default.
+    const QString folder = m_profile ? m_profile->stagingFolderFor(modId) : modId;
+    return AppConfig::instance().stagingDir() + "/" + folder;
 }
 
 QString DataTab::editedMarkerPath(const QString& stagingRoot) {
@@ -297,6 +303,12 @@ void DataTab::onFileSaved(const QString& filePath) {
     QFile f(editedMarkerPath(m_editTrackingRoot));
     if (f.open(QIODevice::WriteOnly))
         f.write(QJsonDocument(arr).toJson(QJsonDocument::Compact));
+    // The edit changed a staged file. If the profile is deployed, the live copy
+    // is now stale (a broken/copy-mode hardlink won't reflect the change), so mark
+    // the deployment dirty - MainWindow prompts a redeploy that pushes the edit to
+    // the game's Data folder. Without this the file looks edited in staging but the
+    // game keeps loading the old deployed copy.
+    emit fileRulesChanged();
     scheduleRefresh();
 }
 

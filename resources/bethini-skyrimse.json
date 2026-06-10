@@ -879,7 +879,7 @@
         }
        ],
        "choices": [
-        "Easy",
+        "Novice",
         "Apprentice",
         "Adept",
         "Expert",
@@ -887,7 +887,7 @@
         "Legendary"
        ],
        "settingChoices": {
-        "Easy": [
+        "Novice": [
          "0"
         ],
         "Apprentice": [

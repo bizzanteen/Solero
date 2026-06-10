@@ -10,6 +10,7 @@
 #include <QFont>
 #include <QMessageBox>
 #include <QStringConverter>
+#include <sys/stat.h>
 
 namespace {
 // Refuse to load files larger than this into the editor.
@@ -103,13 +104,40 @@ bool FileEditorDialog::looksBinary(const QByteArray& data) {
     return false;
 }
 
+// True if the path is a symlink or a hardlinked regular file (st_nlink > 1).
+// Such files must be written in place: under hardlink/symlink deploy the staged
+// file and the live game file are the same inode, so an in-place write updates
+// both at once and survives undeploy/redeploy. atomicWrite()'s temp+rename would
+// replace the path with a fresh inode, breaking the link so the edit lands on
+// only one side and a redeploy reverts it.
+static bool isLinkedFile(const QString& path) {
+    if (QFileInfo(path).isSymLink()) return true;
+    struct stat st;
+    return ::stat(QFile::encodeName(path).constData(), &st) == 0 && st.st_nlink > 1;
+}
+
+// In-place write: truncate the existing inode and rewrite it, preserving every
+// hardlink to it (and writing through a symlink to its target).
+static bool writeInPlace(const QString& path, const QByteArray& data) {
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    const bool ok = f.write(data) == data.size();
+    f.close();
+    return ok;
+}
+
 void FileEditorDialog::save() {
     if (m_binary) return;
     // Re-encode using the encoding the file was loaded with, so Latin-1 INIs
     // round-trip without corruption.
     QStringEncoder enc(m_encoding);
     const QByteArray data = enc.encode(m_edit->toPlainText());
-    if (!atomicWrite(m_filePath, data)) {
+    // Preserve hardlinks/symlinks (deployed files) so the edit reaches the game
+    // immediately; only fall back to the crash-safe atomic write for a standalone
+    // file that isn't part of a deployment.
+    const bool ok = isLinkedFile(m_filePath) ? writeInPlace(m_filePath, data)
+                                             : atomicWrite(m_filePath, data);
+    if (!ok) {
         QMessageBox::warning(this, "Save Failed",
             "Could not write to:\n" + m_filePath);
         m_statusLabel->setText(m_filePath + "  -  save failed");

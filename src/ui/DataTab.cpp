@@ -303,12 +303,12 @@ void DataTab::onFileSaved(const QString& filePath) {
     QFile f(editedMarkerPath(m_editTrackingRoot));
     if (f.open(QIODevice::WriteOnly))
         f.write(QJsonDocument(arr).toJson(QJsonDocument::Compact));
-    // The edit changed a staged file. If the profile is deployed, the live copy
-    // is now stale (a broken/copy-mode hardlink won't reflect the change), so mark
-    // the deployment dirty - MainWindow prompts a redeploy that pushes the edit to
-    // the game's Data folder. Without this the file looks edited in staging but the
-    // game keeps loading the old deployed copy.
-    emit fileRulesChanged();
+    // Under hardlink/symlink deploy the editor wrote in place, so the live game
+    // file (same inode) already reflects the edit - no redeploy needed. Only COPY
+    // mode keeps live and staging as independent files, so there mark the
+    // deployment dirty to prompt a redeploy that pushes the edit to the game.
+    if (AppConfig::instance().deployMode() == DeployMode::Copy)
+        emit fileRulesChanged();
     scheduleRefresh();
 }
 

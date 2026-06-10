@@ -42,6 +42,13 @@ public:
     // Repaint the Flags column (e.g. after a mod note was edited).
     void refreshFlags();
 
+public slots:
+    // Undo / redo the most recent mod-list reorder for the active profile. Wired
+    // to the LeftPane's Undo/Redo toolbar buttons. After the order is restored,
+    // selection is preserved where still valid.
+    void undoMove();
+    void redoMove();
+
 signals:
     // Emitted on selection change. Each entry is a mod id, "__overwrite__" for the
     // Overwrite row, or "__separator__" for separator rows. Empty list = nothing selected.
@@ -59,6 +66,9 @@ signals:
     // Right-click the Community Shaders base mod -> "Clear Shader Cache": wipe the
     // compiled shader cache (CS recompiles it on next launch).
     void clearShaderCacheRequested(const QString& modId);
+    // Re-emitted from the model whenever the reorder undo/redo stack state changes,
+    // so the LeftPane can enable/disable its Undo/Redo buttons.
+    void undoRedoStateChanged(bool canUndo, bool canRedo);
 
 protected:
     void contextMenuEvent(QContextMenuEvent* event) override;
@@ -68,6 +78,10 @@ protected:
     void showEvent(QShowEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
+    // Capture the dragged mods' ids before the drop, then re-select them at their
+    // new rows afterwards so a multi-mod drag keeps its selection (the base impl
+    // clears it on the model reset). Current index lands on the first moved mod.
+    void dropEvent(QDropEvent* event) override;
 
 private:
     ModListModel* m_model;
@@ -91,6 +105,9 @@ private:
     void applyRowSpans();
     // Selected mod-row ids in list (raw) order; separators/Overwrite excluded.
     QStringList selectedModIds() const;
+    // Re-select the Mod rows with the given ids (visible ones only) and set the
+    // current index to the first still-visible id. Clears any prior selection.
+    void selectModsByIds(const QStringList& ids);
     // Group the selected mods: first (topmost) becomes parent, rest nested under.
     void groupSelectedMods();
     // Ungroup a child mod: clear its parentId and move it below the group block.

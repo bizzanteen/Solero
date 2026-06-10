@@ -78,6 +78,40 @@ bool ModList::reorder(QList<int> srcRaws, int dstRaw) {
     return false;
 }
 
+QStringList ModList::orderIds() const {
+    QStringList ids;
+    ids.reserve(m_entries.size());
+    for (const auto& e : m_entries) ids << e.id;
+    return ids;
+}
+
+bool ModList::setOrder(const QStringList& ids) {
+    // Build the new order by id. Pull each requested id out of a working copy in
+    // request order; whatever's left (ids not mentioned in `ids`) is appended in
+    // its original relative order so no entry is ever dropped.
+    QList<ModEntry> before = m_entries;
+    QList<ModEntry> remaining = m_entries;
+    QList<ModEntry> rebuilt;
+    rebuilt.reserve(m_entries.size());
+    for (const QString& id : ids) {
+        for (int i = 0; i < remaining.size(); ++i) {
+            if (remaining.at(i).id == id) {
+                rebuilt.append(remaining.takeAt(i));
+                break;
+            }
+        }
+    }
+    // Append any entries the snapshot didn't cover (defensive).
+    for (const auto& e : remaining) rebuilt.append(e);
+
+    m_entries = std::move(rebuilt);
+
+    if (m_entries.size() != before.size()) return true;
+    for (int i = 0; i < m_entries.size(); ++i)
+        if (m_entries.at(i).id != before.at(i).id) return true;
+    return false;
+}
+
 void ModList::update(const QString& id, const ModEntry& updated) {
     for (auto& e : m_entries) if (e.id == id) { e = updated; return; }
 }

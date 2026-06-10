@@ -26,6 +26,15 @@ public:
     void setEnabled(const QString& id, bool enabled);
     void update(const QString& id, const ModEntry& updated);
 
+    // Order snapshot helpers (used by the undo/redo stacks). orderIds() returns
+    // every entry id in raw order; setOrder() rearranges the backing list so its
+    // entries appear in the given id order. Ids absent from the list are ignored;
+    // any entry whose id is not in `ids` keeps its relative position appended at
+    // the end (defensive - snapshots always cover the whole list). Returns true
+    // iff the order actually changed.
+    QStringList orderIds() const;
+    bool setOrder(const QStringList& ids);
+
     // Multi-file grouping (Stage M2). The storage invariant is: a group PARENT is
     // a Mod immediately followed by a CONTIGUOUS run of child Mods whose parentId
     // == the parent's id.

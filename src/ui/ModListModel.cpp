@@ -52,6 +52,8 @@ void ModListModel::setProfile(Profile* profile) {
     m_updates.clear();
     rebuildVisibleRows();
     endResetModel();
+    // Undo history must not cross profiles.
+    clearUndoRedo();
 }
 
 void ModListModel::setUpdateInfo(const QHash<QString, QPair<QString,QString>>& info) {
@@ -200,6 +202,16 @@ int ModListModel::rawIndexForRow(int visibleRow) const {
 
 int ModListModel::rawToVisible(int rawIndex) const {
     return m_visibleRows.indexOf(rawIndex);
+}
+
+int ModListModel::rowForModId(const QString& id) const {
+    if (!m_profile || id.isEmpty()) return -1;
+    const auto& list = m_profile->modList();
+    int raw = -1;
+    for (int i = 0; i < list.count(); ++i)
+        if (list.at(i).id == id) { raw = i; break; }
+    if (raw < 0) return -1;
+    return rawToVisible(raw); // -1 if hidden (collapsed group/separator)
 }
 
 const ModEntry* ModListModel::entryAt(int visibleRow) const {
@@ -606,6 +618,7 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
 
         if (destRaw == srcRaw) return false; // no-op
 
+        pushUndoSnapshot();
         beginResetModel();
         list.moveSection(srcRaw, blockLen, destRaw);
         m_profile->save();
@@ -634,6 +647,7 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
         if (destRaw > srcRaw) destRaw -= blockLen;
         if (destRaw < 0) destRaw = 0;
 
+        if (destRaw != srcRaw) pushUndoSnapshot();
         beginResetModel();
         list.moveSection(srcRaw, blockLen, destRaw);
         m_profile->save();
@@ -673,6 +687,7 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
     // no longer corresponds 1:1 to the visible (src->dst) pair, so use a full reset
     // (like the group-parent/separator paths) to keep the row mapping consistent.
     if (snapped) {
+        pushUndoSnapshot();
         beginResetModel();
         list.move(srcRaw, moveTo);
         m_profile->save();
@@ -682,6 +697,7 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
         return true;
     }
 
+    pushUndoSnapshot();
     beginMoveRows({}, src, src, {}, dst > src ? dst + 1 : dst);
     list.move(srcRaw, moveTo);
     m_profile->save();
@@ -800,14 +816,75 @@ bool ModListModel::moveSelection(const QList<int>& srcVisibleRows, int dstVisibl
            && !list.at(dstRaw).parentId.isEmpty())
         ++dstRaw;
 
-    // 6. Reorder, persist, refresh.
+    // 6. Reorder, persist, refresh. Capture the pre-move order so we can record an
+    // undo snapshot only if the reorder actually changes anything.
+    const QStringList beforeOrder = list.orderIds();
     beginResetModel();
     bool ok = m_profile->modList().reorder(orderedSrcRaws, dstRaw);
+    if (ok) {
+        m_undoStack.append(beforeOrder);
+        if (m_undoStack.size() > kUndoCap) m_undoStack.removeFirst();
+        m_redoStack.clear();
+        m_profile->save();
+    }
+    rebuildVisibleRows();
+    endResetModel();
+    if (ok) {
+        emit modsChanged();
+        emit undoRedoStateChanged(canUndo(), canRedo());
+    }
+    return ok;
+}
+
+// --- Reorder undo/redo -------------------------------------------------------
+
+void ModListModel::pushUndoSnapshot() {
+    if (!m_profile) return;
+    m_undoStack.append(m_profile->modList().orderIds());
+    if (m_undoStack.size() > kUndoCap) m_undoStack.removeFirst();
+    m_redoStack.clear();
+    emit undoRedoStateChanged(canUndo(), canRedo());
+}
+
+bool ModListModel::applyOrder(const QStringList& ids) {
+    if (!m_profile) return false;
+    beginResetModel();
+    bool ok = m_profile->modList().setOrder(ids);
     if (ok) m_profile->save();
     rebuildVisibleRows();
     endResetModel();
     if (ok) emit modsChanged();
     return ok;
+}
+
+bool ModListModel::undoOrder() {
+    if (!m_profile || m_undoStack.isEmpty()) return false;
+    // Snapshot the current order onto redo, then restore the previous one.
+    const QStringList current = m_profile->modList().orderIds();
+    const QStringList target = m_undoStack.takeLast();
+    m_redoStack.append(current);
+    if (m_redoStack.size() > kUndoCap) m_redoStack.removeFirst();
+    bool ok = applyOrder(target);
+    emit undoRedoStateChanged(canUndo(), canRedo());
+    return ok;
+}
+
+bool ModListModel::redoOrder() {
+    if (!m_profile || m_redoStack.isEmpty()) return false;
+    const QStringList current = m_profile->modList().orderIds();
+    const QStringList target = m_redoStack.takeLast();
+    m_undoStack.append(current);
+    if (m_undoStack.size() > kUndoCap) m_undoStack.removeFirst();
+    bool ok = applyOrder(target);
+    emit undoRedoStateChanged(canUndo(), canRedo());
+    return ok;
+}
+
+void ModListModel::clearUndoRedo() {
+    const bool had = !m_undoStack.isEmpty() || !m_redoStack.isEmpty();
+    m_undoStack.clear();
+    m_redoStack.clear();
+    if (had) emit undoRedoStateChanged(false, false);
 }
 
 } // namespace solero

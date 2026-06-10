@@ -41,6 +41,10 @@ public:
     // Map from visible row index to raw ModList index (-1 = Overwrite)
     int rawIndexForRow(int visibleRow) const;
     int rawToVisible(int rawIndex) const;
+    // Current visible row of the Mod with the given id, or -1 if it isn't present
+    // or its row is hidden (collapsed group/separator). Used to re-select moved
+    // mods after a drag-drop reorder.
+    int rowForModId(const QString& id) const;
     const ModEntry* entryAt(int visibleRow) const;
     void toggleCollapse(int visibleRow);
     // Toggle the collapsed state of a group-PARENT mod (mirrors toggleCollapse,
@@ -85,8 +89,23 @@ public:
     // (and the Overwrite cache); a specific id removes just that entry.
     void invalidateModCache(const QString& id = QString());
 
+    // --- Mod-list reorder undo/redo (active profile only) ---------------------
+    // Snapshots are the ordered list of every entry id (raw order); restoring one
+    // routes through the same reset+persist+modsChanged path a manual reorder
+    // uses, so persistence and side-effects fire exactly as usual.
+    bool canUndo() const { return !m_undoStack.isEmpty(); }
+    bool canRedo() const { return !m_redoStack.isEmpty(); }
+    // Restore the previous / next reorder snapshot. No-op if the matching stack
+    // is empty. Returns true iff the order changed.
+    bool undoOrder();
+    bool redoOrder();
+    // Drop both stacks (e.g. on profile change so undo can't cross profiles).
+    void clearUndoRedo();
+
 signals:
     void modsChanged();
+    // Emitted whenever the undo/redo stack state changes (push, undo, redo, clear).
+    void undoRedoStateChanged(bool canUndo, bool canRedo);
 
 private:
     Profile* m_profile = nullptr;
@@ -104,6 +123,18 @@ private:
     mutable QHash<QString,bool> m_emptyCache;
     mutable int m_overwriteHasFiles = -1; // tri-state cache: -1 unknown, 0 no, 1 yes
     bool m_searchExpandAll = false; // ignore collapse while filtering (state untouched)
+
+    // Reorder undo/redo: each snapshot is the full ordered id list of the active
+    // profile's mod list. Capped at kUndoCap each.
+    static constexpr int kUndoCap = 100;
+    QList<QStringList> m_undoStack;
+    QList<QStringList> m_redoStack;
+    // Push the current order onto the undo stack and clear redo. Call before a
+    // user-initiated reorder mutation. No-op without a profile.
+    void pushUndoSnapshot();
+    // Apply a target id order through the shared reset+persist path so the profile
+    // saves and modsChanged fires. Returns true iff the order changed.
+    bool applyOrder(const QStringList& ids);
 
     void rebuildVisibleRows();
     bool isModEmpty(const QString& id) const;

@@ -10,9 +10,11 @@
 #include <QHeaderView>
 #include <QMouseEvent>
 #include <QKeyEvent>
+#include <QDropEvent>
 #include <QInputDialog>
 #include <QUuid>
 #include <QItemSelectionModel>
+#include <QItemSelection>
 #include <QDesktopServices>
 #include <QUrl>
 #include <QMessageBox>
@@ -118,6 +120,10 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     m_model = new ModListModel(this);
     setModel(m_model);
     connect(m_model, &ModListModel::modsChanged, this, &ModListView::modsChanged);
+    // Re-expose the model's reorder undo/redo state so the LeftPane toolbar can
+    // enable/disable its buttons without reaching into the model.
+    connect(m_model, &ModListModel::undoRedoStateChanged,
+            this, &ModListView::undoRedoStateChanged);
     // Model resets (rebuild()/setProfile()) clear first-column spans, so re-apply
     // them whenever the model is reset to keep separators full-width.
     connect(m_model, &QAbstractItemModel::modelReset, this, &ModListView::applyRowSpans);
@@ -830,6 +836,55 @@ QStringList ModListView::selectedModIds() const {
     QStringList ids;
     for (const auto& p : picked) ids << p.second;
     return ids;
+}
+
+void ModListView::selectModsByIds(const QStringList& ids) {
+    auto* sel = selectionModel();
+    if (!sel) return;
+    QItemSelection selection;
+    QModelIndex firstIdx;
+    for (const QString& id : ids) {
+        const int row = m_model->rowForModId(id);
+        if (row < 0) continue; // not present or hidden (collapsed group/separator)
+        const QModelIndex left  = m_model->index(row, 0);
+        const QModelIndex right = m_model->index(row, ModListModel::ColCount - 1);
+        if (!left.isValid()) continue;
+        selection.select(left, right);
+        if (!firstIdx.isValid()) firstIdx = m_model->index(row, ModListModel::ColName);
+    }
+    sel->clearSelection();
+    if (selection.isEmpty()) return;
+    sel->select(selection, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    if (firstIdx.isValid())
+        sel->setCurrentIndex(firstIdx, QItemSelectionModel::NoUpdate);
+}
+
+void ModListView::dropEvent(QDropEvent* event) {
+    // Capture the dragged mods' ids so we can re-select them after the model's
+    // reorder (the reset/move clears the prior selection). Empty for non-mod
+    // drags; selectModsByIds is then a no-op.
+    const QStringList movedIds = selectedModIds();
+    QTreeView::dropEvent(event);
+    if (!movedIds.isEmpty())
+        selectModsByIds(movedIds);
+}
+
+void ModListView::undoMove() {
+    // Capture the selection first - the restore resets the model and clears it.
+    const QStringList prevSel = selectedModIds();
+    if (m_model->undoOrder()) {
+        applyFilter();
+        // Keep the current selection if those mods still exist & are visible.
+        selectModsByIds(prevSel);
+    }
+}
+
+void ModListView::redoMove() {
+    const QStringList prevSel = selectedModIds();
+    if (m_model->redoOrder()) {
+        applyFilter();
+        selectModsByIds(prevSel);
+    }
 }
 
 void ModListView::groupSelectedMods() {

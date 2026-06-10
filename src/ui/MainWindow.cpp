@@ -501,6 +501,24 @@ void MainWindow::setupCentralWidget() {
     stateFilter->addItem("Missing dependency", int(solero::ModListView::StateFilter::MissingDep));
     filterRow->addWidget(modFilter, 1);
     filterRow->addWidget(stateFilter);
+
+    // Reorder Undo/Redo for the mod list. Curvy-arrow theme icons with a glyph
+    // fallback (QChar, never a byte escape) when the icon theme lacks them.
+    auto makeReorderBtn = [&](const QString& themeIcon, QChar fallback, const QString& tip) {
+        auto* b = new QToolButton(leftContainer);
+        const QIcon ic = QIcon::fromTheme(themeIcon);
+        if (ic.isNull()) b->setText(QString(fallback));
+        else             b->setIcon(ic);
+        b->setToolTip(tip);
+        b->setAutoRaise(true);
+        b->setEnabled(false); // nothing to undo/redo until a reorder happens
+        return b;
+    };
+    auto* undoBtn = makeReorderBtn(QStringLiteral("edit-undo"), QChar(0x21B6), tr("Undo move"));
+    auto* redoBtn = makeReorderBtn(QStringLiteral("edit-redo"), QChar(0x21B7), tr("Redo move"));
+    filterRow->addWidget(undoBtn);
+    filterRow->addWidget(redoBtn);
+
     m_modListView = new solero::ModListView(leftContainer);
     connect(modFilter, &QLineEdit::textChanged, m_modListView,
             &solero::ModListView::setFilter);
@@ -508,6 +526,13 @@ void MainWindow::setupCentralWidget() {
         m_modListView->setStateFilter(
             static_cast<solero::ModListView::StateFilter>(stateFilter->currentData().toInt()));
     });
+    connect(undoBtn, &QToolButton::clicked, m_modListView, &solero::ModListView::undoMove);
+    connect(redoBtn, &QToolButton::clicked, m_modListView, &solero::ModListView::redoMove);
+    connect(m_modListView, &solero::ModListView::undoRedoStateChanged, this,
+            [undoBtn, redoBtn](bool canUndo, bool canRedo){
+                undoBtn->setEnabled(canUndo);
+                redoBtn->setEnabled(canRedo);
+            });
     leftLayout->addLayout(filterRow);
     leftLayout->addWidget(m_modListView);
 

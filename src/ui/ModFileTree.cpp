@@ -20,9 +20,11 @@
 
 namespace solero {
 
-static constexpr int RoleFullPath = Qt::UserRole;
-static constexpr int RoleRelPath  = Qt::UserRole + 1;
-static constexpr int RoleIsDir    = Qt::UserRole + 2; // true on folder rows
+static constexpr int RoleFullPath   = Qt::UserRole;
+static constexpr int RoleRelPath    = Qt::UserRole + 1;
+static constexpr int RoleIsDir      = Qt::UserRole + 2; // true on folder rows
+static constexpr int RoleUnpopulated = Qt::UserRole + 3; // lazy folder not yet filled
+static constexpr int RoleDirPath     = Qt::UserRole + 4; // on-disk path of a folder row
 static const char* kMime = "application/x-solero-file";
 
 ModFileTree::ModFileTree(QWidget* parent) : QTreeWidget(parent) {
@@ -50,14 +52,44 @@ ModFileTree::ModFileTree(QWidget* parent) : QTreeWidget(parent) {
         QString full = item->data(0, RoleFullPath).toString();
         if (!full.isEmpty()) emit fileActivated(full);
     });
+    connect(this, &QTreeWidget::itemExpanded, this, &ModFileTree::onItemExpanded);
+}
+
+QTreeWidgetItem* ModFileTree::makeDirItem(QTreeWidgetItem* parent, const QString& fullPath,
+                                          const QString& relPath, const QString& name) {
+    auto* dirItem = parent ? new QTreeWidgetItem(parent, {name, "", ""})
+                           : new QTreeWidgetItem(this, {name, "", ""});
+    dirItem->setIcon(0, style()->standardIcon(QStyle::SP_DirIcon));
+    // Record the folder's relative path so the context menu can rename/delete it.
+    // RoleFullPath holds the on-disk dir path (used to populate children lazily);
+    // it is left unset for drag payloads because only file rows are draggable.
+    dirItem->setData(0, RoleRelPath, relPath);
+    dirItem->setData(0, RoleIsDir, true);
+    if (!fullPath.isEmpty()) dirItem->setData(0, RoleDirPath, fullPath); // dir disk path
+    return dirItem;
+}
+
+QTreeWidgetItem* ModFileTree::makeFileItem(QTreeWidgetItem* parent, const QString& fullPath,
+                                           const QString& relPath, const QString& filename) {
+    QString type = QFileInfo(filename).suffix().toLower();
+    auto* item = parent ? new QTreeWidgetItem(parent, {filename, type, ""})
+                        : new QTreeWidgetItem(this, {filename, type, ""});
+    item->setIcon(0, style()->standardIcon(QStyle::SP_FileIcon));
+    item->setData(0, RoleFullPath, fullPath);
+    item->setData(0, RoleRelPath,  relPath);
+    return item;
 }
 
 void ModFileTree::buildTree(const QString& rootDir,
                             const std::function<void(QTreeWidgetItem*, const QString&)>& decorate) {
+    m_lazy = false;
+    m_lazyRoot.clear();
+    m_decorate = {};
     clear();
-    // Disable sorting while building so inserts stay O(n) and the existing
-    // insertion/nesting logic isn't disturbed; re-enable after so the user's
+    // Disable view updates + sorting while building so inserts stay O(n) and the
+    // view doesn't relayout/repaint per item; re-enable after so the user's
     // chosen sort re-applies once.
+    setUpdatesEnabled(false);
     const bool wasSorting = isSortingEnabled();
     setSortingEnabled(false);
     QMap<QString, QTreeWidgetItem*> dirItems;
@@ -74,16 +106,8 @@ void ModFileTree::buildTree(const QString& rootDir,
         for (int i = 0; i < parts.size() - 1; ++i) {
             accumulated += (i > 0 ? "/" : "") + parts[i];
             if (!dirItems.contains(accumulated)) {
-                auto* dirItem = parent
-                    ? new QTreeWidgetItem(parent, {parts[i], "", ""})
-                    : new QTreeWidgetItem(this, {parts[i], "", ""});
-                dirItem->setIcon(0, style()->standardIcon(QStyle::SP_DirIcon));
+                auto* dirItem = makeDirItem(parent, QString(), accumulated, parts[i]);
                 dirItem->setExpanded(true);
-                // Record the folder's relative path so the context menu can
-                // rename/delete it. RoleFullPath is left unset so folders stay
-                // out of drag payloads (only files are draggable/droppable).
-                dirItem->setData(0, RoleRelPath, accumulated);
-                dirItem->setData(0, RoleIsDir, true);
                 dirItems[accumulated] = dirItem;
                 parent = dirItem;
             } else {
@@ -91,17 +115,110 @@ void ModFileTree::buildTree(const QString& rootDir,
             }
         }
 
-        QString filename = parts.last();
-        QString type = QFileInfo(filename).suffix().toLower();
-        auto* item = parent
-            ? new QTreeWidgetItem(parent, {filename, type, ""})
-            : new QTreeWidgetItem(this, {filename, type, ""});
-        item->setIcon(0, style()->standardIcon(QStyle::SP_FileIcon));
-        item->setData(0, RoleFullPath, fullPath);
-        item->setData(0, RoleRelPath,  relPath);
+        auto* item = makeFileItem(parent, fullPath, relPath, parts.last());
         decorate(item, relPath);
     }
     setSortingEnabled(wasSorting);
+    setUpdatesEnabled(true);
+}
+
+void ModFileTree::buildTreeLazy(const QString& rootDir, const Decorator& decorate) {
+    m_lazy = true;
+    m_lazyRoot = rootDir;
+    m_decorate = decorate;
+    clear();
+    setUpdatesEnabled(false);
+    const bool wasSorting = isSortingEnabled();
+    setSortingEnabled(false);
+    // Only the top level is materialized; each folder is left collapsed with a
+    // placeholder child so QTreeWidget shows an expansion arrow without us
+    // creating thousands of rows up front. populateChildren() fills a folder the
+    // first time it is expanded.
+    populateChildren(nullptr);
+    setSortingEnabled(wasSorting);
+    setUpdatesEnabled(true);
+}
+
+void ModFileTree::populateChildren(QTreeWidgetItem* dir) {
+    // Resolve the on-disk path and the rel-prefix for the level we're filling.
+    QString dirFull = dir ? dir->data(0, RoleDirPath).toString() : m_lazyRoot;
+    QString relPrefix = dir ? (dir->data(0, RoleRelPath).toString() + "/") : QString();
+    if (dirFull.isEmpty()) return;
+
+    const bool wasSorting = isSortingEnabled();
+    setSortingEnabled(false);
+    QDir d(dirFull);
+    // Directories first, then files - single non-recursive listing of this level.
+    const auto entries = d.entryInfoList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot,
+                                         QDir::DirsFirst | QDir::Name);
+    for (const QFileInfo& fi : entries) {
+        const QString name = fi.fileName();
+        if (name.startsWith(".solero")) continue;
+        const QString rel = relPrefix + name;
+        if (fi.isDir()) {
+            auto* sub = makeDirItem(dir, fi.absoluteFilePath(), rel, name);
+            // Placeholder so the arrow appears; replaced on first expand.
+            sub->setData(0, RoleUnpopulated, true);
+            new QTreeWidgetItem(sub); // dummy child
+        } else {
+            auto* item = makeFileItem(dir, fi.absoluteFilePath(), rel, name);
+            if (m_decorate) m_decorate(item, rel);
+        }
+    }
+    setSortingEnabled(wasSorting);
+}
+
+void ModFileTree::onItemExpanded(QTreeWidgetItem* item) {
+    if (!item || !m_lazy) return;
+    if (!item->data(0, RoleUnpopulated).toBool()) return;
+    item->setData(0, RoleUnpopulated, false);
+    setUpdatesEnabled(false);
+    // Drop the placeholder child, then fill the real entries for this level.
+    while (item->childCount() > 0) delete item->takeChild(0);
+    populateChildren(item);
+    setUpdatesEnabled(true);
+}
+
+void ModFileTree::materializeAll() {
+    if (!m_lazy) return;
+    // Force-populate every still-collapsed folder (used by filter / expand-all,
+    // which need the whole tree present). Iterative so deep trees don't recurse
+    // the C++ stack; populateChildren appends to children we then revisit.
+    std::function<void(QTreeWidgetItem*)> fill = [&](QTreeWidgetItem* it) {
+        if (it->data(0, RoleUnpopulated).toBool()) {
+            it->setData(0, RoleUnpopulated, false);
+            while (it->childCount() > 0) delete it->takeChild(0);
+            populateChildren(it);
+        }
+        for (int i = 0; i < it->childCount(); ++i) fill(it->child(i));
+    };
+    setUpdatesEnabled(false);
+    for (int i = 0; i < topLevelItemCount(); ++i) fill(topLevelItem(i));
+    m_lazy = false; // fully materialized now; no further on-demand work needed
+    setUpdatesEnabled(true);
+}
+
+void ModFileTree::expandTree() {
+    if (m_lazy) {
+        // Expanding a lazy game tree fully would materialize every file (the slow
+        // path we are avoiding). Only open the top level the user can already see;
+        // deeper levels populate on demand as they are expanded.
+        setUpdatesEnabled(false);
+        for (int i = 0; i < topLevelItemCount(); ++i) topLevelItem(i)->setExpanded(true);
+        setUpdatesEnabled(true);
+        return;
+    }
+    expandAll();
+}
+
+void ModFileTree::collapseTree() {
+    if (m_lazy) {
+        setUpdatesEnabled(false);
+        for (int i = 0; i < topLevelItemCount(); ++i) topLevelItem(i)->setExpanded(false);
+        setUpdatesEnabled(true);
+        return;
+    }
+    collapseAll();
 }
 
 void ModFileTree::showModFiles(const QString& stagingRoot,
@@ -165,7 +282,11 @@ void ModFileTree::showGameDir(const QString& gameDir,
     m_modId.clear();
     m_hiddenRelPaths.clear();
     setAcceptDrops(false);
-    buildTree(gameDir, [&](QTreeWidgetItem* item, const QString& relPath) {
+    // The game Data folder can hold thousands of files; build it lazily so the
+    // toggle click only materializes the top level. ownerByRelPath is captured by
+    // value so the decorator stays valid across later on-demand population.
+    buildTreeLazy(gameDir, [ownerByRelPath, accent, this]
+                  (QTreeWidgetItem* item, const QString& relPath) {
         auto owner = ownerByRelPath.value(relPath);
         if (!owner.isEmpty()) {
             item->setText(2, "from: " + owner);
@@ -178,6 +299,12 @@ void ModFileTree::showGameDir(const QString& gameDir,
 
 void ModFileTree::setFilter(const QString& text) {
     const QString t = text.trimmed();
+    // An empty filter on a lazy tree is a no-op: nothing is hidden and we must
+    // not force the whole (huge) game tree to materialize just to clear a search.
+    if (t.isEmpty() && m_lazy) return;
+    // A real search needs every row present to match against, so realize the
+    // lazy tree once before walking it.
+    if (!t.isEmpty()) materializeAll();
     std::function<bool(QTreeWidgetItem*)> apply = [&](QTreeWidgetItem* it) -> bool {
         bool selfMatch = t.isEmpty() || it->text(0).contains(t, Qt::CaseInsensitive);
         bool childMatch = false;

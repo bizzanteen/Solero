@@ -66,6 +66,11 @@ private:
     QSet<QString> m_editedRelPaths;
 
     void refresh();
+    // Coalesces bursts of setProfile/setConflictIndex/setSelection/toggle into a
+    // single rebuild on the next event-loop turn (each setter used to trigger its
+    // own full tree walk).
+    void scheduleRefresh();
+    bool m_refreshPending = false;
     void applyFilter();
     void applyFolderState();
     void updateShowAllText();

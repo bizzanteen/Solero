@@ -36,6 +36,12 @@ public:
 
     const QString& stagingRoot() const { return m_stagingRoot; }
 
+    // Lazy-aware folder state. expandTree() on a lazy game-dir tree only opens
+    // the already-materialized levels (no full walk); collapseTree() collapses
+    // without re-walking. Prefer these over QTreeWidget::expandAll/collapseAll.
+    void expandTree();
+    void collapseTree();
+
 signals:
     void fileActivated(const QString& fullPath);
     void filesDropped(); // a file was dropped in from another tree
@@ -57,12 +63,31 @@ protected:
     void contextMenuEvent(QContextMenuEvent* e) override;
 
 private:
-    void buildTree(const QString& rootDir,
-                   const std::function<void(QTreeWidgetItem*, const QString&)>& decorate);
+    using Decorator = std::function<void(QTreeWidgetItem*, const QString&)>;
+
+    // Eager full-tree build (used for mod-staging trees, which are small).
+    void buildTree(const QString& rootDir, const Decorator& decorate);
+
+    // Lazy build (used for the live game directory, which can hold thousands of
+    // files): only the top level is materialized; each folder gets a placeholder
+    // child and is filled on demand when the user expands it (onItemExpanded).
+    void buildTreeLazy(const QString& rootDir, const Decorator& decorate);
+    void onItemExpanded(QTreeWidgetItem* item);
+    void populateChildren(QTreeWidgetItem* dir); // fill one collapsed dir level
+    void materializeAll();                        // force the whole lazy tree open
+    QTreeWidgetItem* makeFileItem(QTreeWidgetItem* parent, const QString& fullPath,
+                                  const QString& relPath, const QString& filename);
+    QTreeWidgetItem* makeDirItem(QTreeWidgetItem* parent, const QString& fullPath,
+                                 const QString& relPath, const QString& name);
 
     QString m_stagingRoot; // empty in game-dir mode (drops disabled)
     QString m_modId;       // owning mod id (empty in game-dir mode)
     QSet<QString> m_hiddenRelPaths; // files hidden within m_modId
+
+    // Lazy game-dir state. m_lazyRoot is non-empty only while a lazy tree is live.
+    bool      m_lazy = false;
+    QString   m_lazyRoot;
+    Decorator m_decorate;
 };
 
 } // namespace solero

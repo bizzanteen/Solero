@@ -18,6 +18,7 @@
 #include <QDirIterator>
 #include <QJsonDocument>
 #include <QJsonArray>
+#include <QTimer>
 
 namespace solero {
 
@@ -53,7 +54,7 @@ DataTab::DataTab(QWidget* parent) : QWidget(parent) {
     connect(m_showAllBtn, &QPushButton::toggled, this, [this](bool on) {
         m_showAllFiles = on;
         updateShowAllText();
-        refresh();
+        scheduleRefresh();
     });
     connect(m_collapseBtn, &QPushButton::toggled, this, [this](bool on) {
         m_collapsed = on;
@@ -107,12 +108,24 @@ DataTab::DataTab(QWidget* parent) : QWidget(parent) {
     showGameDirectory(); // nothing selected initially -> game dir view
 }
 
-void DataTab::setProfile(Profile* profile) { m_profile = profile; refresh(); }
-void DataTab::setConflictIndex(const ConflictIndex& index) { m_conflicts = index; refresh(); }
+void DataTab::setProfile(Profile* profile) { m_profile = profile; scheduleRefresh(); }
+void DataTab::setConflictIndex(const ConflictIndex& index) { m_conflicts = index; scheduleRefresh(); }
 
 void DataTab::setSelection(const QStringList& ids) {
     m_selection = ids;
-    refresh();
+    scheduleRefresh();
+}
+
+void DataTab::scheduleRefresh() {
+    // Many call sites set profile + conflicts + selection back-to-back; without
+    // coalescing each would trigger a full directory walk and tree rebuild. Defer
+    // to the next event-loop turn so a burst collapses into one refresh().
+    if (m_refreshPending) return;
+    m_refreshPending = true;
+    QTimer::singleShot(0, this, [this] {
+        m_refreshPending = false;
+        refresh();
+    });
 }
 
 QColor DataTab::accentColor() const {
@@ -151,8 +164,8 @@ void DataTab::applyFilter() {
 
 void DataTab::applyFolderState() {
     for (ModFileTree* t : { m_singleTree, m_splitLeft, m_splitRight }) {
-        if (m_collapsed) t->collapseAll();
-        else             t->expandAll();
+        if (m_collapsed) t->collapseTree();
+        else             t->expandTree();
     }
 }
 
@@ -278,11 +291,11 @@ void DataTab::onFileSaved(const QString& filePath) {
     QFile f(editedMarkerPath(m_editTrackingRoot));
     if (f.open(QIODevice::WriteOnly))
         f.write(QJsonDocument(arr).toJson(QJsonDocument::Compact));
-    refresh();
+    scheduleRefresh();
 }
 
 void DataTab::onSplitDropped() {
-    refresh(); // rebuild both trees to reflect the copied file
+    scheduleRefresh(); // rebuild both trees to reflect the copied file
 }
 
 void DataTab::onHideToggled(const QString& modId, const QString& relPath, bool hide) {
@@ -290,7 +303,7 @@ void DataTab::onHideToggled(const QString& modId, const QString& relPath, bool h
     m_profile->setFileHidden(modId, relPath, hide);
     m_profile->save();          // persist filerules.json immediately
     emit fileRulesChanged();    // -> MainWindow marks the deployment dirty
-    refresh();                  // repaint the tree with the new hidden state
+    scheduleRefresh();          // repaint the tree with the new hidden state
 }
 
 void DataTab::onRenameRequested(const QString& modId, const QString& relPath,
@@ -298,13 +311,13 @@ void DataTab::onRenameRequested(const QString& modId, const QString& relPath,
     // MainWindow performs the rename on the mod's staging dir (and invalidates
     // its caches / marks the deployment dirty); then rebuild the tree from disk.
     emit renameRequested(modId, relPath, newName, isFolder);
-    refresh();
+    scheduleRefresh();
 }
 
 void DataTab::onDeleteRequested(const QString& modId, const QString& relPath,
                                 bool isFolder) {
     emit deleteRequested(modId, relPath, isFolder);
-    refresh();
+    scheduleRefresh();
 }
 
 } // namespace solero

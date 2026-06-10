@@ -780,6 +780,17 @@ void MainWindow::switchProfile(const QString& name) {
     m_lastDeployWarning.clear(); // stale once we switch profiles
     setWindowTitle(QString("Solero - %1").arg(name));
 
+    // Keep the toolbar selector in sync with the actually-active profile. The
+    // startup restore (and onImportProfile) call switchProfile() directly rather
+    // than through the combo, so without this the combo stays at index 0 - the
+    // alphabetically-first profile - making every launch *look* like it opened
+    // the first profile even though the correct one was loaded. Block signals so
+    // this programmatic sync doesn't recursively re-enter switchProfile.
+    if (m_profileCombo && m_profileCombo->currentText() != name) {
+        QSignalBlocker blocker(m_profileCombo);
+        m_profileCombo->setCurrentText(name);
+    }
+
     // Deploy the incoming profile if the previous one was deployed.
     if (wasDeployed && solero::AppConfig::instance().isConfigured()) {
         if (prog) prog->setMessage("Deploying " + name + "...");

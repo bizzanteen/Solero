@@ -5,6 +5,8 @@
 #include "DownloadsTab.h"
 #include "core/AppConfig.h"
 #include <QDir>
+#include <QDirIterator>
+#include <QFileInfo>
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -143,6 +145,53 @@ void RightPane::showDataFor(const QString& modId) {
     setCurrentWidget(m_dataTab);
 }
 
+// True if the mod's staging root holds at least one deployable LOOSE file - i.e.
+// any real file that is not a plugin (.esp/.esm/.esl, shown in the Plugins tab)
+// and not per-mod metadata (.solero* markers, legacy fomod-choices.json). When
+// false, the Data tab would be empty/useless for this mod, so the caller can
+// auto-switch to the more useful Plugins tab. Mirrors DeployEngine's skip rules.
+bool RightPane::modHasLooseData(const QString& modId) const {
+    if (!m_currentProfile) return false;
+    const QString folder = m_currentProfile->stagingFolderFor(modId);
+    if (folder.isEmpty()) return false;
+    const QString modRoot = AppConfig::instance().stagingDir() + "/" + folder;
+    if (!QDir(modRoot).exists()) return false;
+
+    QDirIterator it(modRoot, QDir::Files | QDir::NoDotAndDotDot,
+                    QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
+    while (it.hasNext()) {
+        it.next();
+        const QString fn = it.fileName();
+        if (fn.startsWith(".solero")
+            || fn.compare("fomod-choices.json", Qt::CaseInsensitive) == 0)
+            continue; // per-mod metadata, never deployed
+        if (fn.endsWith(".esp", Qt::CaseInsensitive)
+            || fn.endsWith(".esm", Qt::CaseInsensitive)
+            || fn.endsWith(".esl", Qt::CaseInsensitive))
+            continue; // plugins live in the Plugins tab, not the Data view
+        return true;
+    }
+    return false;
+}
+
+// Of the given plugin filenames, return the one that appears EARLIEST in the
+// current load order (the profile's PluginList), or empty if none are present.
+QString RightPane::firstPluginInLoadOrder(const QStringList& filenames) const {
+    if (!m_currentProfile || filenames.isEmpty()) return QString();
+    const PluginList& pl = m_currentProfile->pluginList();
+    int bestIdx = -1;
+    QString best;
+    for (const QString& fn : filenames) {
+        for (int i = 0; i < pl.count(); ++i) {
+            if (pl.at(i).filename.compare(fn, Qt::CaseInsensitive) == 0) {
+                if (bestIdx < 0 || i < bestIdx) { bestIdx = i; best = fn; }
+                break;
+            }
+        }
+    }
+    return best;
+}
+
 void RightPane::onSelectionChanged(const QStringList& ids) {
     m_dataTab->setSelection(ids);
 
@@ -170,6 +219,30 @@ void RightPane::onSelectionChanged(const QStringList& ids) {
         }
     }
     m_pluginsTab->highlightPlugins(pluginFiles);
+
+    // Single-mod selection drives two view conveniences (multi-select keeps the
+    // current tab untouched so the user isn't yanked around).
+    QWidget* pluginsContainer = m_pluginsTab->parentWidget();
+    if (modIds.size() == 1) {
+        const QString modId = modIds.first();
+        // TASK 3: a mod with no loose Data-folder content would show an empty
+        // Data tab - switch to the more useful Plugins tab instead. (A plugin-
+        // only mod has no loose data, so this lands the user on Plugins, where
+        // its ESPs live.)
+        if (modId != "__overwrite__" && !modHasLooseData(modId)
+            && currentWidget() == m_dataTab) {
+            if (pluginsContainer) setCurrentWidget(pluginsContainer);
+        }
+
+        // TASK 4: when the Plugins tab is the active view, scroll the load order
+        // to this mod's first plugin (earliest in load order) and select it, so
+        // the user can see where its plugins sit. selectPlugin() switches-to +
+        // selects + scrolls; the tab-switch above may have made Plugins current.
+        if (pluginsContainer && currentWidget() == pluginsContainer) {
+            const QString first = firstPluginInLoadOrder(pluginFiles);
+            if (!first.isEmpty()) selectPlugin(first);
+        }
+    }
 }
 
 } // namespace solero

@@ -71,6 +71,15 @@ public slots:
     void showDataFor(const QString& modId);
 
 private:
+    // True if the mod's staging root contains at least one deployable LOOSE file
+    // (not a plugin, not per-mod metadata) - i.e. the Data tab would show real
+    // content for it. Used to decide whether to auto-switch a single-mod
+    // selection to the Plugins tab.
+    bool modHasLooseData(const QString& modId) const;
+    // The plugin filename from `filenames` that sorts earliest in the current
+    // load order (profile's PluginList), or empty if none are present.
+    QString firstPluginInLoadOrder(const QStringList& filenames) const;
+
     PluginListView* m_pluginsTab;
     QLabel*         m_pluginNotice = nullptr;
     QPushButton*    m_sortBtn = nullptr;

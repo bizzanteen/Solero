@@ -282,10 +282,12 @@ void ModFileTree::showGameDir(const QString& gameDir,
     m_modId.clear();
     m_hiddenRelPaths.clear();
     setAcceptDrops(false);
-    // The game Data folder can hold thousands of files; build it lazily so the
-    // toggle click only materializes the top level. ownerByRelPath is captured by
-    // value so the decorator stays valid across later on-demand population.
-    buildTreeLazy(gameDir, [ownerByRelPath, accent, this]
+    // The game Data folder can hold thousands of files. Build it eagerly (with
+    // view updates suspended during the build - see buildTree) so the whole tree
+    // is present for searching; a lazy tree made the toggle fast but forced a
+    // full synchronous materialize the moment the user typed in the filter, which
+    // froze the UI. ownerByRelPath is captured by value for the decorator.
+    buildTree(gameDir, [ownerByRelPath, accent, this]
                   (QTreeWidgetItem* item, const QString& relPath) {
         auto owner = ownerByRelPath.value(relPath);
         if (!owner.isEmpty()) {

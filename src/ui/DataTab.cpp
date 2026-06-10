@@ -47,9 +47,15 @@ DataTab::DataTab(QWidget* parent) : QWidget(parent) {
     topBar->addWidget(m_collapseBtn, 0);
     layout->addLayout(topBar);
 
+    // Debounce search input: re-filtering walks the whole (possibly huge) tree,
+    // so coalesce keystrokes and only filter once the user pauses typing.
+    m_filterDebounce = new QTimer(this);
+    m_filterDebounce->setSingleShot(true);
+    m_filterDebounce->setInterval(200);
+    connect(m_filterDebounce, &QTimer::timeout, this, [this]{ applyFilter(); });
     connect(m_search, &QLineEdit::textChanged, this, [this](const QString& text) {
         m_filter = text;
-        applyFilter();
+        m_filterDebounce->start();
     });
     connect(m_showAllBtn, &QPushButton::toggled, this, [this](bool on) {
         m_showAllFiles = on;

@@ -52,6 +52,7 @@ private:
     QPushButton*    m_showAllBtn;
     QPushButton*    m_collapseBtn;
     QString         m_filter;        // current search text
+    QTimer*         m_filterDebounce = nullptr; // coalesces search keystrokes
     bool            m_showAllFiles = false; // mirror of m_showAllBtn
     bool            m_collapsed = false;     // mirror of m_collapseBtn
 

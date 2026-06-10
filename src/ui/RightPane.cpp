@@ -155,21 +155,27 @@ bool RightPane::modHasLooseData(const QString& modId) const {
     const QString folder = m_currentProfile->stagingFolderFor(modId);
     if (folder.isEmpty()) return false;
     const QString modRoot = AppConfig::instance().stagingDir() + "/" + folder;
-    if (!QDir(modRoot).exists()) return false;
+    QDir dir(modRoot);
+    if (!dir.exists()) return false;
 
-    QDirIterator it(modRoot, QDir::Files | QDir::NoDotAndDotDot,
-                    QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
-    while (it.hasNext()) {
-        it.next();
-        const QString fn = it.fileName();
+    // Cheap, NON-recursive top-level check. This runs on every selection, so it
+    // must not walk the whole staging tree - a recursive walk here froze the UI
+    // for large mods. A subdirectory at the top level (textures/, meshes/, …)
+    // means loose data; a top-level non-plugin, non-metadata file also counts.
+    // Plugin-only mods have just an .esp/.esm/.esl at the root -> reported as no
+    // loose data, so the caller lands the user on the Plugins tab.
+    const auto entries = dir.entryInfoList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot);
+    for (const QFileInfo& fi : entries) {
+        const QString fn = fi.fileName();
         if (fn.startsWith(".solero")
             || fn.compare("fomod-choices.json", Qt::CaseInsensitive) == 0)
             continue; // per-mod metadata, never deployed
+        if (fi.isDir()) return true; // a data subtree (textures/, meshes/, scripts/, …)
         if (fn.endsWith(".esp", Qt::CaseInsensitive)
             || fn.endsWith(".esm", Qt::CaseInsensitive)
             || fn.endsWith(".esl", Qt::CaseInsensitive))
             continue; // plugins live in the Plugins tab, not the Data view
-        return true;
+        return true; // a loose non-plugin file at the root
     }
     return false;
 }

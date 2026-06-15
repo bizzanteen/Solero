@@ -136,6 +136,7 @@ set(SOLERO_SOURCES
   src/nexus/NexusApi.cpp
   src/nexus/MirrorPick.cpp
   src/nexus/DownloadManager.cpp
+  src/nexus/DownloadWorker.cpp
   src/ui/NexusWebView.cpp
   src/ui/ToolPanel.cpp
   src/ui/ToolSetupWizard.cpp

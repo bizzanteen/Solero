@@ -104,6 +104,10 @@ bool AppConfig::load() {
                  : (dm == "copy")    ? DeployMode::Copy
                                      : DeployMode::HardLink;
     m_lastProfile = obj["lastProfile"].toString();
+    m_preferredDownloadServer = obj["preferredDownloadServer"].toString();
+    m_cachedDownloadServers.clear();
+    for (const auto& v : obj["cachedDownloadServers"].toArray())
+        m_cachedDownloadServers.append(v.toString());
     m_hiddenColumns.clear();
     for (const auto& v : obj["hiddenColumns"].toArray())
         m_hiddenColumns.append(v.toInt());
@@ -133,6 +137,10 @@ bool AppConfig::save() const {
                       : (m_deployMode == DeployMode::Copy)    ? "copy"
                                                               : "hardlink";
     obj["lastProfile"] = m_lastProfile;
+    obj["preferredDownloadServer"] = m_preferredDownloadServer;
+    QJsonArray servers;
+    for (const QString& s : m_cachedDownloadServers) servers.append(s);
+    obj["cachedDownloadServers"] = servers;
     QJsonArray hidden;
     for (int c : m_hiddenColumns) hidden.append(c);
     obj["hiddenColumns"] = hidden;

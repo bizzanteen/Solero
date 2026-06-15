@@ -61,6 +61,13 @@ public:
     // Name of the profile active when Solero last closed; restored on next launch.
     const QString& lastProfile() const        { return m_lastProfile; }
     void setLastProfile(const QString& v)     { m_lastProfile = v; }
+    // Preferred Nexus CDN mirror short_name (empty = automatic / first mirror).
+    const QString& preferredDownloadServer() const  { return m_preferredDownloadServer; }
+    void setPreferredDownloadServer(const QString& v) { m_preferredDownloadServer = v; }
+    // Most recent set of mirror short_names seen from download_link.json, for the
+    // Settings combo. Updated in-memory whenever a download URL is resolved.
+    const QStringList& cachedDownloadServers() const { return m_cachedDownloadServers; }
+    void setCachedDownloadServers(const QStringList& v) { m_cachedDownloadServers = v; }
     // Hidden mod-list columns (ModListModel::Column indices). Name is never hidden.
     const QList<int>& hiddenColumns() const   { return m_hiddenColumns; }
     void setHiddenColumns(const QList<int>& v) { m_hiddenColumns = v; }
@@ -107,6 +114,8 @@ private:
     QString m_jackifyEnginePath;
     DeployMode m_deployMode = DeployMode::HardLink;
     QString m_lastProfile;
+    QString m_preferredDownloadServer;
+    QStringList m_cachedDownloadServers;
     QList<int> m_hiddenColumns;
 };
 

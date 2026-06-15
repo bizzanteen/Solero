@@ -19,6 +19,10 @@ public:
 public slots:
     void enqueue(const QString& url, const QString& fileName, const QString& destDir);
     void cancel(const QString& fileName);
+    // Synchronously abort any active download and clear the queue. Called via a
+    // BlockingQueuedConnection from DownloadManager's destructor before the
+    // worker thread stops, so no .part file or socket is leaked at shutdown.
+    void shutdown();
 
 signals:
     void progress(const QString& fileName, qint64 received, qint64 total);

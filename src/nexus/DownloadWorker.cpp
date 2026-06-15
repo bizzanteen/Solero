@@ -100,6 +100,19 @@ void DownloadWorker::cleanupActive() {
     if (m_reply) { m_reply->deleteLater(); m_reply = nullptr; }
 }
 
+void DownloadWorker::shutdown() {
+    m_queue.clear();
+    if (m_reply) {
+        QNetworkReply* r = m_reply;
+        m_reply = nullptr;        // abort-triggered finished slot becomes a no-op
+        r->abort();
+        r->deleteLater();
+    }
+    if (m_file) { m_file->close(); delete m_file; m_file = nullptr; }
+    if (!m_partPath.isEmpty()) { QFile::remove(m_partPath); m_partPath.clear(); }
+    m_busy = false;
+}
+
 void DownloadWorker::cancel(const QString& fileName) {
     if (m_busy && m_active.fileName == fileName) {
         if (m_reply) {

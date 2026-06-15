@@ -19,6 +19,8 @@ DownloadManager::DownloadManager(QObject* parent) : QObject(parent) {
 }
 
 DownloadManager::~DownloadManager() {
+    if (m_worker)
+        QMetaObject::invokeMethod(m_worker, "shutdown", Qt::BlockingQueuedConnection);
     m_thread->quit();
     m_thread->wait();
 }

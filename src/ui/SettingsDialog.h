@@ -44,6 +44,7 @@ private:
     QLineEdit* m_jackifyEdit = nullptr;
     QLabel* m_skseVersionLabel = nullptr;
     QPushButton* m_skseChangeBtn = nullptr;
+    QComboBox* m_serverCombo = nullptr;
 };
 
 } // namespace solero

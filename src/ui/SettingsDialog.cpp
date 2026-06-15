@@ -203,6 +203,24 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     nexusBtnRow->addStretch();
     nexusLayout->addLayout(nexusBtnRow);
 
+    // Preferred download server (CDN mirror). Populated from the most recent
+    // download_link.json response; "Automatic" keeps Nexus's default first mirror.
+    auto* serverRow = new QHBoxLayout;
+    serverRow->addWidget(new QLabel("Preferred download server:", nexus));
+    auto* serverCombo = new QComboBox(nexus);
+    serverCombo->addItem("Automatic (fastest default)", QString());
+    for (const QString& s : AppConfig::instance().cachedDownloadServers())
+        serverCombo->addItem(s, s);
+    {
+        const QString pref = AppConfig::instance().preferredDownloadServer();
+        int idx = serverCombo->findData(pref);
+        if (idx < 0 && !pref.isEmpty()) { serverCombo->addItem(pref, pref); idx = serverCombo->count() - 1; }
+        serverCombo->setCurrentIndex(idx < 0 ? 0 : idx);
+    }
+    serverRow->addWidget(serverCombo, 1);
+    nexusLayout->addLayout(serverRow);
+    m_serverCombo = serverCombo; // store for save-on-accept
+
     // Only validate on open if a key file already exists, to avoid any blocking
     // network call when the user has never signed in.
     if (QFile::exists(NexusApi::apiKeyPath()))
@@ -370,6 +388,8 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
             default: cfg.setDeployMode(DeployMode::HardLink); break;
         }
         cfg.setJackifyEnginePath(m_jackifyEdit->text().trimmed());
+        if (m_serverCombo)
+            cfg.setPreferredDownloadServer(m_serverCombo->currentData().toString());
         cfg.save();
         accept();
     });

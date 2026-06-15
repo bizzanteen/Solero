@@ -613,13 +613,12 @@ void MainWindow::setupCentralWidget() {
             }
             m_nxmMeta.remove(fn);
 
+            m_rightPane->downloadsTab()->setDownloadProgress(fn, ok ? 1 : 0, ok ? 1 : 0); // mark complete
+
             QList<QPair<QString,QString>> failPairs;
             for (const FailedDownload& d : m_failedDownloads)
                 failPairs.append({d.fileName, d.error});
-            m_rightPane->downloadsTab()->setFailedDownloads(failPairs);
-
-            m_rightPane->downloadsTab()->setDownloadProgress(fn, ok ? 1 : 0, ok ? 1 : 0); // mark complete
-            m_rightPane->downloadsTab()->refresh();
+            m_rightPane->downloadsTab()->setFailedDownloads(failPairs); // calls refresh() once
             statusBar()->showMessage(ok ? ("Downloaded: " + fn) : ("Download failed: " + fn + " - " + err));
             // Auto-install flagged downloads (e.g. SKSE) once they finish. Runs
             // after the sidecar write above so the new mod gets tagged with its

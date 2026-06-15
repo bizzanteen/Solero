@@ -132,8 +132,10 @@ void DownloadsTab::refresh() {
         auto* statusItem = new QTableWidgetItem("Failed: " + f.second);
         statusItem->setForeground(QColor(0xe5, 0x39, 0x35));   // red
         m_table->setItem(row, 1, statusItem);
-        m_table->setItem(row, 2, new QTableWidgetItem(QString()));
-        m_table->setItem(row, 3, new QTableWidgetItem(QString()));
+        auto* sz = new NumItem(QString()); sz->setData(Qt::UserRole, qint64(0));
+        m_table->setItem(row, 2, sz);
+        auto* dt = new NumItem(QString()); dt->setData(Qt::UserRole, qint64(0));
+        m_table->setItem(row, 3, dt);
     }
 
     m_table->setSortingEnabled(true);

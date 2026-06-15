@@ -2169,12 +2169,11 @@ void MainWindow::onRetryDownload(const QString& fileName) {
                     "mod page's 'Mod Manager Download' (nxm) button on the website instead.");
             return; // keep the failed row so the user can try the website route
         }
-    } else if (!fd.url.isEmpty()) {
-        url = fd.url; // direct/tool download with a stable link
     } else {
+        // Only Nexus downloads (which carry mod/file ids) can be re-resolved.
         QMessageBox::information(this, "Retry download",
-            "Solero no longer has enough information to retry this download "
-            "automatically. Start it again from the mod page or tool.");
+            "Solero can only retry Nexus downloads automatically. Start this one "
+            "again from the mod page or tool.");
         return;
     }
 

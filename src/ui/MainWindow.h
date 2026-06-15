@@ -281,7 +281,7 @@ private:
     // show a "Failed" row and the user can retry. For Nexus downloads `meta`
     // carries {game, modId, fileId, version} so retry can re-resolve the expiring
     // CDN URL; for direct/tool downloads `url` is the stable link to reuse.
-    struct FailedDownload { QString fileName; QString url; QJsonObject meta; QString error; };
+    struct FailedDownload { QString fileName; QJsonObject meta; QString error; };
     QList<FailedDownload> m_failedDownloads;
 
     // SKSE-from-Nexus: resolve the download off the UI thread, then auto-install.

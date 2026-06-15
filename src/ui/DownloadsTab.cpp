@@ -122,6 +122,20 @@ void DownloadsTab::refresh() {
         }
     }
 
+    for (const auto& f : m_failed) {
+        int row = m_table->rowCount();
+        m_table->insertRow(row);
+        auto* nameItem = new QTableWidgetItem(f.first);
+        nameItem->setData(Qt::UserRole, QString());            // no archive path
+        nameItem->setData(Qt::UserRole + 1, QStringLiteral("failed")); // row-kind marker
+        m_table->setItem(row, 0, nameItem);
+        auto* statusItem = new QTableWidgetItem("Failed: " + f.second);
+        statusItem->setForeground(QColor(0xe5, 0x39, 0x35));   // red
+        m_table->setItem(row, 1, statusItem);
+        m_table->setItem(row, 2, new QTableWidgetItem(QString()));
+        m_table->setItem(row, 3, new QTableWidgetItem(QString()));
+    }
+
     m_table->setSortingEnabled(true);
     applyFilters();
 }
@@ -158,6 +172,11 @@ void DownloadsTab::setDownloadProgress(const QString& fileName, qint64 received,
 
 void DownloadsTab::setProfile(Profile* profile) {
     m_profile = profile;
+    refresh();
+}
+
+void DownloadsTab::setFailedDownloads(const QList<QPair<QString,QString>>& failures) {
+    m_failed = failures;
     refresh();
 }
 
@@ -198,6 +217,22 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
         cancelAction->setEnabled(!activeFileName.isEmpty());
         connect(cancelAction, &QAction::triggered, this, [this, activeFileName]{
             emit cancelRequested(activeFileName);
+        });
+    }
+
+    // Retry: enabled only on a failed row (UserRole+1 == "failed").
+    {
+        const int row = m_table->currentRow();
+        QString failedFileName;
+        if (row >= 0) {
+            auto* nameItem = m_table->item(row, 0);
+            if (nameItem && nameItem->data(Qt::UserRole + 1).toString() == "failed")
+                failedFileName = nameItem->text();
+        }
+        auto* retryAction = menu.addAction("Retry download");
+        retryAction->setEnabled(!failedFileName.isEmpty());
+        connect(retryAction, &QAction::triggered, this, [this, failedFileName]{
+            emit retryRequested(failedFileName);
         });
     }
 

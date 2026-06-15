@@ -73,6 +73,7 @@
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QPair>
 #include <QMenu>
 #include <QIcon>
 #include <QStatusBar>
@@ -596,7 +597,27 @@ void MainWindow::setupCentralWidget() {
                 if (sf.open(QIODevice::WriteOnly))
                     sf.write(QJsonDocument(m_nxmMeta.value(fn)).toJson(QJsonDocument::Indented));
             }
+
+            // Drop any older failed entry for this filename (about to be re-evaluated).
+            for (int i = m_failedDownloads.size() - 1; i >= 0; --i)
+                if (m_failedDownloads[i].fileName == fn) m_failedDownloads.removeAt(i);
+
+            if (!ok && err != "cancelled") {
+                // Retain context so the Downloads tab can offer a retry. Retry
+                // re-resolves the URL (CDN links expire), so keep the Nexus meta.
+                FailedDownload fd;
+                fd.fileName = fn;
+                fd.meta = m_nxmMeta.value(fn);  // empty for non-Nexus downloads
+                fd.error = err;
+                m_failedDownloads.append(fd);
+            }
             m_nxmMeta.remove(fn);
+
+            QList<QPair<QString,QString>> failPairs;
+            for (const FailedDownload& d : m_failedDownloads)
+                failPairs.append({d.fileName, d.error});
+            m_rightPane->downloadsTab()->setFailedDownloads(failPairs);
+
             m_rightPane->downloadsTab()->setDownloadProgress(fn, ok ? 1 : 0, ok ? 1 : 0); // mark complete
             m_rightPane->downloadsTab()->refresh();
             statusBar()->showMessage(ok ? ("Downloaded: " + fn) : ("Download failed: " + fn + " - " + err));

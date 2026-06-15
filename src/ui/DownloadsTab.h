@@ -1,6 +1,8 @@
 #pragma once
 #include <QWidget>
 #include <QHash>
+#include <QPair>
+#include <QList>
 class QTableWidget;
 class QTableWidgetItem;
 namespace solero { class Profile; }
@@ -13,9 +15,12 @@ public:
     void setProfile(Profile* profile); // for "installed" status
     // Show/update a transient in-progress download row at the top of the table.
     void setDownloadProgress(const QString& fileName, qint64 received, qint64 total);
+    // Failed downloads to show as persistent "Failed" rows ({fileName, error}).
+    void setFailedDownloads(const QList<QPair<QString,QString>>& failures);
 signals:
     void installRequested(const QString& archivePath);
     void cancelRequested(const QString& fileName);
+    void retryRequested(const QString& fileName);
 private:
     void showContextMenu(const QPoint& pos);
     void applyFilters();
@@ -24,5 +29,6 @@ private:
     bool m_hideInstalled = false;
     bool m_hideNotInstalled = false;
     QHash<QString,int> m_activeRows; // fileName -> table row for in-progress downloads
+    QList<QPair<QString,QString>> m_failed; // {fileName, error}
 };
 }

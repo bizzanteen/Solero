@@ -269,6 +269,12 @@ private:
     // Pending Nexus metadata for in-flight nxm downloads, keyed by saved filename.
     // Written to a <archive>.solero-nexus.json sidecar when the download finishes.
     QHash<QString, QJsonObject> m_nxmMeta;
+    // A download that failed (not cancelled). Retained so the Downloads tab can
+    // show a "Failed" row and the user can retry. For Nexus downloads `meta`
+    // carries {game, modId, fileId, version} so retry can re-resolve the expiring
+    // CDN URL; for direct/tool downloads `url` is the stable link to reuse.
+    struct FailedDownload { QString fileName; QString url; QJsonObject meta; QString error; };
+    QList<FailedDownload> m_failedDownloads;
 
     // SKSE-from-Nexus: resolve the download off the UI thread, then auto-install.
     struct ResolvedSkse { QString url, fileName, fileId, version; bool ok = false; QString error; };

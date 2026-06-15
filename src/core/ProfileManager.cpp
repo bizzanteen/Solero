@@ -28,6 +28,18 @@ bool ProfileManager::deleteProfile(const QString& name) {
     return QDir(m_root + "/" + name).removeRecursively();
 }
 
+bool ProfileManager::renameProfile(const QString& oldName, const QString& newName) {
+    const QString trimmed = newName.trimmed();
+    if (trimmed.isEmpty()) return false;
+    if (trimmed.contains('/') || trimmed.contains('\\')) return false;
+    if (trimmed == oldName) return false;
+    const QString src = m_root + "/" + oldName;
+    const QString dst = m_root + "/" + trimmed;
+    if (!QDir(src).exists()) return false;
+    if (QDir(dst).exists()) return false;
+    return QDir().rename(src, dst);
+}
+
 QStringList ProfileManager::profileNames() const {
     return QDir(m_root).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
 }

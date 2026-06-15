@@ -53,6 +53,38 @@ private slots:
         QVERIFY(mgr.deleteProfile("ToDelete"));
         QVERIFY(!QDir(tmp.path() + "/ToDelete").exists());
     }
+    void renameProfile_movesDir() {
+        QTemporaryDir tmp;
+        ProfileManager mgr(tmp.path());
+        mgr.createProfile("OldName");
+        QVERIFY(mgr.renameProfile("OldName", "NewName"));
+        QVERIFY(!QDir(tmp.path() + "/OldName").exists());
+        QVERIFY(QDir(tmp.path() + "/NewName").exists());
+        QVERIFY(mgr.profileNames().contains("NewName"));
+        QVERIFY(!mgr.profileNames().contains("OldName"));
+    }
+    void renameProfile_rejectsExistingTarget() {
+        QTemporaryDir tmp;
+        ProfileManager mgr(tmp.path());
+        mgr.createProfile("A");
+        mgr.createProfile("B");
+        QVERIFY(!mgr.renameProfile("A", "B")); // target exists
+        QVERIFY(QDir(tmp.path() + "/A").exists());
+    }
+    void renameProfile_rejectsInvalidName() {
+        QTemporaryDir tmp;
+        ProfileManager mgr(tmp.path());
+        mgr.createProfile("A");
+        QVERIFY(!mgr.renameProfile("A", ""));        // empty
+        QVERIFY(!mgr.renameProfile("A", "a/b"));     // path separator
+        QVERIFY(!mgr.renameProfile("A", "a\\b"));    // backslash
+        QVERIFY(QDir(tmp.path() + "/A").exists());
+    }
+    void renameProfile_missingSourceFails() {
+        QTemporaryDir tmp;
+        ProfileManager mgr(tmp.path());
+        QVERIFY(!mgr.renameProfile("Ghost", "NewName"));
+    }
     void fileRules_roundTrip() {
         QTemporaryDir tmp;
         {

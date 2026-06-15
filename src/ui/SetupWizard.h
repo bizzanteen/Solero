@@ -2,6 +2,7 @@
 #include <QDialog>
 
 class QPushButton;
+class QLineEdit;
 
 namespace solero {
 
@@ -15,6 +16,7 @@ public:
 private:
     SetupPanel*  m_panel = nullptr;
     QPushButton* m_acceptBtn = nullptr;
+    QLineEdit*   m_apiKeyEdit = nullptr;
 };
 
 } // namespace solero

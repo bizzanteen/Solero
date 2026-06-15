@@ -300,6 +300,7 @@ add_executable(test_WabbajackFilter test_WabbajackFilter.cpp
   ../src/wabbajack/WabbajackEngine.cpp
   ../src/import/Mo2Importer.cpp
   ../src/nexus/NexusApi.cpp
+  ../src/nexus/MirrorPick.cpp
   ../src/tools/ToolDownloader.cpp
   ../src/tools/ToolCatalog.cpp
   ../src/install/ArchiveTool.cpp
@@ -320,6 +321,7 @@ set_tests_properties(test_WabbajackFilter PROPERTIES
 add_executable(test_NxmHandler test_NxmHandler.cpp
   ../src/nexus/NxmHandler.cpp
   ../src/nexus/NexusApi.cpp
+  ../src/nexus/MirrorPick.cpp
   ../src/tools/ToolDownloader.cpp
   ../src/tools/ToolCatalog.cpp
   ../src/install/ArchiveTool.cpp

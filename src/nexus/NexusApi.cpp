@@ -1,4 +1,6 @@
 #include "NexusApi.h"
+#include "MirrorPick.h"
+#include "core/AppConfig.h"
 #include "tools/ToolDownloader.h"
 #include "core/FileUtil.h"
 #include <QProcess>
@@ -309,9 +311,10 @@ QString NexusApi::downloadUrl(const QString& modId, const QString& fileId, const
     if (body.isEmpty()) return {};
     auto doc = QJsonDocument::fromJson(body);
     if (!doc.isArray()) return {};   // non-premium returns an error object
-    auto arr = doc.array();
+    const QJsonArray arr = doc.array();
     if (arr.isEmpty()) return {};
-    return arr[0].toObject()["URI"].toString();
+    AppConfig::instance().setCachedDownloadServers(mirrorServerNames(arr));
+    return pickMirror(arr, AppConfig::instance().preferredDownloadServer());
 }
 
 QString NexusApi::apiKeyPath() {

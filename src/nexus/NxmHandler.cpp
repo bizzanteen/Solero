@@ -1,5 +1,7 @@
 #include "NxmHandler.h"
 #include "NexusApi.h"
+#include "MirrorPick.h"
+#include "core/AppConfig.h"
 #include "tools/ToolDownloader.h"
 #include <QUrl>
 #include <QUrlQuery>
@@ -75,9 +77,10 @@ QString NxmHandler::resolveDownloadUrl(const NxmLink& link) {
     QString err;
     QByteArray body = curlGet(url, &err);
     if (body.isEmpty()) return {};   // curl failed or empty body; caller warns generically
-    auto arr = QJsonDocument::fromJson(body).array();
+    const QJsonArray arr = QJsonDocument::fromJson(body).array();
     if (arr.isEmpty()) return {};
-    return arr[0].toObject()["URI"].toString();
+    AppConfig::instance().setCachedDownloadServers(mirrorServerNames(arr));
+    return pickMirror(arr, AppConfig::instance().preferredDownloadServer());
 }
 
 QString NxmHandler::fileName(const NxmLink& link) {

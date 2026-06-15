@@ -134,6 +134,7 @@ set(SOLERO_SOURCES
   src/tools/RadiumPrep.cpp
   src/nexus/NxmHandler.cpp
   src/nexus/NexusApi.cpp
+  src/nexus/MirrorPick.cpp
   src/nexus/DownloadManager.cpp
   src/ui/NexusWebView.cpp
   src/ui/ToolPanel.cpp

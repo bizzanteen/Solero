@@ -21,6 +21,11 @@ add_solero_test(test_PluginList)
 add_solero_test(test_Profile)
 add_solero_test(test_LoadOrderBackup)
 
+add_executable(test_MirrorPick test_MirrorPick.cpp ../src/nexus/MirrorPick.cpp)
+target_include_directories(test_MirrorPick PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_MirrorPick PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_MirrorPick COMMAND test_MirrorPick)
+
 # HealthCheck aggregates Profile + ConflictIndex data, so link the core profile
 # set plus ConflictIndex and HealthCheck itself.
 add_executable(test_HealthCheck test_HealthCheck.cpp

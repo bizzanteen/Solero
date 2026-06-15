@@ -2103,6 +2103,9 @@ void MainWindow::onRedownloadMod(const QString& modId) {
     // If the mod's Nexus ids are unknown (e.g. imported mods), identify it by
     // MD5 first. Bails with a message if that isn't possible.
     if (!ensureNexusIds(mod)) return;
+    // ensureNexusIds refreshes the list view; re-fetch to avoid a stale pointer.
+    mod = profile->modList().findById(modId);
+    if (!mod) return;
 
     const QString nexusModId = mod->nexusModId;
     const QString fileId     = mod->nexusFileId;
@@ -2660,7 +2663,7 @@ bool MainWindow::ensureNexusIds(solero::ModEntry* mod) {
 
     QString md5;
     {
-        solero::ProgressModal prog(this, "Identify on Nexus", "Hashing\xe2\x80\xa6");
+        solero::ProgressModal prog(this, "Redownload from Nexus", "Hashing\xe2\x80\xa6");
         prog.pump();
         QFile f(mod->sourceArchive);
         if (!f.open(QIODevice::ReadOnly)) {

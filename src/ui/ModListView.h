@@ -56,7 +56,6 @@ signals:
     void reinstallRequested(const QString& modId);
     void redownloadRequested(const QString& modId);
     void endorseRequested(const QString& modId);
-    void identifyRequested(const QString& modId);
     void updateRequested(const QString& modId);
     void modsChanged();
     void modActivated(const QString& modId);

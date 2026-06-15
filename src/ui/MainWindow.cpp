@@ -646,8 +646,6 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onEndorseMod);
     connect(m_modListView, &solero::ModListView::updateRequested,
             this, &MainWindow::onUpdateMod);
-    connect(m_modListView, &solero::ModListView::identifyRequested,
-            this, &MainWindow::onIdentifyMod);
     connect(m_modListView, &solero::ModListView::modsChanged,
             this, &MainWindow::onModsChanged);
     connect(m_modListView, &solero::ModListView::modActivated,
@@ -2101,7 +2099,10 @@ void MainWindow::onRedownloadMod(const QString& modId) {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) return;
     solero::ModEntry* mod = profile->modList().findById(modId);
-    if (!mod || mod->nexusModId.isEmpty() || mod->nexusFileId.isEmpty()) return;
+    if (!mod) return;
+    // If the mod's Nexus ids are unknown (e.g. imported mods), identify it by
+    // MD5 first. Bails with a message if that isn't possible.
+    if (!ensureNexusIds(mod)) return;
 
     const QString nexusModId = mod->nexusModId;
     const QString fileId     = mod->nexusFileId;
@@ -2637,21 +2638,24 @@ void MainWindow::maybeAutoCheckUpdates() {
     runUpdateCheck(/*silentIfNone=*/true);
 }
 
-void MainWindow::onIdentifyMod(const QString& modId) {
-    auto* profile = m_profileMgr->activeProfile();
-    if (!profile) return;
-    solero::ModEntry* mod = profile->modList().findById(modId);
-    if (!mod) return;
+bool MainWindow::ensureNexusIds(solero::ModEntry* mod) {
+    if (!mod) return false;
+    if (!mod->nexusFileId.isEmpty() && !mod->nexusModId.isEmpty())
+        return true; // already known
 
-    if (!requireNexusKey("identify mods")) return;
+    if (!requireNexusKey("identify mods")) return false;
+
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return false;
 
     // Nexus md5_search matches the uploaded ARCHIVE's md5, so we need the original
     // source archive. Imported mods without one can't be matched.
     if (mod->sourceArchive.isEmpty() || !QFile::exists(mod->sourceArchive)) {
-        QMessageBox::information(this, "Identify on Nexus",
-            "Identification needs the original archive this mod was installed from.\n"
-            "This mod has no source archive on disk, so it can't be matched.");
-        return;
+        QMessageBox::information(this, "Redownload from Nexus",
+            "Re-downloading needs to identify this mod on Nexus first, which requires "
+            "the original archive it was installed from.\nThis mod has no source "
+            "archive on disk, so it can't be matched.");
+        return false;
     }
 
     QString md5;
@@ -2660,9 +2664,9 @@ void MainWindow::onIdentifyMod(const QString& modId) {
         prog.pump();
         QFile f(mod->sourceArchive);
         if (!f.open(QIODevice::ReadOnly)) {
-            QMessageBox::warning(this, "Identify on Nexus",
+            QMessageBox::warning(this, "Redownload from Nexus",
                 "Could not open the source archive for hashing.");
-            return;
+            return false;
         }
         QCryptographicHash hash(QCryptographicHash::Md5);
         constexpr qint64 kChunk = 1 << 20; // 1 MiB
@@ -2677,9 +2681,10 @@ void MainWindow::onIdentifyMod(const QString& modId) {
 
     auto m = solero::NexusApi::md5Search(md5);
     if (!m.ok) {
-        QMessageBox::information(this, "Identify on Nexus",
-            "No Nexus match found for this archive.");
-        return;
+        QMessageBox::information(this, "Redownload from Nexus",
+            "No Nexus match found for this archive, so it can't be re-downloaded "
+            "automatically.");
+        return false;
     }
 
     mod->nexusModId = m.modId;
@@ -2687,9 +2692,7 @@ void MainWindow::onIdentifyMod(const QString& modId) {
     if (!m.version.isEmpty()) mod->version = m.version;
     profile->save();
     m_modListView->setProfile(profile);
-    QMessageBox::information(this, "Identify on Nexus",
-        QString("Identified as '%1' (Nexus mod %2).")
-            .arg(m.modName.isEmpty() ? mod->name : m.modName, m.modId));
+    return true;
 }
 
 void MainWindow::refreshDeployState() {

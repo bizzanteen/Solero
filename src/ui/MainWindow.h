@@ -29,6 +29,7 @@ class QPushButton;
 class QStackedWidget;
 
 namespace solero {
+struct ModEntry;
 class NexusWebView;
 class ModListView;
 class PluginListView;
@@ -154,7 +155,10 @@ private:
     // After a profile finishes loading, fire an auto update check if enabled and
     // not throttled (>6h since the last check) and a key is available.
     void maybeAutoCheckUpdates();
-    void onIdentifyMod(const QString& modId);
+    // Ensure the mod has Nexus mod/file ids. Returns true if known (or resolved
+    // via MD5 archive lookup). Shows an explanatory message + returns false when
+    // it can't (no source archive, no Nexus match). Used by re-download.
+    bool ensureNexusIds(solero::ModEntry* mod);
     // Single canonical "no Nexus key" gate. Returns true if a key is configured;
     // otherwise shows one dialog pointing the user to Settings -> Nexus Account
     // (with a button that opens Settings on the Nexus tab) and returns false.

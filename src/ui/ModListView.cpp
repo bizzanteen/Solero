@@ -510,14 +510,13 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         if (!entry->nexusModId.isEmpty()) {
             menu.addAction("Update Mod",
                            [this, id = entry->id]{ emit updateRequested(id); });
-            if (!entry->nexusFileId.isEmpty())
-                menu.addAction("Redownload from Nexus",
-                               [this, id = entry->id]{ emit redownloadRequested(id); });
             menu.addAction("Endorse on Nexus",
                            [this, id = entry->id]{ emit endorseRequested(id); });
         }
-        menu.addAction("Identify on Nexus (MD5)",
-                       [this, id = entry->id]{ emit identifyRequested(id); });
+        // Always offered: if the mod's Nexus file id is unknown, the handler
+        // identifies it by MD5 first, then downloads.
+        menu.addAction("Redownload from Nexus",
+                       [this, id = entry->id]{ emit redownloadRequested(id); });
         menu.addAction("Delete Mod...", [this]{ deleteSelectedMods(); });
         menu.addAction("Rename", [this, row = idx.row()]{ edit(m_model->index(row, ModListModel::ColName)); });
         if (m_model->isGroupParent(m_model->rawIndexForRow(idx.row()))) {

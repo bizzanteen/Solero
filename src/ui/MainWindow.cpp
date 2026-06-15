@@ -415,6 +415,7 @@ void MainWindow::setupToolbar() {
     auto* profileMenu = new QMenu(profileMenuBtn);
     profileMenu->addAction("New Profile...", this, &MainWindow::onNewProfile);
     profileMenu->addAction("Delete Current Profile", this, &MainWindow::onDeleteProfile);
+    profileMenu->addAction("Rename Current Profile...", this, &MainWindow::onRenameProfile);
     profileMenu->addSeparator();
     profileMenu->addAction("Export Profile...", this, &MainWindow::onExportProfile);
     profileMenu->addAction("Import Profile...", this, &MainWindow::onImportProfile);
@@ -2741,6 +2742,36 @@ void MainWindow::onDeleteProfile() {
     m_profileMgr->deleteProfile(current);
     refreshProfileCombo();
     switchProfile(m_profileMgr->profileNames().first());
+}
+
+void MainWindow::onRenameProfile() {
+    const QString current = m_profileCombo->currentText();
+    if (current.isEmpty()) return;
+    bool ok;
+    QString name = QInputDialog::getText(this, "Rename Profile", "New profile name:",
+                                         QLineEdit::Normal, current, &ok);
+    if (!ok) return;
+    name = name.trimmed();
+    if (name.isEmpty() || name == current) return;
+
+    if (!m_profileMgr->renameProfile(current, name)) {
+        QMessageBox::warning(this, "Error",
+            QString("Couldn't rename to '%1'. The name may be invalid or already in use.").arg(name));
+        return;
+    }
+
+    // Move the per-profile Overwrite capture dir too, so captured files aren't orphaned.
+    const QString oldOverwrite = solero::AppConfig::overwriteDir(current);
+    const QString newOverwrite = solero::AppConfig::overwriteDir(name);
+    if (QDir(oldOverwrite).exists() && !QDir(newOverwrite).exists())
+        QDir().rename(oldOverwrite, newOverwrite);
+
+    // Rebuild the combo (signals blocked inside refreshProfileCombo) and select the
+    // new name; setCurrentText emits currentTextChanged -> switchProfile(name),
+    // which reloads the profile and persists it as lastProfile.
+    refreshProfileCombo();
+    m_profileCombo->setCurrentText(name);
+    statusBar()->showMessage(QString("Renamed profile to '%1'.").arg(name));
 }
 
 void MainWindow::onImportMo2() {

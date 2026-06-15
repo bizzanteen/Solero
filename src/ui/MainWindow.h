@@ -97,6 +97,7 @@ private:
     void onRestoreLo();          // pick a snapshot and restore it (MO2-style reconcile)
     void onNewProfile();
     void onDeleteProfile();
+    void onRenameProfile();
     void onImportMo2();
     void onExportProfile();      // write the active profile to a .solero-profile.json manifest
     void onImportProfile();      // reconstruct a profile from a .solero-profile.json manifest

@@ -634,6 +634,8 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::installFromArchive);
     connect(m_rightPane->downloadsTab(), &solero::DownloadsTab::cancelRequested,
             this, [this](const QString& fn){ m_downloads->cancel(fn); });
+    connect(m_rightPane->downloadsTab(), &solero::DownloadsTab::retryRequested,
+            this, &MainWindow::onRetryDownload);
     connect(m_modListView, &solero::ModListView::modsSelected,
             m_rightPane, &solero::RightPane::onSelectionChanged);
     connect(m_modListView, &solero::ModListView::reinstallRequested,
@@ -2136,6 +2138,52 @@ void MainWindow::onRedownloadMod(const QString& modId) {
     m_downloads->enqueue(url, fileName, solero::AppConfig::instance().downloadsDir());
     m_rightPane->showDownloadsTab();
     statusBar()->showMessage("Redownloading " + name + "\xe2\x80\xa6");
+}
+
+void MainWindow::onRetryDownload(const QString& fileName) {
+    // Find the retained failure context.
+    int idx = -1;
+    for (int i = 0; i < m_failedDownloads.size(); ++i)
+        if (m_failedDownloads[i].fileName == fileName) { idx = i; break; }
+    if (idx < 0) return;
+    const FailedDownload fd = m_failedDownloads.at(idx);
+
+    QString url;
+    const QString modId  = fd.meta.value("modId").toString();
+    const QString fileId = fd.meta.value("fileId").toString();
+    const QString game   = fd.meta.value("game").toString(solero::NexusApi::kDefaultGame);
+    if (!modId.isEmpty() && !fileId.isEmpty()) {
+        // Nexus download: re-resolve a fresh CDN URL (resolved URLs expire).
+        url = solero::NexusApi::downloadUrl(modId, fileId, game);
+        if (url.isEmpty()) {
+            if (!solero::NexusApi::keyAvailable())
+                requireNexusKey("download from within Solero");
+            else
+                QMessageBox::information(this, "Retry download",
+                    "This download is unavailable or requires Nexus Premium. Use the "
+                    "mod page's 'Mod Manager Download' (nxm) button on the website instead.");
+            return; // keep the failed row so the user can try the website route
+        }
+    } else if (!fd.url.isEmpty()) {
+        url = fd.url; // direct/tool download with a stable link
+    } else {
+        QMessageBox::information(this, "Retry download",
+            "Solero no longer has enough information to retry this download "
+            "automatically. Start it again from the mod page or tool.");
+        return;
+    }
+
+    // Remove the failed entry and re-tag metadata so the sidecar is written on success.
+    m_failedDownloads.removeAt(idx);
+    if (!fd.meta.isEmpty()) m_nxmMeta[fileName] = fd.meta;
+    QList<QPair<QString,QString>> failPairs;
+    for (const FailedDownload& d : m_failedDownloads)
+        failPairs.append({d.fileName, d.error});
+    m_rightPane->downloadsTab()->setFailedDownloads(failPairs);
+
+    m_downloads->enqueue(url, fileName, solero::AppConfig::instance().downloadsDir());
+    m_rightPane->showDownloadsTab();
+    statusBar()->showMessage("Retrying " + fileName + "\xe2\x80\xa6");
 }
 
 void MainWindow::openSettingsDialog() {

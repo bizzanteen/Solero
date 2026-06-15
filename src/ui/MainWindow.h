@@ -126,6 +126,9 @@ private:
     // "Redownload from Nexus" context action: re-fetch the mod's exact archive
     // (Premium -> enqueue into downloadsDir; free/unavailable -> nxm guidance).
     void onRedownloadMod(const QString& modId);
+    // Downloads tab "Retry" action: re-resolve an expiring Nexus CDN URL (or reuse
+    // a stable direct URL) and re-enqueue the failed download.
+    void onRetryDownload(const QString& fileName);
     // Reinstall helper: candidate archives in downloadsDir for a mod, in priority
     // order (stored sourceArchive basename -> Nexus sidecar modId/fileId -> fuzzy
     // name). De-duplicated; empty when nothing plausible is found.

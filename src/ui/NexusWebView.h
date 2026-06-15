@@ -39,9 +39,6 @@ private:
     QWebEngineView* createTabView(bool foreground);
     QWebEngineView* addTab(const QUrl& url);
     void loadAddress();
-    // Read the clipboard, validate it as a Nexus API key, store it, and report
-    // the result inline. Driven by the "Paste key & connect" toolbar button.
-    void pasteKeyAndConnect();
     void refreshNav();
     static QUrl homepageUrl();
     static QUrl signInUrl();

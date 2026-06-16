@@ -1444,48 +1444,53 @@ void MainWindow::installFromArchive(const QString& archive) {
 
     QString existingModId;     // non-empty -> Replace the existing mod in place
     QString stagingOverride;   // full mod dir for Replace (migrated staging folder)
-    QString overrideName;   // non-empty -> Rename: install new with this name
+    QString overrideName;      // non-empty -> Rename: install new with this name
+    bool installAsSibling = false; // different file of an already-installed mod
     {
         auto& ml = profile->modList();
-        // Same mod by name (case-insensitive). For a Nexus mod id match we only
-        // treat it as the same mod when the names are also equal once normalized -
-        // otherwise it's another file of the same mod, which the auto-group path
-        // below should keep handling (don't break multi-file installs).
-        solero::ModEntry* collide = ml.findByName(proposedName);
-        if (!collide && !sidecarModId.isEmpty()) {
-            if (solero::ModEntry* byId = ml.findByNexusId(sidecarModId)) {
-                const QString nn = normalizeName(proposedName);
-                if (!nn.isEmpty() && normalizeName(byId->name) == nn)
-                    collide = byId;
-            }
+        // Identity ladder. (modId,fileId) is the reliable identity: the same file.
+        // A redownload pins the existing fileId, so it always lands here -> silent
+        // Replace, never a duplicate.
+        if (solero::ModEntry* sameFile =
+                ml.findByNexusFile(sidecarModId, sidecarFileId)) {
+            existingModId = sameFile->id;
+            stagingOverride = solero::stagingPathFor(
+                solero::AppConfig::instance().stagingDir(), *sameFile);
         }
-        if (collide) {
-            extractProg->hide(); // step the progress modal aside for the prompt
-            QMessageBox box(this);
-            box.setWindowTitle("Mod Already Exists");
-            box.setText(QString("A mod named \"%1\" already exists.").arg(collide->name));
-            box.setInformativeText("Replace it in place, or install as a new copy?");
-            QPushButton* replaceBtn = box.addButton("Replace", QMessageBox::AcceptRole);
-            QPushButton* renameBtn  = box.addButton("Rename",  QMessageBox::ActionRole);
-            box.addButton("Cancel", QMessageBox::RejectRole);
-            box.setDefaultButton(replaceBtn);
-            box.exec();
-            if (box.clickedButton() == replaceBtn) {
-                existingModId = collide->id;
-                // Resolve the existing mod's real on-disk dir (which may have been
-                // migrated from its UUID to its human staging-folder name) so the
-                // replacement files land where deploy actually reads from.
-                stagingOverride = solero::stagingPathFor(
-                    solero::AppConfig::instance().stagingDir(), *collide);
-            } else if (box.clickedButton() == renameBtn) {
-                overrideName = uniqueModName(proposedName, profile);
-            } else {
-                // Cancel -> abort; prep's QTemporaryDir cleans the extraction on scope exit.
-                extractProg->close();
-                statusBar()->showMessage("Install cancelled.");
-                return;
+        // Different file of an already-installed mod (e.g. two main files of one
+        // Nexus page). Not a duplicate - install it as a grouped sibling. The
+        // auto-group pass below nests it; Task 4 names it from the archive so the
+        // two siblings don't share the catalog name.
+        else if (!sidecarModId.isEmpty() && ml.findByNexusId(sidecarModId)) {
+            installAsSibling = true;
+        }
+        // No Nexus identity (or a genuinely new mod): fall back to name collision.
+        else {
+            solero::ModEntry* collide = ml.findByName(proposedName);
+            if (collide) {
+                extractProg->hide(); // step the progress modal aside for the prompt
+                QMessageBox box(this);
+                box.setWindowTitle("Mod Already Exists");
+                box.setText(QString("A mod named \"%1\" already exists.").arg(collide->name));
+                box.setInformativeText("Replace it in place, or install as a new copy?");
+                QPushButton* replaceBtn = box.addButton("Replace", QMessageBox::AcceptRole);
+                QPushButton* renameBtn  = box.addButton("Rename",  QMessageBox::ActionRole);
+                box.addButton("Cancel", QMessageBox::RejectRole);
+                box.setDefaultButton(replaceBtn);
+                box.exec();
+                if (box.clickedButton() == replaceBtn) {
+                    existingModId = collide->id;
+                    stagingOverride = solero::stagingPathFor(
+                        solero::AppConfig::instance().stagingDir(), *collide);
+                } else if (box.clickedButton() == renameBtn) {
+                    overrideName = uniqueModName(proposedName, profile);
+                } else {
+                    extractProg->close();
+                    statusBar()->showMessage("Install cancelled.");
+                    return;
+                }
+                extractProg->show(); extractProg->pump();
             }
-            extractProg->show(); extractProg->pump();
         }
     }
 

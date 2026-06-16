@@ -44,6 +44,17 @@ QString humanSize(qint64 b) {
     return QString::number(v, 'f', 1) + " GB";
 }
 
+// Compact download time: relative ("17 hours ago") under a day, else "hh.mm dd.mm.yy".
+QString humanTime(const QDateTime& dt) {
+    const qint64 secs = dt.secsTo(QDateTime::currentDateTime()); // >0 when in the past
+    if (secs >= 0 && secs < 86400) {
+        if (secs < 60)   return "just now";
+        if (secs < 3600) { int m = int(secs / 60);   return QString("%1 minute%2 ago").arg(m).arg(m == 1 ? "" : "s"); }
+        int h = int(secs / 3600);                     return QString("%1 hour%2 ago").arg(h).arg(h == 1 ? "" : "s");
+    }
+    return dt.toString("hh.mm dd.MM.yy");
+}
+
 } // namespace
 
 DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
@@ -56,6 +67,8 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->verticalHeader()->hide();
+    // Breathing room between columns so adjacent cells aren't bunched together.
+    m_table->setStyleSheet("QTableWidget::item { padding: 2px 8px; }");
     auto* hh = m_table->horizontalHeader();
     hh->setStretchLastSection(false);
     hh->setSectionResizeMode(0, QHeaderView::Stretch);          // Name absorbs slack
@@ -122,7 +135,7 @@ void DownloadsTab::refresh() {
             sizeItem->setData(Qt::UserRole, fi.size());
             m_table->setItem(row, 2, sizeItem);
 
-            auto* dateItem = new NumItem(fi.lastModified().toString("yyyy-MM-dd hh:mm"));
+            auto* dateItem = new NumItem(humanTime(fi.lastModified()));
             dateItem->setData(Qt::UserRole, fi.lastModified().toSecsSinceEpoch());
             m_table->setItem(row, 3, dateItem);
         }

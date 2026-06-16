@@ -36,6 +36,32 @@ class TestRadiumPrep : public QObject {
     }
 
 private slots:
+    void writeFakeMo2_writesInstanceFiles() {
+        QTemporaryDir tmp;
+        const QString root = tmp.path();
+        Profile p("ASSOS", root + "/profiles");
+        seedPlugins(p);
+
+        const QString gameDir = root + "/game";
+        touch(gameDir + "/Data/ZZZ.bsa");
+        touch(gameDir + "/Data/AAA.bsa");
+        touch(gameDir + "/Data/textures/note.txt");
+
+        const QString fm2 = root + "/fm2";
+        QString err;
+        QVERIFY2(RadiumPrep::writeFakeMo2(p, gameDir, fm2, &err), qPrintable(err));
+
+        const QString prof = fm2 + "/profiles/solero";
+        QVERIFY(QDir(fm2 + "/mods").exists());
+        // enabled plugins only (Disabled.esp excluded)
+        QCOMPARE(readAll(prof + "/loadorder.txt"), QString("Skyrim.esm\nSkyUI.esp\n"));
+        // Data/*.bsa, sorted
+        QCOMPARE(readAll(prof + "/archives.txt"), QString("AAA.bsa\nZZZ.bsa\n"));
+
+        const QString ini = readAll(fm2 + "/ModOrganizer.ini");
+        QVERIFY(ini.contains("gameName=Skyrim Special Edition"));
+    }
+
     void writesFakeMo2AndSettings() {
         QTemporaryDir tmp;
         const QString root = tmp.path();

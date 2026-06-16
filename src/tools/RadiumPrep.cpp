@@ -17,15 +17,13 @@ QString defaultSettingsPath() {
     return QDir::homePath() + "/.config/radium-textures/settings.json";
 }
 
-bool prepare(const Profile& profile,
-             const QString& gameDir,
-             const QString& installDir,
-             const QString& outputDataDir,
-             const QString& settingsPath,
-             QString* error) {
+bool writeFakeMo2(const Profile& profile,
+                  const QString& gameDir,
+                  const QString& fakeMo2Dir,
+                  QString* error) {
     auto fail = [&](const QString& m) { if (error) *error = m; return false; };
 
-    const QString fakeMo2 = installDir + "/fake-mo2";
+    const QString fakeMo2 = fakeMo2Dir;
     const QString modsDir  = fakeMo2 + "/mods";
     const QString profDir  = fakeMo2 + "/profiles/solero";
     const QString dataDir  = gameDir + "/Data";
@@ -71,6 +69,25 @@ bool prepare(const Profile& profile,
         "first_start=false\n";
     if (!atomicWrite(fakeMo2 + "/ModOrganizer.ini", ini.toUtf8()))
         return fail("Could not write ModOrganizer.ini");
+
+    return true;
+}
+
+bool prepare(const Profile& profile,
+             const QString& gameDir,
+             const QString& installDir,
+             const QString& outputDataDir,
+             const QString& settingsPath,
+             QString* error) {
+    auto fail = [&](const QString& m) { if (error) *error = m; return false; };
+
+    const QString fakeMo2 = installDir + "/fake-mo2";
+    if (!writeFakeMo2(profile, gameDir, fakeMo2, error))
+        return false;
+
+    const QString modsDir = fakeMo2 + "/mods";
+    const QString profDir = fakeMo2 + "/profiles/solero";
+    const QString dataDir = gameDir + "/Data";
 
     QJsonObject obj;
     {

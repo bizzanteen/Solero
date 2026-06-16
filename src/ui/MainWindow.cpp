@@ -1617,6 +1617,14 @@ void MainWindow::installFromArchive(const QString& archive) {
         // tail Nexus appends to archive names, now that mod.nexusModId is known.
         mod.name = sidecarName.isEmpty()
             ? cleanModName(mod.name, mod.nexusModId) : sidecarName;
+        // A sibling (another file of an already-installed mod) would otherwise take
+        // the shared catalog name. Name it from its archive instead so the grouped
+        // files stay distinguishable, and de-dup against existing names.
+        if (installAsSibling) {
+            const QString fromArchive = cleanModName(result.modName, mod.nexusModId);
+            mod.name = uniqueModName(
+                fromArchive.isEmpty() ? mod.name : fromArchive, profile);
+        }
         // Rename-on-collision -> use the de-duplicated name chosen above.
         if (!overrideName.isEmpty()) mod.name = overrideName;
         profile->modList().append(mod);

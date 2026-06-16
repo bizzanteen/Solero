@@ -62,6 +62,12 @@ public:
     // callers can ignore the mod they're currently installing/reinstalling).
     // Returns the first match, or nullptr. Empty nexusModId never matches.
     ModEntry* findByNexusId(const QString& nexusModId, const QString& skipId = {});
+    // Find a Mod entry by Nexus mod id and file id (both must be non-empty and
+    // match). Returns the first match, or nullptr. This is the reliable mod
+    // identity: same (modId,fileId) == literally the same downloaded file.
+    ModEntry* findByNexusFile(const QString& nexusModId,
+                              const QString& nexusFileId,
+                              const QString& skipId = {});
     // Find a Mod entry by display name (case-insensitive; skip the given id).
     ModEntry* findByName(const QString& name, const QString& skipId = {});
 

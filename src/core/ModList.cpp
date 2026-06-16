@@ -230,6 +230,17 @@ ModEntry* ModList::findByNexusId(const QString& nexusModId, const QString& skipI
     return nullptr;
 }
 
+ModEntry* ModList::findByNexusFile(const QString& nexusModId,
+                                   const QString& nexusFileId,
+                                   const QString& skipId) {
+    if (nexusModId.isEmpty() || nexusFileId.isEmpty()) return nullptr;
+    for (auto& e : m_entries)
+        if (e.type == EntryType::Mod && e.id != skipId
+            && e.nexusModId == nexusModId && e.nexusFileId == nexusFileId)
+            return &e;
+    return nullptr;
+}
+
 ModEntry* ModList::findByName(const QString& name, const QString& skipId) {
     for (auto& e : m_entries)
         if (e.type == EntryType::Mod && e.id != skipId

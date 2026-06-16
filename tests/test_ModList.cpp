@@ -263,6 +263,22 @@ private slots:
         QVERIFY(list.reorder({3, 1}, 0));
         QCOMPARE(rawOrder(list), QString("1,3,0,2,4"));
     }
+
+    void findByNexusFile_matchesBothIds() {
+        solero::ModList list;
+        solero::ModEntry a; a.id = "a"; a.type = solero::EntryType::Mod;
+        a.nexusModId = "100"; a.nexusFileId = "1"; a.name = "A";
+        solero::ModEntry b; b.id = "b"; b.type = solero::EntryType::Mod;
+        b.nexusModId = "100"; b.nexusFileId = "2"; b.name = "B";
+        list.append(a); list.append(b);
+
+        QVERIFY(list.findByNexusFile("100", "2") != nullptr);
+        QCOMPARE(list.findByNexusFile("100", "2")->id, QString("b"));
+        QVERIFY(list.findByNexusFile("100", "9") == nullptr); // file not present
+        QVERIFY(list.findByNexusFile("100", "") == nullptr);  // empty fileId never matches
+        QVERIFY(list.findByNexusFile("", "1") == nullptr);    // empty modId never matches
+        QCOMPARE(list.findByNexusFile("100", "1", "a"), nullptr); // skipId excludes self
+    }
 };
 QTEST_MAIN(TestModList)
 #include "test_ModList.moc"

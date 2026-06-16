@@ -697,7 +697,21 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
         return true;
     }
 
+    // A group child dragged away can't be expressed as a 1:1 (src->dst) move:
+    // normalizeGroups() snaps it back adjacent to its parent, which may reorder
+    // beyond the move. Use a full reset (like the snapped/group-parent paths).
+    const bool movingChild = !list.at(srcRaw).parentId.isEmpty();
     pushUndoSnapshot();
+    if (movingChild) {
+        beginResetModel();
+        list.move(srcRaw, moveTo);
+        list.normalizeGroups();   // snap the child back into its parent's run
+        m_profile->save();
+        rebuildVisibleRows();
+        endResetModel();
+        emit modsChanged();
+        return true;
+    }
     beginMoveRows({}, src, src, {}, dst > src ? dst + 1 : dst);
     list.move(srcRaw, moveTo);
     m_profile->save();

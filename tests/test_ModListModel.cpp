@@ -384,6 +384,27 @@ private slots:
         QVERIFY(prof.modList().findById("sepA")->collapsed);
     }
 
+    void moveRows_childDragSnapsBackToParent() {
+        // A group child dragged away from its parent must snap back adjacent to
+        // the parent (design: keep grouped, auto-heal) rather than orphaning.
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        // [P, C, X] where C is a child of P, X is unrelated. (+ Overwrite)
+        ModEntry p; p.type = EntryType::Mod; p.id = "P0"; p.name = "Parent";
+        ModEntry c; c.type = EntryType::Mod; c.id = "c0"; c.name = "Child"; c.parentId = "P0";
+        ModEntry x; x.type = EntryType::Mod; x.id = "x"; x.name = "X";
+        prof.modList().append(p);
+        prof.modList().append(c);
+        prof.modList().append(x);
+        ModListModel model;
+        model.setProfile(&prof);
+        // Visible: 0=P,1=C,2=X,3=Overwrite. Drag C (row 1) to the end (past X).
+        model.moveRows({}, 1, 1, {}, 3);
+        // C must snap back directly after P, parentId intact.
+        QCOMPARE(order(prof), QString("P0,c0,x"));
+        QCOMPARE(prof.modList().at(1).parentId, QString("P0"));
+    }
+
     void moveRows_endMappingAppends() {
         // Direct moveRows: dst at the Overwrite visible row maps to end-of-list.
         QTemporaryDir tmp;

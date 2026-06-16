@@ -80,7 +80,7 @@ const QList<ToolPreset>& ToolCatalog::presets() {
 
         {
             ToolPreset t = github("pgpatcher", "PGPatcher", "hakasapl", "hakasapl", "PGPatcher",
-                                  "PGPatcher-", "PGPatcher.exe", "");
+                                  "PGPatcher-", "PGPatcher.exe", "--ignore-mo2vfscheck");
             t.description = "Auto-patch meshes for parallax / complex-material PBR shaders.";
             t.docsUrl = "https://github.com/hakasapl/PGPatcher";
             t.proton = true;

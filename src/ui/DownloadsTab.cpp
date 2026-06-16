@@ -18,6 +18,7 @@
 #include <QColor>
 #include <QItemSelectionModel>
 #include <QModelIndex>
+#include <limits>
 
 namespace solero {
 
@@ -102,7 +103,7 @@ void DownloadsTab::refresh() {
     if (!dir.isEmpty()) {
         QDir d(dir);
         const QFileInfoList files =
-            d.entryInfoList({"*.zip","*.7z","*.rar","*.tar","*.gz"}, QDir::Files);
+            d.entryInfoList({"*.zip","*.7z","*.rar","*.tar","*.gz"}, QDir::Files, QDir::Time);
         for (const QFileInfo& fi : files) {
             int row = m_table->rowCount();
             m_table->insertRow(row);
@@ -140,11 +141,14 @@ void DownloadsTab::refresh() {
         m_table->setItem(row, 1, statusItem);
         auto* sz = new NumItem(QString()); sz->setData(Qt::UserRole, qint64(0));
         m_table->setItem(row, 2, sz);
-        auto* dt = new NumItem(QString()); dt->setData(Qt::UserRole, qint64(0));
+        // Sentinel just below in-progress so failed rows pin above completed files.
+        auto* dt = new NumItem(QString());
+        dt->setData(Qt::UserRole, std::numeric_limits<qint64>::max() - 1);
         m_table->setItem(row, 3, dt);
     }
 
     m_table->setSortingEnabled(true);
+    m_table->sortByColumn(3, Qt::DescendingOrder);
     applyFilters();
 }
 
@@ -172,8 +176,12 @@ void DownloadsTab::setDownloadProgress(const QString& fileName, qint64 received,
     nameItem->setToolTip(fileName);
     m_table->setItem(0, 0, nameItem);
     m_table->setItem(0, 1, new QTableWidgetItem(status));
-    m_table->setItem(0, 2, new QTableWidgetItem(QString()));
-    m_table->setItem(0, 3, new QTableWidgetItem(QString()));
+    auto* szItem = new NumItem(QString()); szItem->setData(Qt::UserRole, qint64(0));
+    m_table->setItem(0, 2, szItem);
+    // Max sentinel pins live downloads at the very top of the mtime-descending sort.
+    auto* dtItem = new NumItem(QString());
+    dtItem->setData(Qt::UserRole, std::numeric_limits<qint64>::max());
+    m_table->setItem(0, 3, dtItem);
 
     m_activeRows.insert(fileName, 0);
     m_table->setSortingEnabled(true);

@@ -3004,8 +3004,42 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
         }
     }
 
+    // PGPatcher also expects an MO2 instance. It reads its own cfg/settings.json
+    // (already in MO2 mode, pointed at a fake-mo2 dir); regenerate that instance so
+    // the load order is current. We do not rewrite settings.json - preserve the
+    // user's working paths. The --ignore-mo2vfscheck flag (added below) stops
+    // PGPatcher aborting on "VFS not detected" outside a real MO2 usvfs.
+    if (exe.id == "pgpatcher") {
+        auto* p = m_profileMgr->activeProfile();
+        const QString installDir = QFileInfo(exe.binaryPath).path();
+        QString fakeMo2 = installDir + "/fake-mo2"; // fallback if unconfigured
+        QFile sf(installDir + "/cfg/settings.json");
+        if (sf.open(QIODevice::ReadOnly)) {
+            const QJsonObject root = QJsonDocument::fromJson(sf.readAll()).object();
+            QString mm = root.value("params").toObject()
+                             .value("modmanager").toObject()
+                             .value("mo2instancedir").toString();
+            if (!mm.isEmpty()) {
+                mm.replace('\\', '/');                 // Windows -> native separators
+                mm.remove(QRegularExpression("^[A-Za-z]:")); // strip drive (Z: -> /)
+                fakeMo2 = mm;
+            }
+        }
+        QString err;
+        if (!p || !solero::RadiumPrep::writeFakeMo2(
+                *p, solero::AppConfig::instance().gameDir(), fakeMo2, &err)) {
+            hideRunLock(); m_toolRunning = false;
+            QMessageBox::warning(this, "PGPatcher",
+                err.isEmpty() ? "Could not prepare PGPatcher's fake-MO2 instance." : err);
+            return;
+        }
+    }
+
     auto* owP = m_profileMgr->activeProfile();
-    auto res = solero::ToolRunner::run(exe, solero::AppConfig::instance().gameDir(),
+    solero::Executable runExe = exe;
+    if (runExe.id == "pgpatcher" && !runExe.arguments.contains("--ignore-mo2vfscheck"))
+        runExe.arguments = (runExe.arguments.trimmed() + " --ignore-mo2vfscheck").trimmed();
+    auto res = solero::ToolRunner::run(runExe, solero::AppConfig::instance().gameDir(),
                                        solero::AppConfig::instance().stagingDir(), outFolder,
                                        owP ? solero::AppConfig::overwriteDir(owP->name()) : QString());
     hideRunLock();

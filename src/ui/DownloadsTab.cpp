@@ -55,8 +55,12 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->verticalHeader()->hide();
-    m_table->horizontalHeader()->setStretchLastSection(false);
-    m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    auto* hh = m_table->horizontalHeader();
+    hh->setStretchLastSection(false);
+    hh->setSectionResizeMode(0, QHeaderView::Stretch);          // Name absorbs slack
+    hh->setSectionResizeMode(1, QHeaderView::ResizeToContents); // Status
+    hh->setSectionResizeMode(2, QHeaderView::ResizeToContents); // Size
+    hh->setSectionResizeMode(3, QHeaderView::ResizeToContents); // Downloaded
     m_table->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_table, &QWidget::customContextMenuRequested, this, &DownloadsTab::showContextMenu);
     v->addWidget(m_table, 1);
@@ -105,6 +109,7 @@ void DownloadsTab::refresh() {
 
             auto* nameItem = new QTableWidgetItem(fi.fileName());
             nameItem->setData(Qt::UserRole, fi.absoluteFilePath());
+            nameItem->setToolTip(fi.fileName());
             m_table->setItem(row, 0, nameItem);
 
             const bool installed = installedSet.contains(fi.absoluteFilePath());
@@ -128,6 +133,7 @@ void DownloadsTab::refresh() {
         auto* nameItem = new QTableWidgetItem(f.first);
         nameItem->setData(Qt::UserRole, QString());            // no archive path
         nameItem->setData(Qt::UserRole + 1, QStringLiteral("failed")); // row-kind marker
+        nameItem->setToolTip(f.first);
         m_table->setItem(row, 0, nameItem);
         auto* statusItem = new QTableWidgetItem("Failed: " + f.second);
         statusItem->setForeground(QColor(0xe5, 0x39, 0x35));   // red
@@ -163,6 +169,7 @@ void DownloadsTab::setDownloadProgress(const QString& fileName, qint64 received,
 
     auto* nameItem = new QTableWidgetItem(fileName);
     nameItem->setData(Qt::UserRole, QString()); // no path yet
+    nameItem->setToolTip(fileName);
     m_table->setItem(0, 0, nameItem);
     m_table->setItem(0, 1, new QTableWidgetItem(status));
     m_table->setItem(0, 2, new QTableWidgetItem(QString()));

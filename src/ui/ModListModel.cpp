@@ -474,11 +474,23 @@ bool ModListModel::setData(const QModelIndex& idx, const QVariant& value, int ro
     int raw = rawIndexForRow(idx.row());
     if (raw < 0) return false;
     if (role == Qt::CheckStateRole && idx.column() == ColEnabled) {
-        m_profile->modList().setEnabled(
-            m_profile->modList().at(raw).id,
-            value.toInt() == Qt::Checked);
+        const ModEntry rawEntry = m_profile->modList().at(raw);
+        m_profile->modList().setEnabled(rawEntry.id, value.toInt() == Qt::Checked);
         m_profile->save();
         emit dataChanged(idx, idx, {role});
+        // A parent toggle propagated to its children (ModList::propagateEnabled);
+        // invalidate the children's visible rows so their checkboxes refresh too.
+        if (rawEntry.type == EntryType::Mod && rawEntry.parentId.isEmpty()) {
+            const int childRun = m_profile->modList().childRunCount(raw);
+            if (childRun > 0) {
+                // Visible rows are contiguous for an expanded group; emit a span.
+                const QModelIndex top = idx;
+                const QModelIndex bottom =
+                    this->index(qMin(idx.row() + childRun, rowCount() - 1),
+                                columnCount() - 1);
+                emit dataChanged(top, bottom, {Qt::CheckStateRole});
+            }
+        }
         emit modsChanged();
         return true;
     }

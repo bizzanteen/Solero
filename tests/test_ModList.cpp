@@ -279,6 +279,33 @@ private slots:
         QVERIFY(list.findByNexusFile("", "1") == nullptr);    // empty modId never matches
         QCOMPARE(list.findByNexusFile("100", "1", "a"), nullptr); // skipId excludes self
     }
+
+    void normalizeGroups_healsDisplacedChild() {
+        solero::ModList list;
+        auto mk = [](QString id, QString parent = {}) {
+            solero::ModEntry e; e.id = id; e.type = solero::EntryType::Mod;
+            e.name = id; e.parentId = parent; return e;
+        };
+        // parent P with child C, but C has been displaced far away by a bad drag.
+        list.append(mk("P"));
+        list.append(mk("X"));        // unrelated mod between them
+        list.append(mk("C", "P"));   // child, non-contiguous
+        list.normalizeGroups();
+        // C must now sit immediately after P.
+        QCOMPARE(list.at(0).id, QString("P"));
+        QCOMPARE(list.at(1).id, QString("C"));
+        QCOMPARE(list.at(2).id, QString("X"));
+        QCOMPARE(list.at(1).parentId, QString("P")); // still grouped
+    }
+
+    void normalizeGroups_clearsOrphanParentId() {
+        solero::ModList list;
+        solero::ModEntry c; c.id = "C"; c.type = solero::EntryType::Mod;
+        c.name = "C"; c.parentId = "GONE"; // parent doesn't exist
+        list.append(c);
+        list.normalizeGroups();
+        QCOMPARE(list.at(0).parentId, QString()); // orphan parentId cleared
+    }
 };
 QTEST_MAIN(TestModList)
 #include "test_ModList.moc"

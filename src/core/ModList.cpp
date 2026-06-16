@@ -204,6 +204,31 @@ void ModList::ungroup(const QString& childId) {
     if (dest != childRaw) m_entries.move(childRaw, dest);
 }
 
+void ModList::normalizeGroups() {
+    // 1. Resolve illegal parents: missing / non-Mod / parent-is-itself-a-child.
+    for (auto& e : m_entries) {
+        if (e.parentId.isEmpty()) continue;
+        const ModEntry* parent = findById(e.parentId);
+        if (!parent || parent->type != EntryType::Mod) {
+            e.parentId.clear();              // orphan -> top-level
+        } else if (!parent->parentId.isEmpty()) {
+            e.parentId = parent->parentId;   // flatten 2-level nesting
+        }
+    }
+    // 2. Rebuild contiguous: emit each top-level entry, then its children in
+    //    their existing relative order. Children are never emitted at top level.
+    QList<ModEntry> out;
+    out.reserve(m_entries.size());
+    for (const auto& e : m_entries) {
+        if (!e.parentId.isEmpty()) continue; // placed under its parent below
+        out.append(e);
+        if (e.type == EntryType::Mod)
+            for (const auto& c : m_entries)
+                if (c.parentId == e.id) out.append(c);
+    }
+    m_entries = out;
+}
+
 void ModList::propagateEnabled(const QString& parentId, bool enabled) {
     for (auto& e : m_entries) {
         if (e.parentId == parentId) {
@@ -333,7 +358,9 @@ bool ModList::saveToFile(const QString& path) const {
 ModList ModList::loadFromFile(const QString& path) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return {};
-    return fromJson(QJsonDocument::fromJson(f.readAll()));
+    ModList list = fromJson(QJsonDocument::fromJson(f.readAll()));
+    list.normalizeGroups(); // heal any persisted group-invariant corruption on load
+    return list;
 }
 
 } // namespace solero

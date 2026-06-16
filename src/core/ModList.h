@@ -51,6 +51,15 @@ public:
     // (children = Mod entries whose parentId == that mod's id).
     int childRunCount(int parentRaw) const;
 
+    // Enforce the group invariant defensively. For every Mod with a non-empty
+    // parentId: if the parent is missing or not a Mod, clear parentId (orphan ->
+    // top-level); if the parent is itself a child, re-point to the grandparent
+    // (flatten to a single level). Then stable-reorder so each child sits in a
+    // contiguous run immediately after its parent. Top-level order and per-group
+    // child order are preserved. Idempotent. Call after any operation that may
+    // have displaced a child, and on load.
+    void normalizeGroups();
+
     int count() const { return m_entries.size(); }
     const ModEntry& at(int index) const { return m_entries.at(index); }
     // Direct access to the backing list (e.g. for staging-folder migration).

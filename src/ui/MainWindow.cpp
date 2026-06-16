@@ -311,6 +311,25 @@ QString MainWindow::startNxmDownload(const QString& url) {
     meta["fileId"] = link.fileId;
     meta["version"] = solero::NexusApi::fileVersion(link.modId, link.fileId, link.game);
     m_nxmMeta[fn] = meta;
+
+    // Guard against re-downloading something the user already has, either as an
+    // installed mod (matched by Nexus mod/file id) or as an archive still sitting
+    // in the downloads folder. Both are recoverable, so this is a confirm, not a block.
+    auto* profile = m_profileMgr->activeProfile();
+    const QString destPath = solero::AppConfig::instance().downloadsDir() + "/" + fn;
+    const bool alreadyInstalled = profile &&
+        profile->modList().findByNexusFile(link.modId, link.fileId) != nullptr;
+    const bool alreadyOnDisk = QFileInfo::exists(destPath);
+    if (alreadyInstalled || alreadyOnDisk) {
+        const QString msg = alreadyInstalled
+            ? QString("\"%1\" is already installed as a mod.").arg(fn)
+            : QString("\"%1\" is already in your downloads folder.").arg(fn);
+        if (QMessageBox::question(this, "Already have this file",
+                msg + "\n\nDownload it again anyway?",
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+            return {};
+    }
+
     m_downloads->enqueue(cdn, fn, solero::AppConfig::instance().downloadsDir());
     return fn;
 }

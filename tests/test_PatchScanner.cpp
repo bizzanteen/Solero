@@ -247,6 +247,27 @@ private slots:
         QVERIFY(!cands[0].installable);
         QVERIFY(cands[0].sourceArchive.isEmpty());
     }
+
+    // File-driven (conditionalFileInstalls) candidates are named by the patch
+    // plugin they install and list the present trigger(s) - not a generic label.
+    void fileDriven_namedByPayloadAndTriggers() {
+        FomodModule m; m.moduleName = "Test"; m.valid = true;
+        m.conditionalInstallsXml =
+            "<conditionalFileInstalls><patterns><pattern>"
+            "<dependencies operator=\"And\">"
+            "<fileDependency file=\"JKs Skyrim.esp\" state=\"Active\"/>"
+            "<fileDependency file=\"Northern Roads.esp\" state=\"Active\"/>"
+            "</dependencies>"
+            "<files><file source=\"opt/JK-NR Patch.esp\" destination=\"JK-NR Patch.esp\"/></files>"
+            "</pattern></patterns></conditionalFileInstalls>";
+        auto cands = run(m, {}, presentSet({"JKs Skyrim.esp", "Northern Roads.esp"}),
+                         installedSet({}), {}, meta);
+        QCOMPARE(cands.size(), 1);
+        QCOMPARE(cands[0].optionName, QString("JK-NR Patch.esp"));   // named by payload
+        QVERIFY(cands[0].reason.contains("JKs Skyrim.esp"));         // both triggers listed
+        QVERIFY(cands[0].reason.contains("Northern Roads.esp"));
+        QVERIFY(cands[0].reason.contains("present"));
+    }
 };
 
 QTEST_MAIN(TestPatchScanner)

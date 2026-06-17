@@ -75,19 +75,18 @@ QStringList presentFileDeps(const QString& xml) {
     return out;
 }
 
-// For the file-driven (conditionalFileInstalls) branch: try to name the single
+// For the file-driven (conditionalFileInstalls) branch: name every present
 // dependency file that now makes the surfaced files apply. Parses the stored
 // <conditionalFileInstalls> XML, finds the <pattern>(s) whose payload overlaps
-// `targetKeys`, and returns a present fileDependency gating them - but only when
-// exactly one distinct trigger is found (otherwise it isn't unambiguous and we
-// fall back to general wording). Empty when not determinable.
-QString attributeConditionalTrigger(const QString& conditionalInstallsXml,
-                                    const QSet<QString>& targetKeys,
-                                    const FilePresentFn& filePresent) {
-    if (conditionalInstallsXml.isEmpty()) return {};
-    QDomDocument doc;
-    if (!doc.setContent(conditionalInstallsXml)) return {};
+// `targetKeys`, and returns the present fileDependencies gating them (deduped,
+// in document order). Empty when none are determinable.
+QStringList presentConditionalTriggers(const QString& conditionalInstallsXml,
+                                       const QSet<QString>& targetKeys,
+                                       const FilePresentFn& filePresent) {
     QStringList triggers;
+    if (conditionalInstallsXml.isEmpty()) return triggers;
+    QDomDocument doc;
+    if (!doc.setContent(conditionalInstallsXml)) return triggers;
     const QDomNodeList patterns = doc.elementsByTagName("pattern");
     for (int i = 0; i < patterns.size(); ++i) {
         const QDomElement pat = patterns.at(i).toElement();
@@ -106,13 +105,47 @@ QString attributeConditionalTrigger(const QString& conditionalInstallsXml,
             }
         }
         if (!overlaps) continue;
-        // Name a present fileDependency that gates this pattern.
+        // Name every present fileDependency that gates this pattern.
         QStringList deps;
         collectPresentDepsRec(pat, deps);
         for (const QString& d : deps)
             if (!d.isEmpty() && filePresent(d) && !triggers.contains(d)) triggers << d;
     }
-    return triggers.size() == 1 ? triggers.first() : QString();
+    return triggers;
+}
+
+// Name a file-driven candidate from its payload so the row is self-describing:
+// prefer the plugin(s) it installs, else a sample file/folder plus a count.
+QString describePatchPayload(const QList<FomodFile>& files) {
+    auto baseName = [](const FomodFile& f) {
+        QString d = f.destination.isEmpty() ? f.source : f.destination;
+        return d.replace('\\', '/').section('/', -1);
+    };
+    QStringList plugins;
+    for (const FomodFile& f : files) {
+        if (f.isFolder) continue;
+        const QString b = baseName(f);
+        const QString l = b.toLower();
+        if ((l.endsWith(".esp") || l.endsWith(".esm") || l.endsWith(".esl"))
+            && !plugins.contains(b))
+            plugins << b;
+    }
+    if (!plugins.isEmpty()) {
+        const int shown = qMin(plugins.size(), 2);
+        QString s = plugins.mid(0, shown).join(", ");
+        if (plugins.size() > shown)
+            s += QStringLiteral(" (+%1 more)").arg(plugins.size() - shown);
+        return s;
+    }
+    // No plugin payload: sample the first entry and note the file count.
+    QString sample;
+    for (const FomodFile& f : files) {
+        sample = f.isFolder ? (baseName(f) + "/") : baseName(f);
+        if (!sample.isEmpty() && sample != "/") break;
+    }
+    if (sample.isEmpty()) sample = QStringLiteral("patch files");
+    const int n = files.size();
+    return n > 1 ? QStringLiteral("%1 (+%2 files)").arg(sample).arg(n - 1) : sample;
 }
 
 // Map a flag-setting option onto a present installed mod. Matching is fuzzy and
@@ -273,13 +306,21 @@ QList<PatchCandidate> findPatches(const FomodModule& module,
         fileDriven.append(f);
     }
     if (!fileDriven.isEmpty()) {
-        const QString trigger = attributeConditionalTrigger(
+        const QStringList triggers = presentConditionalTriggers(
             module.conditionalInstallsXml, keysOf(fileDriven), filePresent);
-        const QString reason = trigger.isEmpty()
-            ? QStringLiteral("Optional patch files that apply to your current setup")
-            : QStringLiteral("Auto-applied patch (needs %1, now present)").arg(trigger);
-        makeCandidate(QStringLiteral("Newly applicable files"), QString(),
-                      reason, fileDriven);
+        QString reason;
+        if (!triggers.isEmpty()) {
+            const int shown = qMin(triggers.size(), 3);
+            QString t = triggers.mid(0, shown).join(", ");
+            if (triggers.size() > shown)
+                t += QStringLiteral(" +%1 more").arg(triggers.size() - shown);
+            reason = QStringLiteral("needs %1 (present)").arg(t);
+        } else {
+            reason = QStringLiteral("applies to your current load order");
+        }
+        // Name the row by what it actually installs (the patch plugin/file),
+        // not a generic label.
+        makeCandidate(describePatchPayload(fileDriven), QString(), reason, fileDriven);
     }
 
     return out;

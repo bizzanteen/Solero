@@ -9,9 +9,13 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QProcessEnvironment>
 #include <memory>
+#include <unistd.h>
+#include <cerrno>
+#include <cstring>
 
 namespace solero {
 
@@ -209,6 +213,34 @@ QList<FailedArchive> WabbajackEngine::parseFailedArchives(const QString& log) {
     return out;
 }
 
+void WabbajackEngine::ensureLowercaseCCLinks() {
+    const QString gameDir = AppConfig::instance().gameDir();
+    if (gameDir.isEmpty()) return;
+    const QString dataPath = gameDir + QStringLiteral("/Data");
+    QDir data(dataPath);
+    if (!data.exists()) return;
+
+    // Creation Club plugins/archives are named "cc<…>" (e.g. ccBGSSSE037-Curios.bsa).
+    const QStringList entries =
+        data.entryList(QStringList{QStringLiteral("cc*"), QStringLiteral("CC*")},
+                       QDir::Files);
+    for (const QString& orig : entries) {
+        if (!orig.startsWith(QStringLiteral("cc"), Qt::CaseInsensitive)) continue;
+        const QString lower = orig.toLower();
+        if (lower == orig) continue;  // already all-lowercase, nothing to do
+        if (data.exists(lower)) continue;  // a file/link with the lowercase name exists
+
+        const QByteArray src = QFile::encodeName(data.filePath(orig));
+        const QByteArray dst = QFile::encodeName(data.filePath(lower));
+        if (::link(src.constData(), dst.constData()) == 0) {
+            emit logLine(QStringLiteral("Linked CC file: %1 -> %2").arg(orig, lower));
+        } else {
+            emit logLine(QStringLiteral("Warning: could not link CC file %1 -> %2: %3")
+                             .arg(orig, lower, QString::fromLocal8Bit(strerror(errno))));
+        }
+    }
+}
+
 static QProcessEnvironment engineEnv() {
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert("DOTNET_SYSTEM_GLOBALIZATION_INVARIANT", "1");
@@ -337,6 +369,11 @@ void WabbajackEngine::install(const QString& machineUrlOrFile, bool isLocalFile,
         if (m_proc == proc) m_proc = nullptr;
         proc->deleteLater();
     });
+
+    // On case-sensitive filesystems the engine can't find mixed-case Creation Club
+    // game files by their lowercase IDs; create lowercase hard links first so the
+    // GameFileSource lookups resolve. Non-fatal - install proceeds regardless.
+    ensureLowercaseCCLinks();
 
     proc->start();
 }

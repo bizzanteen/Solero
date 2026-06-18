@@ -76,6 +76,15 @@ signals:
     void installFailed(int exitCode, const QList<FailedArchive>& failed);
 
 private:
+    // Pre-install fix for case-sensitive filesystems (btrfs/ext4): the engine's
+    // GameFileSource downloader requests Skyrim Creation Club files by their
+    // lowercase Bethesda IDs (e.g. "ccbgssse037-curios.bsa"), but Steam stores
+    // them mixed-case on disk ("ccBGSSSE037-Curios.bsa"). On Linux the lowercase
+    // lookup misses and the install aborts. This creates lowercase-named hard
+    // links in the Skyrim Data dir so the lowercase names resolve. Idempotent and
+    // non-fatal: never aborts the install.
+    void ensureLowercaseCCLinks();
+
     QProcess* m_proc = nullptr;
     QString m_log;  // full captured output of the current install, for failure parsing
 };

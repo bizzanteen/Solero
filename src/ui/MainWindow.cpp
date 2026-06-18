@@ -3268,12 +3268,15 @@ void MainWindow::onAddTool2() {
         haveByIdName.insert(key);
         changedAny = true;
     }
-    // Wire output mods for any set-up tool that produces output.
+    // Wire output mods for any set-up tool that produces output. This is the
+    // frictionless WIZARD path: auto-create-or-reuse the per-profile output mod
+    // with a friendly name + staging folder (NO QInputDialog). The interactive
+    // picker (chooseOutputMod) is reserved for the manual "Edit Tool" path.
     for (auto& exe : profileTools) {
         const auto* preset = solero::ToolCatalog::byId(exe.id);
         if (!preset) continue;
         if (preset->producesOutput && exe.outputModId.isEmpty()) {
-            exe.outputModId = chooseOutputMod(preset->outputModName, preset->name);
+            exe.outputModId = ensureOutputMod(preset->outputModName);
             exe.isCapturingOutput = !preset->writesOutputDirectly;
             changedAny = true;
         }
@@ -3281,8 +3284,8 @@ void MainWindow::onAddTool2() {
         for (int i = 0; i < exe.extraActions.size() && i < preset->extraActions.size(); ++i) {
             if (exe.extraActions[i].outputModId.isEmpty()
                 && !preset->extraActions[i].outputModName.isEmpty()) {
-                exe.extraActions[i].outputModId = chooseOutputMod(
-                    preset->extraActions[i].outputModName, preset->name + " (" + preset->extraActions[i].label + ")");
+                exe.extraActions[i].outputModId =
+                    ensureOutputMod(preset->extraActions[i].outputModName);
                 changedAny = true;
             }
         }

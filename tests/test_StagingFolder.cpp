@@ -85,6 +85,24 @@ private slots:
         QVERIFY(out.toUtf8().size() <= 150);
         QVERIFY(out.endsWith(" (2)"));
     }
+    // Output mods created on the frictionless wizard path (MainWindow::
+    // ensureOutputMod) must get a FRIENDLY staging folder derived from the
+    // preset's output-mod name - never a bare UUID like "mods/<uuid>/Data".
+    void outputMod_friendlyFolderNotUuid() {
+        const QString name = "Radium Output";
+        QSet<QString> taken;
+        const QString folder =
+            uniqueStagingFolder(sanitizeStagingFolder(name), taken);
+        QCOMPARE(folder, QString("Radium Output"));
+        // A UUID contains hyphens; the friendly folder must not look like one.
+        QVERIFY(!folder.contains('-'));
+        // On collision it stays friendly (suffixed), still never a UUID.
+        QSet<QString> taken2{ "radium output" };
+        const QString folder2 =
+            uniqueStagingFolder(sanitizeStagingFolder(name), taken2);
+        QCOMPARE(folder2, QString("Radium Output (2)"));
+        QVERIFY(!folder2.contains('-'));
+    }
 };
 
 QTEST_MAIN(TestStagingFolder)

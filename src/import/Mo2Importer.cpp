@@ -837,7 +837,24 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
     else
         r.primaryProfile = r.profileNames.isEmpty() ? QString() : r.profileNames.first();
 
-    r.success = (copyFailures == 0) && !r.profileNames.isEmpty();
+    // Reject a zero-mod import: a partial/failed Wabbajack install can produce a
+    // valid MO2 profile layout that references ZERO real mods (the engine staged
+    // no mods/ content). Treating that as success would write an orphaned profile
+    // whose modlist.json is "[]". Self-clean any profiles this call created (they
+    // are exactly the ones in r.profileNames - never pre-existing) so no orphan is
+    // left behind.
+    if (r.modsStaged == 0) {
+        for (const QString& name : r.profileNames) profiles.deleteProfile(name);
+        r.profileNames.clear();
+        r.primaryProfile.clear();
+        r.success = false;
+        r.errorMessage = "The install produced no mods to import - the "
+                         "modlist install likely failed or was incomplete. "
+                         "No profile was created.";
+        return r;
+    }
+
+    r.success = (copyFailures == 0) && !r.profileNames.isEmpty() && r.modsStaged > 0;
     if (copyFailures > 0) {
         r.errorMessage = QString("%1 file(s) failed to copy during import; "
                                  "the imported profiles may be incomplete.").arg(copyFailures);

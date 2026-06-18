@@ -433,6 +433,30 @@ private slots:
         QCOMPARE(r.primaryProfile, QString("P1 (MyList)"));
     }
 
+    void importInstanceRejectsZeroModImport() {
+        // A partial/failed Wabbajack install can leave a valid MO2 profile layout
+        // whose modlist.txt references mods that were never actually staged (no
+        // mods/ content). importInstance must not report success, and must clean
+        // up the profile it created (leaving no orphan).
+        QTemporaryDir tmp;
+        QString mo2 = tmp.path() + "/MO2";
+        // modlist.txt references a mod, but there is NO mods/Missing folder, so
+        // nothing real gets staged.
+        write(mo2 + "/profiles/P1/modlist.txt", "+Missing\n");
+        write(mo2 + "/ModOrganizer.ini", "[General]\nselected_profile=P1\n");
+
+        ProfileManager pm(tmp.path() + "/profiles");
+        auto r = Mo2Importer::importInstance(mo2, tmp.path() + "/staging", pm,
+                                             "MyList", /*symlink*/false);
+        QVERIFY(!r.success);
+        QCOMPARE(r.modsStaged, 0);
+        QVERIFY(r.profileNames.isEmpty());
+        QVERIFY(r.primaryProfile.isEmpty());
+        QVERIFY(!r.errorMessage.isEmpty());
+        // No orphaned Solero profile left behind.
+        QVERIFY(!pm.profileNames().contains("P1"));
+    }
+
     void parsesCustomExecutables() {
         // Real-shaped MO2 [customExecutables]: indexed N\title / N\binary /
         // N\arguments keys, Wine "Z:" drive + Windows-style binary paths pointing

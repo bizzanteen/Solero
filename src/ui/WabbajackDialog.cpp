@@ -891,6 +891,9 @@ void WabbajackDialog::doImport() {
     QApplication::restoreOverrideCursor();
 
     if (!r.success) {
+        // importInstance is responsible for removing any profiles it created when
+        // it fails (e.g. the zero-mod case), and clears r.profileNames accordingly,
+        // so there is nothing to clean up here - do not add a second delete loop.
         m_backBtn->setVisible(true);
         QMessageBox::critical(this, "Import Failed",
             r.errorMessage.isEmpty() ? "Unknown error importing the installed modlist." : r.errorMessage);

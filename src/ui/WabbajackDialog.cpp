@@ -542,7 +542,15 @@ void WabbajackDialog::triggerInstall(const QString& target, bool isLocalFile,
     // displayName is already the file's base name for a local .wabbajack file
     // (see the file-picker call site) and the modlist title for a gallery entry.
     const QString defName = sanitize(displayName);
-    QString defInstall = QDir::homePath() + "/Modding/Solero/Wabbajack/" +
+    // Base the default install dir on the Solero home (the parent of the staging
+    // dir, e.g. ~/Modding/Tools/Solero) so installs land in the same tree as
+    // mods/ and downloads/. Previously this was hardcoded to ~/Modding/Solero,
+    // which created a stray top-level "Solero" folder inconsistent with the
+    // configured ~/Modding/Tools/Solero.
+    QString soleroHome = QFileInfo(AppConfig::instance().stagingDir()).path();
+    if (soleroHome.isEmpty())
+        soleroHome = QDir::homePath() + "/Modding/Tools/Solero";
+    QString defInstall = soleroHome + "/Wabbajack/" +
                          (defName.isEmpty() ? "modlist" : defName);
 
     auto* installEdit = new QLineEdit(defInstall, &dirDlg);
@@ -556,7 +564,7 @@ void WabbajackDialog::triggerInstall(const QString& target, bool isLocalFile,
 
     QString defDownloads = AppConfig::instance().downloadsDir();
     if (defDownloads.isEmpty())
-        defDownloads = QDir::homePath() + "/Modding/Solero/downloads";
+        defDownloads = soleroHome + "/downloads";
     auto* dlEdit = new QLineEdit(defDownloads, &dirDlg);
     auto* dlBrowse = new QPushButton("Browse\xe2\x80\xa6", &dirDlg);
     auto* dlRow = new QHBoxLayout;

@@ -3046,9 +3046,40 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     // so the re-entrancy guards remain active until the run actually finishes.
     m_toolRunning = true;
     showRunLock(exe.name);
+
+    // A tool's output mod may be unset - either never configured, or MIGRATED
+    // into this profile (migration leaves outputModId empty) - or it may point at
+    // a mod that's no longer in the active profile. For a producesOutput tool,
+    // auto-create-or-reuse the per-profile output mod on first run (frictionless:
+    // no error, no dialog) and persist it on the STORED Executable so subsequent
+    // runs reuse it. exe is a copy from the menu; we must update the entry in
+    // activeTools(), not this local copy.
+    QString resolvedOutputModId = exe.outputModId;
+    if (const auto* preset = solero::ToolCatalog::byId(exe.id); preset && preset->producesOutput) {
+        auto* p = m_profileMgr->activeProfile();
+        const bool unset = exe.outputModId.isEmpty();
+        const bool stale = !unset && p &&
+            !p->modList().findById(exe.outputModId);
+        if (unset || stale) {
+            const QString name = preset->outputModName.isEmpty()
+                ? exe.name + " Output" : preset->outputModName;
+            const QString id = ensureOutputMod(name);
+            if (!id.isEmpty()) {
+                resolvedOutputModId = id;
+                // Persist on the stored Executable (by id, else by name).
+                for (auto& t : activeTools()) {
+                    const bool match = exe.id.isEmpty()
+                        ? t.name == exe.name : t.id == exe.id;
+                    if (match) { t.outputModId = id; break; }
+                }
+                saveActiveTools();
+            }
+        }
+    }
+
     QString outFolder;
-    if (auto* p = m_profileMgr->activeProfile(); p && !exe.outputModId.isEmpty())
-        outFolder = p->stagingFolderFor(exe.outputModId);
+    if (auto* p = m_profileMgr->activeProfile(); p && !resolvedOutputModId.isEmpty())
+        outFolder = p->stagingFolderFor(resolvedOutputModId);
 
     // Radium expects an MO2 layout. Solero hardlink-deploys into Data/, so feed
     // it a generated fake-mo2 + a settings.json pointing at the live Data/ and the

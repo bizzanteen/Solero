@@ -12,6 +12,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QProcessEnvironment>
+#include <algorithm>
 #include <memory>
 #include <unistd.h>
 #include <cerrno>
@@ -107,8 +108,29 @@ QList<WabbajackModlist> WabbajackEngine::parseModlistsJson(const QByteArray& std
     return out;
 }
 
+double WabbajackEngine::parseSizeToBytes(const QString& token) {
+    static const QRegularExpression sizeRe(
+        QStringLiteral(R"(^\s*([\d.]+)\s*([KMGT]?B)\s*$)"),
+        QRegularExpression::CaseInsensitiveOption);
+    const auto m = sizeRe.match(token);
+    if (!m.hasMatch()) return -1;
+    bool ok = false;
+    const double value = m.captured(1).toDouble(&ok);
+    if (!ok) return -1;
+    const QString unit = m.captured(2).toUpper();
+    double mult = 1;
+    if (unit == QStringLiteral("B"))        mult = 1.0;
+    else if (unit == QStringLiteral("KB"))  mult = 1024.0;
+    else if (unit == QStringLiteral("MB"))  mult = 1024.0 * 1024.0;
+    else if (unit == QStringLiteral("GB"))  mult = 1024.0 * 1024.0 * 1024.0;
+    else if (unit == QStringLiteral("TB"))  mult = 1024.0 * 1024.0 * 1024.0 * 1024.0;
+    else return -1;
+    return value * mult;
+}
+
 bool WabbajackEngine::parseProgressLine(const QString& lineRaw, QString& op,
-                                        double& pct) {
+                                        double& pct, double& remainingBytes) {
+    remainingBytes = -1;
     const QString line = lineRaw.trimmed();
     if (line.isEmpty()) return false;
 
@@ -118,35 +140,52 @@ bool WabbajackEngine::parseProgressLine(const QString& lineRaw, QString& op,
     if (auto m = phaseRe.match(line); m.hasMatch()) {
         op  = m.captured(1).trimmed();
         pct = -1;
+        remainingBytes = -1;
         return true;
     }
 
-    // "Installing files 819/1497 (233.3MB/276.7MB) - ..." -> pct from n/total.
+    // "Installing files 819/1497 (233.3MB/276.7MB) - ..." -> pct from the BYTE ratio
+    // (used/total) when both parse; fall back to the file-count ratio otherwise.
     static const QRegularExpression installRe(
-        QStringLiteral(R"(^Installing files\s+(\d+)\s*/\s*(\d+))"));
+        QStringLiteral(R"(^Installing files\s+(\d+)\s*/\s*(\d+)(?:\s*\(\s*([\d.]+\s*[KMGT]?B)\s*/\s*([\d.]+\s*[KMGT]?B)\s*\))?)"),
+        QRegularExpression::CaseInsensitiveOption);
     if (auto m = installRe.match(line); m.hasMatch()) {
         const double n = m.captured(1).toDouble();
         const double total = m.captured(2).toDouble();
-        pct = (total > 0) ? (100.0 * n / total) : -1;
-        op  = QStringLiteral("Installing files %1/%2")
-                  .arg(m.captured(1), m.captured(2));
+        const QString usedStr  = m.captured(3).trimmed();
+        const QString totalStr = m.captured(4).trimmed();
+        const double usedBytes  = parseSizeToBytes(usedStr);
+        const double totalBytes = parseSizeToBytes(totalStr);
+        if (usedBytes >= 0 && totalBytes > 0) {
+            pct = 100.0 * usedBytes / totalBytes;
+            op  = QStringLiteral("Installing - %1 / %2").arg(usedStr, totalStr);
+        } else {
+            pct = (total > 0) ? (100.0 * n / total) : -1;
+            op  = QStringLiteral("Installing files %1/%2")
+                      .arg(m.captured(1), m.captured(2));
+        }
+        remainingBytes = -1;
         return true;
     }
 
-    // "Downloading Mod Archives (0/1) - 20.3MB/s - 0.1GB remaining" -> pct from n/total.
+    // "Downloading Mod Archives (0/1) - 20.3MB/s - 0.1GB remaining" -> leave pct=-1
+    // (the caller computes a size-based pct from the run's peak remaining) and
+    // expose the remaining bytes.
     static const QRegularExpression dlRe(
         QStringLiteral(R"(^Downloading\b.*?\((\d+)\s*/\s*(\d+)\))"));
     if (auto m = dlRe.match(line); m.hasMatch()) {
-        const double n = m.captured(1).toDouble();
-        const double total = m.captured(2).toDouble();
-        pct = (total > 0) ? (100.0 * n / total) : -1;
+        pct = -1;
         op  = QStringLiteral("Downloading archives %1/%2")
                   .arg(m.captured(1), m.captured(2));
-        // Append "remaining" hint if present for a richer op label.
+        // Append "remaining" hint if present for a richer op label, and parse it.
         static const QRegularExpression remRe(
-            QStringLiteral(R"(-\s*([\d.]+\s*\wB remaining))"));
-        if (auto r = remRe.match(line); r.hasMatch())
-            op += QStringLiteral(" - %1").arg(r.captured(1).trimmed());
+            QStringLiteral(R"(-\s*([\d.]+\s*[KMGT]?B)\s+remaining)"),
+            QRegularExpression::CaseInsensitiveOption);
+        if (auto r = remRe.match(line); r.hasMatch()) {
+            const QString remStr = r.captured(1).trimmed();
+            remainingBytes = parseSizeToBytes(remStr);
+            op += QStringLiteral(" - %1 remaining").arg(remStr);
+        }
         return true;
     }
 
@@ -386,6 +425,7 @@ void WabbajackEngine::install(const QString& machineUrlOrFile, bool isLocalFile,
     proc->setProcessChannelMode(QProcess::MergedChannels);
 
     m_log.clear();  // fresh capture for this run's failure parsing
+    m_dlPeakRemaining = 0;  // fresh download peak for size-based download pct
 
     // The engine rewrites progress lines in place with bare '\r' (no '\n'), so
     // QProcess::canReadLine() won't split them. Read whatever bytes are available,
@@ -402,9 +442,15 @@ void WabbajackEngine::install(const QString& machineUrlOrFile, bool isLocalFile,
             m_log += line;
             m_log += QLatin1Char('\n');
             emit logLine(line);
-            QString op; double pct = -1;
-            if (parseProgressLine(line, op, pct))
+            QString op; double pct = -1; double rem = -1;
+            if (parseProgressLine(line, op, pct, rem)) {
+                if (rem >= 0) {
+                    m_dlPeakRemaining = std::max(m_dlPeakRemaining, rem);
+                    if (m_dlPeakRemaining > 0)
+                        pct = 100.0 * (m_dlPeakRemaining - rem) / m_dlPeakRemaining;
+                }
                 emit progress(op, QString(), pct);
+            }
         }
         *buf = segs.isEmpty() ? QString() : segs.last();
     };
@@ -419,9 +465,15 @@ void WabbajackEngine::install(const QString& machineUrlOrFile, bool isLocalFile,
             m_log += tail;
             m_log += QLatin1Char('\n');
             emit logLine(tail);
-            QString op; double pct = -1;
-            if (parseProgressLine(tail, op, pct))
+            QString op; double pct = -1; double rem = -1;
+            if (parseProgressLine(tail, op, pct, rem)) {
+                if (rem >= 0) {
+                    m_dlPeakRemaining = std::max(m_dlPeakRemaining, rem);
+                    if (m_dlPeakRemaining > 0)
+                        pct = 100.0 * (m_dlPeakRemaining - rem) / m_dlPeakRemaining;
+                }
                 emit progress(op, QString(), pct);
+            }
         }
         bool ok = (status == QProcess::NormalExit && exitCode == 0);
         emit installFinished(ok, exitCode);

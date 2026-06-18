@@ -96,47 +96,81 @@ private slots:
         QVERIFY(!err.isEmpty());
     }
 
+    void parseSizeToBytes_units() {
+        const double tol = 1.0;  // absolute byte tolerance for float rounding
+        QVERIFY(qAbs(WabbajackEngine::parseSizeToBytes("233.3MB")
+                     - 233.3 * 1024.0 * 1024.0) < 1024.0);
+        QVERIFY(qAbs(WabbajackEngine::parseSizeToBytes("0.1GB")
+                     - 0.1 * 1024.0 * 1024.0 * 1024.0) < 1024.0);
+        QVERIFY(qAbs(WabbajackEngine::parseSizeToBytes("1024KB")
+                     - 1024.0 * 1024.0) < tol);
+        QVERIFY(qAbs(WabbajackEngine::parseSizeToBytes("5GB")
+                     - 5.0 * 1024.0 * 1024.0 * 1024.0) < tol);
+        // Whitespace and case tolerance.
+        QVERIFY(qAbs(WabbajackEngine::parseSizeToBytes(" 2.0 gb ")
+                     - 2.0 * 1024.0 * 1024.0 * 1024.0) < tol);
+        // Garbage -> -1.
+        QCOMPARE(WabbajackEngine::parseSizeToBytes("abc"), -1.0);
+        QCOMPARE(WabbajackEngine::parseSizeToBytes("12"), -1.0);  // no unit
+    }
+
     void parseProgress_installingFiles() {
-        QString op; double pct = -1;
+        QString op; double pct = -1; double rem = 999;
         bool ok = WabbajackEngine::parseProgressLine(
-            "Installing files 819/1497 (233.3MB/276.7MB) - foo.bsa", op, pct);
+            "Installing files 819/1497 (233.3MB/276.7MB) - foo.bsa", op, pct, rem);
         QVERIFY(ok);
-        QVERIFY(qAbs(pct - (100.0 * 819 / 1497)) < 1e-6);
-        QCOMPARE(op, QString("Installing files 819/1497"));
+        // pct must be the BYTE ratio (~84.3), not the count ratio (~54.7).
+        const double byteRatio = 100.0 * (233.3 * 1024.0 * 1024.0)
+                                       / (276.7 * 1024.0 * 1024.0);
+        QVERIFY2(qAbs(pct - byteRatio) < 1e-3, qPrintable(QString::number(pct)));
+        QVERIFY2(qAbs(pct - (100.0 * 819 / 1497)) > 10.0,
+                 qPrintable(QString::number(pct)));
+        QCOMPARE(rem, -1.0);
+        QVERIFY2(op.contains("233.3MB"), qPrintable(op));
+        QVERIFY2(op.contains("276.7MB"), qPrintable(op));
     }
 
     void parseProgress_downloadingArchives() {
-        QString op; double pct = -1;
+        QString op; double pct = 999; double rem = -1;
         bool ok = WabbajackEngine::parseProgressLine(
-            "Downloading Mod Archives (3/10) - 20.3MB/s - 0.1GB remaining", op, pct);
+            "Downloading Mod Archives (3/10) - 20.3MB/s - 0.1GB remaining",
+            op, pct, rem);
         QVERIFY(ok);
-        QVERIFY(qAbs(pct - 30.0) < 1e-6);
+        // Download lines leave pct=-1 (the caller computes it from the run peak).
+        QCOMPARE(pct, -1.0);
+        QVERIFY2(qAbs(rem - 0.1 * 1024.0 * 1024.0 * 1024.0) < 1024.0,
+                 qPrintable(QString::number(rem)));
         QVERIFY2(op.startsWith("Downloading archives 3/10"), qPrintable(op));
         QVERIFY2(op.contains("0.1GB remaining"), qPrintable(op));
     }
 
     void parseProgress_downloadingZeroTotal() {
-        // n/total with total>0 but n=0 -> 0%; op still valid.
-        QString op; double pct = -1;
+        QString op; double pct = 999; double rem = -1;
         bool ok = WabbajackEngine::parseProgressLine(
-            "Downloading Mod Archives (0/1) - 20.3MB/s - 0.1GB remaining", op, pct);
+            "Downloading Mod Archives (0/1) - 20.3MB/s - 0.1GB remaining",
+            op, pct, rem);
         QVERIFY(ok);
-        QVERIFY(qAbs(pct - 0.0) < 1e-6);
+        QCOMPARE(pct, -1.0);  // caller computes the download pct
+        QVERIFY(!op.isEmpty());
+        QVERIFY2(qAbs(rem - 0.1 * 1024.0 * 1024.0 * 1024.0) < 1024.0,
+                 qPrintable(QString::number(rem)));
     }
 
     void parseProgress_phaseBanner() {
-        QString op; double pct = 999;
-        bool ok = WabbajackEngine::parseProgressLine("=== Installing ===", op, pct);
+        QString op; double pct = 999; double rem = 999;
+        bool ok = WabbajackEngine::parseProgressLine("=== Installing ===",
+                                                     op, pct, rem);
         QVERIFY(ok);
         QCOMPARE(op, QString("Installing"));
         QVERIFY(pct < 0); // banner has no percentage
+        QCOMPARE(rem, -1.0);
     }
 
     void parseProgress_noMatch() {
-        QString op; double pct = -1;
+        QString op; double pct = -1; double rem = -1;
         QVERIFY(!WabbajackEngine::parseProgressLine(
-            "Loading metadata, please wait...", op, pct));
-        QVERIFY(!WabbajackEngine::parseProgressLine("", op, pct));
+            "Loading metadata, please wait...", op, pct, rem));
+        QVERIFY(!WabbajackEngine::parseProgressLine("", op, pct, rem));
     }
 
     void parseFailedArchives_anvilShapes() {

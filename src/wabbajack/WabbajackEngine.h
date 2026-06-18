@@ -50,8 +50,16 @@ public:
     //   "=== <Phase> ===" banners
     // On match, fills `op` with a human label and `pct` with a 0..100 percentage
     // (pct < 0 means "no percentage for this line, but the op label is valid").
+    // `remainingBytes` is set to the parsed "<X> remaining" figure for download
+    // lines (so the caller can compute a size-based pct from the run's peak), and
+    // -1 for every other line.
     // Returns true if the line is a recognized progress/phase line; false otherwise.
-    static bool parseProgressLine(const QString& line, QString& op, double& pct);
+    static bool parseProgressLine(const QString& line, QString& op, double& pct,
+                                  double& remainingBytes);
+
+    // Parse a human size token ("233.3MB", "0.1 GB", "1024KB", case-insensitive,
+    // optional whitespace) into bytes (1024-based units). Returns -1 if unparseable.
+    static double parseSizeToBytes(const QString& token);
 
     // Pure parser: scans the captured engine output for "Unable to download …"
     // failure lines and classifies each by its (Downloader+State|…) descriptor.
@@ -96,6 +104,9 @@ private:
 
     QProcess* m_proc = nullptr;
     QString m_log;  // full captured output of the current install, for failure parsing
+    // Largest "<X> remaining" download figure seen this run, used as the effective
+    // download total for a monotonic, size-based download percentage.
+    double m_dlPeakRemaining = 0;
 };
 
 } // namespace solero

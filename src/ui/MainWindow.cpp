@@ -237,6 +237,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     const QStringList profileNames = m_profileMgr->profileNames();
     const QString savedProfile = solero::AppConfig::instance().lastProfile();
     switchProfile(profileNames.contains(savedProfile) ? savedProfile : profileNames.first());
+    // One-time: fold the legacy global tool template into the now-active profile
+    // only (gated by toolsMigratedToPerProfile). Must run after switchProfile so
+    // there's an active profile; rebuild the menu to show any migrated tools.
+    migrateToolsToActiveProfileOnce();
+    rebuildToolsMenu();
     migrateLegacyOverwrite();   // one-time: fold legacy global Overwrite into this profile
     refreshDeployState(); // reflect any existing deployment from a previous run
 
@@ -799,9 +804,11 @@ void MainWindow::switchProfile(const QString& name) {
     auto* profile = m_profileMgr->loadProfile(name);
     seedProfileInis(profile);
     m_ipcServer->setActiveProfile(profile);
-    // Tools are now per-profile: seed this profile from the global template if it
-    // has none yet, then rebuild the tools menu so it reflects activeTools().
-    seedActiveProfileToolsIfNeeded();
+    // Tools are per-profile. We do not seed on switch: a profile's tools come from
+    // its own executables.json (empty for new/other profiles). The legacy global
+    // template is folded into the active profile exactly once, at startup, via the
+    // app-level toolsMigratedToPerProfile flag (see the constructor). Just rebuild
+    // the menu so it reflects this profile's activeTools().
     rebuildToolsMenu();
     m_modListView->setProfile(profile);
     // If we're about to redeploy (profile was deployed), defer the expensive
@@ -3247,7 +3254,15 @@ QString MainWindow::chooseOutputMod(const QString& defaultName, const QString& t
 }
 
 void MainWindow::onAddTool2() {
-    solero::ToolSetupWizard dlg(this, m_toolStore);
+    // Build the PER-profile installed set so the wizard's "(installed)" badge
+    // reflects this profile's executables, not the shared global template. Key by
+    // each tool's id and its lower-cased name (a preset matches on either).
+    QSet<QString> installedKeys;
+    for (const auto& t : activeTools()) {
+        if (!t.id.isEmpty())   installedKeys.insert(t.id);
+        if (!t.name.isEmpty()) installedKeys.insert(t.name.toLower());
+    }
+    solero::ToolSetupWizard dlg(this, m_toolStore, installedKeys);
     dlg.setModChoices(modChoices());
     connect(&dlg, &solero::ToolSetupWizard::installModRequested,
             this, &MainWindow::installFromArchive);
@@ -3437,9 +3452,14 @@ void MainWindow::saveActiveTools() {
     if (auto* p = m_profileMgr->activeProfile()) p->save();
 }
 
-void MainWindow::seedActiveProfileToolsIfNeeded() {
+void MainWindow::migrateToolsToActiveProfileOnce() {
+    // one-time app-level migration: fold the legacy global tool template into the
+    // active profile only. New/other profiles stay empty - there is no
+    // per-activation seeding. Gated by the toolsMigratedToPerProfile flag so it
+    // runs exactly once across the app's lifetime.
+    if (solero::AppConfig::instance().toolsMigratedToPerProfile()) return;
     auto* p = m_profileMgr->activeProfile();
-    if (!p || !p->executables().isEmpty()) return;
+    if (!p) return;
     // Re-resolve each template tool's output mod against this profile: derive the
     // expected output-mod name from the matching ToolCatalog preset (fall back to
     // "<tool> Output"), then match a same-named output mod in this profile's
@@ -3455,7 +3475,12 @@ void MainWindow::seedActiveProfileToolsIfNeeded() {
         if (outName.isEmpty()) outName = t.name + " Output";
         return solero::Profile::matchOutputModId(p->modList(), outName);
     };
+    // seedExecutablesFrom is a no-op if the profile already has executables
+    // in memory (e.g. CSVO with its real PGPatcher+Radium), so an existing setup
+    // is never clobbered. Either way we mark the migration done.
     p->seedExecutablesFrom(m_toolStore->tools(), resolver);
+    solero::AppConfig::instance().setToolsMigratedToPerProfile(true);
+    solero::AppConfig::instance().save();
 }
 
 void MainWindow::rebuildToolsMenu() {

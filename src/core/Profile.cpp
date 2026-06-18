@@ -97,8 +97,10 @@ bool Profile::seedExecutablesFrom(
         const QList<Executable>& templateTools,
         const std::function<QString(const Executable&)>& resolveOutputMod) {
     // Never overwrite an existing per-profile setup: bail if we already hold
-    // executables in memory OR a serialized executables.json is on disk.
-    if (!m_executables.isEmpty() || QFile::exists(executablesPath()))
+    // executables in memory. One-time-ness is enforced at the app level (the
+    // toolsMigratedToPerProfile flag), so an empty executables.json on disk -
+    // left behind by past saves - must not block seeding.
+    if (!m_executables.isEmpty())
         return false;
 
     for (Executable e : templateTools) { // deep copy each template entry

@@ -308,10 +308,15 @@ private slots:
         QVERIFY(!p.seedExecutablesFrom(templateTools, resolver));
         QCOMPARE(p.executables().size(), 1);
 
-        // Also guarded by an existing executables.json on a fresh in-memory Profile.
+        // Seeding is gated only by the in-memory list, not by the file on disk:
+        // a fresh Profile with an (even empty) executables.json present but an
+        // empty in-memory list still seeds. One-time-ness is enforced at the app
+        // level (toolsMigratedToPerProfile), not here.
         Profile p2("Seed", profiles.path());
+        QVERIFY(QFile::exists(p2.executablesPath())); // p's save left a file behind
         QVERIFY(p2.executables().isEmpty());
-        QVERIFY(!p2.seedExecutablesFrom(templateTools, resolver)); // file present
+        QVERIFY(p2.seedExecutablesFrom(templateTools, resolver)); // proceeds anyway
+        QCOMPARE(p2.executables().size(), 1);
     }
 
     // The seeded tool's outputModId is re-resolved for this profile, never the

@@ -208,8 +208,9 @@ static void endorsePreset(const ToolPreset* p, QWidget* parent) {
             res.message.isEmpty() ? QString("Could not endorse this tool.") : res.message);
 }
 
-ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
-    : QDialog(parent), m_store(store) {
+ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store,
+                                 const QSet<QString>& installedKeys)
+    : QDialog(parent), m_installedKeys(installedKeys), m_store(store) {
     setWindowTitle("Set Up a Tool");
     setFixedSize(720, 480);
 
@@ -220,15 +221,17 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
     list->setIconSize(QSize(32, 32));
     list->setMinimumWidth(260);
     list->setMaximumWidth(260);
-    // A preset is "installed" if a tool with the same id is already in the store.
-    auto isInstalled = [this](const QString& id) {
-        for (const auto& t : m_store->tools()) if (t.id == id) return true;
-        return false;
+    // A preset is "installed" PER profile: its id OR (case-insensitive) name is in
+    // the active profile's installed set. The global m_store is intentionally not
+    // consulted here - it's a shared template, so reading it would mark a tool
+    // "installed" in every profile.
+    auto isInstalled = [this](const QString& id, const QString& name) {
+        return m_installedKeys.contains(id) || m_installedKeys.contains(name.toLower());
     };
     for (const auto& p : ToolCatalog::presets()) {
         auto* item = new QListWidgetItem(QIcon(p.iconResource), p.name, list);
         item->setData(Qt::UserRole, p.id);
-        if (isInstalled(p.id)) {
+        if (isInstalled(p.id, p.name)) {
             item->setText(p.name + " (installed)");
             item->setToolTip("Already set up.");
             item->setFlags(item->flags() & ~Qt::ItemIsEnabled & ~Qt::ItemIsSelectable);
@@ -356,7 +359,7 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store)
         if (!p) return;
         // Belt-and-suspenders: never re-set-up an already-installed preset, even
         // if a disabled item somehow became the current selection.
-        if (isInstalled(p->id)) return;
+        if (isInstalled(p->id, p->name)) return;
 
         const QString downloadsDir = AppConfig::instance().downloadsDir();
         const QString toolsRoot = AppConfig::instance().toolsDir();

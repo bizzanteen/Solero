@@ -240,10 +240,11 @@ private:
     // profile - defensive); saveActiveTools() persists them via Profile::save().
     QList<solero::Executable>& activeTools();
     void saveActiveTools();
-    // When the active profile has no executables yet, seed them from the global
-    // template (m_toolStore), re-resolving each tool's output mod to this profile's
-    // same-named output mod (or empty to defer creation). No-op once seeded.
-    void seedActiveProfileToolsIfNeeded();
+    // one-time migration (gated by AppConfig::toolsMigratedToPerProfile): fold the
+    // legacy global tool template (m_toolStore) into the active profile only,
+    // re-resolving each tool's output mod to this profile's same-named output mod
+    // (or empty to defer creation). New/other profiles are never seeded.
+    void migrateToolsToActiveProfileOnce();
     void onPatchWizard();
     QList<QPair<QString,QString>> modChoices() const;
     void rebuildToolsMenu();

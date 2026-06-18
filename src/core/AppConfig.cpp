@@ -90,6 +90,7 @@ bool AppConfig::load() {
         m_documents = detectDocumentsDir(m_gameDir);
     m_confirmModDeletion   = obj["confirmModDeletion"].toBool(true);
     m_shaderCacheDeclined  = obj["shaderCacheDeclined"].toBool(false);
+    m_toolsMigratedToPerProfile = obj["toolsMigratedToPerProfile"].toBool(false);
     m_cycleSeparatorColors = obj["cycleSeparatorColors"].toBool(true);
     m_dataShowAllFiles     = obj["dataShowAllFiles"].toBool(false);
     m_promptAfterBrowserDownload = obj["promptAfterBrowserDownload"].toBool(true);
@@ -124,6 +125,7 @@ bool AppConfig::save() const {
     obj["downloadsDir"]    = m_downloads;
     obj["confirmModDeletion"]   = m_confirmModDeletion;
     obj["shaderCacheDeclined"]  = m_shaderCacheDeclined;
+    obj["toolsMigratedToPerProfile"] = m_toolsMigratedToPerProfile;
     obj["cycleSeparatorColors"] = m_cycleSeparatorColors;
     obj["dataShowAllFiles"]     = m_dataShowAllFiles;
     obj["promptAfterBrowserDownload"] = m_promptAfterBrowserDownload;

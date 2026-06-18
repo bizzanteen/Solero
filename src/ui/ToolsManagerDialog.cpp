@@ -1,5 +1,4 @@
 #include "ToolsManagerDialog.h"
-#include "tools/ToolStore.h"
 #include "core/Types.h"
 #include <QListWidget>
 #include <QVBoxLayout>
@@ -9,8 +8,8 @@
 
 namespace solero {
 
-ToolsManagerDialog::ToolsManagerDialog(ToolStore* store, QWidget* parent)
-    : QDialog(parent), m_store(store) {
+ToolsManagerDialog::ToolsManagerDialog(const QList<Executable>* tools, QWidget* parent)
+    : QDialog(parent), m_tools(tools) {
     setWindowTitle("Manage Tools");
     setMinimumSize(420, 320);
 
@@ -47,7 +46,8 @@ ToolsManagerDialog::ToolsManagerDialog(ToolStore* store, QWidget* parent)
 
 void ToolsManagerDialog::refresh() {
     m_list->clear();
-    for (const auto& exe : m_store->tools()) {
+    if (!m_tools) return;
+    for (const auto& exe : *m_tools) {
         auto* item = new QListWidgetItem(QIcon(exe.iconPath), exe.name, m_list);
         item->setData(Qt::UserRole, exe.id);
     }

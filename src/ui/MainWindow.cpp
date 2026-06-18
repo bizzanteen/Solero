@@ -799,6 +799,10 @@ void MainWindow::switchProfile(const QString& name) {
     auto* profile = m_profileMgr->loadProfile(name);
     seedProfileInis(profile);
     m_ipcServer->setActiveProfile(profile);
+    // Tools are now per-profile: seed this profile from the global template if it
+    // has none yet, then rebuild the tools menu so it reflects activeTools().
+    seedActiveProfileToolsIfNeeded();
+    rebuildToolsMenu();
     m_modListView->setProfile(profile);
     // If we're about to redeploy (profile was deployed), defer the expensive
     // game-data plugin reconcile+save to the post-deploy setProfile below so it
@@ -1038,7 +1042,7 @@ void MainWindow::runPostDeployTools() {
     // Collect the flagged tools up front (in listed order) so the run loop doesn't
     // observe mid-run changes to the store.
     QList<solero::Executable> queue;
-    for (const auto& t : m_toolStore->tools())
+    for (const auto& t : activeTools())
         if (t.runThroughDeployer) queue.append(t);
     if (queue.isEmpty()) return;
 
@@ -3248,15 +3252,30 @@ void MainWindow::onAddTool2() {
     connect(&dlg, &solero::ToolSetupWizard::installModRequested,
             this, &MainWindow::installFromArchive);
     dlg.exec();
+    // The wizard (Task 3) currently registers tools in the global template
+    // (m_toolStore). Mirror any newly-set-up tool into the active profile so the
+    // user's per-profile tool list/menu reflects it, then wire output mods on the
+    // profile's copy. (Task 3 will make the wizard add directly to the active
+    // profile + template; this transfer becomes a no-op once it does.)
+    auto& profileTools = activeTools();
+    QSet<QString> haveByIdName;
+    for (const auto& t : profileTools) haveByIdName.insert(t.id.isEmpty() ? t.name.toLower() : t.id);
+    bool changedAny = false;
+    for (const auto& tmpl : m_toolStore->tools()) {
+        const QString key = tmpl.id.isEmpty() ? tmpl.name.toLower() : tmpl.id;
+        if (haveByIdName.contains(key)) continue;
+        profileTools.append(tmpl);
+        haveByIdName.insert(key);
+        changedAny = true;
+    }
     // Wire output mods for any set-up tool that produces output.
-    for (auto exe : m_toolStore->tools()) {                 // copy
+    for (auto& exe : profileTools) {
         const auto* preset = solero::ToolCatalog::byId(exe.id);
         if (!preset) continue;
-        bool changed = false;
         if (preset->producesOutput && exe.outputModId.isEmpty()) {
             exe.outputModId = chooseOutputMod(preset->outputModName, preset->name);
             exe.isCapturingOutput = !preset->writesOutputDirectly;
-            changed = true;
+            changedAny = true;
         }
         // secondary actions: match by index to the preset's extraActions
         for (int i = 0; i < exe.extraActions.size() && i < preset->extraActions.size(); ++i) {
@@ -3264,11 +3283,11 @@ void MainWindow::onAddTool2() {
                 && !preset->extraActions[i].outputModName.isEmpty()) {
                 exe.extraActions[i].outputModId = chooseOutputMod(
                     preset->extraActions[i].outputModName, preset->name + " (" + preset->extraActions[i].label + ")");
-                changed = true;
+                changedAny = true;
             }
         }
-        if (changed) { m_toolStore->update(exe); m_toolStore->save(); }
     }
+    if (changedAny) saveActiveTools();
     rebuildToolsMenu();
 }
 
@@ -3294,6 +3313,20 @@ void MainWindow::setUpImportedTools(const QList<solero::ImportedTool>& tools) {
     QStringList configured;  // "xEdit -> SSEEdit (xEdit)" lines for the summary
     QStringList unresolved;  // "<name> - <reason>" lines for the summary
     bool storeChanged = false;
+
+    // Tools are per-profile now: register each discovered tool into the global
+    // template (m_toolStore, for future-profile seeding) and into the active
+    // profile's executables (what the user actually sees/runs). Upsert by id (or
+    // name when id-less) so a re-import updates in place rather than duplicating.
+    auto& profileTools = profile->executables();
+    auto upsertIntoProfile = [&profileTools](const solero::Executable& e) {
+        for (auto& t : profileTools) {
+            const bool sameId   = !e.id.isEmpty() && t.id == e.id;
+            const bool sameName = e.id.isEmpty() && t.name.compare(e.name, Qt::CaseInsensitive) == 0;
+            if (sameId || sameName) { t = e; return; }
+        }
+        profileTools.append(e);
+    };
 
     for (const solero::ImportedTool& it : tools) {
         const QString presetId = solero::presetIdForToolName(it.name, it.binary);
@@ -3333,6 +3366,7 @@ void MainWindow::setUpImportedTools(const QList<solero::ImportedTool>& tools) {
                 }
             }
             m_toolStore->update(e);
+            upsertIntoProfile(e);
             haveIds.insert(presetId);
             haveNames.insert(e.name.toLower());
             storeChanged = true;
@@ -3360,13 +3394,14 @@ void MainWindow::setUpImportedTools(const QList<solero::ImportedTool>& tools) {
             const QString outId = solero::findOutputModId(profile->modList().entries(), it.name);
             if (!outId.isEmpty()) { e.outputModId = outId; e.isCapturingOutput = true; }
             m_toolStore->update(e);
+            upsertIntoProfile(e);
             haveNames.insert(e.name.toLower());
             storeChanged = true;
             configured << QString("%1 (custom)").arg(it.name);
         }
     }
 
-    if (storeChanged) { m_toolStore->save(); rebuildToolsMenu(); }
+    if (storeChanged) { m_toolStore->save(); profile->save(); rebuildToolsMenu(); }
 
     // Summary (non-blocking; skipped when nothing was discovered/actionable).
     if (configured.isEmpty() && unresolved.isEmpty()) return;
@@ -3389,10 +3424,41 @@ void MainWindow::setUpImportedTools(const QList<solero::ImportedTool>& tools) {
     box->show();
 }
 
+QList<solero::Executable>& MainWindow::activeTools() {
+    static QList<solero::Executable> empty;
+    if (auto* p = m_profileMgr->activeProfile()) return p->executables();
+    return empty;
+}
+
+void MainWindow::saveActiveTools() {
+    if (auto* p = m_profileMgr->activeProfile()) p->save();
+}
+
+void MainWindow::seedActiveProfileToolsIfNeeded() {
+    auto* p = m_profileMgr->activeProfile();
+    if (!p || !p->executables().isEmpty()) return;
+    // Re-resolve each template tool's output mod against this profile: derive the
+    // expected output-mod name from the matching ToolCatalog preset (fall back to
+    // "<tool> Output"), then match a same-named output mod in this profile's
+    // modlist (or empty to defer creation).
+    auto resolver = [p](const solero::Executable& t) -> QString {
+        QString outName;
+        for (const auto& preset : solero::ToolCatalog::presets()) {
+            if (preset.name.compare(t.name, Qt::CaseInsensitive) == 0) {
+                outName = preset.outputModName;
+                break;
+            }
+        }
+        if (outName.isEmpty()) outName = t.name + " Output";
+        return solero::Profile::matchOutputModId(p->modList(), outName);
+    };
+    p->seedExecutablesFrom(m_toolStore->tools(), resolver);
+}
+
 void MainWindow::rebuildToolsMenu() {
     if (!m_toolsMenu) return;
     m_toolsMenu->clear();
-    const auto& tools = m_toolStore->tools();
+    const auto& tools = activeTools();
     for (const auto& exe : tools) {
         if (exe.extraActions.isEmpty()) {
             // Click the tool name to run it.
@@ -3434,7 +3500,7 @@ QList<QPair<QString,QString>> MainWindow::modChoices() const {
 }
 
 void MainWindow::onManageTools() {
-    solero::ToolsManagerDialog dlg(m_toolStore, this);
+    solero::ToolsManagerDialog dlg(&activeTools(), this);
     connect(&dlg, &solero::ToolsManagerDialog::addToolRequested, this, [this, &dlg]{ onAddTool2(); dlg.refresh(); });
     connect(&dlg, &solero::ToolsManagerDialog::editToolRequested, this, [this, &dlg](const QString& id){ onEditTool(id); dlg.refresh(); });
     connect(&dlg, &solero::ToolsManagerDialog::removeToolRequested, this, [this, &dlg](const QString& id){ onRemoveTool(id); dlg.refresh(); });
@@ -3651,14 +3717,15 @@ void MainWindow::onPlay() {
 }
 
 void MainWindow::onEditTool(const QString& id) {
-    for (const auto& t : m_toolStore->tools()) if (t.id == id) {
+    auto& tools = activeTools();
+    for (auto& t : tools) if (t.id == id) {
         solero::ExecutableDialog dlg(t, this);
         dlg.setOutputModChoices(modChoices(), t.outputModId);
         if (dlg.exec() == QDialog::Accepted) {
             auto e = dlg.result();
             e.id = id;
-            m_toolStore->update(e);
-            m_toolStore->save();
+            t = e;
+            saveActiveTools();
             rebuildToolsMenu();
         }
         break;
@@ -3707,7 +3774,7 @@ void MainWindow::onRemoveTool(const QString& id) {
     // Find the tool's Executable and its display name.
     QString toolName = id;
     QStringList candidateIds;
-    for (const auto& exe : m_toolStore->tools()) {
+    for (const auto& exe : activeTools()) {
         if (exe.id != id) continue;
         toolName = exe.name;
         if (!exe.outputModId.isEmpty()) candidateIds << exe.outputModId;
@@ -3763,8 +3830,10 @@ void MainWindow::onRemoveTool(const QString& id) {
         if (dlg.exec() != QDialog::Accepted) return;
     }
 
-    m_toolStore->remove(id);
-    m_toolStore->save();
+    auto& tools = activeTools();
+    for (int i = 0; i < tools.size(); ++i)
+        if (tools[i].id == id) { tools.removeAt(i); break; }
+    saveActiveTools();
 
     bool removedAny = false;
     for (int i = 0; i < modIds.size(); ++i) {

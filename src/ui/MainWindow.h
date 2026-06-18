@@ -234,6 +234,16 @@ private:
     void onEditTool(const QString& id);
     void onRemoveTool(const QString& id);
     void onManageTools();
+    // The tools the user sees/runs/edits live on the active profile (the global
+    // m_toolStore is only a template/library). activeTools() returns the active
+    // profile's executables() (or a static empty list if there's no active
+    // profile - defensive); saveActiveTools() persists them via Profile::save().
+    QList<solero::Executable>& activeTools();
+    void saveActiveTools();
+    // When the active profile has no executables yet, seed them from the global
+    // template (m_toolStore), re-resolving each tool's output mod to this profile's
+    // same-named output mod (or empty to defer creation). No-op once seeded.
+    void seedActiveProfileToolsIfNeeded();
     void onPatchWizard();
     QList<QPair<QString,QString>> modChoices() const;
     void rebuildToolsMenu();

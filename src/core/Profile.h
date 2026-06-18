@@ -6,6 +6,7 @@
 #include <QList>
 #include <QHash>
 #include <QSet>
+#include <functional>
 
 namespace solero {
 
@@ -60,6 +61,24 @@ public:
 
     bool save() const;
     bool load();
+
+    // Seed this profile's executables from a template (the global tool library)
+    // IF and only IF this profile has no executables yet (executables.json absent
+    // / m_executables empty). Each tool's outputModId (and extraActions[].outputModId)
+    // is re-resolved for this profile via resolveOutputMod: the caller is handed
+    // the template tool and returns the output-mod id to use in this profile
+    // (matching a same-named isOutputMod mod in this profile's modlist via
+    // matchOutputModId, or returning empty to defer creation). Returns true if it
+    // seeded (false if executables already exist - never overwrites).
+    bool seedExecutablesFrom(const QList<Executable>& templateTools,
+                             const std::function<QString(const Executable&)>& resolveOutputMod);
+
+    // Reusable primitive for the "match a same-named output mod in a profile, else
+    // empty" resolution: given a modlist and a desired output-mod name, return the
+    // id of an existing isOutputMod mod whose name matches (case-insensitive), or
+    // an empty string if none. Static + name-based so callers (the seeding
+    // resolver) can drive it from whatever name the template tool's output mod had.
+    static QString matchOutputModId(const ModList& modList, const QString& outputModName);
 
     // Resolve the on-disk staging folder name for a mod id via the active mod
     // list. Returns empty if the id is unknown or the mod has no stagingFolder

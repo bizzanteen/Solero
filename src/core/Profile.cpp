@@ -93,6 +93,44 @@ bool Profile::load() {
     return true;
 }
 
+bool Profile::seedExecutablesFrom(
+        const QList<Executable>& templateTools,
+        const std::function<QString(const Executable&)>& resolveOutputMod) {
+    // Never overwrite an existing per-profile setup: bail if we already hold
+    // executables in memory OR a serialized executables.json is on disk.
+    if (!m_executables.isEmpty() || QFile::exists(executablesPath()))
+        return false;
+
+    for (Executable e : templateTools) { // deep copy each template entry
+        // Re-resolve the main output mod for this profile. Only entries that
+        // actually target an output mod get re-resolved; an empty outputModId
+        // (e.g. Overwrite) stays empty.
+        if (!e.outputModId.isEmpty())
+            e.outputModId = resolveOutputMod(e);
+        // extraActions[].outputModId can't be re-resolved here: the resolver is
+        // keyed on the main Executable, and the template's per-action output-mod
+        // name isn't available in this context. Clear them so seeded actions
+        // don't point at the template's (foreign-profile) ids; they're recreated
+        // on demand when the action is set up. The main outputModId above is the
+        // one that matters for the frictionless-output flow.
+        for (auto& a : e.extraActions)
+            a.outputModId.clear();
+        m_executables.append(e);
+    }
+    save();
+    return true;
+}
+
+QString Profile::matchOutputModId(const ModList& modList, const QString& outputModName) {
+    if (outputModName.isEmpty()) return QString();
+    for (const auto& m : modList.entries()) {
+        if (m.type != EntryType::Mod || !m.isOutputMod) continue;
+        if (m.name.compare(outputModName, Qt::CaseInsensitive) == 0)
+            return m.id;
+    }
+    return QString();
+}
+
 QString Profile::stagingFolderFor(const QString& id) const {
     const ModEntry* e = m_modList.findById(id);
     if (!e) return id; // unknown id: fall back to the id itself (caller built a path)

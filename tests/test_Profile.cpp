@@ -260,6 +260,94 @@ private slots:
         QVERIFY(p2.shaderCache().managed);
         QCOMPARE(p2.shaderCache().stagingFolder, QString("CSCacheFolder"));
     }
+
+    // Executables: round-trip + per-profile seeding
+    void executables_roundTrip() {
+        QTemporaryDir profiles;
+        {
+            Profile p("Exe", profiles.path());
+            Executable a;
+            a.id = "loot"; a.name = "LOOT"; a.binaryPath = "/bin/loot";
+            a.arguments = "--game skyrimse"; a.runtime = RuntimeType::Native;
+            Executable b;
+            b.id = "radium"; b.name = "Radium"; b.binaryPath = "/bin/radium";
+            b.runtime = RuntimeType::Proton; b.isCapturingOutput = true;
+            b.outputModId = "out-123"; b.writesOutputDirectly = true;
+            p.executables() << a << b;
+            QVERIFY(p.save());
+            QVERIFY(QFile::exists(p.executablesPath()));
+        }
+        Profile p2("Exe", profiles.path());
+        QVERIFY(p2.load());
+        QCOMPARE(p2.executables().size(), 2);
+        QCOMPARE(p2.executables()[0].name, QString("LOOT"));
+        QCOMPARE(p2.executables()[0].arguments, QString("--game skyrimse"));
+        QCOMPARE(p2.executables()[1].name, QString("Radium"));
+        QCOMPARE(p2.executables()[1].runtime, RuntimeType::Proton);
+        QVERIFY(p2.executables()[1].isCapturingOutput);
+        QCOMPARE(p2.executables()[1].outputModId, QString("out-123"));
+    }
+
+    // Seeding copies the template only when the profile has no executables yet,
+    // and re-resolves each tool's outputModId through the caller's resolver.
+    void seedExecutables_seedsOnlyWhenEmpty() {
+        QTemporaryDir profiles;
+        Executable tmpl;
+        tmpl.id = "radium"; tmpl.name = "Radium"; tmpl.binaryPath = "/bin/radium";
+        tmpl.outputModId = "TEMPLATE_ID";
+        const QList<Executable> templateTools{ tmpl };
+        auto resolver = [](const Executable&) { return QString("PROFILE_LOCAL_ID"); };
+
+        Profile p("Seed", profiles.path());
+        QVERIFY(p.executables().isEmpty());
+        QVERIFY(p.seedExecutablesFrom(templateTools, resolver)); // empty -> seeds
+        QCOMPARE(p.executables().size(), 1);
+        QVERIFY(QFile::exists(p.executablesPath()));
+
+        // Calling again (now non-empty) is a no-op and does not duplicate.
+        QVERIFY(!p.seedExecutablesFrom(templateTools, resolver));
+        QCOMPARE(p.executables().size(), 1);
+
+        // Also guarded by an existing executables.json on a fresh in-memory Profile.
+        Profile p2("Seed", profiles.path());
+        QVERIFY(p2.executables().isEmpty());
+        QVERIFY(!p2.seedExecutablesFrom(templateTools, resolver)); // file present
+    }
+
+    // The seeded tool's outputModId is re-resolved for this profile, never the
+    // template's id.
+    void seedExecutables_reResolvesOutputModPerProfile() {
+        QTemporaryDir profiles;
+        Executable tmpl;
+        tmpl.id = "radium"; tmpl.name = "Radium"; tmpl.binaryPath = "/bin/radium";
+        tmpl.outputModId = "TEMPLATE_ID";
+        // An extra action also carrying a template output id - must be cleared.
+        ToolAction act; act.label = "Run TexGen"; act.outputModId = "TEMPLATE_ACT_ID";
+        tmpl.extraActions << act;
+
+        Profile p("Resolve", profiles.path());
+        QVERIFY(p.seedExecutablesFrom({ tmpl },
+            [](const Executable&) { return QString("PROFILE_LOCAL_ID"); }));
+        QCOMPARE(p.executables().size(), 1);
+        QCOMPARE(p.executables()[0].outputModId, QString("PROFILE_LOCAL_ID"));
+        QCOMPARE(p.executables()[0].extraActions.size(), 1);
+        QVERIFY(p.executables()[0].extraActions[0].outputModId.isEmpty());
+    }
+
+    void matchOutputModId_caseInsensitiveAndMisses() {
+        ModList ml;
+        ModEntry out = mkMod("out-id", "Radium Output");
+        out.isOutputMod = true;
+        ml.append(mkMod("plain", "Some Mod")); // not an output mod
+        ml.append(out);
+        // Case-insensitive name match returns the output mod's id.
+        QCOMPARE(Profile::matchOutputModId(ml, "radium output"), QString("out-id"));
+        QCOMPARE(Profile::matchOutputModId(ml, "RADIUM OUTPUT"), QString("out-id"));
+        // Unknown name, and a non-output same-named mod, both miss.
+        QVERIFY(Profile::matchOutputModId(ml, "Nope").isEmpty());
+        QVERIFY(Profile::matchOutputModId(ml, "Some Mod").isEmpty());
+        QVERIFY(Profile::matchOutputModId(ml, "").isEmpty());
+    }
 };
 QTEST_MAIN(TestProfile)
 #include "test_Profile.moc"

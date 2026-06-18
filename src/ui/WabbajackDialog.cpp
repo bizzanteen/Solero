@@ -682,11 +682,18 @@ void WabbajackDialog::onInstallFailed(int exitCode, const QList<FailedArchive>& 
 void WabbajackDialog::showFailureReport(int exitCode,
                                         const QList<FailedArchive>& failed) {
     // Partition by group.
-    QList<FailedArchive> ck;       // Creation-Kit tool files (GameFileSource)
-    QList<FailedArchive> gameData; // Missing game content / AE / Creation Club files
-    QList<FailedArchive> manual;   // Mega / WabbajackCDN / Http / Nexus / Other
+    QList<FailedArchive> ck;          // Creation-Kit tool files (GameFileSource)
+    QList<FailedArchive> creationClub; // Creation Club files (need in-game Creations)
+    QList<FailedArchive> gameData;    // Other missing game content / AE files
+    QList<FailedArchive> manual;      // Mega / WabbajackCDN / Http / Nexus / Other
     for (const auto& fa : failed) {
         if (fa.source == FailedSource::GameFileSource) {
+            // Creation Club files (cc*) are a distinct case: the fix is to delete
+            // and re-download them via the in-game Creations menu, not Steam verify.
+            if (WabbajackEngine::isCreationClub(fa.name)) {
+                creationClub << fa;
+                continue;
+            }
             // Files under the game's Data/ folder (or plugin/archive extensions)
             // are missing GAME CONTENT (AE / Creation Club), not CK tools.
             const QString p = fa.path;
@@ -722,6 +729,80 @@ void WabbajackDialog::showFailureReport(int exitCode,
     scroll->setWidgetResizable(true);
     auto* body = new QWidget(scroll);
     auto* bodyL = new QVBoxLayout(body);
+
+    // Creation Club files group
+    if (!creationClub.isEmpty()) {
+        // Friendly creation names for the four free Creations (best-effort).
+        // Keyed by the lowercase filename stem (no Data_ prefix, no extension).
+        auto friendlyName = [](const QString& fileName) -> QString {
+            QString stem = fileName;
+            if (stem.startsWith(QStringLiteral("Data_"), Qt::CaseInsensitive))
+                stem = stem.mid(5);
+            const int dot = stem.indexOf(QLatin1Char('.'));
+            if (dot >= 0) stem = stem.left(dot);
+            stem = stem.toLower();
+            static const QHash<QString, QString> names = {
+                {QStringLiteral("ccbgssse001-fish"),        QStringLiteral("Fishing")},
+                {QStringLiteral("ccbgssse037-curios"),      QStringLiteral("Rare Curios")},
+                {QStringLiteral("ccqdrsse001-survivalmode"), QStringLiteral("Survival Mode")},
+                {QStringLiteral("ccbgssse025-advdsgs"),     QStringLiteral("Saints & Seducers")},
+            };
+            return names.value(stem);  // empty if unknown
+        };
+
+        bool anyWrongHash = false;
+        QStringList itemLines;
+        for (const auto& fa : creationClub) {
+            if (fa.wrongHash) anyWrongHash = true;
+            const QString friendly = friendlyName(fa.name);
+            const QString state = fa.wrongHash
+                ? QStringLiteral("the wrong version")
+                : QStringLiteral("missing");
+            QString line = QStringLiteral("<b>%1</b>").arg(fa.name.toHtmlEscaped());
+            if (!friendly.isEmpty())
+                line += QStringLiteral(" - %1").arg(friendly.toHtmlEscaped());
+            line += QStringLiteral(" (%1)").arg(state);
+            itemLines << line;
+        }
+
+        auto* box = new QGroupBox("Creation Club files", body);
+        auto* gl = new QVBoxLayout(box);
+
+        // Single rich-text label so the documentation links are clickable.
+        auto* label = new QLabel(box);
+        label->setWordWrap(true);
+        label->setTextFormat(Qt::RichText);
+        label->setTextInteractionFlags(Qt::TextBrowserInteraction);
+        label->setOpenExternalLinks(true);
+
+        const QString verb = anyWrongHash ? QStringLiteral("the wrong version")
+                                          : QStringLiteral("missing");
+        const QString html = QStringLiteral(
+            "<p>These are <b>Creation Club</b> files, and they are %1:</p>"
+            "<ul><li>%2</li></ul>"
+            "<p>Bethesda ships these in two builds, and modlists require the "
+            "in-game <b>Creations</b> version - not the copy bundled with "
+            "the base game. To fix this:</p>"
+            "<ol>"
+            "<li>Delete the file(s) above from your Skyrim <b>Data</b> folder.</li>"
+            "<li>Launch Skyrim from Steam, open <b>Creations</b>, and download the "
+            "matching creation (for example <i>Rare Curios</i> for "
+            "<i>ccbgssse037-curios</i>).</li>"
+            "<li>Do <b>not</b> run Steam \"Verify Integrity of Game Files\" "
+            "afterward - that re-installs the wrong copy. Then Retry / "
+            "Resume below.</li>"
+            "</ol>"
+            "<p>More detail: "
+            "<a href=\"https://wiki.wabbajack.org/user_documentation/Troubleshooting%20FAQ.html\">"
+            "Wabbajack Troubleshooting FAQ</a> &nbsp;\xc2\xb7&nbsp; "
+            "<a href=\"https://github.com/Omni-guides/Jackify/wiki/Installing-a-Modlist-with-Jackify\">"
+            "Jackify wiki - Installing a Modlist</a></p>")
+            .arg(verb, itemLines.join(QStringLiteral("</li><li>")));
+        label->setText(html);
+        gl->addWidget(label);
+
+        bodyL->addWidget(box);
+    }
 
     // Missing game content (AE / Creation Club) group
     if (!gameData.isEmpty()) {

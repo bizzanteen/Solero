@@ -21,6 +21,10 @@ struct FailedArchive {
     QString version;
     QString path;
     QString url;
+    // File is present on disk but its hash doesn't match (wrong version, e.g. a
+    // Steam-shipped Creation Club file vs the required in-game Creations build),
+    // as opposed to the file being missing entirely. Set from the VFS-priming line.
+    bool wrongHash = false;
 };
 
 // Wraps the jackify-engine CLI (a Linux-native .NET fork of wabbajack-cli)
@@ -53,6 +57,11 @@ public:
     // failure lines and classifies each by its (Downloader+State|…) descriptor.
     // Unit-testable without a process.
     static QList<FailedArchive> parseFailedArchives(const QString& log);
+
+    // True when the archive is a Creation Club file: the name, after stripping an
+    // optional "Data_" prefix, starts with "cc" (case-insensitive).
+    // e.g. "Data_ccbgssse037-curios.bsa" or "ccbgssse037-curios.esl".
+    static bool isCreationClub(const QString& name);
 
     // Async: run `list-modlists -json -sort-by title`, emit modlistsReady/failed.
     void fetchModlists();

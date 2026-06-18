@@ -245,6 +245,30 @@ private slots:
                                   "ccbgssse037-curios.esl"));
     }
 
+    void parseFailedArchives_vfsPrimingWrongHash() {
+        // The StandardInstaller's VFS-priming per-archive failure shape. This is
+        // the line emitted when a Creation Club file is present but the wrong build.
+        const QString log = QStringLiteral(
+            "00:00:16.223 [ERROR] (Wabbajack.Installer.StandardInstaller) "
+            "VFS priming failed: Archive 'Data_ccbgssse037-curios.bsa' "
+            "(hash: FQbA20bA5Dw=) not found in HashedArchives. "
+            "File exists with correct size but wrong hash (corrupted or modified).\n"
+            "00:00:16.223 [ERROR] (Wabbajack.Installer.StandardInstaller) "
+            "VFS priming failed due to missing archives. Installation cannot continue.\n");
+
+        const auto failed = WabbajackEngine::parseFailedArchives(log);
+
+        QCOMPARE(failed.size(), 1);
+        const FailedArchive& fa = failed.first();
+        QCOMPARE(fa.source, FailedSource::GameFileSource);
+        QCOMPARE(fa.name, QString("Data_ccbgssse037-curios.bsa"));
+        QVERIFY(fa.wrongHash);
+        QVERIFY(WabbajackEngine::isCreationClub(fa.name));
+
+        // A non-Creation-Club game file should not be flagged as CC.
+        QVERIFY(!WabbajackEngine::isCreationClub(QStringLiteral("Data_skyrim.esm")));
+    }
+
     void parseFailedArchives_empty() {
         QVERIFY(WabbajackEngine::parseFailedArchives(
             "no failures here, all good\n").isEmpty());

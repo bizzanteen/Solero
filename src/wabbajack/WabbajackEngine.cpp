@@ -251,7 +251,34 @@ QList<FailedArchive> WabbajackEngine::parseFailedArchives(const QString& log) {
         out << fa;
     }
 
+    // The StandardInstaller also fails at the VFS-priming stage with a per-archive
+    // line that carries the filename (but no Source: descriptor):
+    //   "VFS priming failed: Archive '<name>' (hash: <hash>) not found in
+    //    HashedArchives. <reason>"
+    // <reason> distinguishes a wrong-hash file ("File exists ... but wrong hash")
+    // from a genuinely missing one ("File not found ..."). These are almost always
+    // Creation Club files shipped in the wrong build. Ignore the hash value itself.
+    static const QRegularExpression vfsRe(QStringLiteral(
+        R"(VFS priming failed: Archive '(.+?)' \(hash: ([^)]*)\) not found in HashedArchives\.\s*(.*))"));
+    auto vit = vfsRe.globalMatch(log);
+    while (vit.hasNext()) {
+        const auto m = vit.next();
+        FailedArchive fa;
+        fa.name = m.captured(1).trimmed();
+        fa.source = FailedSource::GameFileSource;
+        const QString reason = m.captured(3);
+        fa.wrongHash = reason.contains(QStringLiteral("wrong hash"), Qt::CaseInsensitive);
+        out << fa;
+    }
+
     return out;
+}
+
+bool WabbajackEngine::isCreationClub(const QString& name) {
+    QString n = name;
+    if (n.startsWith(QStringLiteral("Data_"), Qt::CaseInsensitive))
+        n = n.mid(5);
+    return n.startsWith(QStringLiteral("cc"), Qt::CaseInsensitive);
 }
 
 void WabbajackEngine::ensureLowercaseCCLinks() {

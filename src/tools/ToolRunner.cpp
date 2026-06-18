@@ -121,12 +121,6 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
         env.insert("STORE", "none");
         env.insert("PROTONPATH", protonDir);
         env.insert("PROTON_VERB", "waitforexitandrun");
-        // PGPatcher's wxWidgets mod-list renders black/garbled rows under Proton's
-        // default DXVK path on RADV; forcing wined3d (the OpenGL D3D path) clears
-        // the GUI repaint glitch. PGPatcher-only - Radium uses Vulkan compute for
-        // BC7 encoding and must not be forced onto wined3d.
-        if (exe.id == QStringLiteral("pgpatcher"))
-            env.insert("PROTON_USE_WINED3D", "1");
         proc.setProcessEnvironment(env);
         QStringList pargs; pargs << exe.binaryPath; pargs += args;
         if (capture) {

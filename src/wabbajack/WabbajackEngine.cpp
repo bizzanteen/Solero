@@ -210,6 +210,47 @@ QList<FailedArchive> WabbajackEngine::parseFailedArchives(const QString& log) {
         out << fa;
     }
 
+    // The StandardInstaller emits a different shape for per-archive failures:
+    //   "Failed to download '<name>' (Source: <Source>) - <reason>"
+    // The reason follows an em-dash (U+2014); be tolerant of a plain hyphen too.
+    // For GameFileSource the reason is usually:
+    //   "Game file not found: <abs path> (Game: <game>)"
+    static const QRegularExpression failedRe(QString::fromUtf8(
+        R"(Failed to download '(.+?)' \(Source: ([A-Za-z]+)\)\s+[\x{2014}-]+\s+(.*))"));
+    auto fit = failedRe.globalMatch(log);
+    while (fit.hasNext()) {
+        const auto m = fit.next();
+        FailedArchive fa;
+        fa.name = m.captured(1).trimmed();
+        const QString src = m.captured(2);
+        const QString reason = m.captured(3).trimmed();
+
+        if (src == QStringLiteral("GameFileSource")) {
+            fa.source = FailedSource::GameFileSource;
+        } else if (src == QStringLiteral("Nexus")) {
+            fa.source = FailedSource::Nexus;
+        } else if (src == QStringLiteral("Mega")) {
+            fa.source = FailedSource::Mega;
+        } else if (src == QStringLiteral("WabbajackCDN")) {
+            fa.source = FailedSource::WabbajackCDN;
+        } else if (src == QStringLiteral("Http")) {
+            fa.source = FailedSource::Http;
+        } else {
+            fa.source = FailedSource::Other;
+        }
+
+        if (fa.source == FailedSource::GameFileSource) {
+            // "Game file not found: <path>[ (Game: <game>)]"
+            static const QRegularExpression gfRe(QStringLiteral(
+                R"(Game file not found:\s*(.+?)(?:\s*\(Game:\s*([^)]*)\))?\s*$)"));
+            if (auto gm = gfRe.match(reason); gm.hasMatch()) {
+                fa.path = gm.captured(1).trimmed();
+                fa.game = gm.captured(2).trimmed();
+            }
+        }
+        out << fa;
+    }
+
     return out;
 }
 

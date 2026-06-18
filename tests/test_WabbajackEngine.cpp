@@ -223,6 +223,28 @@ private slots:
         QCOMPARE(httpFa->url, QString("https://example.com/SomeMod.zip"));
     }
 
+    void parseFailedArchives_failedToDownloadGameFile() {
+        // The StandardInstaller's per-archive failure shape (em-dash U+2014):
+        //   Failed to download '<name>' (Source: <Source>) - <reason>
+        const QString log = QString::fromUtf8(
+            "00:00:08.374 [ERROR] (Wabbajack.Installer.StandardInstaller) "
+            "Failed to download 'Data_ccbgssse037-curios.esl' (Source: GameFileSource) "
+            "- Game file not found: "
+            "/var/home/eamon/.local/share/Steam/steamapps/common/Skyrim Special Edition/Data/ccbgssse037-curios.esl "
+            "(Game: SkyrimSpecialEdition)\n");
+
+        const auto failed = WabbajackEngine::parseFailedArchives(log);
+
+        QCOMPARE(failed.size(), 1);
+        const FailedArchive& fa = failed.first();
+        QCOMPARE(fa.source, FailedSource::GameFileSource);
+        QCOMPARE(fa.name, QString("Data_ccbgssse037-curios.esl"));
+        QCOMPARE(fa.game, QString("SkyrimSpecialEdition"));
+        QCOMPARE(fa.path, QString("/var/home/eamon/.local/share/Steam/"
+                                  "steamapps/common/Skyrim Special Edition/Data/"
+                                  "ccbgssse037-curios.esl"));
+    }
+
     void parseFailedArchives_empty() {
         QVERIFY(WabbajackEngine::parseFailedArchives(
             "no failures here, all good\n").isEmpty());

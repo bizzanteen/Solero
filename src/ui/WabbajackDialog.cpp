@@ -682,11 +682,26 @@ void WabbajackDialog::onInstallFailed(int exitCode, const QList<FailedArchive>& 
 void WabbajackDialog::showFailureReport(int exitCode,
                                         const QList<FailedArchive>& failed) {
     // Partition by group.
-    QList<FailedArchive> ck;       // Creation-Kit (GameFileSource)
+    QList<FailedArchive> ck;       // Creation-Kit tool files (GameFileSource)
+    QList<FailedArchive> gameData; // Missing game content / AE / Creation Club files
     QList<FailedArchive> manual;   // Mega / WabbajackCDN / Http / Nexus / Other
     for (const auto& fa : failed) {
-        if (fa.source == FailedSource::GameFileSource) ck << fa;
-        else manual << fa;
+        if (fa.source == FailedSource::GameFileSource) {
+            // Files under the game's Data/ folder (or plugin/archive extensions)
+            // are missing GAME CONTENT (AE / Creation Club), not CK tools.
+            const QString p = fa.path;
+            const bool isGameData =
+                p.contains(QStringLiteral("/Data/")) ||
+                p.contains(QStringLiteral("\\Data\\")) ||
+                p.endsWith(QStringLiteral(".esl"), Qt::CaseInsensitive) ||
+                p.endsWith(QStringLiteral(".esm"), Qt::CaseInsensitive) ||
+                p.endsWith(QStringLiteral(".esp"), Qt::CaseInsensitive) ||
+                p.endsWith(QStringLiteral(".bsa"), Qt::CaseInsensitive);
+            if (isGameData) gameData << fa;
+            else            ck << fa;
+        } else {
+            manual << fa;
+        }
     }
 
     QDialog dlg(this);
@@ -707,6 +722,36 @@ void WabbajackDialog::showFailureReport(int exitCode,
     scroll->setWidgetResizable(true);
     auto* body = new QWidget(scroll);
     auto* bodyL = new QVBoxLayout(body);
+
+    // Missing game content (AE / Creation Club) group
+    if (!gameData.isEmpty()) {
+        QStringList names;
+        for (const auto& fa : gameData) names << fa.name;
+
+        auto* box = new QGroupBox("Missing game files", body);
+        auto* gl = new QVBoxLayout(box);
+
+        auto* heading = new QLabel(box);
+        heading->setWordWrap(true);
+        heading->setStyleSheet("font-weight:bold;");
+        heading->setText(QString(
+            "Your Skyrim install is missing required game files: %1.")
+            .arg(names.join(", ")));
+        gl->addWidget(heading);
+
+        auto* detail = new QLabel(QString(
+            "These are Anniversary Edition / Creation Club files that must be "
+            "present in your Skyrim Data folder. In Steam, verify/repair Skyrim "
+            "Special Edition (and ensure AE content is installed), then Retry.\n\n"
+            "Note: Solero auto-links lowercase copies of Creation Club files "
+            "before each install to handle Linux case-sensitivity; if this still "
+            "fails, the content is genuinely absent."), box);
+        detail->setWordWrap(true);
+        detail->setStyleSheet("color:#aaa;");
+        gl->addWidget(detail);
+
+        bodyL->addWidget(box);
+    }
 
     // Creation Kit group
     if (!ck.isEmpty()) {

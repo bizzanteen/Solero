@@ -1187,7 +1187,11 @@ void MainWindow::refreshHealthIndicator() {
                                                           : QIcon());
     }
 
-    if (m_problemsDialog && m_problemsDialog->isVisible())
+    // Push results into the detail panel whenever it exists (not only when
+    // already visible) so the first open - which scans before show() - shows the
+    // issues immediately instead of an empty list until a manual Rescan. The
+    // rebuild is a cheap clear()+repopulate, harmless while hidden.
+    if (m_problemsDialog)
         m_problemsDialog->setIssues(issues);
 }
 

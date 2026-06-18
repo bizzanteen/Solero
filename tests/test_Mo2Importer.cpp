@@ -457,6 +457,47 @@ private slots:
         QVERIFY(!pm.profileNames().contains("P1"));
     }
 
+    void reusedStagingDirIsClearedBeforeLinking() {
+        // Regression: when a staging destination already exists as a real
+        // DIRECTORY (left by an earlier copy-mode import of the same mod), a new
+        // symlink-mode import must clear it first. QFile::remove can't delete a
+        // directory, so without clearDest() the QFile::link fails, the failure is
+        // counted in copyFailures, and the stale dir keeps OUTDATED content.
+        QTemporaryDir tmp;
+        QString mo2 = tmp.path() + "/MO2";
+        // Source mod: a top-level meshes/ subdir with the new content.
+        write(mo2 + "/mods/ModA/meshes/new.nif", "new");
+        write(mo2 + "/profiles/P1/modlist.txt", "+ModA\n");
+        write(mo2 + "/ModOrganizer.ini", "[General]\nselected_profile=P1\n");
+
+        QString staging = tmp.path() + "/staging";
+        // Pre-seed the staging destination as a real directory holding STALE
+        // content, so the symlink target path is already a directory. ModA's
+        // "meshes" entry is Data-relative -> staged at <staging>/ModA/Data/meshes.
+        write(staging + "/ModA/Data/meshes/stale.nif", "stale");
+        QVERIFY(QFileInfo(staging + "/ModA/Data/meshes").isDir());
+
+        ProfileManager pm(tmp.path() + "/profiles");
+        auto r = Mo2Importer::importInstance(mo2, staging, pm, "MyList", /*symlink*/true);
+        QVERIFY2(r.success, r.errorMessage.toUtf8());
+        QCOMPARE(r.modsStaged, 1);
+
+        Profile* p = pm.loadProfile("P1");
+        QVERIFY(p != nullptr);
+        QString modAId;
+        for (auto it = p->modList().begin(); it != p->modList().end(); ++it)
+            if (it->name == "ModA") modAId = it->stagingFolder;
+        QVERIFY(!modAId.isEmpty());
+
+        // The staged "meshes" entry now resolves (via symlink) to the new source
+        // content, and the stale file is gone.
+        const QString staged = staging + "/" + modAId + "/Data/meshes";
+        QVERIFY2(QFile::exists(staged + "/new.nif"),
+                 "staged meshes must resolve to the new source content");
+        QVERIFY2(!QFile::exists(staged + "/stale.nif"),
+                 "stale directory content must have been cleared");
+    }
+
     void parsesCustomExecutables() {
         // Real-shaped MO2 [customExecutables]: indexed N\title / N\binary /
         // N\arguments keys, Wine "Z:" drive + Windows-style binary paths pointing

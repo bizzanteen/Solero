@@ -14,6 +14,7 @@
 #include <QHash>
 #include <QSettings>
 #include <QRegularExpression>
+#include <QDebug>
 #include <cctype>
 
 namespace solero {
@@ -151,6 +152,17 @@ static bool isRootFile(const QString& name) {
     return suffix == "dll" || suffix == "exe" || suffix == "asi" || suffix == "bin";
 }
 
+// Remove an existing staging destination whether it is a file, a symlink, or a
+// real directory (left by a prior copy-mode import). QFile::remove only handles
+// files/symlinks; a stale directory must be removed recursively or a later
+// symlink/copy onto the same path fails.
+static bool clearDest(const QString& dst) {
+    QFileInfo fi(dst);
+    if (!fi.exists() && !fi.isSymLink()) return true;
+    if (fi.isDir() && !fi.isSymLink()) return QDir(dst).removeRecursively();
+    return QFile::remove(dst);
+}
+
 // Link or copy a single top-level entry (file or directory) of a mod into the
 // staging tree. `src` is the absolute source path; `dst` the absolute target.
 // In symlink mode we create a symlink (the deployer follows symlinks, including
@@ -159,8 +171,10 @@ static bool isRootFile(const QString& name) {
 static int placeEntry(const QString& src, const QString& dst, bool symlink) {
     QDir().mkpath(QFileInfo(dst).path());
     if (symlink) {
-        QFile::remove(dst);
-        return QFile::link(src, dst) ? 0 : 1;
+        clearDest(dst);
+        if (QFile::link(src, dst)) return 0;
+        qWarning().noquote() << "[import] failed to stage:" << dst << "<-" << src;
+        return 1;
     }
     QFileInfo si(src);
     if (si.isDir()) {
@@ -172,13 +186,18 @@ static int placeEntry(const QString& src, const QString& dst, bool symlink) {
             QString rel = QDir(src).relativeFilePath(f);
             QString d = dst + "/" + rel;
             QDir().mkpath(QFileInfo(d).path());
-            QFile::remove(d);
-            if (!QFile::copy(f, d)) ++failed;
+            clearDest(d);
+            if (!QFile::copy(f, d)) {
+                qWarning().noquote() << "[import] failed to stage:" << d << "<-" << f;
+                ++failed;
+            }
         }
         return failed;
     }
-    QFile::remove(dst);
-    return QFile::copy(src, dst) ? 0 : 1;
+    clearDest(dst);
+    if (QFile::copy(src, dst)) return 0;
+    qWarning().noquote() << "[import] failed to stage:" << dst << "<-" << src;
+    return 1;
 }
 
 // Stage one mod folder into <destUuidDir>, classifying each top-LEVEL entry as
@@ -617,6 +636,9 @@ Mo2ImportResult Mo2Importer::importProfile(const QString& mo2ProfileDir,
     r.profileName = newProfileName;
     r.modsStaged = staged;
     if (copyFailures > 0) {
+        qWarning().noquote() << "[import]" << copyFailures
+                             << "file(s) failed to stage during profile import of"
+                             << newProfileName;
         r.errorMessage = QString("%1 file(s) failed to copy during import; "
                                  "the imported profile may be incomplete.").arg(copyFailures);
     }
@@ -856,6 +878,9 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
 
     r.success = (copyFailures == 0) && !r.profileNames.isEmpty() && r.modsStaged > 0;
     if (copyFailures > 0) {
+        qWarning().noquote() << "[import]" << copyFailures
+                             << "file(s) failed to stage during instance import of"
+                             << mo2InstanceDir;
         r.errorMessage = QString("%1 file(s) failed to copy during import; "
                                  "the imported profiles may be incomplete.").arg(copyFailures);
     }

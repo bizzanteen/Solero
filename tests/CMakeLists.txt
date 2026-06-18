@@ -110,6 +110,13 @@ target_include_directories(test_RadiumPrep PRIVATE ../src ${CMAKE_BINARY_DIR}/in
 target_link_libraries(test_RadiumPrep PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_RadiumPrep COMMAND test_RadiumPrep)
 
+# PgpatcherConfig is a pure JSON builder (no model deps) - just link the .cpp.
+add_executable(test_PgpatcherConfig test_PgpatcherConfig.cpp
+  ../src/tools/PgpatcherConfig.cpp)
+target_include_directories(test_PgpatcherConfig PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_PgpatcherConfig PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_PgpatcherConfig COMMAND test_PgpatcherConfig)
+
 function(add_solero_install_test name)
   add_executable(${name} ${name}.cpp
     ../src/install/ArchiveTool.cpp

@@ -133,6 +133,7 @@ set(SOLERO_SOURCES
   src/tools/ToolNameMap.cpp
   src/tools/ToolSetup.cpp
   src/tools/RadiumPrep.cpp
+  src/tools/PgpatcherConfig.cpp
   src/nexus/NxmHandler.cpp
   src/nexus/NexusApi.cpp
   src/nexus/MirrorPick.cpp

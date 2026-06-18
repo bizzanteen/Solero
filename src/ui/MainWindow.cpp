@@ -34,6 +34,7 @@
 #include "tools/ToolNameMap.h"
 #include "tools/ToolSetup.h"
 #include "tools/RadiumPrep.h"
+#include "tools/PgpatcherConfig.h"
 #include "fomod/FomodEngine.h"
 #include "fomod/FomodScanner.h"
 #include "loot/LootSorter.h"
@@ -3137,10 +3138,13 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     }
 
     // PGPatcher also expects an MO2 instance. It reads its own cfg/settings.json
-    // (already in MO2 mode, pointed at a fake-mo2 dir); regenerate that instance so
-    // the load order is current. We do not rewrite settings.json - preserve the
-    // user's working paths. The --ignore-mo2vfscheck flag (added below) stops
-    // PGPatcher aborting on "VFS not detected" outside a real MO2 usvfs.
+    // (MO2 mode, pointed at a fake-mo2 dir); regenerate that instance so the load
+    // order is current, then merge-write settings.json so the launcher opens
+    // pre-populated (Game, MO2 + a valid instance, Output) - which also fixes the
+    // "missing ModOrganizer.ini" error on selecting MO2. We merge (not overwrite)
+    // to preserve the user's shader/patcher toggles. The --ignore-mo2vfscheck flag
+    // (added below) stops PGPatcher aborting on "VFS not detected" outside a real
+    // MO2 usvfs.
     if (exe.id == "pgpatcher") {
         auto* p = m_profileMgr->activeProfile();
         const QString installDir = QFileInfo(exe.binaryPath).path();
@@ -3165,6 +3169,23 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
                 err.isEmpty() ? "Could not prepare PGPatcher's fake-MO2 instance." : err);
             return;
         }
+
+        // Merge-write cfg/settings.json so the launcher opens pre-populated. The
+        // output dir is the mod root (PGPatcher writes there directly and refuses
+        // a path under the game's Data/), not the usual <folder>/Data capture path.
+        const QString cfgDir = installDir + "/cfg";
+        QDir().mkpath(cfgDir);
+        QJsonObject existing;
+        if (QFile rf(cfgDir + "/settings.json"); rf.open(QIODevice::ReadOnly))
+            existing = QJsonDocument::fromJson(rf.readAll()).object();
+        const QString outputDir = resolvedOutputModId.isEmpty()
+            ? QString()
+            : solero::AppConfig::instance().stagingDir() + "/" +
+                  p->stagingFolderFor(resolvedOutputModId);
+        const QJsonObject merged = solero::PgpatcherConfig::buildSettings(
+            existing, solero::AppConfig::instance().gameDir(), fakeMo2, outputDir);
+        if (QFile wf(cfgDir + "/settings.json"); wf.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            wf.write(QJsonDocument(merged).toJson(QJsonDocument::Indented));
     }
 
     auto* owP = m_profileMgr->activeProfile();

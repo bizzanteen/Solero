@@ -3175,8 +3175,12 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
         }
 
         // Merge-write cfg/settings.json so the launcher opens pre-populated. The
-        // output dir is the mod root (PGPatcher writes there directly and refuses
-        // a path under the game's Data/), not the usual <folder>/Data capture path.
+        // output dir is the output mod's <folder>/Data subdir - the same place
+        // Solero's other tool outputs live and where the deployer maps to the
+        // game's Data/. (PGPatcher only rejects a path inside the GAME's Data
+        // folder; the mod's own Data subdir is fine.) Pointing it at the mod root
+        // tripped PGPatcher's "output dir has non-PGPatcher files" check on the
+        // empty Data/ scaffold + Solero metadata sitting in the root.
         const QString cfgDir = installDir + "/cfg";
         QDir().mkpath(cfgDir);
         QJsonObject existing;
@@ -3185,7 +3189,7 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
         const QString outputDir = resolvedOutputModId.isEmpty()
             ? QString()
             : solero::AppConfig::instance().stagingDir() + "/" +
-                  p->stagingFolderFor(resolvedOutputModId);
+                  p->stagingFolderFor(resolvedOutputModId) + "/Data";
         const QJsonObject merged = solero::PgpatcherConfig::buildSettings(
             existing, solero::AppConfig::instance().gameDir(), fakeMo2, outputDir);
         if (QFile wf(cfgDir + "/settings.json"); wf.open(QIODevice::WriteOnly | QIODevice::Truncate))

@@ -24,8 +24,15 @@ QJsonObject buildSettings(const QJsonObject& existing,
     game["type"] = 0; // Skyrim SE
     params["game"] = game;
 
+    // Mod manager = None (0). Solero is VFS-less: it hardlink-deploys the active
+    // profile's mods (already conflict-resolved) into the game Data folder, so
+    // PGPatcher reads the merged Data directly. MO2 mode (2) cannot work here -
+    // Solero's fake-mo2 has an empty mods/ and modlist.txt, which makes PGPatcher
+    // abort with "MO2 modlist.txt was empty, no mods found". mo2instancedir is
+    // still written (harmless, ignored in None mode) so the launcher's field is
+    // populated if the user ever switches modes manually.
     QJsonObject mm = params.value("modmanager").toObject();
-    mm["type"] = 2; // Mod Organizer 2
+    mm["type"] = 0; // None - read the deployed game Data directly
     mm["mo2instancedir"] = winePath(fakeMo2Dir);
     mm["mo2useloosefileorder"] = true;
     params["modmanager"] = mm;

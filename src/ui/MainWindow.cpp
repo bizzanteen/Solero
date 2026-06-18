@@ -10,6 +10,7 @@
 #include "core/AppConfig.h"
 #include "core/ModList.h"
 #include "core/StagingFolder.h"
+#include "core/OutputModMigration.h"
 #include "core/FileUtil.h"
 #include "core/ShaderCache.h"
 #include "core/VersionUtil.h"
@@ -236,6 +237,24 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // (alphabetical) only when none was saved or it no longer exists on disk.
     const QStringList profileNames = m_profileMgr->profileNames();
     const QString savedProfile = solero::AppConfig::instance().lastProfile();
+
+    // one-time: profile-qualify existing output-mod staging folders so two
+    // profiles no longer share a single bare folder (e.g. "PGPatcher Output").
+    // Must run before switchProfile so the now-active profile reads the migrated
+    // modlist. Processes all profiles on disk; the last/active profile goes first
+    // so it claims the shared folder's content (others get fresh empty folders).
+    if (!solero::AppConfig::instance().outputModsProfileQualified()) {
+        QStringList order = profileNames;
+        if (profileNames.contains(savedProfile)) {
+            order.removeAll(savedProfile);
+            order.prepend(savedProfile);
+        }
+        solero::migrateOutputModsProfileQualified(
+            profilesRoot(), solero::AppConfig::instance().stagingDir(), order);
+        solero::AppConfig::instance().setOutputModsProfileQualified(true);
+        solero::AppConfig::instance().save();
+    }
+
     switchProfile(profileNames.contains(savedProfile) ? savedProfile : profileNames.first());
     // One-time: fold the legacy global tool template into the now-active profile
     // only (gated by toolsMigratedToPerProfile). Must run after switchProfile so

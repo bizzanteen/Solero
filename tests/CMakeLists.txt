@@ -351,6 +351,14 @@ target_include_directories(test_StagingFolder PRIVATE ../src ${CMAKE_BINARY_DIR}
 target_link_libraries(test_StagingFolder PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_StagingFolder COMMAND test_StagingFolder)
 
+add_executable(test_OutputModMigration test_OutputModMigration.cpp
+  ../src/core/OutputModMigration.cpp
+  ../src/core/StagingFolder.cpp
+  ../src/core/ModList.cpp)
+target_include_directories(test_OutputModMigration PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_OutputModMigration PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_OutputModMigration COMMAND test_OutputModMigration)
+
 add_executable(test_ShaderCache test_ShaderCache.cpp
   ../src/core/ShaderCache.cpp
   ../src/core/ModList.cpp)

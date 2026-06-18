@@ -73,6 +73,7 @@ set(SOLERO_SOURCES
   src/app/NxmRegister.cpp
   src/core/ModList.cpp
   src/core/StagingFolder.cpp
+  src/core/OutputModMigration.cpp
   src/core/ShaderCache.cpp
   src/core/PluginList.cpp
   src/core/HealthCheck.cpp

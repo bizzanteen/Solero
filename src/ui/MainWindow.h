@@ -70,6 +70,15 @@ private:
     void setupToolbar();
     void setupCentralWidget();
     void switchProfile(const QString& name);
+    // After a profile is newly created (manual, Wabbajack, or MO2 import), ask
+    // whether to switch to it. Yes -> switchProfile(newName); No -> keep the
+    // current profile (the new one only appears in the dropdown). The first
+    // profile (no active profile yet) switches immediately without a prompt.
+    // priorActiveName names the profile that was active *before* the create; it
+    // matters only for the import path, where the importer already made the new
+    // profile active and freed the old one, so a "No" must reload priorActiveName.
+    void promptSwitchToNewProfile(const QString& newName,
+                                  const QString& priorActiveName = QString());
     void refreshProfileCombo();
     void onDeployToggle();
     bool deployCurrent();        // perform a deploy of the active profile; returns success
@@ -102,7 +111,11 @@ private:
     void onExportProfile();      // write the active profile to a .solero-profile.json manifest
     void onImportProfile();      // reconstruct a profile from a .solero-profile.json manifest
     void onInstallWabbajack();
-    void selectImportedProfile(const QString& name); // refresh combo + switch to it
+    // Refresh the combo and prompt to switch to a freshly imported profile.
+    // The importer has already made `name` the active profile (freeing the old
+    // one), so callers pass priorActiveName - the profile that was active before
+    // the import - so a "No" answer can reload it.
+    void selectImportedProfile(const QString& name, const QString& priorActiveName);
     void onInstallMod();
     void onToggleNexus(bool on);
     // Shared resolve-and-enqueue for both nxm paths. Returns the saved filename

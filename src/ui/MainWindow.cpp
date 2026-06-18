@@ -874,6 +874,52 @@ void MainWindow::switchProfile(const QString& name) {
     maybeAutoCheckUpdates();
 }
 
+void MainWindow::promptSwitchToNewProfile(const QString& newName,
+                                          const QString& priorActiveName) {
+    // First profile (nothing to stay on) - switch immediately, no prompt.
+    if (!m_profileMgr->activeProfile()) {
+        switchProfile(newName);
+        return;
+    }
+
+    // The import path freed the previously-active Profile and made newName active,
+    // so activeProfile()->name() == newName there; the manual path leaves the old
+    // profile active and live. priorActiveName, when supplied, is the genuine
+    // outgoing profile to fall back to on "No".
+    const QString prior = priorActiveName.isEmpty()
+                              ? m_profileMgr->activeProfile()->name()
+                              : priorActiveName;
+
+    QString text = QString("Profile '%1' created. Switch to it now?").arg(newName);
+    if (m_deployed) {
+        text += QString("\n\nYour current profile will be undeployed and '%1' "
+                        "deployed in its place.").arg(newName);
+    }
+    auto ret = QMessageBox::question(this, "Switch Profile", text,
+                                     QMessageBox::Yes | QMessageBox::No,
+                                     QMessageBox::Yes);
+
+    if (ret == QMessageBox::Yes) {
+        switchProfile(newName);
+        return;
+    }
+
+    // No: stay on the prior profile. If the manager already moved active to the
+    // new profile (import path), the old Profile object was freed and its views
+    // were detached, so reload the prior profile to re-attach views and keep the
+    // deploy state consistent. Otherwise (manual path) the prior profile is still
+    // active and attached - just restore the combo selection to it.
+    if (m_profileMgr->activeProfile()->name() == newName) {
+        switchProfile(prior);
+    } else {
+        refreshProfileCombo();
+        if (m_profileCombo && m_profileCombo->currentText() != prior) {
+            QSignalBlocker blocker(m_profileCombo);
+            m_profileCombo->setCurrentText(prior);
+        }
+    }
+}
+
 void MainWindow::refreshProfileCombo() {
     QSignalBlocker blocker(m_profileCombo);
     m_profileCombo->clear();
@@ -2751,12 +2797,16 @@ void MainWindow::onNewProfile() {
     bool ok;
     QString name = QInputDialog::getText(this, "New Profile", "Profile name:", QLineEdit::Normal, "", &ok);
     if (!ok || name.trimmed().isEmpty()) return;
-    if (!m_profileMgr->createProfile(name.trimmed())) {
+    name = name.trimmed();
+    if (!m_profileMgr->createProfile(name)) {
         QMessageBox::warning(this, "Error", QString("Profile '%1' already exists.").arg(name));
         return;
     }
+    // refreshProfileCombo blocks combo signals while it repopulates, so merely
+    // listing the new profile doesn't trigger a switch - promptSwitchToNewProfile
+    // owns that decision.
     refreshProfileCombo();
-    m_profileCombo->setCurrentText(name.trimmed());
+    promptSwitchToNewProfile(name);
 }
 
 void MainWindow::onDeleteProfile() {
@@ -2829,13 +2879,19 @@ void MainWindow::onImportMo2() {
         "Yes = symlink, No = copy.", QMessageBox::Yes | QMessageBox::No);
     bool symlink = (ret == QMessageBox::Yes);
 
+    // Capture the outgoing profile name before the importer makes the new one
+    // active (and frees the old object) - promptSwitchToNewProfile falls back to
+    // it on "No".
+    const QString priorActive =
+        m_profileMgr->activeProfile() ? m_profileMgr->activeProfile()->name() : QString();
+
     statusBar()->showMessage("Importing MO2 profile...");
     qApp->processEvents();
     auto r = solero::Mo2Importer::importProfile(profileDir, modsDir,
         solero::AppConfig::instance().stagingDir(), *m_profileMgr, name.trimmed(), symlink);
     if (!r.success) { QMessageBox::critical(this, "Import Failed", r.errorMessage); return; }
 
-    selectImportedProfile(r.profileName);
+    selectImportedProfile(r.profileName, priorActive);
     statusBar()->showMessage(QString("Imported '%1' - %2 mods staged.").arg(r.profileName).arg(r.modsStaged));
     // MO2 lists often keep SKSE's loader in the game root (outside the mods), so
     // the import won't include it - offer to install SKSE if it's missing.
@@ -2884,11 +2940,16 @@ void MainWindow::onImportProfile() {
         }
     }
 
+    // Capture the outgoing profile name before the importer makes the new one
+    // active (and frees the old object).
+    const QString priorActive =
+        m_profileMgr->activeProfile() ? m_profileMgr->activeProfile()->name() : QString();
+
     const QString fomodDir = solero::AppConfig::dataRoot() + "/fomod-choices";
     auto r = solero::ProfileManifest::importFile(path, *m_profileMgr, pool, fomodDir);
     if (!r.success) { QMessageBox::critical(this, "Import Failed", r.errorMessage); return; }
 
-    selectImportedProfile(r.profileName);
+    selectImportedProfile(r.profileName, priorActive);
 
     const QString summary =
         QString("Imported profile '%1': %2 mods matched, %3 separators, %4 missing (listed).")
@@ -2911,22 +2972,28 @@ void MainWindow::onImportProfile() {
     QMessageBox::information(this, "Profile Imported - Missing Mods", body);
 }
 
-void MainWindow::selectImportedProfile(const QString& name) {
+void MainWindow::selectImportedProfile(const QString& name, const QString& priorActiveName) {
     // The importer loaded the new profile into the ProfileManager (m_active), which
     // FREED the previously-active Profile - but the view models still hold that raw
-    // pointer. Detach them now so a paint during switchProfile's deploy/undeploy
-    // pump can't deref the dangling old profile.
+    // pointer. Detach them now so a paint during the prompt or switchProfile's
+    // deploy/undeploy pump can't deref the dangling old profile. This is safe on
+    // both answers: Yes re-attaches the new profile's views via switchProfile, and
+    // No reloads priorActiveName (which also re-attaches its views).
     detachProfileFromViews();
     refreshProfileCombo();
     { QSignalBlocker b(m_profileCombo); m_profileCombo->setCurrentText(name); }
-    switchProfile(name); // explicit - don't depend on the combo's change signal
+    promptSwitchToNewProfile(name, priorActiveName);
 }
 
 void MainWindow::onInstallWabbajack() {
+    // Capture the outgoing profile name before the dialog's import makes the new
+    // one active (and frees the old object) - used as the "No" fallback.
+    const QString priorActive =
+        m_profileMgr->activeProfile() ? m_profileMgr->activeProfile()->name() : QString();
     solero::WabbajackDialog dlg(m_profileMgr, this);
     connect(&dlg, &solero::WabbajackDialog::profileImported, this,
-            [this](const QString& name, const QList<solero::ImportedTool>& tools) {
-        selectImportedProfile(name);
+            [this, priorActive](const QString& name, const QList<solero::ImportedTool>& tools) {
+        selectImportedProfile(name, priorActive);
         statusBar()->showMessage(QString("Imported Wabbajack modlist '%1'.").arg(name));
         // The profile is now active - auto-configure the modlist's tools against
         // it (output mods belong to this profile; tools go to the global store).

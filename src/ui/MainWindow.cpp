@@ -3219,8 +3219,12 @@ QString MainWindow::ensureOutputMod(const QString& name) {
     mod.name = name;
     mod.enabled = true;
     mod.isOutputMod = true;
+    // Profile-qualify the on-disk folder (keep the DISPLAY name plain) so two
+    // profiles both producing e.g. "PGPatcher Output" don't collide on the same
+    // shared mods/ folder - matching the existing "CSVO - Dyndolod Output" convention.
     mod.stagingFolder = solero::uniqueStagingFolder(
-        solero::sanitizeStagingFolder(name), takenStagingFolders(profile));
+        solero::sanitizeStagingFolder(profile->name() + " - " + name),
+        takenStagingFolders(profile));
 
     QDir().mkpath(solero::stagingPathFor(
         solero::AppConfig::instance().stagingDir(), mod) + "/Data");
@@ -3302,20 +3306,21 @@ void MainWindow::onAddTool2() {
     connect(&dlg, &solero::ToolSetupWizard::installModRequested,
             this, &MainWindow::installFromArchive);
     dlg.exec();
-    // The wizard (Task 3) currently registers tools in the global template
-    // (m_toolStore). Mirror any newly-set-up tool into the active profile so the
-    // user's per-profile tool list/menu reflects it, then wire output mods on the
-    // profile's copy. (Task 3 will make the wizard add directly to the active
-    // profile + template; this transfer becomes a no-op once it does.)
+    // Add only the tool(s) the user actually set up in this wizard session to the
+    // active profile - never the rest of the global store (the wizard still writes
+    // each set-up tool into m_toolStore as a harmless template, but seeding a
+    // profile from the whole store would re-inject unrelated tools from earlier
+    // sessions and falsely mark them "(installed)" here).
     auto& profileTools = activeTools();
-    QSet<QString> haveByIdName;
-    for (const auto& t : profileTools) haveByIdName.insert(t.id.isEmpty() ? t.name.toLower() : t.id);
     bool changedAny = false;
-    for (const auto& tmpl : m_toolStore->tools()) {
-        const QString key = tmpl.id.isEmpty() ? tmpl.name.toLower() : tmpl.id;
-        if (haveByIdName.contains(key)) continue;
-        profileTools.append(tmpl);
-        haveByIdName.insert(key);
+    for (const auto& e : dlg.setUpTools()) {
+        const QString key = e.id.isEmpty() ? e.name.toLower() : e.id;
+        bool upserted = false;
+        for (auto& t : profileTools) {
+            const QString tkey = t.id.isEmpty() ? t.name.toLower() : t.id;
+            if (tkey == key) { t = e; upserted = true; break; }
+        }
+        if (!upserted) profileTools.append(e);
         changedAny = true;
     }
     // Wire output mods for any set-up tool that produces output. This is the

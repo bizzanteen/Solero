@@ -103,6 +103,20 @@ private slots:
         QCOMPARE(folder2, QString("Radium Output (2)"));
         QVERIFY(!folder2.contains('-'));
     }
+    // new output mods are profile-qualified on disk ("<Profile> - <name>") so two
+    // profiles producing the same plain output name (e.g. "Radium Output") don't
+    // collide on a single shared mods/ folder. Display name stays plain elsewhere.
+    void outputMod_profileQualifiedFolder() {
+        const QString base = "CSVO - Radium Output"; // profile->name() + " - " + name
+        QSet<QString> taken;
+        const QString folder = uniqueStagingFolder(sanitizeStagingFolder(base), taken);
+        QCOMPARE(folder, QString("CSVO - Radium Output"));
+        // A different profile producing the same plain name lands on a distinct folder.
+        const QString base2 = "Test - Radium Output";
+        const QString folder2 = uniqueStagingFolder(sanitizeStagingFolder(base2), taken);
+        QCOMPARE(folder2, QString("Test - Radium Output"));
+        QVERIFY(folder != folder2);
+    }
 };
 
 QTEST_MAIN(TestStagingFolder)

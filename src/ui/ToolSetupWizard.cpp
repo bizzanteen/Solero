@@ -351,6 +351,7 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store,
                 auto e = dlg.result();
                 if (e.id.isEmpty()) e.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
                 m_store->update(e); m_store->save();
+                m_setUp.append(e);
                 accept();
             }
             return;
@@ -397,6 +398,7 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store,
             de.winePrefix = pfx > 0 ? lad.left(pfx) : QString();
             de.runThroughDeployer = false;
             m_store->update(de);
+            m_setUp.append(de);
         }
 
         prog.setMessage("Downloading " + p->name + "\xe2\x80\xa6");
@@ -421,6 +423,7 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store,
 
         m_store->update(e); // update = add-or-replace by id
         m_store->save();
+        m_setUp.append(e);
 
         // DynDOLOD Resources is installed as a mod, never run.
         if (p->id == "dyndolod") {

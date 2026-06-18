@@ -3162,8 +3162,12 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
             }
         }
         QString err;
+        // populateMods=true: build a real MO2 instance (mods/ symlinks + a matching
+        // modlist.txt) from the active profile so PGPatcher's MO2 mode can detect
+        // inter-mod conflicts. (Radium's path keeps populateMods=false.)
         if (!p || !solero::RadiumPrep::writeFakeMo2(
-                *p, solero::AppConfig::instance().gameDir(), fakeMo2, &err)) {
+                *p, solero::AppConfig::instance().gameDir(), fakeMo2, &err,
+                /*populateMods=*/true)) {
             hideRunLock(); m_toolRunning = false;
             QMessageBox::warning(this, "PGPatcher",
                 err.isEmpty() ? "Could not prepare PGPatcher's fake-MO2 instance." : err);

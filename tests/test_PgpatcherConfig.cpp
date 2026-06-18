@@ -40,7 +40,7 @@ private slots:
         QCOMPARE(game.value("type").toInt(), 0);
 
         QJsonObject mm = params.value("modmanager").toObject();
-        QCOMPARE(mm.value("type").toInt(), 0); // None - Solero deploys to game Data; MO2 mode can't work VFS-less
+        QCOMPARE(mm.value("type").toInt(), 2); // Mod Organizer 2 - populated fake-MO2 instance enables conflict detection
         QCOMPARE(mm.value("mo2instancedir").toString(), QString("Z:\\f\\mo2"));
         QCOMPARE(mm.value("mo2useloosefileorder").toBool(), true);
 

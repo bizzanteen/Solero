@@ -26,6 +26,12 @@ target_include_directories(test_MirrorPick PRIVATE ../src ${CMAKE_BINARY_DIR}/in
 target_link_libraries(test_MirrorPick PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_MirrorPick COMMAND test_MirrorPick)
 
+# dirHasFiles is header-only (core/FileUtil.h), so no extra sources to compile.
+add_executable(test_DirHasFiles test_DirHasFiles.cpp)
+target_include_directories(test_DirHasFiles PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_DirHasFiles PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_DirHasFiles COMMAND test_DirHasFiles)
+
 # HealthCheck aggregates Profile + ConflictIndex data, so link the core profile
 # set plus ConflictIndex and HealthCheck itself.
 add_executable(test_HealthCheck test_HealthCheck.cpp

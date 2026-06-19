@@ -112,6 +112,17 @@ QString normalizeName(const QString& s) {
     return r;
 }
 
+// True iff the tool's output mod has at least one staged file under its Data/.
+// On first run (nothing produced yet) the dir is empty/absent - return false so
+// the disable+redeploy dance is skipped (there's nothing in the deployed Data to
+// remove). p may be null; modId may be empty.
+bool outputModHasStagedFiles(solero::Profile* p, const QString& modId) {
+    if (!p || modId.isEmpty()) return false;
+    const QString dir = solero::AppConfig::instance().stagingDir() + "/" +
+                        p->stagingFolderFor(modId) + "/Data";
+    return solero::dirHasFiles(dir);
+}
+
 QString cleanModName(const QString& raw, const QString& nexusModId) {
     if (nexusModId.isEmpty())
         return raw;
@@ -1083,6 +1094,35 @@ bool MainWindow::deployCurrent() {
     // in onDeployToggle and doesn't reach here).
     if (result.success) runPostDeployTools();
 
+    return result.success;
+}
+
+bool MainWindow::redeployForTool(const QString& title, const QString& message) {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return false;
+
+    solero::ProgressModal prog(this, title, message);
+    prog.show(); prog.pump();
+
+    solero::DeployEngine engine(
+        solero::AppConfig::instance().gameDir(),
+        solero::AppConfig::instance().stagingDir());
+    engine.setUserlistPath(profile->lootUserlistPath());
+    auto result = engine.deploy(*profile, solero::AppConfig::instance().deployMode(),
+                                [&](int d, int t){ prog.setProgress(d, t); prog.pump(); });
+
+    prog.close();
+
+    if (result.success) {
+        m_deployed = true;
+        m_deployDirty = false;
+        m_lastConflicts = result.conflicts;
+        m_rightPane->setConflictIndex(result.conflicts);
+        m_modListView->setConflictIndex(result.conflicts);
+        emit conflictsUpdated(result.conflicts);
+        updateDeployButton();
+        refreshHealthIndicator();
+    }
     return result.success;
 }
 
@@ -3193,6 +3233,38 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     if (auto* p = m_profileMgr->activeProfile(); p && !resolvedOutputModId.isEmpty())
         outFolder = p->stagingFolderFor(resolvedOutputModId);
 
+    // PGPatcher and Radium read the deployed (merged) game Data. If the tool's own
+    // output mod is deployed, the tool ingests its own prior output (double-patching
+    // / re-compressing). MO2 users disable the output mod before running; Solero is
+    // VFS-less, so "disable" only takes effect after a redeploy removes the output
+    // mod's files from the game Data. Toggle the output mod off in memory (never
+    // persisted - a mid-run crash leaves the on-disk profile enabled), redeploy,
+    // run, then re-enable + redeploy to bring the fresh output back. Skip entirely
+    // on first run (no staged output to interfere with). restoreOutput() runs before
+    // every early-return and once on the normal path; it's idempotent via the guard.
+    auto* tp = m_profileMgr->activeProfile();
+    const bool wantToggle = (exe.id == "pgpatcher" || exe.id == "radium")
+                            && tp && !resolvedOutputModId.isEmpty()
+                            && outputModHasStagedFiles(tp, resolvedOutputModId);
+    bool toggledOutput = false;
+    auto restoreOutput = [&]() {
+        if (toggledOutput && tp) {
+            tp->modList().setEnabled(resolvedOutputModId, true);   // in memory only, no save
+            redeployForTool("Restoring output mod", "Re-deploying with the output mod\xe2\x80\xa6");
+            toggledOutput = false;
+        }
+    };
+    if (wantToggle) {
+        tp->modList().setEnabled(resolvedOutputModId, false);      // in memory only, no profile.save()
+        if (!redeployForTool("Preparing " + exe.name, "Temporarily removing the output mod\xe2\x80\xa6")) {
+            tp->modList().setEnabled(resolvedOutputModId, true);   // restore in memory
+            hideRunLock(); m_toolRunning = false;
+            QMessageBox::warning(this, exe.name, "Could not redeploy without the output mod.");
+            return;
+        }
+        toggledOutput = true;
+    }
+
     // Radium expects an MO2 layout. Solero hardlink-deploys into Data/, so feed
     // it a generated fake-mo2 + a settings.json pointing at the live Data/ and the
     // managed output mod. (ensureDeployed above guarantees Data/ + load order are
@@ -3202,6 +3274,7 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
         // Radium writes into its output mod's staging Data/; without an output
         // mod wired we'd misdirect its result to the staging root. Fail clearly.
         if (outFolder.isEmpty()) {
+            restoreOutput();
             hideRunLock();
             m_toolRunning = false;
             QMessageBox::warning(this, "Radium Textures",
@@ -3217,6 +3290,7 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
                                                outDataDir,
                                                solero::RadiumPrep::defaultSettingsPath(),
                                                &err)) {
+            restoreOutput();
             hideRunLock();
             m_toolRunning = false;
             QMessageBox::warning(this, "Radium Textures",
@@ -3258,6 +3332,7 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
         if (!p || !solero::RadiumPrep::writeFakeMo2(
                 *p, solero::AppConfig::instance().gameDir(), fakeMo2, &err,
                 /*populateMods=*/false)) {
+            restoreOutput();
             hideRunLock(); m_toolRunning = false;
             QMessageBox::warning(this, "PGPatcher",
                 err.isEmpty() ? "Could not prepare PGPatcher's fake-MO2 instance." : err);
@@ -3295,6 +3370,10 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
                                        owP ? solero::AppConfig::overwriteDir(owP->name()) : QString());
     hideRunLock();
     m_toolRunning = false;
+
+    // Re-enable the output mod and redeploy so the tool's fresh output returns to
+    // the deployed game Data. Idempotent (no-op if we never toggled).
+    restoreOutput();
 
     if (!res.launched) {
         QMessageBox::warning(this, "Tool", res.error.isEmpty() ? ("Failed to launch " + exe.name) : res.error);

@@ -82,6 +82,12 @@ private:
     void refreshProfileCombo();
     void onDeployToggle();
     bool deployCurrent();        // perform a deploy of the active profile; returns success
+    // Like deployCurrent but for use INSIDE a tool run: deploys the active profile
+    // (honoring any in-memory ModList toggle) under a ProgressModal and updates
+    // deploy/conflict state, without running post-deploy tools or popping the
+    // AppData warning. Returns deploy success. Used to push the output-mod toggle
+    // through to the deployed game Data around PGPatcher/Radium runs.
+    bool redeployForTool(const QString& title, const QString& message);
     void showRunLock(const QString& toolName);
     void hideRunLock();
     void refreshDeployState();   // detect an existing deployment on startup

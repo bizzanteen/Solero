@@ -1,9 +1,20 @@
 #pragma once
 #include <QByteArray>
+#include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QString>
 
 namespace solero {
+
+// True iff `dir` exists and contains at least one regular file at any depth.
+// Returns false for a missing/empty directory. Stops at the first file (cheap
+// for large trees). Used to decide whether a mod's staging Data/ has output.
+inline bool dirHasFiles(const QString& dir) {
+    if (dir.isEmpty() || !QDir(dir).exists())
+        return false;
+    return QDirIterator(dir, QDir::Files, QDirIterator::Subdirectories).hasNext();
+}
 
 // Atomically write `data` to `path` via a temp file + rename.
 // On any failure (open/write/rename) the original file at `path` is left

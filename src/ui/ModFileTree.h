@@ -84,6 +84,11 @@ private:
     QTreeWidgetItem* makeDirItem(QTreeWidgetItem* parent, const QString& fullPath,
                                  const QString& relPath, const QString& name);
 
+    // Apply (hidden=true) or remove (hidden=false) the struck-through "hidden"
+    // styling on a row, restoring the row's normal look on unhide. Used for the
+    // instant in-place toggle that avoids a full tree rebuild.
+    void applyHiddenStyle(QTreeWidgetItem* item, bool hidden);
+
     QString m_stagingRoot; // empty in game-dir mode (drops disabled)
     QString m_modId;       // owning mod id (empty in game-dir mode)
     QSet<QString> m_hiddenRelPaths; // files hidden within m_modId
@@ -92,6 +97,8 @@ private:
     // to surface the same Hide/Unhide action there. Empty in single-mod mode.
     QHash<QString, QString> m_gameOwnerModId; // relPath -> owner modId
     QSet<QString>           m_gameHidden;     // relPaths currently hidden
+    QHash<QString, QString> m_gameOwnerName;  // relPath -> owner display name
+    QColor                  m_accent;         // accent colour used in game-dir mode
 
     // Lazy game-dir state. m_lazyRoot is non-empty only while a lazy tree is live.
     bool      m_lazy = false;

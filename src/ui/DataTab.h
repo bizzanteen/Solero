@@ -55,6 +55,7 @@ private:
     QTimer*         m_filterDebounce = nullptr; // coalesces search keystrokes
     bool            m_showAllFiles = false; // mirror of m_showAllBtn
     bool            m_collapsed = false;     // mirror of m_collapseBtn
+    bool            m_gameDirView = false;   // true while the merged game-dir view is shown
 
     QStackedWidget* m_stack;
     ModFileTree*    m_singleTree;   // page 0: single mod or game dir

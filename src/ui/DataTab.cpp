@@ -226,6 +226,7 @@ void DataTab::refresh() {
 }
 
 void DataTab::showSingleMod(const QString& modId) {
+    m_gameDirView = false;
     QString root = stagingRootFor(modId);
 
     QDirIterator probe(root, QDir::Files,
@@ -251,6 +252,7 @@ void DataTab::showSingleMod(const QString& modId) {
 }
 
 void DataTab::showGameDirectory() {
+    m_gameDirView = true;
     QString gameDir = AppConfig::instance().gameDir();
     // Build relPath -> mod display name from the on-disk DeployRecord
     QHash<QString, QString> ownerByRel;
@@ -278,6 +280,7 @@ void DataTab::showGameDirectory() {
 }
 
 void DataTab::showSplit(const QString& modIdA, const QString& modIdB) {
+    m_gameDirView = false;
     QString rootA = stagingRootFor(modIdA);
     QString rootB = stagingRootFor(modIdB);
     QSet<QString> editedA, editedB;
@@ -332,7 +335,14 @@ void DataTab::onHideToggled(const QString& modId, const QString& relPath, bool h
     m_profile->setFileHidden(modId, relPath, hide);
     m_profile->save();          // persist filerules.json immediately
     emit fileRulesChanged();    // -> MainWindow marks the deployment dirty
-    scheduleRefresh();          // repaint the tree with the new hidden state
+    // In the merged game-dir view the ModFileTree already restyled the clicked
+    // row in place (see contextMenuEvent), so skip the expensive full-tree
+    // rebuild - re-reading the DeployRecord and re-walking the whole game Data
+    // dir on every click is what made hiding slow. The single-mod/split views
+    // are tiny, so their cheap rebuild (restoring conflict/edited decoration) is
+    // fine.
+    if (!m_gameDirView)
+        scheduleRefresh();      // repaint the tree with the new hidden state
 }
 
 void DataTab::onRenameRequested(const QString& modId, const QString& relPath,

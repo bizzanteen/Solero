@@ -285,6 +285,8 @@ void ModFileTree::showGameDir(const QString& gameDir,
     m_hiddenRelPaths.clear();
     m_gameOwnerModId = ownerModIdByRel;
     m_gameHidden = hiddenByRel;
+    m_gameOwnerName = ownerByRelPath;
+    m_accent = accent;
     setAcceptDrops(false);
     // The game Data folder can hold thousands of files. Build it eagerly (with
     // view updates suspended during the build - see buildTree) so the whole tree
@@ -293,6 +295,12 @@ void ModFileTree::showGameDir(const QString& gameDir,
     // froze the UI. ownerByRelPath is captured by value for the decorator.
     buildTree(gameDir, [ownerByRelPath, accent, this]
                   (QTreeWidgetItem* item, const QString& relPath) {
+        // A hidden file takes visual precedence (matching showModFiles): show it
+        // struck-through and dimmed instead of the owner decoration.
+        if (m_gameHidden.contains(relPath)) {
+            applyHiddenStyle(item, true);
+            return;
+        }
         auto owner = ownerByRelPath.value(relPath);
         if (!owner.isEmpty()) {
             item->setText(2, "from: " + owner);
@@ -301,6 +309,38 @@ void ModFileTree::showGameDir(const QString& gameDir,
             QFont f = item->font(0); f.setBold(true); item->setFont(0, f);
         }
     });
+}
+
+void ModFileTree::applyHiddenStyle(QTreeWidgetItem* item, bool hidden) {
+    if (hidden) {
+        item->setText(2, QStringLiteral("hidden"));
+        QFont f = item->font(0); f.setStrikeOut(true); item->setFont(0, f);
+        QColor dim = palette().color(QPalette::Disabled, QPalette::Text);
+        item->setForeground(0, dim);
+        item->setForeground(2, dim);
+        return;
+    }
+    // Unhide: drop the strikeout, then restore the row's normal appearance.
+    QFont f = item->font(0); f.setStrikeOut(false); item->setFont(0, f);
+    if (m_modId.isEmpty()) {
+        // Game-dir mode: re-apply the owner decoration if this file has a known
+        // owner, exactly as showGameDir's build decorator does.
+        const QString relPath = item->data(0, RoleRelPath).toString();
+        const QString owner = m_gameOwnerName.value(relPath);
+        if (!owner.isEmpty()) {
+            item->setText(2, "from: " + owner);
+            item->setForeground(0, m_accent);
+            item->setForeground(2, m_accent);
+            QFont bf = item->font(0); bf.setBold(true); item->setFont(0, bf);
+            return;
+        }
+    }
+    // Single-mod mode (or ownerless game-dir row): clear the status and reset the
+    // foregrounds to default. In single-mod mode the cheap rebuild restores the
+    // full conflict/edited decoration.
+    item->setText(2, QString());
+    item->setForeground(0, {});
+    item->setForeground(2, {});
 }
 
 void ModFileTree::setFilter(const QString& text) {
@@ -395,8 +435,14 @@ void ModFileTree::contextMenuEvent(QContextMenuEvent* e) {
         QMenu menu(this);
         menu.addAction(hidden ? QStringLiteral("Unhide file")
                               : QStringLiteral("Hide file in this mod"),
-                       this, [this, ownerModId, relPath, hidden]{
-            emit hideToggled(ownerModId, relPath, !hidden);
+                       this, [this, ownerModId, relPath, hidden, item]{
+            const bool nowHidden = !hidden;
+            emit hideToggled(ownerModId, relPath, nowHidden);
+            // Instant in-place feedback: update our local set and restyle the row
+            // so the merged view doesn't need an expensive full-tree rebuild.
+            if (nowHidden) m_gameHidden.insert(relPath);
+            else           m_gameHidden.remove(relPath);
+            applyHiddenStyle(item, nowHidden);
         });
         menu.exec(e->globalPos());
         return;
@@ -417,8 +463,13 @@ void ModFileTree::contextMenuEvent(QContextMenuEvent* e) {
         const bool hidden = m_hiddenRelPaths.contains(relPath);
         menu.addAction(hidden ? QStringLiteral("Unhide file")
                               : QStringLiteral("Hide file in this mod"),
-                       this, [this, relPath, hidden]{
-            emit hideToggled(m_modId, relPath, !hidden);
+                       this, [this, relPath, hidden, item]{
+            const bool nowHidden = !hidden;
+            emit hideToggled(m_modId, relPath, nowHidden);
+            // Instant in-place feedback before DataTab's cheap rebuild lands.
+            if (nowHidden) m_hiddenRelPaths.insert(relPath);
+            else           m_hiddenRelPaths.remove(relPath);
+            applyHiddenStyle(item, nowHidden);
         });
         menu.addSeparator();
     }

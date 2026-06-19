@@ -644,6 +644,24 @@ void MainWindow::setupCentralWidget() {
                     sf.write(QJsonDocument(m_nxmMeta.value(fn)).toJson(QJsonDocument::Indented));
             }
 
+            // Auto-download-on-reinstall: the archive was missing, so onReinstallMod
+            // enqueued it. The sidecar is now on disk, so re-enter reinstall - its
+            // findDownloadArchivesFor() locates this file by (modId, fileId) and the
+            // install proceeds. Consumed before the normal install-as-new path.
+            if (m_pendingReinstalls.contains(fn)) {
+                const QString reModId = m_pendingReinstalls.take(fn);
+                m_rightPane->downloadsTab()->setDownloadProgress(fn, ok ? 1 : 0, ok ? 1 : 0);
+                m_rightPane->downloadsTab()->refresh();
+                m_nxmMeta.remove(fn);
+                if (!ok || path.isEmpty()) {
+                    statusBar()->showMessage("Reinstall download failed: " + fn
+                        + " - " + err);
+                    return;
+                }
+                onReinstallMod(reModId);
+                return; // do not fall through to the install-as-new path
+            }
+
             // Drop any older failed entry for this filename (about to be re-evaluated).
             for (int i = m_failedDownloads.size() - 1; i >= 0; --i)
                 if (m_failedDownloads[i].fileName == fn) m_failedDownloads.removeAt(i);
@@ -1834,7 +1852,49 @@ void MainWindow::onReinstallMod(const QString& modId) {
             if (!okSel) return;
             archive = cands.at(names.indexOf(chosen));
         } else {
-            archive.clear(); // none found -> manual picker below
+            archive.clear(); // none found -> try auto-download, else manual picker below
+        }
+        // No archive on disk: if the mod has a Nexus identity, try to re-download it
+        // automatically (Premium API). On success we enqueue and RETURN - the
+        // download-finished handler writes the sidecar and re-invokes onReinstallMod,
+        // at which point findDownloadArchivesFor() locates the freshly-downloaded
+        // file by its (modId, fileId) sidecar and the install proceeds normally.
+        if (archive.isEmpty()
+            && !existing->nexusModId.isEmpty() && !existing->nexusFileId.isEmpty()) {
+            const QString url =
+                solero::NexusApi::downloadUrl(existing->nexusModId, existing->nexusFileId);
+            if (!url.isEmpty()) {
+                // Resolve the real filename for this file from the Nexus file list;
+                // fall back to the stored archive basename if the list is unavailable.
+                QString fileName;
+                for (const auto& f : solero::NexusApi::files(existing->nexusModId))
+                    if (f.fileId == existing->nexusFileId) { fileName = f.name; break; }
+                if (fileName.isEmpty() && !existing->sourceArchive.isEmpty())
+                    fileName = QFileInfo(existing->sourceArchive).fileName();
+                if (!fileName.isEmpty()) {
+                    // Sidecar metadata so the re-entered reinstall finds the archive
+                    // by (modId, fileId) and so the download tags it correctly.
+                    m_nxmMeta[fileName] = QJsonObject{
+                        {"game",   solero::NexusApi::kDefaultGame},
+                        {"modId",  existing->nexusModId},
+                        {"fileId", existing->nexusFileId},
+                        {"version", existing->version},
+                    };
+                    m_pendingReinstalls[fileName] = modId;
+                    m_downloads->enqueue(url, fileName,
+                                         solero::AppConfig::instance().downloadsDir());
+                    m_rightPane->showDownloadsTab();
+                    statusBar()->showMessage(
+                        QString::fromUtf8("Downloading %1\xE2\x80\xA6").arg(fileName));
+                    return; // async: finished-handler re-enters onReinstallMod
+                }
+            } else {
+                // Couldn't get a link (non-Premium / API error) - tell the user, then
+                // fall through to the manual picker below (don't block).
+                QMessageBox::information(this, "Reinstall",
+                    "Couldn't auto-download this mod's archive (Nexus Premium API "
+                    "required). Choose the archive manually instead.");
+            }
         }
         if (archive.isEmpty())
             archive = QFileDialog::getOpenFileName(this, "Reinstall: choose the mod archive",

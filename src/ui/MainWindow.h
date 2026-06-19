@@ -296,6 +296,10 @@ private:
     // finishes, the existing mod is reinstalled in place instead of added anew.
     struct PendingUpdate { QString modId, fileId, version; };
     QHash<QString, PendingUpdate> m_pendingUpdates;
+    // In-flight reinstall downloads (archive was missing on disk), keyed by saved
+    // filename -> local modId. When the download finishes, onReinstallMod is
+    // re-invoked; the archive is now present (located by its Nexus sidecar).
+    QHash<QString, QString> m_pendingReinstalls;
     // Whether the once-per-launch update check has run yet (bypasses the 6h throttle).
     bool m_didLaunchUpdateCheck = false;
     // Pending Nexus metadata for in-flight nxm downloads, keyed by saved filename.

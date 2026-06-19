@@ -34,6 +34,10 @@ ShaderCacheClearResult clearShaderCache(const QString& gameDir,
 // restoring a stale validation file that would make CS recompile every launch.
 // Returns the number of files moved. Returns 0 when cacheStagingDir is empty or
 // the source ShaderCache dir is missing.
-int captureShaderCache(const QString& gameDir, const QString& cacheStagingDir);
+// If movedRelPaths is non-null, every successfully-moved file's path RELATIVE TO
+// gameDir (e.g. "Data/ShaderCache/Effect/foo.pso") is appended to it, so the
+// caller can re-link the captured files back into the live game dir.
+int captureShaderCache(const QString& gameDir, const QString& cacheStagingDir,
+                       QStringList* movedRelPaths = nullptr);
 
 } // namespace solero

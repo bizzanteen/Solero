@@ -93,8 +93,15 @@ private slots:
         writeFile(gameDir + "/Data/ShaderCache/existing.bin", "live");
         writeFile(staging + "/Data/ShaderCache/existing.bin", "staged");
 
-        const int moved = captureShaderCache(gameDir, staging);
+        QStringList movedRel;
+        const int moved = captureShaderCache(gameDir, staging, &movedRel);
         QCOMPARE(moved, 2);
+
+        // movedRelPaths records the moved files relative to gameDir (gameDir/Data
+        // + rel), and does not list the already-staged immutable blob.
+        movedRel.sort();
+        QCOMPARE(movedRel, (QStringList{"Data/ShaderCache/new1.bin",
+                                        "Data/ShaderCache/sub/new2.bin"}));
 
         // New shaders moved into staging and removed from the game dir.
         QVERIFY(QFile::exists(staging + "/Data/ShaderCache/new1.bin"));
@@ -133,10 +140,15 @@ private slots:
         writeFile(gameDir + "/Data/ShaderCache/Effect/abc.pso", "live-blob");
         writeFile(staging + "/Data/ShaderCache/Effect/abc.pso", "staged-blob");
 
-        const int moved = captureShaderCache(gameDir, staging);
+        QStringList movedRel;
+        const int moved = captureShaderCache(gameDir, staging, &movedRel);
 
         // Info.ini refreshed to the current state (the blob is not counted/moved).
         QCOMPARE(moved, 1);
+
+        // The refreshed Info.ini is reported (gameDir-relative); the already-staged
+        // immutable blob is not listed.
+        QCOMPARE(movedRel, (QStringList{"Data/ShaderCache/Info.ini"}));
         QFile info(staging + "/Data/ShaderCache/Info.ini");
         QVERIFY(info.open(QIODevice::ReadOnly));
         QCOMPARE(info.readAll(), QByteArray("current-feature-state"));

@@ -40,7 +40,8 @@ ShaderCacheClearResult clearShaderCache(const QString& gameDir,
     return result;
 }
 
-int captureShaderCache(const QString& gameDir, const QString& cacheStagingDir) {
+int captureShaderCache(const QString& gameDir, const QString& cacheStagingDir,
+                       QStringList* movedRelPaths) {
     if (cacheStagingDir.isEmpty()) return 0;
 
     const QString srcRoot = gameDir + "/Data/ShaderCache";
@@ -76,12 +77,20 @@ int captureShaderCache(const QString& gameDir, const QString& cacheStagingDir) {
         }
 
         QDir().mkpath(QFileInfo(dstPath).path());
+        bool didMove = false;
         if (QFile::rename(srcPath, dstPath)) {
-            ++moved;
+            didMove = true;
         } else if (QFile::copy(srcPath, dstPath)) {
             // Cross-filesystem rename can fail; fall back to copy + remove.
             QFile::remove(srcPath);
+            didMove = true;
+        }
+        if (didMove) {
             ++moved;
+            // Path relative to gameDir (rel is relative to gameDir/Data), so the
+            // caller can re-link the captured file back into the live game dir.
+            if (movedRelPaths)
+                movedRelPaths->append(QStringLiteral("Data/") + rel);
         }
     }
     return moved;

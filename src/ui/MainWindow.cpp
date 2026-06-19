@@ -3901,15 +3901,35 @@ void MainWindow::onPlay() {
     if (auto* p = m_profileMgr->activeProfile()) {
         const QString cacheStaging = cacheStagingPath(p);
         if (!cacheStaging.isEmpty()) {
-            const int captured = solero::captureShaderCache(gameDir, cacheStaging);
-            if (captured > 0) {
-                // The cache's staging now holds new shaders; mark deploy dirty
-                // so the next Play re-deploys them (otherwise deploy is skipped when
-                // already deployed-and-clean and the captured shaders never reach
-                // the live game dir). Mirrors onClearShaderCache.
-                if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+            QStringList moved;
+            solero::captureShaderCache(gameDir, cacheStaging, &moved);
+            if (!moved.isEmpty() && m_deployed) {
+                // capture MOVED the new shaders out of the live game dir into the
+                // managed cache's staging, leaving the deployed game dir incomplete.
+                // Re-link them straight back in (and record them in the deploy
+                // record) so the live dir stays whole and the deploy state stays
+                // clean - no more stuck "Redeploy" after every Play.
+                solero::Linker linker(solero::AppConfig::instance().deployMode());
+                solero::DeployRecord rec =
+                    solero::DeployRecord::loadFromFile(solero::DeployEngine::recordPath(gameDir));
+                bool anyFail = false;
+                for (const QString& relPath : moved) {
+                    const QString src = cacheStaging + "/" + relPath;
+                    const QString dst = gameDir + "/" + relPath;
+                    if (linker.deploy(src, dst))
+                        rec.add(relPath, QStringLiteral("__shadercache__"));
+                    else
+                        anyFail = true;
+                }
+                rec.saveToFile(solero::DeployEngine::recordPath(gameDir));
+                if (anyFail) {
+                    // A re-link failed: the live dir is now missing a captured
+                    // shader, so fall back to forcing a redeploy on next Play.
+                    m_deployDirty = true;
+                }
+                updateDeployButton();
                 statusBar()->showMessage(
-                    QString("Captured %1 new shader cache file(s).").arg(captured));
+                    QString("Captured %1 shader cache file(s).").arg(moved.size()));
             }
         }
     }

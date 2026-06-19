@@ -122,6 +122,7 @@ set(SOLERO_SOURCES
   src/install/ModInstaller.cpp
   src/fomod/FomodCondition.cpp
   src/fomod/FomodEngine.cpp
+  src/fomod/FomodChoiceRecall.cpp
   src/fomod/FomodScanner.cpp
   src/patch/PatchScanner.cpp
   src/ui/PatchWizardDialog.cpp

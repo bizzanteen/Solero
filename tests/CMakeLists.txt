@@ -151,6 +151,16 @@ endfunction()
 add_solero_fomod_test(test_FomodCondition)
 add_solero_fomod_test(test_FomodEngine)
 
+# FomodChoiceRecall is a pure name->index mapping helper; it pulls in the FomodEngine
+# (for selKey + FomodModule), so reuse the fomod test source set plus the helper .cpp.
+add_executable(test_FomodChoiceRecall test_FomodChoiceRecall.cpp
+  ../src/fomod/FomodChoiceRecall.cpp
+  ../src/fomod/FomodCondition.cpp
+  ../src/fomod/FomodEngine.cpp)
+target_include_directories(test_FomodChoiceRecall PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_FomodChoiceRecall PRIVATE Qt6::Core Qt6::Xml Qt6::Test)
+add_test(NAME test_FomodChoiceRecall COMMAND test_FomodChoiceRecall)
+
 # FomodScanner: the test exercises only the pure classifyModule()/
 # reconstructSelection(), but the translation unit also links scanProfile()'s IO
 # deps (ArchiveLocator/ArchiveTool/ModInstaller/Profile), so link the same set

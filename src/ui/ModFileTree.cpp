@@ -277,10 +277,14 @@ void ModFileTree::showModFiles(const QString& stagingRoot,
 
 void ModFileTree::showGameDir(const QString& gameDir,
                               const QHash<QString, QString>& ownerByRelPath,
+                              const QHash<QString, QString>& ownerModIdByRel,
+                              const QSet<QString>& hiddenByRel,
                               const QColor& accent) {
     m_stagingRoot.clear(); // game-dir mode: no drops
     m_modId.clear();
     m_hiddenRelPaths.clear();
+    m_gameOwnerModId = ownerModIdByRel;
+    m_gameHidden = hiddenByRel;
     setAcceptDrops(false);
     // The game Data folder can hold thousands of files. Build it eagerly (with
     // view updates suspended during the build - see buildTree) so the whole tree
@@ -373,9 +377,34 @@ void ModFileTree::dropEvent(QDropEvent* e) {
 }
 
 void ModFileTree::contextMenuEvent(QContextMenuEvent* e) {
-    // These edits apply to a real mod's staging (not the game-dir view, and not
-    // the synthetic "__overwrite__"/etc. pseudo-mods whose ids start with "__").
-    if (m_modId.isEmpty() || m_modId.startsWith("__")) return;
+    // Game-dir (merged "show all files") mode: m_modId/m_stagingRoot are empty.
+    // The mod-editing actions (rename/delete) don't apply, but a deployed file's
+    // owner is known via m_gameOwnerModId, so offer the same Hide/Unhide action,
+    // emitting hideToggled against that owner. Loose/Overwrite/ownerless rows and
+    // folder rows get nothing.
+    if (m_modId.isEmpty()) {
+        QTreeWidgetItem* item = itemAt(e->pos());
+        if (!item) return;
+        if (item->data(0, RoleIsDir).toBool()) return; // folders: no hide
+        const QString relPath = item->data(0, RoleRelPath).toString();
+        if (relPath.isEmpty()) return;
+        const QString ownerModId = m_gameOwnerModId.value(relPath);
+        // No real owner (loose / Overwrite / pseudo-mod) -> no hide action.
+        if (ownerModId.isEmpty() || ownerModId.startsWith("__")) return;
+        const bool hidden = m_gameHidden.contains(relPath);
+        QMenu menu(this);
+        menu.addAction(hidden ? QStringLiteral("Unhide file")
+                              : QStringLiteral("Hide file in this mod"),
+                       this, [this, ownerModId, relPath, hidden]{
+            emit hideToggled(ownerModId, relPath, !hidden);
+        });
+        menu.exec(e->globalPos());
+        return;
+    }
+
+    // These edits apply to a real mod's staging (not the synthetic
+    // "__overwrite__"/etc. pseudo-mods whose ids start with "__").
+    if (m_modId.startsWith("__")) return;
     QTreeWidgetItem* item = itemAt(e->pos());
     if (!item) return;
     const QString relPath = item->data(0, RoleRelPath).toString();

@@ -30,8 +30,12 @@ public:
     void setFilter(const QString& text);
 
     // Populate from the live game directory, colouring mod-owned files.
+    // ownerModIdByRel (relPath -> owner modId) and hiddenByRel (relPaths currently
+    // hidden for their owner) drive the merged-view Hide/Unhide context menu.
     void showGameDir(const QString& gameDir,
                     const QHash<QString, QString>& ownerByRelPath, // relPath -> mod display name
+                    const QHash<QString, QString>& ownerModIdByRel, // relPath -> owner modId
+                    const QSet<QString>& hiddenByRel,               // relPaths currently hidden
                     const QColor& accent);
 
     const QString& stagingRoot() const { return m_stagingRoot; }
@@ -83,6 +87,11 @@ private:
     QString m_stagingRoot; // empty in game-dir mode (drops disabled)
     QString m_modId;       // owning mod id (empty in game-dir mode)
     QSet<QString> m_hiddenRelPaths; // files hidden within m_modId
+
+    // Game-dir (merged) mode: per-file owner modId and current hidden state, used
+    // to surface the same Hide/Unhide action there. Empty in single-mod mode.
+    QHash<QString, QString> m_gameOwnerModId; // relPath -> owner modId
+    QSet<QString>           m_gameHidden;     // relPaths currently hidden
 
     // Lazy game-dir state. m_lazyRoot is non-empty only while a lazy tree is live.
     bool      m_lazy = false;

@@ -254,13 +254,24 @@ void DataTab::showGameDirectory() {
     QString gameDir = AppConfig::instance().gameDir();
     // Build relPath -> mod display name from the on-disk DeployRecord
     QHash<QString, QString> ownerByRel;
+    // Parallel maps keyed by relPath: owner modId (for the merged-view Hide
+    // action) and which of those are currently hidden for their owner.
+    QHash<QString, QString> ownerModIdByRel;
+    QSet<QString> hiddenByRel;
     QString recPath = DeployEngine::recordPath(gameDir);
     DeployRecord rec = DeployRecord::loadFromFile(recPath);
-    for (const auto& relPath : rec.allPaths())
-        ownerByRel.insert(relPath, modDisplayName(rec.ownerOf(relPath)));
+    for (const auto& relPath : rec.allPaths()) {
+        const QString ownerModId = rec.ownerOf(relPath);
+        ownerByRel.insert(relPath, modDisplayName(ownerModId));
+        ownerModIdByRel.insert(relPath, ownerModId);
+        if (m_profile && !ownerModId.isEmpty() &&
+            m_profile->isFileHidden(ownerModId, relPath))
+            hiddenByRel.insert(relPath);
+    }
 
     m_editTrackingRoot.clear();
-    m_singleTree->showGameDir(gameDir, ownerByRel, accentColor());
+    m_singleTree->showGameDir(gameDir, ownerByRel, ownerModIdByRel, hiddenByRel,
+                              accentColor());
     m_stack->setCurrentWidget(m_singleTree);
     applyFolderState();
     applyFilter();

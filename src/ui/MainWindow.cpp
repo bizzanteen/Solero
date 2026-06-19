@@ -21,6 +21,7 @@
 #include "io/ProfileManifest.h"
 #include "ui/WabbajackDialog.h"
 #include "ui/FomodWizard.h"
+#include "fomod/FomodChoiceRecall.h"
 #include "ui/ProgressModal.h"
 #include "ui/ToolSetupWizard.h"
 #include "ui/ExecutableDialog.h"
@@ -1906,6 +1907,20 @@ void MainWindow::onReinstallMod(const QString& modId) {
                 return false;
             });
             solero::FomodWizard wizard(&engine, prep.fomodBase, this);
+            // Pre-tick + label the user's previous FOMOD choices, if any were saved.
+            {
+                const QString choicePath =
+                    solero::AppConfig::dataRoot() + "/fomod-choices/" + modId + ".json";
+                QFile cf(choicePath);
+                if (cf.open(QIODevice::ReadOnly)) {
+                    const QJsonObject saved =
+                        QJsonDocument::fromJson(cf.readAll()).object();
+                    const solero::FomodPreset preset =
+                        solero::buildFomodPreset(engine.module(), saved);
+                    if (!preset.selection.isEmpty())
+                        wizard.setPresetSelection(preset.selection, preset.priorKeys);
+                }
+            }
             if (wizard.exec() != QDialog::Accepted) { statusBar()->showMessage("Reinstall cancelled."); return; }
             solero::ProgressModal stageProg(this, "Reinstall", "Installing files...");
             stageProg.show(); stageProg.pump();

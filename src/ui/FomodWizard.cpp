@@ -82,6 +82,20 @@ FomodWizard::FomodWizard(FomodEngine* engine, const QString& extractDir, QWidget
     showStep(0);
 }
 
+void FomodWizard::setPresetSelection(const FomodEngine::Selection& sel,
+                                     const QSet<QString>& priorKeys) {
+    // Seed the saved picks. showStep() honors m_selection.value(key) when building
+    // each option, and the group-type handling (Required/NotUsable/All/ExactlyOne)
+    // still normalizes anything that violates a group's constraint.
+    for (auto it = sel.constBegin(); it != sel.constEnd(); ++it)
+        m_selection.insert(it.key(), it.value());
+    m_priorKeys = priorKeys;
+    // A preset may flip a flag that makes a previously-hidden step visible, so
+    // recompute visibility and re-render the current step with the new ticks/labels.
+    rebuildVisibleSteps();
+    if (!m_visibleSteps.isEmpty()) showStep(m_pos);
+}
+
 void FomodWizard::rebuildVisibleSteps() {
     m_visibleSteps.clear();
     for (int i = 0; i < m_engine->module().steps.size(); ++i)
@@ -134,9 +148,14 @@ void FomodWizard::showStep(int visibleIdx) {
             // so conditional (dependencyType) options can become Required /
             // NotUsable / Recommended mid-wizard.
             OptionType type = m_engine->effectiveType(opt, m_selection);
+            // On reinstall, annotate options the user picked last time so they can
+            // spot their earlier choices. Uses a real UTF-8 arrow, not a byte escape.
+            QString label = opt.name;
+            if (m_priorKeys.contains(key))
+                label += QString::fromUtf8(" \xE2\x86\x90 previously chosen");
             QAbstractButton* btn = exclusive
-                ? static_cast<QAbstractButton*>(new QRadioButton(opt.name, box))
-                : static_cast<QAbstractButton*>(new QCheckBox(opt.name, box));
+                ? static_cast<QAbstractButton*>(new QRadioButton(label, box))
+                : static_cast<QAbstractButton*>(new QCheckBox(label, box));
             btn->setCheckable(true);
             if (bgroup) bgroup->addButton(btn);
             if (!firstBtnInGroup) firstBtnInGroup = btn;

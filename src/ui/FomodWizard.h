@@ -1,6 +1,7 @@
 #pragma once
 #include <QDialog>
 #include <QPixmap>
+#include <QSet>
 #include "fomod/FomodEngine.h"
 
 class QLabel;
@@ -14,6 +15,11 @@ public:
     FomodWizard(FomodEngine* engine, const QString& extractDir, QWidget* parent = nullptr);
     FomodEngine::Selection selection() const { return m_selection; }
     QList<FomodFile> result() const;
+
+    // Seed the wizard with a previously-saved set of choices (e.g. on reinstall):
+    // those boxes start ticked and the matching options are labeled as previously
+    // chosen. The wizard's normal group constraints still normalize the result.
+    void setPresetSelection(const FomodEngine::Selection& sel, const QSet<QString>& priorKeys);
 
 protected:
     void resizeEvent(QResizeEvent*) override;
@@ -36,6 +42,9 @@ private:
     FomodEngine* m_engine;
     QString m_extractDir;
     FomodEngine::Selection m_selection;
+    // selKeys that were previously chosen (reinstall) - their option labels get a
+    // "previously chosen" suffix so the user can spot their earlier picks.
+    QSet<QString> m_priorKeys;
     QList<int> m_visibleSteps;
     int m_pos = 0;
 

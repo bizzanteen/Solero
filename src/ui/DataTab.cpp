@@ -194,11 +194,26 @@ void DataTab::updateCollapseText() {
 void DataTab::refresh() {
     // Partition the selection: separators are ignored for counting; mods + overwrite count.
     QStringList modIds;
+    bool onlySeparators = !m_selection.isEmpty();
     for (const auto& id : m_selection) {
         if (id == "__separator__") continue;
+        onlySeparators = false;
         modIds << id;
     }
     const bool hasMods = !modIds.isEmpty();
+
+    // A separator has no files of its own. Selecting one used to fall through to
+    // "no mods -> show the whole game dir", which eagerly rebuilt the entire merged
+    // Data tree (thousands of files) on every separator click - the source of the
+    // lag. Show a cheap placeholder instead. (A truly empty selection - m_selection
+    // empty - still falls through to the all-files view below.)
+    if (onlySeparators) {
+        m_showAllBtn->setEnabled(false);
+        m_showAllBtn->setText("Showing all files");
+        m_placeholder->setText("Separators have no files to show.");
+        m_stack->setCurrentWidget(m_placeholder);
+        return;
+    }
 
     // With no mod selected there's nothing to show but the live game dir, so lock
     // the toggle to "Showing all files" (disabled) until a mod is selected.

@@ -112,6 +112,44 @@ private slots:
         QCOMPARE(staged.readAll(), QByteArray("staged"));
     }
 
+    // Info.ini is CS's disk-cache validation file (records per-feature enabled
+    // state + version). CS rewrites it whenever feature state changes. Unlike the
+    // immutable content-hashed shader blobs, a STALE staged Info.ini must be
+    // refreshed on capture - otherwise deploy keeps restoring an out-of-date
+    // validation file and CS invalidates + recompiles the whole cache on every
+    // launch. So capture overwrites an existing staged Info.ini, while still
+    // leaving already-captured blobs untouched.
+    void capture_refreshesStaleInfoIni() {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const QString gameDir = tmp.path() + "/game";
+        const QString staging = tmp.path() + "/staging/cachemod";
+
+        // Live (current) Info.ini written by CS this session.
+        writeFile(gameDir + "/Data/ShaderCache/Info.ini", "current-feature-state");
+        // Stale staged Info.ini from a previous capture.
+        writeFile(staging + "/Data/ShaderCache/Info.ini", "stale-feature-state");
+        // An already-captured immutable blob that must not be clobbered.
+        writeFile(gameDir + "/Data/ShaderCache/Effect/abc.pso", "live-blob");
+        writeFile(staging + "/Data/ShaderCache/Effect/abc.pso", "staged-blob");
+
+        const int moved = captureShaderCache(gameDir, staging);
+
+        // Info.ini refreshed to the current state (the blob is not counted/moved).
+        QCOMPARE(moved, 1);
+        QFile info(staging + "/Data/ShaderCache/Info.ini");
+        QVERIFY(info.open(QIODevice::ReadOnly));
+        QCOMPARE(info.readAll(), QByteArray("current-feature-state"));
+        // Live Info.ini consumed (moved into staging).
+        QVERIFY(!QFile::exists(gameDir + "/Data/ShaderCache/Info.ini"));
+
+        // The immutable blob is left alone in both places.
+        QVERIFY(QFile::exists(gameDir + "/Data/ShaderCache/Effect/abc.pso"));
+        QFile blob(staging + "/Data/ShaderCache/Effect/abc.pso");
+        QVERIFY(blob.open(QIODevice::ReadOnly));
+        QCOMPARE(blob.readAll(), QByteArray("staged-blob"));
+    }
+
     // Missing source / empty staging -> no-op returning 0.
     void capture_noopWhenMissing() {
         QTemporaryDir tmp;

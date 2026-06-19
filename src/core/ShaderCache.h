@@ -26,10 +26,14 @@ ShaderCacheClearResult clearShaderCache(const QString& gameDir,
 // Capture newly-compiled shaders after a play session. Walk
 // <gameDir>/Data/ShaderCache/** and, for each file whose path relative to
 // <gameDir>/Data is not already present under <cacheStagingDir>/Data/, move it
-// into the staging tree (creating parent dirs). Files already present in staging
-// are left untouched (under hardlink deploy they share an inode with the staged
-// master). Returns the number of files moved. Returns 0 when cacheStagingDir is
-// empty or the source ShaderCache dir is missing.
+// into the staging tree (creating parent dirs). Immutable shader blobs already
+// present in staging are left untouched (under hardlink deploy they share an
+// inode with the staged master). The one exception is Info.ini - CS's disk-cache
+// validation file (per-feature enabled-state/version + plugin version) - which CS
+// rewrites whenever feature state changes: it is always refreshed, so deploy stops
+// restoring a stale validation file that would make CS recompile every launch.
+// Returns the number of files moved. Returns 0 when cacheStagingDir is empty or
+// the source ShaderCache dir is missing.
 int captureShaderCache(const QString& gameDir, const QString& cacheStagingDir);
 
 } // namespace solero

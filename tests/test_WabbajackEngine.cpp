@@ -1,8 +1,11 @@
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QFile>
+#include <QDir>
 #include "wabbajack/WabbajackEngine.h"
 #include "core/AppConfig.h"
+
+#include <unistd.h>  // ::link
 
 using namespace solero;
 
@@ -306,6 +309,59 @@ private slots:
     void parseFailedArchives_empty() {
         QVERIFY(WabbajackEngine::parseFailedArchives(
             "no failures here, all good\n").isEmpty());
+    }
+
+    void removeRedundantLowercaseCCLinks_dedupsOnlyHardlinkDups() {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        QDir dir(tmp.path());
+
+        auto writeFile = [&](const QString& name, const QByteArray& content) {
+            QFile f(dir.filePath(name));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(content);
+            f.close();
+        };
+
+        // (a) proper-case + all-lowercase hard link of the same inode -> dup, remove.
+        writeFile("ccBGSSSE001-Fish.esm", "fish-master-data");
+        QVERIFY(::link(QFile::encodeName(dir.filePath("ccBGSSSE001-Fish.esm")).constData(),
+                       QFile::encodeName(dir.filePath("ccbgssse001-fish.esm")).constData())
+                == 0);
+
+        // (b) lowercase-only, no proper-case sibling (Rare Curios) -> keep.
+        writeFile("ccbgssse037-curios.esl", "curios-data");
+
+        // (c) two DIFFERENT-content case variants, not hard-linked -> keep both.
+        writeFile("ccX.esm", "content-X-uppercase");
+        writeFile("ccx.esm", "content-x-lowercase");
+
+        const QStringList removed =
+            WabbajackEngine::removeRedundantLowercaseCCLinks(tmp.path());
+
+        // (a): the lowercase dup is gone, the proper-case canonical kept.
+        QVERIFY2(removed.contains("ccbgssse001-fish.esm"), qPrintable(removed.join(',')));
+        QVERIFY(!dir.exists("ccbgssse001-fish.esm"));
+        QVERIFY(dir.exists("ccBGSSSE001-Fish.esm"));
+
+        // (b): lowercase-only with no sibling is untouched.
+        QVERIFY(!removed.contains("ccbgssse037-curios.esl"));
+        QVERIFY(dir.exists("ccbgssse037-curios.esl"));
+
+        // (c): non-hardlinked differently-cased pair - both kept, neither removed.
+        QVERIFY(!removed.contains("ccx.esm"));
+        QVERIFY(dir.exists("ccX.esm"));
+        QVERIFY(dir.exists("ccx.esm"));
+
+        // Only (a) was removed.
+        QCOMPARE(removed.size(), 1);
+    }
+
+    void removeRedundantLowercaseCCLinks_missingDir() {
+        // Non-existent / empty dir is a no-op, not a crash.
+        QCOMPARE(WabbajackEngine::removeRedundantLowercaseCCLinks(QString()).size(), 0);
+        QCOMPARE(WabbajackEngine::removeRedundantLowercaseCCLinks(
+                     "/no/such/path/zzz").size(), 0);
     }
 
     void findEngine_configuredPath() {

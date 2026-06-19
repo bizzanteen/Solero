@@ -71,6 +71,16 @@ public:
     // e.g. "Data_ccbgssse037-curios.bsa" or "ccbgssse037-curios.esl".
     static bool isCreationClub(const QString& name);
 
+    // Remove the redundant all-lowercase Creation Club hard-link duplicates created
+    // by ensureLowercaseCCLinks() from `dataDir`, but only when it is provably safe:
+    // a differently-cased sibling exists in the same dir and both paths share the
+    // same inode/device (a true hard-link duplicate, so no data is ever lost). A
+    // lowercase-only CC file with no proper-case sibling (e.g. Rare Curios'
+    // "ccbgssse037-curios.esl") is always KEPT. Static + dir-parameterized for
+    // testability; the instance method below resolves the game Data dir and calls it.
+    // Returns the names of the lowercase files actually removed.
+    static QStringList removeRedundantLowercaseCCLinks(const QString& dataDir);
+
     // Async: run `list-modlists -json -sort-by title`, emit modlistsReady/failed.
     void fetchModlists();
 
@@ -101,6 +111,13 @@ private:
     // links in the Skyrim Data dir so the lowercase names resolve. Idempotent and
     // non-fatal: never aborts the install.
     void ensureLowercaseCCLinks();
+
+    // Post-install counterpart to ensureLowercaseCCLinks(): once jackify-engine has
+    // finished, the install-time lowercase CC hard links are no longer needed and
+    // actively break Mutagen-based tools (PGPatcher sees two case-variants of the
+    // same master and fails). Resolves the Skyrim Data dir and delegates to the
+    // static helper above. Non-fatal.
+    void removeRedundantLowercaseCCLinks();
 
     QProcess* m_proc = nullptr;
     QString m_log;  // full captured output of the current install, for failure parsing

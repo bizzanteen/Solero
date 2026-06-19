@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <memory>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <cerrno>
 #include <cstring>
 
@@ -348,6 +349,63 @@ void WabbajackEngine::ensureLowercaseCCLinks() {
     }
 }
 
+QStringList WabbajackEngine::removeRedundantLowercaseCCLinks(const QString& dataDir) {
+    QStringList removed;
+    QDir data(dataDir);
+    if (dataDir.isEmpty() || !data.exists()) return removed;
+
+    // Index the dir's CC entries by lowercased name so we can find a differently-
+    // cased sibling for any all-lowercase candidate in one pass.
+    const QStringList entries =
+        data.entryList(QStringList{QStringLiteral("cc*"), QStringLiteral("CC*")},
+                       QDir::Files);
+
+    // Helper: do two paths refer to the same on-disk file (same inode + device)?
+    auto sameInode = [](const QString& a, const QString& b) -> bool {
+        struct stat sa, sb;
+        const QByteArray pa = QFile::encodeName(a);
+        const QByteArray pb = QFile::encodeName(b);
+        if (::stat(pa.constData(), &sa) != 0) return false;
+        if (::stat(pb.constData(), &sb) != 0) return false;
+        return sa.st_ino == sb.st_ino && sa.st_dev == sb.st_dev;
+    };
+
+    for (const QString& lower : entries) {
+        if (!lower.startsWith(QStringLiteral("cc"), Qt::CaseInsensitive)) continue;
+        if (lower != lower.toLower()) continue;  // only consider all-lowercase names
+
+        // Find the canonical proper-case sibling: a same-dir entry equal
+        // case-insensitively but not byte-identical.
+        QString sibling;
+        for (const QString& other : entries) {
+            if (other == lower) continue;
+            if (other.compare(lower, Qt::CaseInsensitive) == 0) {
+                sibling = other;
+                break;
+            }
+        }
+        if (sibling.isEmpty()) continue;  // lowercase-only (e.g. Rare Curios) -> keep
+
+        const QString lowerPath = data.filePath(lower);
+        const QString sibPath   = data.filePath(sibling);
+        if (!sameInode(lowerPath, sibPath)) continue;  // not a hard-link dup -> keep
+
+        if (QFile::remove(lowerPath))
+            removed << lower;
+    }
+    return removed;
+}
+
+void WabbajackEngine::removeRedundantLowercaseCCLinks() {
+    const QString gameDir = AppConfig::instance().gameDir();
+    if (gameDir.isEmpty()) return;
+    const QStringList removed =
+        removeRedundantLowercaseCCLinks(gameDir + QStringLiteral("/Data"));
+    for (const QString& name : removed)
+        emit logLine(QStringLiteral("Removed redundant lowercase CC link: %1")
+                         .arg(name));
+}
+
 static QProcessEnvironment engineEnv() {
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert("DOTNET_SYSTEM_GLOBALIZATION_INVARIANT", "1");
@@ -475,6 +533,11 @@ void WabbajackEngine::install(const QString& machineUrlOrFile, bool isLocalFile,
                 emit progress(op, QString(), pct);
             }
         }
+        // jackify-engine has exited, so the install-time lowercase CC hard links
+        // are no longer needed. Leaving them in Data breaks Mutagen-based tools
+        // (PGPatcher sees two case-variants of the same master). Clean them up on
+        // both success and failure paths. Non-fatal.
+        removeRedundantLowercaseCCLinks();
         bool ok = (status == QProcess::NormalExit && exitCode == 0);
         emit installFinished(ok, exitCode);
         if (!ok) emit installFailed(exitCode, parseFailedArchives(m_log));

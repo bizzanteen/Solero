@@ -14,9 +14,78 @@
 #include <QDir>
 #include <QIcon>
 #include <QRegularExpression>
+#include <QWebEngineUrlRequestInterceptor>
+#include <QWebEngineUrlRequestInfo>
+#include <QStringList>
 #include <functional>
 
 namespace solero {
+
+namespace {
+
+// nexusmods.com pins the Chromium renderer at ~67% CPU because the page runs
+// continuous Google ad auctions (GPT/googletag) plus trackers. Blocking those
+// network requests at the profile level stops the web view freezing/janking.
+// Match a request host against a static blocklist by exact equality OR a
+// proper subdomain suffix ("doubleclick.net" matches "stats.g.doubleclick.net"
+// but not "notdoubleclick.net").
+static bool isAdHost(const QString& host) {
+    static const QStringList kBlocklist = {
+        QStringLiteral("doubleclick.net"),
+        QStringLiteral("googlesyndication.com"),
+        QStringLiteral("googletagservices.com"),
+        QStringLiteral("googletagmanager.com"),
+        QStringLiteral("google-analytics.com"),
+        QStringLiteral("googleadservices.com"),
+        QStringLiteral("adservice.google.com"),
+        QStringLiteral("adsystem.com"),
+        QStringLiteral("amazon-adsystem.com"),
+        QStringLiteral("pubmatic.com"),
+        QStringLiteral("rubiconproject.com"),
+        QStringLiteral("casalemedia.com"),
+        QStringLiteral("criteo.com"),
+        QStringLiteral("criteo.net"),
+        QStringLiteral("adnxs.com"),
+        QStringLiteral("taboola.com"),
+        QStringLiteral("outbrain.com"),
+        QStringLiteral("scorecardresearch.com"),
+        QStringLiteral("moatads.com"),
+        QStringLiteral("adsrvr.org"),
+        QStringLiteral("3lift.com"),
+        QStringLiteral("sharethrough.com"),
+        QStringLiteral("openx.net"),
+        QStringLiteral("smartadserver.com"),
+        QStringLiteral("yieldmo.com"),
+        QStringLiteral("bidswitch.net"),
+        QStringLiteral("prebid.org"),
+        QStringLiteral("ad-delivery.net"),
+        QStringLiteral("confiant-integrations.net"),
+        QStringLiteral("playwire.com"),
+        QStringLiteral("intentiq.com"),
+        QStringLiteral("btloader.com"),
+        QStringLiteral("ramp.com"),
+    };
+    for (const QString& domain : kBlocklist) {
+        if (host == domain || host.endsWith(QChar('.') + domain))
+            return true;
+    }
+    return false;
+}
+
+// Installed on the shared profile so every tab inherits it: drops ad/analytics/
+// tracker requests before they hit the network. Nexus and its CDN/auth hosts
+// are never in the blocklist, so the site itself loads untouched.
+class AdBlockInterceptor : public QWebEngineUrlRequestInterceptor {
+public:
+    explicit AdBlockInterceptor(QObject* parent = nullptr)
+        : QWebEngineUrlRequestInterceptor(parent) {}
+    void interceptRequest(QWebEngineUrlRequestInfo& info) override {
+        if (isAdHost(info.requestUrl().host().toLower()))
+            info.block(true);
+    }
+};
+
+} // namespace
 
 // A page that intercepts nxm:// navigations (the "Mod Manager Download" buttons)
 // and forwards them via a callback instead of navigating to an unknown scheme.
@@ -114,6 +183,11 @@ NexusWebView::NexusWebView(QWidget* parent) : QWidget(parent) {
     QString ua = m_profile->httpUserAgent();
     ua.remove(QRegularExpression(QStringLiteral("\\s*QtWebEngine/\\S+")));
     m_profile->setHttpUserAgent(ua);
+
+    // Block ad/analytics/tracker requests so the renderer stops burning CPU on
+    // continuous Google ad auctions. Parented to the profile so its lifetime is
+    // tied to the profile's.
+    m_profile->setUrlRequestInterceptor(new AdBlockInterceptor(m_profile));
 
     // Tabs
     m_tabs = new QTabWidget(this);

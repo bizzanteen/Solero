@@ -353,6 +353,25 @@ add_test(NAME test_NxmHandler COMMAND test_NxmHandler)
 set_tests_properties(test_NxmHandler PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${_qt_plugins}")
 
+# NexusApi::modPageUrl is a pure URL builder, but the TU links the full NexusApi
+# chain (curl/QImage via ToolDownloader). Headless for QImage like test_NxmHandler.
+add_executable(test_NexusApi test_NexusApi.cpp
+  ../src/nexus/NexusApi.cpp
+  ../src/nexus/MirrorPick.cpp
+  ../src/tools/ToolDownloader.cpp
+  ../src/tools/ToolCatalog.cpp
+  ../src/install/ArchiveTool.cpp
+  ../src/core/AppConfig.cpp
+  ../src/core/StagingFolder.cpp
+  ../src/core/ModList.cpp ../src/core/PluginList.cpp
+  ../src/core/Profile.cpp ../src/core/ProfileManager.cpp
+  ../src/ai/AITransaction.cpp)
+target_include_directories(test_NexusApi PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_NexusApi PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Test)
+add_test(NAME test_NexusApi COMMAND test_NexusApi)
+set_tests_properties(test_NexusApi PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${_qt_plugins}")
+
 add_executable(test_IniFile test_IniFile.cpp ../src/bethini/IniFile.cpp)
 target_include_directories(test_IniFile PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_IniFile PRIVATE Qt6::Core Qt6::Test)

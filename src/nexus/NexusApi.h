@@ -16,6 +16,10 @@ public:
 
     static QString latestVersion(const QString& modId, const QString& game = kDefaultGame);
 
+    // The canonical Nexus web page for a mod, e.g.
+    // "https://www.nexusmods.com/skyrimspecialedition/mods/12345".
+    static QString modPageUrl(const QString& modId, const QString& game = kDefaultGame);
+
     struct EndorseResult { bool ok = false; QString message; };
     static EndorseResult endorse(const QString& modId, const QString& version, bool abstain = false,
                                  const QString& game = kDefaultGame);

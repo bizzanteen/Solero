@@ -15,6 +15,10 @@ namespace solero {
 
 static const QString kBase = "https://api.nexusmods.com/v1/games/";
 
+QString NexusApi::modPageUrl(const QString& modId, const QString& game) {
+    return "https://www.nexusmods.com/" + game + "/mods/" + modId;
+}
+
 // Runs `curl -s [args...]` with the apikey header. On curl failure sets *err and
 // returns empty. The body is not validated as JSON; callers parse it.
 static QByteArray curlRun(const QStringList& extraArgs, QString* err = nullptr) {

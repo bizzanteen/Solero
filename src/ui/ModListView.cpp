@@ -11,6 +11,8 @@
 #include <QMouseEvent>
 #include <QKeyEvent>
 #include <QDropEvent>
+#include <QDragMoveEvent>
+#include <QDragLeaveEvent>
 #include <QInputDialog>
 #include <QUuid>
 #include <QItemSelectionModel>
@@ -185,6 +187,21 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
         }
         emit modsSelected(ids);
         updateConflictHighlights();
+    });
+
+    // Spring-loaded hover-expand: when a drag lingers over a collapsed separator,
+    // expand it after a short delay so the user can drop a mod inside.
+    m_autoExpandTimer = new QTimer(this);
+    m_autoExpandTimer->setSingleShot(true);
+    m_autoExpandTimer->setInterval(650);
+    connect(m_autoExpandTimer, &QTimer::timeout, this, [this] {
+        if (m_autoExpandRow < 0) return;
+        // Only expand a still-collapsed separator (don't accidentally re-collapse
+        // one that's since opened, and don't act on a stale row).
+        const auto* entry = m_model->entryAt(m_autoExpandRow);
+        if (entry && entry->type == EntryType::Separator && entry->collapsed)
+            m_model->toggleCollapse(m_autoExpandRow);
+        m_autoExpandRow = -1;
     });
 }
 
@@ -858,7 +875,38 @@ void ModListView::selectModsByIds(const QStringList& ids) {
         sel->setCurrentIndex(firstIdx, QItemSelectionModel::NoUpdate);
 }
 
+void ModListView::dragMoveEvent(QDragMoveEvent* event) {
+    // Preserve the base class's drop-indicator / accept logic first.
+    QTreeView::dragMoveEvent(event);
+    const QModelIndex idx = indexAt(event->position().toPoint());
+    const ModEntry* entry = idx.isValid() ? m_model->entryAt(idx.row()) : nullptr;
+    const bool collapsedSep = entry && entry->type == EntryType::Separator
+                              && entry->collapsed;
+    if (collapsedSep) {
+        // (Re)arm the timer only when the hover target changes, so a steady hover
+        // doesn't keep restarting it.
+        if (idx.row() != m_autoExpandRow) {
+            m_autoExpandRow = idx.row();
+            m_autoExpandTimer->start();
+        }
+    } else if (m_autoExpandRow != -1) {
+        // Moved off the armed separator -> cancel the pending expand.
+        m_autoExpandTimer->stop();
+        m_autoExpandRow = -1;
+    }
+}
+
+void ModListView::dragLeaveEvent(QDragLeaveEvent* event) {
+    // The drag left the view (or was aborted) - don't fire a late expand.
+    m_autoExpandTimer->stop();
+    m_autoExpandRow = -1;
+    QTreeView::dragLeaveEvent(event);
+}
+
 void ModListView::dropEvent(QDropEvent* event) {
+    // A drop ends the drag; cancel any pending hover-expand.
+    m_autoExpandTimer->stop();
+    m_autoExpandRow = -1;
     // Capture the dragged mods' ids so we can re-select them after the model's
     // reorder (the reset/move clears the prior selection). Empty for non-mod
     // drags; selectModsByIds is then a no-op.

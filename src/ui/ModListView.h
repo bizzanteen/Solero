@@ -5,6 +5,10 @@
 #include "core/Profile.h"
 #include "deploy/ConflictIndex.h"
 
+class QTimer;
+class QDragMoveEvent;
+class QDragLeaveEvent;
+
 namespace solero {
 class ModListModel;
 
@@ -81,9 +85,16 @@ protected:
     // new rows afterwards so a multi-mod drag keeps its selection (the base impl
     // clears it on the model reset). Current index lands on the first moved mod.
     void dropEvent(QDropEvent* event) override;
+    // Hover-to-expand: dragging onto a collapsed separator for ~650 ms auto-expands
+    // it so the user can drop inside (file-manager-style spring-loaded folder).
+    void dragMoveEvent(QDragMoveEvent* event) override;
+    void dragLeaveEvent(QDragLeaveEvent* event) override;
 
 private:
     ModListModel* m_model;
+    // Spring-loaded hover-expand of a collapsed separator during a drag.
+    QTimer* m_autoExpandTimer = nullptr;
+    int m_autoExpandRow = -1; // visible row currently armed for auto-expand, or -1
     QString m_filter;
     StateFilter m_stateFilter = StateFilter::All;
     bool m_didAutoSize = false;

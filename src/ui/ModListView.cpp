@@ -529,6 +529,8 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
                            [this, id = entry->id]{ emit updateRequested(id); });
             menu.addAction("Endorse on Nexus",
                            [this, id = entry->id]{ emit endorseRequested(id); });
+            menu.addAction("View Nexus Page",
+                           [this, id = entry->id]{ emit viewNexusPageRequested(id); });
         }
         // Always offered: if the mod's Nexus file id is unknown, the handler
         // identifies it by MD5 first, then downloads.

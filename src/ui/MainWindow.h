@@ -155,6 +155,7 @@ private:
     // falling back to the id). Uses the active profile's mod list.
     QString stagingRootForId(const QString& modId) const;
     void onEndorseMod(const QString& modId);
+    void onViewNexusPage(const QString& modId);
     void onUpdateMod(const QString& modId);
     void onCheckUpdates();
     // Walk the active profile's enabled mods, locate each source archive, detect

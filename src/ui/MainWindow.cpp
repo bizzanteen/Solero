@@ -708,6 +708,8 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onRedownloadMod);
     connect(m_modListView, &solero::ModListView::endorseRequested,
             this, &MainWindow::onEndorseMod);
+    connect(m_modListView, &solero::ModListView::viewNexusPageRequested,
+            this, &MainWindow::onViewNexusPage);
     connect(m_modListView, &solero::ModListView::updateRequested,
             this, &MainWindow::onUpdateMod);
     connect(m_modListView, &solero::ModListView::modsChanged,
@@ -2431,6 +2433,17 @@ void MainWindow::onEndorseMod(const QString& modId) {
     else
         QMessageBox::warning(this, "Endorse on Nexus",
             res.message.isEmpty() ? QString("Could not endorse this mod.") : res.message);
+}
+
+void MainWindow::onViewNexusPage(const QString& modId) {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return;
+    solero::ModEntry* mod = profile->modList().findById(modId);
+    if (!mod || mod->nexusModId.isEmpty()) return; // not a Nexus mod: nothing to open
+
+    const QString url = solero::NexusApi::modPageUrl(mod->nexusModId);
+    if (m_browseAction) m_browseAction->setChecked(true);
+    if (m_nexusWeb) m_nexusWeb->openUrl(QUrl(url));
 }
 
 void MainWindow::onUpdateMod(const QString& modId) {

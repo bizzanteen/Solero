@@ -2701,8 +2701,13 @@ void MainWindow::checkRequirementsAfterInstall(solero::Profile* profile,
             if (e.nexusModId == r.modId) { have = true; break; }
         }
         if (have) continue;
-        // SKSE (30379) also lives at the game root outside the mod list.
-        if (r.modId == "30379" && skseInstalledFor(profile)) continue;
+        // SKSE: Solero always installs the Script Extender per profile (ensureSkse),
+        // so never warn about it as a missing requirement - neither its Nexus page
+        // (30379) nor the off-site skse.silverlock.org entry. Matched by modId/URL
+        // only (not name) so "Address Library for SKSE Plugins" etc. still surface.
+        if (r.modId == "30379"
+            || r.url.contains(QStringLiteral("silverlock.org"), Qt::CaseInsensitive))
+            continue;
         missing.append({r.modId, r.modName, r.notes, r.url, r.external});
     }
     if (missing.isEmpty()) return;

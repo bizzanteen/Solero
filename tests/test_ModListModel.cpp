@@ -405,6 +405,26 @@ private slots:
         QCOMPARE(prof.modList().at(1).parentId, QString("P0"));
     }
 
+    void flags_itemRowsLackDropEnabled_rootHasIt() {
+        // Feature 4: items must not carry ItemIsDropEnabled (so Qt only shows the
+        // between-rows gap indicator, never an ambiguous OnItem rectangle), but the
+        // invalid root index must keep it so top-level gap drops still work.
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        addMods(prof, 3);
+        ModListModel model;
+        model.setProfile(&prof);
+
+        // A valid item index must lack ItemIsDropEnabled but keep ItemIsDragEnabled.
+        Qt::ItemFlags itemFlags = model.flags(model.index(0, ModListModel::ColName));
+        QVERIFY(!(itemFlags & Qt::ItemIsDropEnabled));
+        QVERIFY(itemFlags & Qt::ItemIsDragEnabled);
+
+        // The invalid root index must be drop-enabled (top-level gap drops).
+        Qt::ItemFlags rootFlags = model.flags(QModelIndex());
+        QVERIFY(rootFlags & Qt::ItemIsDropEnabled);
+    }
+
     void moveRows_endMappingAppends() {
         // Direct moveRows: dst at the Overwrite visible row maps to end-of-list.
         QTemporaryDir tmp;

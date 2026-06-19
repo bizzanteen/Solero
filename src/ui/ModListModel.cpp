@@ -566,8 +566,13 @@ QVariant ModListModel::headerData(int section, Qt::Orientation, int role) const 
 }
 
 Qt::ItemFlags ModListModel::flags(const QModelIndex& idx) const {
+    // The invalid root index stays drop-enabled so top-level gap drops work; item
+    // rows deliberately OMIT ItemIsDropEnabled so Qt only shows the between-rows gap
+    // indicator (drop strictly above/below), never an ambiguous OnItem rectangle.
+    if (!idx.isValid())
+        return Qt::ItemIsDropEnabled;
     Qt::ItemFlags f = Qt::ItemIsSelectable | Qt::ItemIsEnabled |
-                      Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled;
+                      Qt::ItemIsDragEnabled;
     int raw = rawIndexForRow(idx.row());
     if (raw >= 0 && m_profile) {
         const auto& entry = m_profile->modList().at(raw);

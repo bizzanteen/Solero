@@ -560,6 +560,31 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
                 menu.addAction("Ungroup", [this, id = entry->id]{ ungroupMod(id); });
             }
         }
+        // Send to group: move the selected mod(s) to the bottom of a chosen
+        // separator's section. The submenu lists every separator (indented by
+        // nesting level); empty/disabled when the profile has no separators.
+        {
+            const QStringList sels = selectedModIds();
+            if (!sels.isEmpty() && m_model->profile()) {
+                const auto& list = m_model->profile()->modList();
+                QMenu* sendMenu = menu.addMenu("Send to group");
+                bool any = false;
+                for (int i = 0; i < list.count(); ++i) {
+                    const auto& e = list.at(i);
+                    if (e.type != EntryType::Separator) continue;
+                    any = true;
+                    const QString label = QString(e.separatorLevel * 4, QChar(' ')) + e.name;
+                    const QString sepId = e.id;
+                    sendMenu->addAction(label, [this, sels, sepId] {
+                        m_model->moveModsToSeparatorEnd(sels, sepId);
+                        applyFilter();
+                        selectModsByIds(sels);
+                        emit modsChanged();
+                    });
+                }
+                sendMenu->setEnabled(any);
+            }
+        }
         menu.addSeparator();
         menu.addAction("Enable selected",  [this]{ setSelectedModsEnabled(true); });
         menu.addAction("Disable selected", [this]{ setSelectedModsEnabled(false); });

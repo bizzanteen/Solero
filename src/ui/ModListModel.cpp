@@ -913,6 +913,59 @@ bool ModListModel::moveSelection(const QList<int>& srcVisibleRows, int dstVisibl
     return ok;
 }
 
+bool ModListModel::moveModsToSeparatorEnd(const QStringList& modIds, const QString& sepId) {
+    if (!m_profile || modIds.isEmpty() || sepId.isEmpty()) return false;
+    auto& list = m_profile->modList();
+
+    // Locate the target separator and the END of its section: the next separator at
+    // the same or shallower level (nested sub-categories stay inside), or the end of
+    // the list. That raw index is the insertion point for "bottom of this section".
+    int sepRaw = -1;
+    for (int i = 0; i < list.count(); ++i)
+        if (list.at(i).type == EntryType::Separator && list.at(i).id == sepId) { sepRaw = i; break; }
+    if (sepRaw < 0) return false;
+    const int level = list.at(sepRaw).separatorLevel;
+    int sectionEnd = sepRaw + 1;
+    for (; sectionEnd < list.count(); ++sectionEnd) {
+        const auto& e = list.at(sectionEnd);
+        if (e.type == EntryType::Separator && e.separatorLevel <= level) break;
+    }
+
+    // Expand the selected mods into the raw UNITS they carry: a group parent brings
+    // its contiguous child run; plain mods move alone. (Children selected on their
+    // own are ignored - they move with their parent.)
+    QSet<int> rawSet;
+    for (const QString& id : modIds) {
+        int raw = -1;
+        for (int i = 0; i < list.count(); ++i) if (list.at(i).id == id) { raw = i; break; }
+        if (raw < 0 || list.at(raw).type != EntryType::Mod || isGroupChild(raw)) continue;
+        rawSet.insert(raw);
+        if (isGroupParent(raw))
+            for (int k = 1; k <= groupChildCount(raw); ++k) rawSet.insert(raw + k);
+    }
+    if (rawSet.isEmpty()) return false;
+    QList<int> srcRaws(rawSet.begin(), rawSet.end());
+    std::sort(srcRaws.begin(), srcRaws.end());
+
+    // Reorder, persist, refresh - mirrors moveSelection's undo/reset/emit handling.
+    const QStringList before = list.orderIds();
+    beginResetModel();
+    bool ok = list.reorder(srcRaws, sectionEnd);
+    if (ok) {
+        m_undoStack.append(before);
+        if (m_undoStack.size() > kUndoCap) m_undoStack.removeFirst();
+        m_redoStack.clear();
+        m_profile->save();
+    }
+    rebuildVisibleRows();
+    endResetModel();
+    if (ok) {
+        emit modsChanged();
+        emit undoRedoStateChanged(canUndo(), canRedo());
+    }
+    return ok;
+}
+
 // --- Reorder undo/redo -------------------------------------------------------
 
 void ModListModel::pushUndoSnapshot() {

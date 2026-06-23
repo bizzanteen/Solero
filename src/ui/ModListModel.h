@@ -64,6 +64,13 @@ public:
     // Count of the contiguous run of child Mods after a parent.
     int groupChildCount(int parentRaw) const;
     void rebuild();  // call after any structural change
+
+    // Move the given mods to the BOTTOM of separator `sepId`'s section (just before
+    // the next separator at the same/shallower level, or the end of the list). Group
+    // parents carry their children. Persists + records undo + emits modsChanged, like
+    // a manual reorder. Returns true iff the order actually changed.
+    bool moveModsToSeparatorEnd(const QStringList& modIds, const QString& sepId);
+
     // While searching, reveal mods inside collapsed separators / collapsed group
     // parents so a name/state filter can match them. Toggling this does a model
     // reset and rebuilds the visible rows; it never mutates persisted collapse

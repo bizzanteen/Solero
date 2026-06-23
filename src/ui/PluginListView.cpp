@@ -82,16 +82,14 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
             this, &PluginListView::loadOrderChanged);
     connect(m_model, &PluginListModel::pluginEnabledChanged,
             this, &PluginListView::pluginEnabledChanged);
-    // Resizing another column lets the Plugin column absorb the slack (no gap).
-    connect(horizontalHeader(), &QHeaderView::sectionResized, this, [this](int idx, int, int) {
-        if (idx != PluginListModel::ColName) fillNameColumn();
-    });
 }
 
 void PluginListView::applyHeaderLayout() {
-    // All columns Interactive (no middle Stretch) so manual resizes behave
-    // predictably; the Plugin column is auto-fitted on first show instead.
+    // The Plugin (Name) column STRETCHES to fill whatever the other Interactive
+    // columns leave, so the columns always span the full pane width exactly - no
+    // gap, no overflow - however the user resizes the others or the pane.
     horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    horizontalHeader()->setSectionResizeMode(PluginListModel::ColName, QHeaderView::Stretch);
     horizontalHeader()->resizeSection(PluginListModel::ColEnabled, 28);
     horizontalHeader()->resizeSection(PluginListModel::ColPriority, 40);
     horizontalHeader()->resizeSection(PluginListModel::ColFlags, 50);
@@ -102,18 +100,10 @@ void PluginListView::autoSizeColumns() {
     fillNameColumn();
 }
 
-// Resize the Plugin column so the columns always span the full viewport.
-void PluginListView::fillNameColumn() {
-    if (!model()) return;
-    const int vw = viewport()->width();
-    if (vw <= 0) return;
-    int other = 0;
-    for (int c = 0; c < model()->columnCount(); ++c)
-        if (c != PluginListModel::ColName) other += horizontalHeader()->sectionSize(c);
-    const int target = qMax(160, vw - other);
-    if (target != horizontalHeader()->sectionSize(PluginListModel::ColName))
-        horizontalHeader()->resizeSection(PluginListModel::ColName, target);
-}
+// The Plugin column is now a Stretch section (see applyHeaderLayout), so Qt keeps
+// the columns spanning the full viewport automatically. Kept as a no-op so existing
+// call sites stay valid; manually resizing the stretch section would only fight it.
+void PluginListView::fillNameColumn() {}
 
 void PluginListView::resizeEvent(QResizeEvent* event) {
     QTableView::resizeEvent(event);

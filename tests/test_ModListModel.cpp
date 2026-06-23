@@ -437,6 +437,45 @@ private slots:
         QCOMPARE(order(prof), QString("m1,m2,m0"));
     }
 
+    void pluginOriginHighlight_distinctColorsAndPrecedence() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        addMods(prof, 3); // m0,m1,m2
+        ModListModel model;
+        model.setProfile(&prof);
+
+        QHash<QString,int> origin;
+        origin.insert("m0", 1); // winner
+        origin.insert("m1", 2); // other provider
+        model.setPluginOriginHighlights(origin);
+
+        const QColor c0 = model.data(model.index(0, ModListModel::ColName),
+                                     Qt::BackgroundRole).value<QColor>();
+        const QColor c1 = model.data(model.index(1, ModListModel::ColName),
+                                     Qt::BackgroundRole).value<QColor>();
+        const QVariant c2 = model.data(model.index(2, ModListModel::ColName),
+                                       Qt::BackgroundRole);
+        QVERIFY(c0.isValid());
+        QVERIFY(c1.isValid());
+        QVERIFY(c0 != c1);             // winner vs provider are visually distinct
+        QVERIFY(!c2.isValid());        // uninvolved mod has no origin highlight
+
+        // Origin highlight takes precedence over a conflict highlight on the same row.
+        QHash<QString,int> conf;
+        conf.insert("m0", 2);          // would normally be the red "loses" color
+        model.setConflictHighlights(conf);
+        const QColor c0withConf = model.data(model.index(0, ModListModel::ColName),
+                                             Qt::BackgroundRole).value<QColor>();
+        QCOMPARE(c0withConf, c0);      // still the winner color, not red
+
+        // Clearing the origin highlight lets the conflict color show through.
+        model.setPluginOriginHighlights({});
+        const QColor c0cleared = model.data(model.index(0, ModListModel::ColName),
+                                            Qt::BackgroundRole).value<QColor>();
+        QVERIFY(c0cleared.isValid());
+        QVERIFY(c0cleared != c0);      // now the red conflict color
+    }
+
     void expandSeparatorDuringDrag_incrementalInsertNotReset() {
         QTemporaryDir tmp;
         Profile prof("P", tmp.path());

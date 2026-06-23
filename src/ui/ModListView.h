@@ -43,6 +43,8 @@ public:
     // Provide the per-file conflict index so selecting a mod highlights its
     // conflicting mods (green = overwrites it, red = overwritten by it), MO2-style.
     void setConflictIndex(const ConflictIndex& index);
+    // Forward a plugin-origin highlight (from the Plugins tab) to the model.
+    void setPluginOriginHighlights(const QHash<QString,int>& roles);
     // Repaint the Flags column (e.g. after a mod note was edited).
     void refreshFlags();
 

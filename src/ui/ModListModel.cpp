@@ -69,6 +69,13 @@ void ModListModel::setConflictHighlights(const QHash<QString,int>& roles) {
         emit dataChanged(index(0,0), index(rowCount()-1, ColCount-1), {Qt::BackgroundRole});
 }
 
+void ModListModel::setPluginOriginHighlights(const QHash<QString,int>& roles) {
+    if (m_pluginOriginHi == roles) return;
+    m_pluginOriginHi = roles;
+    if (rowCount() > 0)
+        emit dataChanged(index(0,0), index(rowCount()-1, ColCount-1), {Qt::BackgroundRole});
+}
+
 void ModListModel::setConflictIndex(const ConflictIndex& ci) {
     m_conflicts = ci;
     m_overwritingMods.clear();
@@ -481,6 +488,12 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     // MO2-style conflict highlight (when a mod is selected): green = this mod
     // overwrites the selected one; red = it is overwritten by the selected one.
     if (role == Qt::BackgroundRole && !isSep && entry.type == EntryType::Mod) {
+        // Plugin-origin highlight takes precedence over the selection conflict
+        // highlight (they're mutually exclusive in practice; last action wins).
+        auto oi = m_pluginOriginHi.constFind(entry.id);
+        if (oi != m_pluginOriginHi.constEnd())
+            return oi.value() == 1 ? QColor(0x3d, 0x6d, 0xb5)   // winner: bright blue
+                                   : QColor(0x2b, 0x3f, 0x5c);  // other provider: dim blue
         auto ci = m_conflictHi.constFind(entry.id);
         if (ci != m_conflictHi.constEnd())
             return ci.value() == 1 ? QColor(0x2e, 0x5d, 0x34)   // green: overwrites selected (wins over it)

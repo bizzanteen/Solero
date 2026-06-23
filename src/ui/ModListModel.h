@@ -76,6 +76,10 @@ public:
     // MO2-style conflict highlight for the selected mod: id -> 1 (green: this mod
     // overwrites the selection) / 2 (red: overwritten by the selection). Empty = clear.
     void setConflictHighlights(const QHash<QString,int>& roles);
+    // Plugin-origin highlight (when a plugin is clicked in the Plugins tab): id ->
+    // 1 (winner, emphasized) / 2 (other provider). Takes precedence over the
+    // selection conflict highlight; the two are mutually exclusive in practice.
+    void setPluginOriginHighlights(const QHash<QString,int>& roles);
     // Full per-file conflict index, used to paint always-ON winner/loser flag icons
     // in the Flags column (independent of the transient on-select highlight above).
     void setConflictIndex(const ConflictIndex& index);
@@ -122,6 +126,7 @@ private:
     QHash<QString,QStringList> m_depWarnings;
     QHash<QString, QPair<QString,QString>> m_updates; // modId -> {installed, latest}
     QHash<QString,int> m_conflictHi; // modId -> 1 green / 2 red (selection conflicts)
+    QHash<QString,int> m_pluginOriginHi; // modId -> 1 winner / 2 other provider
     ConflictIndex m_conflicts;       // full index for the always-on Flags icons
     QSet<QString> m_overwritingMods; // mods that win ≥1 file conflict (overwrite others)
     QSet<QString> m_overwrittenMods; // mods that lose ≥1 file conflict (overwritten)

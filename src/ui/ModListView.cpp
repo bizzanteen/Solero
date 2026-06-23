@@ -318,6 +318,10 @@ void ModListView::refreshFlags() {
     m_model->refreshFlags();
 }
 
+void ModListView::setPluginOriginHighlights(const QHash<QString,int>& roles) {
+    m_model->setPluginOriginHighlights(roles);
+}
+
 void ModListView::updateConflictHighlights() {
     // Highlight relative to a single selected mod (MO2 behaviour). Anything else
     // (none / multiple / a separator / Overwrite) clears the highlight.

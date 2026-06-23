@@ -15,6 +15,9 @@ public:
     // Select + scroll to the plugin row matching `filename` (case-insensitive),
     // mapping through the sort proxy when active. No-op if not found.
     void selectPlugin(const QString& filename);
+    // Filter the visible plugins by name (case-insensitive). Non-empty routes the
+    // view through the proxy and suspends drag-reorder; empty restores both.
+    void setFilter(const QString& text);
 signals:
     // Forwarded from the model: the user manually reordered the load order.
     void loadOrderChanged();

@@ -128,14 +128,47 @@ void PluginListView::showEvent(QShowEvent* event) {
     }
 }
 
-void PluginListView::onSortChanged(int col, Qt::SortOrder order) {
-    if (col == PluginListModel::ColPriority) {
+void PluginListView::setFilter(const QString& text) {
+    const QString t = text.trimmed();
+    m_filterActive = !t.isEmpty();
+    if (m_filterActive) {
+        if (model() != m_proxy) {
+            m_proxy->setSourceModel(m_model);
+            setModel(m_proxy);
+            applyHeaderLayout();
+        }
+        m_proxy->setFilterKeyColumn(PluginListModel::ColName);
+        m_proxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
+        m_proxy->setFilterFixedString(t);
+        // Reordering a filtered subset is meaningless - suspend drag-and-drop.
+        setDragDropMode(QAbstractItemView::NoDragDrop);
+        setDragEnabled(false);
+        setAcceptDrops(false);
+    } else {
+        // Restore the priority-sorted source model + manual drag-reorder.
+        m_proxy->setFilterFixedString(QString());
         if (model() != m_model) { setModel(m_model); applyHeaderLayout(); }
         setDragDropMode(QAbstractItemView::InternalMove);
-        setDragEnabled(true); setAcceptDrops(true);
+        setDragEnabled(true);
+        setAcceptDrops(true);
         setDropIndicatorShown(true);
         setDragDropOverwriteMode(false);
         setDefaultDropAction(Qt::MoveAction);
+        horizontalHeader()->setSortIndicator(PluginListModel::ColPriority, Qt::AscendingOrder);
+    }
+    fillNameColumn();
+}
+
+void PluginListView::onSortChanged(int col, Qt::SortOrder order) {
+    if (col == PluginListModel::ColPriority) {
+        if (!m_filterActive) {
+            if (model() != m_model) { setModel(m_model); applyHeaderLayout(); }
+            setDragDropMode(QAbstractItemView::InternalMove);
+            setDragEnabled(true); setAcceptDrops(true);
+            setDropIndicatorShown(true);
+            setDragDropOverwriteMode(false);
+            setDefaultDropAction(Qt::MoveAction);
+        }
     } else {
         if (model() != m_proxy) {
             m_proxy->setSourceModel(m_model);

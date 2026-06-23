@@ -61,6 +61,24 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     sortRow->addWidget(m_sortBtn);
     pluginsLayout->addLayout(sortRow);
 
+    // Plugin search (mirrors the Data tab): debounced, filters by name.
+    auto* searchRow = new QHBoxLayout();
+    searchRow->setContentsMargins(4, 0, 4, 4);
+    m_pluginSearch = new QLineEdit(pluginsContainer);
+    m_pluginSearch->setPlaceholderText(QStringLiteral("Search plugins…"));
+    m_pluginSearch->setClearButtonEnabled(true);
+    searchRow->addWidget(m_pluginSearch);
+    pluginsLayout->addLayout(searchRow);
+
+    m_pluginSearchDebounce = new QTimer(this);
+    m_pluginSearchDebounce->setSingleShot(true);
+    m_pluginSearchDebounce->setInterval(200);
+    connect(m_pluginSearchDebounce, &QTimer::timeout, this, [this] {
+        m_pluginsTab->setFilter(m_pluginSearch->text());
+    });
+    connect(m_pluginSearch, &QLineEdit::textChanged, this,
+            [this](const QString&) { m_pluginSearchDebounce->start(); });
+
     pluginsLayout->addWidget(m_pluginsTab);
 
     addTab(pluginsContainer, "Plugins");

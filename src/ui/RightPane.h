@@ -96,6 +96,8 @@ private:
     QLabel*         m_pluginNotice = nullptr;
     QPushButton*    m_sortBtn = nullptr;
     QPushButton*    m_lockBtn = nullptr;
+    QLineEdit*      m_pluginSearch = nullptr;
+    QTimer*         m_pluginSearchDebounce = nullptr;
     DataTab*        m_dataTab;
     ConflictsTab*   m_conflictsTab;
     DownloadsTab*   m_downloadsTab;

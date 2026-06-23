@@ -80,9 +80,9 @@ public slots:
 private slots:
     void onPluginClicked(const QString& filename);
     void onPluginActivated(const QString& filename);
-    void ensurePluginOriginIndex();
 
 private:
+    void ensurePluginOriginIndex();
     // True if the mod's staging root contains at least one deployable LOOSE file
     // (not a plugin, not per-mod metadata) - i.e. the Data tab would show real
     // content for it. Used to decide whether to auto-switch a single-mod

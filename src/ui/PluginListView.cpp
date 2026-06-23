@@ -289,6 +289,7 @@ QString PluginListView::pluginFilenameAt(const QModelIndex& viewIdx) const {
 void PluginListView::selectionChanged(const QItemSelection& selected,
                                       const QItemSelection& deselected) {
     QTableView::selectionChanged(selected, deselected);
+    if (!selectionModel() || !selectionModel()->hasSelection()) return;
     const QString fn = pluginFilenameAt(QModelIndex());
     if (!fn.isEmpty()) emit pluginClicked(fn);
 }

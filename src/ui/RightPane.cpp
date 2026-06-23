@@ -158,6 +158,12 @@ void RightPane::setProfile(Profile* profile, bool reconcilePlugins) {
 }
 
 void RightPane::refreshPlugins(Profile* profile) {
+    // The origin index depends on mod order + enabled state, both of which can
+    // change via a reorder / enable-disable that lands here - invalidate it so the
+    // next plugin click rebuilds against the current order. (Only the flag + the
+    // derived index; the per-mod filename cache is order/enabled-independent.)
+    m_originIndexBuilt = false;
+    m_pluginOriginCache.clear();
     m_pluginsTab->reconcileWith(profile, AppConfig::instance().stagingDir());
 }
 

@@ -108,6 +108,7 @@ public:
 protected:
     void initStyleOption(QStyleOptionViewItem* opt, const QModelIndex& idx) const override {
         QStyledItemDelegate::initStyleOption(opt, idx);
+        opt->decorationAlignment = Qt::AlignCenter; // center the flag-icon strip
         if (!opt->icon.isNull()) {
             // actualSize keeps the strip at its drawn height (kFlagIconPx) and
             // returns its true width, so the base delegate draws it un-squished.

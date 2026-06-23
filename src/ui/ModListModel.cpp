@@ -332,7 +332,12 @@ int ModListModel::rowCount(const QModelIndex& parent) const {
 QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     if (!m_profile || !idx.isValid()) return {};
 
-    if (role == Qt::TextAlignmentRole && idx.column() == ColPriority)
+    // Center every data column except Name (left-aligned). ColEnabled is a checkbox
+    // and separators render their label in the spanned ColEnabled cell, so only the
+    // text/flag columns are centered here.
+    if (role == Qt::TextAlignmentRole
+        && (idx.column() == ColPriority || idx.column() == ColVersion
+            || idx.column() == ColFlags))
         return QVariant(Qt::AlignCenter);
 
     int raw = rawIndexForRow(idx.row());

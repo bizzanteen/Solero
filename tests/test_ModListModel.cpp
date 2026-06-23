@@ -2,6 +2,7 @@
 #include <QTemporaryDir>
 #include <QMimeData>
 #include <QByteArray>
+#include <QSignalSpy>
 #include "ui/ModListModel.h"
 #include "core/Profile.h"
 #include "deploy/ConflictIndex.h"
@@ -434,6 +435,49 @@ private slots:
         model.setProfile(&prof);
         QVERIFY(model.moveRows({}, 0, 1, {}, 3)); // move m0 to the end slot
         QCOMPARE(order(prof), QString("m1,m2,m0"));
+    }
+
+    void expandSeparatorDuringDrag_incrementalInsertNotReset() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        // [sepA(L0, collapsed), m0, m1, sepB(L0), m2]. Collapsed -> m0,m1 hidden.
+        ModEntry sepA; sepA.type = EntryType::Separator; sepA.id = "sepA";
+        sepA.name = "A"; sepA.separatorLevel = 0; sepA.collapsed = true;
+        ModEntry m0; m0.type = EntryType::Mod; m0.id = "m0"; m0.name = "Mod0"; m0.enabled = true;
+        ModEntry m1; m1.type = EntryType::Mod; m1.id = "m1"; m1.name = "Mod1"; m1.enabled = true;
+        ModEntry sepB; sepB.type = EntryType::Separator; sepB.id = "sepB";
+        sepB.name = "B"; sepB.separatorLevel = 0;
+        ModEntry m2; m2.type = EntryType::Mod; m2.id = "m2"; m2.name = "Mod2"; m2.enabled = true;
+        prof.modList().append(sepA);
+        prof.modList().append(m0);
+        prof.modList().append(m1);
+        prof.modList().append(sepB);
+        prof.modList().append(m2);
+        ModListModel model;
+        model.setProfile(&prof);
+
+        // Collapsed: sepA, sepB, m2, Overwrite = 4 visible rows.
+        QCOMPARE(model.rowCount(), 4);
+
+        QSignalSpy inserted(&model, &QAbstractItemModel::rowsInserted);
+        QSignalSpy wasReset(&model, &QAbstractItemModel::modelReset);
+
+        model.expandSeparatorDuringDrag(0); // sepA at visible row 0
+
+        // Expanded: sepA, m0, m1, sepB, m2, Overwrite = 6.
+        QCOMPARE(model.rowCount(), 6);
+        // Incremental, not a reset (the whole point: keeps the drag alive).
+        QCOMPARE(inserted.count(), 1);
+        QCOMPARE(wasReset.count(), 0);
+        const QList<QVariant> args = inserted.takeFirst();
+        QCOMPARE(args.at(1).toInt(), 1); // first inserted visible row
+        QCOMPARE(args.at(2).toInt(), 2); // last inserted visible row
+        // Collapse flag persisted as expanded.
+        QVERIFY(!prof.modList().findById("sepA")->collapsed);
+
+        // Already-expanded separator -> no-op (no extra inserts).
+        model.expandSeparatorDuringDrag(0);
+        QCOMPARE(model.rowCount(), 6);
     }
 
 };

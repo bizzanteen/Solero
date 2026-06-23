@@ -233,6 +233,39 @@ void ModListModel::toggleCollapse(int visibleRow) {
     rebuild();
 }
 
+void ModListModel::expandSeparatorDuringDrag(int visibleRow) {
+    int raw = rawIndexForRow(visibleRow);
+    if (raw < 0 || !m_profile) return;
+    const ModEntry* entry = &m_profile->modList().at(raw);
+    if (entry->type != EntryType::Separator || !entry->collapsed) return;
+
+    // Flip + persist the collapse flag in the data layer.
+    ModEntry updated = *entry;
+    updated.collapsed = false;
+    m_profile->modList().update(entry->id, updated);
+    m_profile->save();
+
+    // Compute the post-expand visible rows by a throwaway rebuild, then RESTORE the
+    // pre-expand view so rowCount() still reports the old count for beginInsertRows.
+    const QList<int> oldRows = m_visibleRows;
+    const QHash<int,int> oldPrio = m_priorityByRaw;
+    rebuildVisibleRows();                 // m_visibleRows now reflects the expansion
+    const QList<int> newRows = m_visibleRows;
+    m_visibleRows = oldRows;
+    m_priorityByRaw = oldPrio;
+
+    const int added = newRows.size() - oldRows.size();
+    // Expect a single contiguous block inserted immediately after `visibleRow`.
+    const bool contiguous = added > 0
+        && newRows.mid(0, visibleRow + 1) == oldRows.mid(0, visibleRow + 1)
+        && newRows.mid(visibleRow + 1 + added) == oldRows.mid(visibleRow + 1);
+    if (!contiguous) { rebuild(); return; } // rare (nested collapsed sub-separators)
+
+    beginInsertRows(QModelIndex(), visibleRow + 1, visibleRow + added);
+    rebuildVisibleRows();                 // actually apply the expansion
+    endInsertRows();
+}
+
 void ModListModel::toggleModCollapse(int visibleRow) {
     int raw = rawIndexForRow(visibleRow);
     if (raw < 0 || !m_profile) return;

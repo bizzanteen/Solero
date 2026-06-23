@@ -47,6 +47,11 @@ public:
     int rowForModId(const QString& id) const;
     const ModEntry* entryAt(int visibleRow) const;
     void toggleCollapse(int visibleRow);
+    // Expand a collapsed separator during an in-flight drag without a model reset
+    // (a reset tears down the view's drag state and the drop is lost). Reveals the
+    // section's rows via beginInsertRows; no-op unless `visibleRow` is a collapsed
+    // separator. Falls back to rebuild() if the revealed rows aren't contiguous.
+    void expandSeparatorDuringDrag(int visibleRow);
     // Toggle the collapsed state of a group-PARENT mod (mirrors toggleCollapse,
     // which is for separators). No-op if the entry isn't a group parent.
     void toggleModCollapse(int visibleRow);

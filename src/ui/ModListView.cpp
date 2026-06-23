@@ -200,7 +200,7 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
         // one that's since opened, and don't act on a stale row).
         const auto* entry = m_model->entryAt(m_autoExpandRow);
         if (entry && entry->type == EntryType::Separator && entry->collapsed)
-            m_model->toggleCollapse(m_autoExpandRow);
+            m_model->expandSeparatorDuringDrag(m_autoExpandRow);
         m_autoExpandRow = -1;
     });
 }

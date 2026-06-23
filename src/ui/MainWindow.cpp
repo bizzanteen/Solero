@@ -186,6 +186,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             }
         }
         m_modListView->setUpdateInfo(scan.updates);
+        saveUpdateFlags(scan.updates); // persist so the flags show at next launch
         if (m_checkUpdatesAction) m_checkUpdatesAction->setEnabled(true);
         solero::AppConfig::instance().setLastUpdateCheckEpoch(
             QDateTime::currentSecsSinceEpoch());
@@ -904,6 +905,9 @@ void MainWindow::switchProfile(const QString& name) {
     } else {
         m_lastConflicts.clear();
     }
+    // Show the last-known "update available" flags immediately (setProfile cleared
+    // them); the auto-check at the end of this switch refreshes them.
+    m_modListView->setUpdateInfo(loadUpdateFlags());
     m_lastDeployWarning.clear(); // stale once we switch profiles
     setWindowTitle(QString("Solero - %1").arg(name));
 
@@ -2869,12 +2873,14 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
     auto future = QtConcurrent::run([items, doBackfill]() -> UpdateScan {
         UpdateScan scan;
         int backfilled = 0;
-        constexpr int kBackfillCap = 25; // bound per-run hashing so a check never hangs
+        // The explicit check back-fills every identifiable mod (so one run covers the
+        // whole list); the silent on-open check never hashes (cap 0) to keep launches fast.
+        const int kBackfillCap = doBackfill ? items.size() : 0;
         for (const auto& it : items) {
             QString fileId = it.fileId, installedVer = it.version;
 
-            // A mod with no fileId can't be checked accurately. Identify it by MD5
-            // (bounded per run) so coverage grows; never flag on a guessed version.
+            // A mod with no fileId can't be checked accurately. Identify it by MD5 so
+            // coverage grows; never flag on a guessed version.
             if (fileId.isEmpty()) {
                 if (!doBackfill || backfilled >= kBackfillCap
                     || it.archive.isEmpty() || !QFile::exists(it.archive))
@@ -2974,6 +2980,31 @@ void MainWindow::maybeAutoCheckUpdates() {
         if (now - cfg.lastUpdateCheckEpoch() <= 6 * 3600) return;
     }
     runUpdateCheck(/*silentIfNone=*/true);
+}
+
+void MainWindow::saveUpdateFlags(const QHash<QString, QPair<QString,QString>>& updates) const {
+    auto* profile = m_profileMgr ? m_profileMgr->activeProfile() : nullptr;
+    if (!profile) return;
+    QJsonObject obj; // local mod id -> [installed, latest]
+    for (auto it = updates.constBegin(); it != updates.constEnd(); ++it)
+        obj[it.key()] = QJsonArray{ it.value().first, it.value().second };
+    QFile f(profile->path() + "/updates.json");
+    if (f.open(QIODevice::WriteOnly))
+        f.write(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+}
+
+QHash<QString, QPair<QString,QString>> MainWindow::loadUpdateFlags() const {
+    QHash<QString, QPair<QString,QString>> out;
+    auto* profile = m_profileMgr ? m_profileMgr->activeProfile() : nullptr;
+    if (!profile) return out;
+    QFile f(profile->path() + "/updates.json");
+    if (!f.open(QIODevice::ReadOnly)) return out;
+    const QJsonObject obj = QJsonDocument::fromJson(f.readAll()).object();
+    for (auto it = obj.constBegin(); it != obj.constEnd(); ++it) {
+        const QJsonArray a = it.value().toArray();
+        if (a.size() == 2) out.insert(it.key(), qMakePair(a[0].toString(), a[1].toString()));
+    }
+    return out;
 }
 
 bool MainWindow::ensureNexusIds(solero::ModEntry* mod) {

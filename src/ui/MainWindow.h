@@ -179,6 +179,10 @@ private:
     // After a profile finishes loading, fire an auto update check if enabled and
     // not throttled (>6h since the last check) and a key is available.
     void maybeAutoCheckUpdates();
+    // Persist / restore the "update available" flags per profile (updates.json) so
+    // they show at launch immediately; the check then refreshes them.
+    void saveUpdateFlags(const QHash<QString, QPair<QString,QString>>& updates) const;
+    QHash<QString, QPair<QString,QString>> loadUpdateFlags() const;
     // Ensure the mod has Nexus mod/file ids. Returns true if known (or resolved
     // via MD5 archive lookup). Shows an explanatory message + returns false when
     // it can't (no source archive, no Nexus match). Used by re-download.

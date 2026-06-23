@@ -4000,6 +4000,27 @@ void MainWindow::onPlay() {
         }
     }
 
+    // Re-assert the managed shader cache into the live game dir on every launch,
+    // for the same reason as the INI re-sync above: Community Shaders OWNS
+    // Data/ShaderCache at runtime and DELETES the whole tree whenever it invalidates
+    // the cache, silently removing the hardlinks we deployed. ensureDeployed() skips
+    // redeploy when the modlist is deployed-and-clean, so the staged Info.ini would
+    // otherwise never get re-linked - CS then finds no Info.ini ("no plugin version
+    // found"), wipes, and recompiles every launch. This re-links only staged files
+    // missing from the live dir; it's a cheap no-op when the cache is already whole.
+    if (auto* prof = m_profileMgr->activeProfile()) {
+        const QString cacheStaging = cacheStagingPath(prof);
+        if (!cacheStaging.isEmpty()) {
+            const bool hardlink =
+                solero::AppConfig::instance().deployMode() == solero::DeployMode::HardLink;
+            const int relinked = solero::assertShaderCacheDeployed(
+                solero::AppConfig::instance().gameDir(), cacheStaging, hardlink);
+            if (relinked > 0)
+                statusBar()->showMessage(
+                    QString("Restored %1 shader cache file(s) into the game dir.").arg(relinked));
+        }
+    }
+
     const QString gameDir = solero::AppConfig::instance().gameDir();
     // Find a launch target in the game root, case-insensitively. Prefer the SKSE
     // loader so script-extender plugins load; fall back to the base game exe.

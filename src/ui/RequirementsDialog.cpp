@@ -138,4 +138,21 @@ void RequirementsDialog::markInstalling(const QString& modId) {
     it.value()->setText("Installing…");
 }
 
+void RequirementsDialog::markInstalled(const QString& modId) {
+    auto it = m_buttons.find(modId);
+    if (it == m_buttons.end() || !it.value()) return;
+    QPushButton* btn = it.value();
+    btn->setEnabled(false);
+    btn->setText("Installed");
+    btn->setStyleSheet("color: #7ec97e;"); // green: this requirement is now satisfied
+}
+
+void RequirementsDialog::markFailed(const QString& modId) {
+    auto it = m_buttons.find(modId);
+    if (it == m_buttons.end() || !it.value()) return;
+    QPushButton* btn = it.value();
+    btn->setEnabled(true);  // let the user try again
+    btn->setText("Retry");
+}
+
 } // namespace solero

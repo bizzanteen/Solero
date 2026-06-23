@@ -1873,6 +1873,11 @@ void MainWindow::installFromArchive(const QString& archive) {
     // offer (no-op if CS isn't present, already managed, or previously declined).
     maybeOfferShaderCacheManagement();
 
+    // If this install satisfied a requirement listed in an open RequirementsDialog,
+    // flip that row from "Installing…" to "Installed".
+    if (!sidecarModId.isEmpty())
+        markRequirementResult(sidecarModId, /*installed=*/true);
+
     // Fresh Nexus install: check its requirements and offer any that are missing.
     // (Skip Replace/reinstall - existingModId set - to avoid nagging on every update.)
     if (existingModId.isEmpty() && !sidecarModId.isEmpty())
@@ -2684,6 +2689,17 @@ void MainWindow::installSkseVersion(const QString& fileId, const QString& versio
     statusBar()->showMessage("Downloading SKSE " + version + "\xe2\x80\xa6");
 }
 
+void MainWindow::markRequirementResult(const QString& reqModId, bool installed) {
+    // Notify every open RequirementsDialog (modal dialogs can stack via nested
+    // exec()). QPointers auto-null when a dialog closes; prune them as we go.
+    for (int i = m_openReqDialogs.size() - 1; i >= 0; --i) {
+        auto& d = m_openReqDialogs[i];
+        if (!d) { m_openReqDialogs.removeAt(i); continue; }
+        if (installed) d->markInstalled(reqModId);
+        else           d->markFailed(reqModId);
+    }
+}
+
 void MainWindow::checkRequirementsAfterInstall(solero::Profile* profile,
                                                const QString& dependentModId,
                                                const QString& nexusModId,
@@ -2731,6 +2747,9 @@ void MainWindow::checkRequirementsAfterInstall(solero::Profile* profile,
             [this, dependentModId, g](const QString& modId, const QString& modName) {
                 downloadRequirement(modId, modName, dependentModId, g);
             });
+    // Track the dialog so a requirement's async install can flip its row to
+    // "Installed"/"Retry" when it finishes (the QPointer auto-nulls on close).
+    m_openReqDialogs.append(dlg);
     dlg->exec();
 }
 
@@ -2757,6 +2776,7 @@ void MainWindow::downloadRequirement(const QString& reqModId, const QString& req
     if (fileId.isEmpty()) {
         QMessageBox::warning(this, "Install requirement",
             QString("Couldn't find a downloadable file for \"%1\" on Nexus.").arg(reqName));
+        markRequirementResult(reqModId, /*installed=*/false); // reset the stuck "Installing…"
         return;
     }
 
@@ -2765,6 +2785,7 @@ void MainWindow::downloadRequirement(const QString& reqModId, const QString& req
         QMessageBox::information(this, "Install requirement",
             QString("In-app download of \"%1\" needs Nexus Premium. Use the mod page's "
                     "'Mod Manager Download' (nxm) button on the website instead.").arg(reqName));
+        markRequirementResult(reqModId, /*installed=*/false); // reset the stuck "Installing…"
         return;
     }
     QString fn = QUrl(url).fileName();

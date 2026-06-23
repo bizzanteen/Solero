@@ -6,6 +6,8 @@
 #include <QSet>
 #include <QJsonObject>
 #include <QFutureWatcher>
+#include <QPointer>
+#include <QList>
 #include "core/ProfileManager.h"
 #include "ai/AITransaction.h"
 #include "ipc/IPCServer.h"
@@ -37,6 +39,7 @@ class RightPane;
 class BottomPanel;
 class BethiniWindow;
 class ProblemsDialog;
+class RequirementsDialog;
 }
 
 class MainWindow : public QMainWindow {
@@ -328,6 +331,10 @@ private:
     // requirement's Nexus modId -> the dependent mod's id it should be placed above,
     // applied when the requirement finishes installing (see checkRequirementsAfterInstall).
     QHash<QString, QString> m_placeAboveByModId;
+    // Open requirements dialogs (modal, but can stack via nested exec()). Lets an
+    // async install flip the matching row to Installed / Retry when it finishes.
+    QList<QPointer<solero::RequirementsDialog>> m_openReqDialogs;
+    void markRequirementResult(const QString& reqModId, bool installed);
 
     QWidget* m_runOverlay = nullptr;
     QLabel* m_runLockLabel = nullptr;

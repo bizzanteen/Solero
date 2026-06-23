@@ -4,6 +4,7 @@
 #include "ConflictsTab.h"
 #include "DownloadsTab.h"
 #include "core/AppConfig.h"
+#include "core/PluginOrigin.h"
 #include <QDir>
 #include <QDirIterator>
 #include <QFileInfo>
@@ -79,6 +80,10 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     connect(m_conflictsTab, &ConflictsTab::fileRulesChanged, this, &RightPane::fileRulesChanged);
     connect(m_dataTab,      &DataTab::renameRequested,       this, &RightPane::renameRequested);
     connect(m_dataTab,      &DataTab::deleteRequested,       this, &RightPane::deleteRequested);
+    connect(m_pluginsTab, &PluginListView::pluginClicked,
+            this, &RightPane::onPluginClicked);
+    connect(m_pluginsTab, &PluginListView::pluginActivated,
+            this, &RightPane::onPluginActivated);
 }
 
 void RightPane::showDownloadsTab() {
@@ -115,12 +120,16 @@ void RightPane::setLockOrderChecked(bool checked) {
 void RightPane::invalidateModPluginCache(const QString& id) {
     if (id.isEmpty()) m_modPluginCache.clear();
     else              m_modPluginCache.remove(id);
+    m_pluginOriginCache.clear();
+    m_originIndexBuilt = false;
 }
 
 void RightPane::setProfile(Profile* profile, bool reconcilePlugins) {
     m_currentProfile = profile;
     // New profile -> different mods; drop the per-mod plugin highlight cache.
     m_modPluginCache.clear();
+    m_pluginOriginCache.clear();
+    m_originIndexBuilt = false;
     if (reconcilePlugins)
         m_pluginsTab->reconcileWith(profile, AppConfig::instance().stagingDir());
     else
@@ -199,6 +208,7 @@ QString RightPane::firstPluginInLoadOrder(const QStringList& filenames) const {
 }
 
 void RightPane::onSelectionChanged(const QStringList& ids) {
+    emit highlightOriginMods({}); // a mod selection supersedes any plugin-origin highlight
     m_dataTab->setSelection(ids);
 
     // Conflicts tab shows a single mod only; clear it otherwise.
@@ -249,6 +259,43 @@ void RightPane::onSelectionChanged(const QStringList& ids) {
             if (!first.isEmpty()) selectPlugin(first);
         }
     }
+}
+
+void RightPane::ensurePluginOriginIndex() {
+    if (m_originIndexBuilt || !m_currentProfile) return;
+    QStringList ordered;                       // enabled mods, list order (low->high)
+    QHash<QString, QStringList> byMod;
+    const ModList& ml = m_currentProfile->modList();
+    for (int i = 0; i < ml.count(); ++i) {
+        const auto& e = ml.at(i);
+        if (e.type != EntryType::Mod || !e.enabled) continue;
+        ordered << e.id;
+        auto it = m_modPluginCache.constFind(e.id);
+        if (it == m_modPluginCache.constEnd()) {
+            const QString data = AppConfig::instance().stagingDir() + "/"
+                               + m_currentProfile->stagingFolderFor(e.id) + "/Data";
+            it = m_modPluginCache.insert(e.id,
+                     QDir(data).entryList({"*.esp","*.esm","*.esl"}, QDir::Files));
+        }
+        byMod.insert(e.id, it.value());
+    }
+    m_pluginOriginCache = PluginOrigin::buildIndex(ordered, byMod);
+    m_originIndexBuilt = true;
+}
+
+void RightPane::onPluginClicked(const QString& filename) {
+    ensurePluginOriginIndex();
+    const QStringList providers = m_pluginOriginCache.value(filename.toLower());
+    QHash<QString,int> roles;
+    for (int i = 0; i < providers.size(); ++i)
+        roles.insert(providers.at(i), i == providers.size() - 1 ? 1 : 2); // last = winner
+    emit highlightOriginMods(roles);
+}
+
+void RightPane::onPluginActivated(const QString& filename) {
+    ensurePluginOriginIndex();
+    const QString w = PluginOrigin::winner(m_pluginOriginCache.value(filename.toLower()));
+    if (!w.isEmpty()) emit goToOriginMod(w);
 }
 
 } // namespace solero

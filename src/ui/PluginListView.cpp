@@ -8,6 +8,7 @@
 #include <QSet>
 #include <QMenu>
 #include <QContextMenuEvent>
+#include <QMouseEvent>
 #include <QShowEvent>
 #include <QTimer>
 #include <QStyledItemDelegate>
@@ -199,6 +200,13 @@ void PluginListView::contextMenuEvent(QContextMenuEvent* event) {
                        [this, srcRow]{ m_model->togglePin(srcRow); });
         menu.addSeparator();
     }
+    if (srcRow >= 0) {
+        const QString fn = pluginFilenameAt(idx);
+        if (!fn.isEmpty()) {
+            menu.addAction("Go to origin mod", [this, fn]{ emit pluginActivated(fn); });
+            menu.addSeparator();
+        }
+    }
     menu.addAction("Enable all",  [this]{ setAllEnabled(true); });
     menu.addAction("Disable all", [this]{ setAllEnabled(false); });
     menu.exec(event->globalPos());
@@ -233,5 +241,28 @@ void PluginListView::highlightPlugins(const QStringList& filenames) {
     QSet<QString> set;
     for (const QString& f : filenames) set.insert(f.toLower());
     m_model->setHighlighted(set);
+}
+
+QString PluginListView::pluginFilenameAt(const QModelIndex& viewIdx) const {
+    Profile* profile = m_model->profile();
+    if (!profile) return {};
+    const QModelIndex idx = viewIdx.isValid() ? viewIdx : currentIndex();
+    if (!idx.isValid()) return {};
+    const int srcRow = (model() == m_proxy) ? m_proxy->mapToSource(idx).row() : idx.row();
+    if (srcRow < 0 || srcRow >= profile->pluginList().count()) return {};
+    return profile->pluginList().at(srcRow).filename; // already pin-glyph-free
+}
+
+void PluginListView::selectionChanged(const QItemSelection& selected,
+                                      const QItemSelection& deselected) {
+    QTableView::selectionChanged(selected, deselected);
+    const QString fn = pluginFilenameAt(QModelIndex());
+    if (!fn.isEmpty()) emit pluginClicked(fn);
+}
+
+void PluginListView::mouseDoubleClickEvent(QMouseEvent* event) {
+    const QString fn = pluginFilenameAt(indexAt(event->pos()));
+    if (!fn.isEmpty()) { emit pluginActivated(fn); return; }
+    QTableView::mouseDoubleClickEvent(event);
 }
 }

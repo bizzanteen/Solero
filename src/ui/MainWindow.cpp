@@ -761,6 +761,16 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onDataRename);
     connect(m_rightPane, &solero::RightPane::deleteRequested,
             this, &MainWindow::onDataDelete);
+    connect(m_rightPane, &solero::RightPane::highlightOriginMods, this,
+            [this](const QHash<QString,int>& roles) {
+        m_modListView->setPluginOriginHighlights(roles);
+    });
+    connect(m_rightPane, &solero::RightPane::goToOriginMod, this,
+            [this](const QString& id) {
+        if (m_browseAction && m_browseAction->isChecked())
+            m_browseAction->setChecked(false); // leave the Nexus browser first
+        m_modListView->selectModById(id);
+    });
 
     m_bottomPanel = new solero::BottomPanel(outer);
     connect(m_modListView, &solero::ModListView::modsSelected,

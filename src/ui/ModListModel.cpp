@@ -44,16 +44,23 @@ QString fomodChoicesSummary(const QString& modId) {
 ModListModel::ModListModel(QObject* parent) : QAbstractItemModel(parent) {}
 
 void ModListModel::setProfile(Profile* profile) {
+    // setProfile is also used as a plain REFRESH (after install/update/reorder) with
+    // the same profile pointer. Only the cross-profile resets below should fire on an
+    // actual change; on a refresh we must preserve the update flags (otherwise
+    // updating one mod blanks the whole "update available" column), the per-mod
+    // caches, and the undo history.
+    const bool changed = (profile != m_profile);
     beginResetModel();
     m_profile = profile;
-    // A new profile means entirely different staging contents - drop all caches.
-    m_emptyCache.clear();
-    m_overwriteHasFiles = -1;
-    m_updates.clear();
+    if (changed) {
+        // A new profile means entirely different staging contents - drop all caches.
+        m_emptyCache.clear();
+        m_overwriteHasFiles = -1;
+        m_updates.clear();
+    }
     rebuildVisibleRows();
     endResetModel();
-    // Undo history must not cross profiles.
-    clearUndoRedo();
+    if (changed) clearUndoRedo(); // undo history must not cross profiles
 }
 
 void ModListModel::setUpdateInfo(const QHash<QString, QPair<QString,QString>>& info) {

@@ -658,6 +658,16 @@ void MainWindow::setupCentralWidget() {
                         }
                         statusBar()->showMessage("Updated " + e2->name + " to " + pu.version + ".");
                     }
+                    // This mod is now current - drop just its update flag and persist,
+                    // leaving every other mod's flag intact (setProfile during the
+                    // reinstall above no longer wipes them).
+                    {
+                        auto flags = loadUpdateFlags();
+                        if (flags.remove(pu.modId) > 0) {
+                            saveUpdateFlags(flags);
+                            m_modListView->setUpdateInfo(flags);
+                        }
+                    }
                     return; // do not fall through to the install-as-new path
                 }
                 // Mod no longer exists - fall through and treat as a fresh install.

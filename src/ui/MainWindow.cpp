@@ -170,20 +170,31 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     statusBar()->showMessage("Ready");
 
     // When the off-thread update check finishes, apply results on the UI thread.
-    connect(&m_updateWatcher,
-            &QFutureWatcher<QHash<QString, QPair<QString,QString>>>::finished,
-            this, [this]() {
-        const auto results = m_updateWatcher.result();
-        m_modListView->setUpdateInfo(results);
+    connect(&m_updateWatcher, &QFutureWatcher<UpdateScan>::finished, this, [this]() {
+        const UpdateScan scan = m_updateWatcher.result();
+        // Persist any fileIds resolved by MD5 this run so future checks are accurate
+        // (and so Update/Redownload can act on them) - this must happen on the UI thread.
+        if (!scan.backfill.isEmpty()) {
+            if (auto* profile = m_profileMgr->activeProfile()) {
+                for (auto it = scan.backfill.constBegin(); it != scan.backfill.constEnd(); ++it) {
+                    if (auto* e = profile->modList().findById(it.key())) {
+                        e->nexusFileId = it.value().first;
+                        if (!it.value().second.isEmpty()) e->version = it.value().second;
+                    }
+                }
+                profile->save();
+            }
+        }
+        m_modListView->setUpdateInfo(scan.updates);
         if (m_checkUpdatesAction) m_checkUpdatesAction->setEnabled(true);
         solero::AppConfig::instance().setLastUpdateCheckEpoch(
             QDateTime::currentSecsSinceEpoch());
         solero::AppConfig::instance().save();
-        if (results.isEmpty())
+        if (scan.updates.isEmpty())
             statusBar()->showMessage("All mods up to date.");
         else
             statusBar()->showMessage(
-                QString("%1 update(s) available.").arg(results.size()));
+                QString("%1 update(s) available.").arg(scan.updates.size()));
     });
 
     // Per-mod update resolve finished: kick off the download (or report an error).
@@ -2822,14 +2833,16 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) return;
 
-    // Collect mods that have Nexus metadata: {id, nexusModId, current version}.
-    struct Item { QString id, modId, version; };
+    // Collect mods with Nexus metadata. fileId enables an ACCURATE check (is there a
+    // newer main file than the one installed?); archive enables MD5 back-fill of a
+    // missing fileId. version is the installed file's version.
+    struct Item { QString id, modId, version, fileId, archive; };
     QList<Item> items;
     const auto& list = profile->modList();
     for (int i = 0; i < list.count(); ++i) {
         const auto& e = list.at(i);
         if (e.type != solero::EntryType::Mod || e.nexusModId.isEmpty()) continue;
-        items.append({e.id, e.nexusModId, e.version});
+        items.append({e.id, e.nexusModId, e.version, e.nexusFileId, e.sourceArchive});
     }
     if (items.isEmpty()) {
         if (!silentIfNone)
@@ -2846,15 +2859,57 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
     statusBar()->showMessage(
         QString("Checking %1 mods for updates\xe2\x80\xa6").arg(items.size()));
 
-    auto future = QtConcurrent::run([items]() {
-        QHash<QString, QPair<QString,QString>> results; // local id -> {installed, latest}
+    // Only the EXPLICIT check (not the silent on-open one) does MD5 back-fill, so a
+    // launch never spends time hashing archives.
+    const bool doBackfill = !silentIfNone;
+
+    auto future = QtConcurrent::run([items, doBackfill]() -> UpdateScan {
+        UpdateScan scan;
+        int backfilled = 0;
+        constexpr int kBackfillCap = 25; // bound per-run hashing so a check never hangs
         for (const auto& it : items) {
-            QString latest = solero::NexusApi::latestVersion(it.modId);
-            if (!latest.isEmpty() && !it.version.isEmpty() && isVersionNewer(it.version, latest))
-                results.insert(it.id, qMakePair(normalizeVersion(it.version),
-                                                normalizeVersion(latest)));
+            QString fileId = it.fileId, installedVer = it.version;
+
+            // A mod with no fileId can't be checked accurately. Identify it by MD5
+            // (bounded per run) so coverage grows; never flag on a guessed version.
+            if (fileId.isEmpty()) {
+                if (!doBackfill || backfilled >= kBackfillCap
+                    || it.archive.isEmpty() || !QFile::exists(it.archive))
+                    continue;
+                QFile f(it.archive);
+                if (!f.open(QIODevice::ReadOnly)) continue;
+                QCryptographicHash hash(QCryptographicHash::Md5);
+                constexpr qint64 kChunk = 1 << 20;
+                while (!f.atEnd()) {
+                    const QByteArray c = f.read(kChunk);
+                    if (c.isEmpty()) break;
+                    hash.addData(c);
+                }
+                f.close();
+                ++backfilled;
+                const auto m = solero::NexusApi::md5Search(QString::fromLatin1(hash.result().toHex()));
+                if (!m.ok || m.fileId.isEmpty()) continue;
+                fileId = m.fileId;
+                if (!m.version.isEmpty()) installedVer = m.version;
+                scan.backfill.insert(it.id, qMakePair(fileId, installedVer));
+            }
+
+            // Accurate check: find the newest main file and flag only when it is a
+            // DIFFERENT, newer-versioned file than the one installed - so having the
+            // current file never false-flags.
+            const auto files = solero::NexusApi::files(it.modId);
+            const solero::NexusApi::NexusFile* latestMain = nullptr;
+            for (const auto& f : files) {
+                if (f.category.compare("MAIN", Qt::CaseInsensitive) != 0) continue;
+                if (!latestMain || isVersionNewer(latestMain->version, f.version)) latestMain = &f;
+            }
+            if (!latestMain || latestMain->fileId == fileId) continue;
+            if (!installedVer.isEmpty() && !latestMain->version.isEmpty()
+                && isVersionNewer(installedVer, latestMain->version))
+                scan.updates.insert(it.id, qMakePair(normalizeVersion(installedVer),
+                                                     normalizeVersion(latestMain->version)));
         }
-        return results;
+        return scan;
     });
     m_updateWatcher.setFuture(future);
 }

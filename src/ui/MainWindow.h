@@ -293,7 +293,14 @@ private:
     QAction* m_browseAction = nullptr;
     QAction* m_checkUpdatesAction = nullptr;
     // Receives the result of the off-thread update check (local id -> {installed, latest}).
-    QFutureWatcher<QHash<QString, QPair<QString,QString>>> m_updateWatcher;
+    // Result of an accurate (file-id based) update scan: mods with a real newer
+    // main file on Nexus, plus any fileIds back-filled via MD5 this run (applied +
+    // persisted on the UI thread).
+    struct UpdateScan {
+        QHash<QString, QPair<QString,QString>> updates;  // local id -> {installed, latest}
+        QHash<QString, QPair<QString,QString>> backfill; // local id -> {fileId, version}
+    };
+    QFutureWatcher<UpdateScan> m_updateWatcher;
 
     // Per-mod "Update Mod" flow: resolve the latest Nexus file off the UI thread,
     // then download it and reinstall the existing mod in place.

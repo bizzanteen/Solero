@@ -281,6 +281,12 @@ target_include_directories(test_ToolNameMap PRIVATE ../src ${CMAKE_BINARY_DIR}/i
 target_link_libraries(test_ToolNameMap PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_ToolNameMap COMMAND test_ToolNameMap)
 
+# PluginOrigin is a header-only reverse-index helper; no extra sources to compile.
+add_executable(test_PluginOrigin test_PluginOrigin.cpp)
+target_include_directories(test_PluginOrigin PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_PluginOrigin PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_PluginOrigin COMMAND test_PluginOrigin)
+
 # Derive the Qt plugin dir (shared by headless tests below) from the actual
 # Qt6::Core library location; fall back to qmake. See test_ModListModel notes.
 if(NOT _qt_plugins)

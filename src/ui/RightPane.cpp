@@ -32,11 +32,14 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     m_pluginNotice->hide();
     pluginsLayout->addWidget(m_pluginNotice);
 
-    // Top row with right-aligned "Backup LO" / "Restore LO…" / "LOOT Rules" /
-    // "Sort Now" (LOOT) buttons.
+    // Top row: the plugin search sits inline on the left, with the right-aligned
+    // "Backup LO" / "Restore LO…" / "LOOT Rules" / "Lock" / "Sort Now" buttons.
     auto* sortRow = new QHBoxLayout();
     sortRow->setContentsMargins(4, 4, 4, 4);
-    sortRow->addStretch();
+    m_pluginSearch = new QLineEdit(pluginsContainer);
+    m_pluginSearch->setPlaceholderText(QStringLiteral("Search plugins…"));
+    m_pluginSearch->setClearButtonEnabled(true);
+    sortRow->addWidget(m_pluginSearch, 1); // grows to fill, pushing the buttons right
     auto* backupBtn = new QPushButton("Backup Load Order", pluginsContainer);
     backupBtn->setToolTip("Snapshot the current load order + active state");
     connect(backupBtn, &QPushButton::clicked, this, &RightPane::backupLoRequested);
@@ -61,15 +64,7 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     sortRow->addWidget(m_sortBtn);
     pluginsLayout->addLayout(sortRow);
 
-    // Plugin search (mirrors the Data tab): debounced, filters by name.
-    auto* searchRow = new QHBoxLayout();
-    searchRow->setContentsMargins(4, 0, 4, 4);
-    m_pluginSearch = new QLineEdit(pluginsContainer);
-    m_pluginSearch->setPlaceholderText(QStringLiteral("Search plugins…"));
-    m_pluginSearch->setClearButtonEnabled(true);
-    searchRow->addWidget(m_pluginSearch);
-    pluginsLayout->addLayout(searchRow);
-
+    // Debounce the search input (mirrors the Data tab): filter once typing pauses.
     m_pluginSearchDebounce = new QTimer(this);
     m_pluginSearchDebounce->setSingleShot(true);
     m_pluginSearchDebounce->setInterval(200);

@@ -491,13 +491,16 @@ void MainWindow::setupToolbar() {
     profileMenu->addAction("Install Wabbajack Modlist\xe2\x80\xa6", this, &MainWindow::onInstallWabbajack);
     profileMenu->addSeparator();
     m_checkUpdatesAction = profileMenu->addAction(
-        "Check for Mod Updates\xe2\x80\xa6", this, &MainWindow::onCheckUpdates);
+        "Check for Updates", this, &MainWindow::onCheckUpdates);
     m_checkUpdatesAction->setShortcut(QKeySequence(Qt::Key_F5));
-    m_checkUpdatesAction->setToolTip("Check for Mod Updates (F5)");
+    m_checkUpdatesAction->setToolTip("Check installed mods for newer files on Nexus (F5)");
     profileMenu->addAction("Scan for FOMOD mods\xe2\x80\xa6", this, &MainWindow::onScanFomod);
     profileMenuBtn->setMenu(profileMenu);
     profileMenuBtn->setPopupMode(QToolButton::InstantPopup);
     tb->addWidget(profileMenuBtn);
+    // Expose the update check as a visible toolbar button too (same QAction, so the
+    // F5 shortcut and the disable-while-running state are shared).
+    tb->addAction(m_checkUpdatesAction);
     tb->addSeparator();
 
     // Install Mod action

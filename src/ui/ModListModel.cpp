@@ -406,7 +406,8 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
                 // DecorationRole; this textual part keeps the mod-kind labels.
                 QStringList parts;
                 if (entry.isOutputMod) parts << "Output";
-                if (entry.hasFomodChoices) parts << "FOMOD";
+                // FOMOD mods are shown by the green "F" icon (DecorationRole) alone -
+                // no redundant "FOMOD" text label.
                 return parts.join(" ");
             }
             default: return {};

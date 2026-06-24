@@ -2744,6 +2744,21 @@ void MainWindow::checkRequirementsAfterInstall(solero::Profile* profile,
     }
     if (reqs.isEmpty()) return;
 
+    // Skyrim VR vs SE: when the install is the flatscreen SE build (no SkyrimVR.exe),
+    // VR-specific requirements (VR ports / VRIK / "for VR only" patches) don't apply,
+    // so they're suppressed below.
+    const QString gameDir = solero::AppConfig::instance().gameDir();
+    const bool isVR = QFile::exists(gameDir + "/SkyrimVR.exe");
+    auto looksVrSpecific = [](const QString& name, const QString& notes) {
+        // Standalone "VR" token, "SkyrimVR", or "VRIK" in the name/notes. \bvr\b
+        // catches "VR", "(VR)", "for VR", "VR only" without matching words like
+        // "Verdant" or "improved".
+        static const QRegularExpression re(
+            QStringLiteral(R"(\bvr\b|skyrimvr|\bvrik\b)"),
+            QRegularExpression::CaseInsensitiveOption);
+        return re.match(name).hasMatch() || re.match(notes).hasMatch();
+    };
+
     // Keep only requirements not already satisfied in this profile.
     QList<solero::RequirementsDialog::Item> missing;
     const auto& ml = profile->modList();
@@ -2762,6 +2777,8 @@ void MainWindow::checkRequirementsAfterInstall(solero::Profile* profile,
         if (r.modId == "30379"
             || r.url.contains(QStringLiteral("silverlock.org"), Qt::CaseInsensitive))
             continue;
+        // Not on Skyrim VR -> don't list VR-specific requirements.
+        if (!isVR && looksVrSpecific(r.modName, r.notes)) continue;
         missing.append({r.modId, r.modName, r.notes, r.url, r.external});
     }
     if (missing.isEmpty()) return;

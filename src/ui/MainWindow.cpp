@@ -17,6 +17,7 @@
 #include "core/LoadOrderBackup.h"
 #include "core/FileMove.h"
 #include "install/ModInstaller.h"
+#include "install/InstallConflict.h"
 #include "import/Mo2Importer.h"
 #include "io/ProfileManifest.h"
 #include "ui/WabbajackDialog.h"
@@ -1568,6 +1569,10 @@ void MainWindow::onModsChanged() {
     refreshHealthIndicator();
 }
 
+// Defined later in this file; used by installFromArchive to pick a unique
+// staging folder for a Keep Both / Replace version variant.
+static QSet<QString> takenStagingFolders(solero::Profile* profile);
+
 void MainWindow::onInstallMod() {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) { statusBar()->showMessage("No active profile."); return; }
@@ -1645,26 +1650,84 @@ void MainWindow::installFromArchive(const QString& archive) {
     QString stagingOverride;   // full mod dir for Replace (migrated staging folder)
     QString overrideName;      // non-empty -> Rename: install new with this name
     bool installAsSibling = false; // different file of an already-installed mod
+    QString variantTargetId;   // non-empty -> add/replace a version variant on this entry
+    bool    variantReplace = false; // variant path: Replace active version vs Keep Both
+    QString variantFolder;     // new unique staging folder name for the variant
     {
         auto& ml = profile->modList();
-        // Identity ladder. (modId,fileId) is the reliable identity: the same file.
-        // A redownload pins the existing fileId, so it always lands here -> silent
-        // Replace, never a duplicate.
-        if (solero::ModEntry* sameFile =
-                ml.findByNexusFile(sidecarModId, sidecarFileId)) {
-            existingModId = sameFile->id;
-            stagingOverride = solero::stagingPathFor(
-                solero::AppConfig::instance().stagingDir(), *sameFile);
-        }
-        // Different file of an already-installed mod (e.g. two main files of one
-        // Nexus page). Not a duplicate - install it as a grouped sibling. The
-        // auto-group pass below nests it; Task 4 names it from the archive so the
-        // two siblings don't share the catalog name.
-        else if (!sidecarModId.isEmpty() && ml.findByNexusId(sidecarModId)) {
+        // Classify the incoming Nexus identity (sidecar) against the mod list once.
+        // SameFile -> silent in-place reinstall; SiblingFile -> silent grouped sibling;
+        // VersionConflict -> Replace / Keep Both / Rename dialog; NoConflict -> the
+        // name-collision fallback below.
+        const auto conflict = solero::classifyInstallConflict(
+            ml, sidecarModId, sidecarFileId, sidecarVersion);
+
+        if (conflict.kind == solero::InstallConflictKind::SameFile) {
+            // (modId,fileId) is the reliable identity: literally the same file. A
+            // redownload pins the existing fileId, so it lands here -> silent Replace.
+            if (solero::ModEntry* sameFile = ml.findById(conflict.targetEntryId)) {
+                existingModId = sameFile->id;
+                stagingOverride = solero::stagingPathFor(
+                    solero::AppConfig::instance().stagingDir(), *sameFile);
+            }
+        } else if (conflict.kind == solero::InstallConflictKind::SiblingFile) {
+            // Different file of an already-installed mod at the same version (e.g. two
+            // main files of one Nexus page). Not a duplicate - install as a grouped
+            // sibling; the auto-group pass below nests it.
             installAsSibling = true;
-        }
-        // No Nexus identity (or a genuinely new mod): fall back to name collision.
-        else {
+        } else if (conflict.kind == solero::InstallConflictKind::VersionConflict) {
+            // A different version of an already-installed mod: let the user decide.
+            solero::ModEntry* existing = ml.findById(conflict.targetEntryId);
+            extractProg->hide(); // step the progress modal aside for the prompt
+            QMessageBox box(this);
+            box.setWindowTitle("Different Version");
+            box.setText(QString("\"%1\" is already installed as version %2.")
+                            .arg(existing->name, existing->version));
+            box.setInformativeText(QString(
+                "You're installing version %1. Replace the installed version, keep "
+                "both (switchable from the Version column), or install it as a "
+                "separate mod?").arg(sidecarVersion));
+            QPushButton* replaceBtn = box.addButton("Replace",   QMessageBox::AcceptRole);
+            QPushButton* keepBtn    = box.addButton("Keep Both", QMessageBox::ActionRole);
+            QPushButton* renameBtn  = box.addButton(QString::fromUtf8("Rename…"),
+                                                    QMessageBox::ActionRole);
+            box.addButton("Cancel", QMessageBox::RejectRole);
+            box.setDefaultButton(keepBtn);
+            box.exec();
+            QAbstractButton* clicked = box.clickedButton();
+            if (clicked == replaceBtn || clicked == keepBtn) {
+                // Both extract into a new uniquely-named staging folder; the post-
+                // install tail attaches it as a variant of the existing entry.
+                variantTargetId = existing->id;
+                variantReplace  = (clicked == replaceBtn);
+                variantFolder   = solero::uniqueStagingFolder(
+                    solero::sanitizeStagingFolder(
+                        existing->name + " (" + sidecarVersion + ")"),
+                    takenStagingFolders(profile));
+                stagingOverride = solero::AppConfig::instance().stagingDir()
+                                + "/" + variantFolder;
+            } else if (clicked == renameBtn) {
+                bool ok = false;
+                QString nm = QInputDialog::getText(
+                    this, "Rename Mod", "Mod name:", QLineEdit::Normal,
+                    uniqueModName(existing->name + " " + sidecarVersion, profile), &ok);
+                nm = nm.trimmed();
+                if (!ok || nm.isEmpty()) {
+                    extractProg->close();
+                    statusBar()->showMessage("Install cancelled.");
+                    return;
+                }
+                // Install as a separate, grouped sibling under the chosen name.
+                overrideName    = nm;
+                installAsSibling = true;
+            } else {
+                extractProg->close();
+                statusBar()->showMessage("Install cancelled.");
+                return;
+            }
+            extractProg->show(); extractProg->pump();
+        } else {
+            // No Nexus identity (or a genuinely new mod): fall back to name collision.
             solero::ModEntry* collide = ml.findByName(proposedName);
             if (collide) {
                 extractProg->hide(); // step the progress modal aside for the prompt
@@ -1783,7 +1846,26 @@ void MainWindow::installFromArchive(const QString& archive) {
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     }
 
-    if (!existingModId.isEmpty()) {
+    if (!variantTargetId.isEmpty()) {
+        // Keep Both / Replace a version variant
+        // The archive (+ FOMOD picks) landed in `variantFolder`; attach it to the
+        // existing entry as a variant instead of creating a new ModEntry.
+        solero::ModVariant nv{sidecarVersion, sidecarFileId, variantFolder, archive,
+                              !choiceLog.isEmpty()};
+        if (variantReplace) {
+            QString retired;
+            profile->modList().replaceActiveVersion(variantTargetId, nv, &retired);
+            profile->save();
+            // The user explicitly chose Replace and the new install already landed,
+            // so it's safe to drop the retired version's staging folder now.
+            if (!retired.isEmpty())
+                QDir(solero::AppConfig::instance().stagingDir() + "/" + retired)
+                    .removeRecursively();
+        } else {
+            profile->modList().keepBothAddVariant(variantTargetId, nv);
+            profile->save();
+        }
+    } else if (!existingModId.isEmpty()) {
         // Replace in place
         // stageSimple/stageFomod reused the existing mod's UUID and replaced its
         // files; keep the entry's load-order position + enabled state, just refresh
@@ -1881,16 +1963,24 @@ void MainWindow::installFromArchive(const QString& archive) {
         profile->save();
     }
 
-    // Newly staged files for this mod - drop its cached empty/plugin scans.
-    m_modListView->invalidateModCache(result.modId);
-    m_rightPane->invalidateModPluginCache(result.modId);
+    // Newly staged files for this mod - drop its cached empty/plugin scans. On the
+    // variant path result.modId is a throwaway UUID (no ModEntry was created); the
+    // entry whose staged files actually changed is the variant target.
+    const QString refreshId =
+        variantTargetId.isEmpty() ? result.modId : variantTargetId;
+    m_modListView->invalidateModCache(refreshId);
+    m_rightPane->invalidateModPluginCache(refreshId);
 
     m_modListView->setProfile(profile);
     if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     m_rightPane->downloadsTab()->refresh();
     updatePluginNotice();
-    if (!existingModId.isEmpty()) {
+    if (!variantTargetId.isEmpty()) {
+        const solero::ModEntry* e = profile->modList().findById(variantTargetId);
+        const QString verb = variantReplace ? "Replaced version of: " : "Added version to: ";
+        statusBar()->showMessage(verb + (e ? e->name : result.modName));
+    } else if (!existingModId.isEmpty()) {
         const solero::ModEntry* e = profile->modList().findById(existingModId);
         statusBar()->showMessage("Replaced: " + (e ? e->name : result.modName));
     } else {
@@ -1907,8 +1997,9 @@ void MainWindow::installFromArchive(const QString& archive) {
         markRequirementResult(sidecarModId, /*installed=*/true);
 
     // Fresh Nexus install: check its requirements and offer any that are missing.
-    // (Skip Replace/reinstall - existingModId set - to avoid nagging on every update.)
-    if (existingModId.isEmpty() && !sidecarModId.isEmpty())
+    // (Skip Replace/reinstall and Keep Both/Replace variants - they update a mod
+    // already present - to avoid nagging on every update.)
+    if (existingModId.isEmpty() && variantTargetId.isEmpty() && !sidecarModId.isEmpty())
         checkRequirementsAfterInstall(profile, result.modId, sidecarModId, sidecarGame);
 }
 

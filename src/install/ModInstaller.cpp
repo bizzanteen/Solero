@@ -87,8 +87,8 @@ InstallResult ModInstaller::installArchive(const QString& archivePath,
     r.isFomod = layout.isFomod;
 
     QTemporaryDir extractTmp(extractTmpTemplate());
-    if (!extractTmp.isValid()) { r.errorMessage = "No temp dir."; return r; }
-    if (!ArchiveTool::extract(archivePath, extractTmp.path())) { r.errorMessage = "Extraction failed."; return r; }
+    if (!extractTmp.isValid()) { r.errorMessage = "Could not create a temporary extraction folder. Make sure the staging directory exists and the disk has enough free space."; return r; }
+    if (!ArchiveTool::extract(archivePath, extractTmp.path())) { r.errorMessage = "Could not extract the archive - it may be corrupt, an unsupported format, or too large for the available space. Try re-downloading the mod."; return r; }
 
     r.modId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     r.modName = baseName(archivePath);
@@ -96,7 +96,7 @@ InstallResult ModInstaller::installArchive(const QString& archivePath,
     QDir().mkpath(modDir);
 
     if (!moveNormalized(extractTmp.path(), modDir, layout)) {
-        r.errorMessage = "Failed to stage files.";
+        r.errorMessage = "The archive extracted but files could not be moved into the staging folder. Check that the staging directory is writable and has enough free space.";
         QDir(modDir).removeRecursively();
         return r;
     }
@@ -116,13 +116,13 @@ InstallPrep ModInstaller::prepare(const QString& archivePath,
     prep.modName = baseName(archivePath);
     prep.archivePath = archivePath;
     prep.tempDir = std::make_shared<QTemporaryDir>(extractTmpTemplate());
-    if (!prep.tempDir->isValid()) { prep.errorMessage = "No temp dir."; return prep; }
+    if (!prep.tempDir->isValid()) { prep.errorMessage = "Could not create a temporary extraction folder. Make sure the staging directory exists and the disk has enough free space."; return prep; }
     prep.extractDir = prep.tempDir->path();
     if (prep.layout.isFomod) {
         if (ArchiveTool::isSolid(archivePath)) {
             // Solid archive: partial extract is no cheaper than full - extract once.
             if (!ArchiveTool::extract(archivePath, prep.extractDir, onProgress)) {
-                prep.errorMessage = "Extraction failed."; return prep;
+                prep.errorMessage = "Could not extract the archive - it may be corrupt, an unsupported format, or too large for the available space. Try re-downloading the mod."; return prep;
             }
             prep.fullyExtracted = true;
         } else {
@@ -130,7 +130,7 @@ InstallPrep ModInstaller::prepare(const QString& archivePath,
             ArchiveTool::extractPaths(archivePath, prep.extractDir, {"fomod"}, true, onProgress);
         }
     } else {
-        if (!ArchiveTool::extract(archivePath, prep.extractDir, onProgress)) { prep.errorMessage = "Extraction failed."; return prep; }
+        if (!ArchiveTool::extract(archivePath, prep.extractDir, onProgress)) { prep.errorMessage = "Could not extract the archive - it may be corrupt, an unsupported format, or too large for the available space. Try re-downloading the mod."; return prep; }
         prep.fullyExtracted = true;
     }
 
@@ -149,7 +149,7 @@ InstallPrep ModInstaller::prepare(const QString& archivePath,
         locate();
         if (prep.fomodConfigPath.isEmpty()) {
             // Fast path missed it; fall back to a full extraction.
-            if (!ArchiveTool::extract(archivePath, prep.extractDir)) { prep.errorMessage = "Extraction failed."; return prep; }
+            if (!ArchiveTool::extract(archivePath, prep.extractDir)) { prep.errorMessage = "Could not extract the archive - it may be corrupt, an unsupported format, or too large for the available space. Try re-downloading the mod."; return prep; }
             prep.fullyExtracted = true;
             locate();
         }
@@ -206,7 +206,7 @@ InstallResult ModInstaller::stageSimple(InstallPrep& prep, const QString& stagin
     }
     QDir().mkpath(modDir);
     if (!moveNormalized(prep.extractDir, modDir, prep.layout)) {
-        r.errorMessage = "Failed to stage files."; QDir(modDir).removeRecursively(); return r;
+        r.errorMessage = "The archive extracted but files could not be moved into the staging folder. Check that the staging directory is writable and has enough free space."; QDir(modDir).removeRecursively(); return r;
     }
     r.success = true;
     return r;

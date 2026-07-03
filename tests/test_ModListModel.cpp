@@ -564,6 +564,24 @@ private slots:
         QCOMPARE(prof.modList().findById("a")->version, QString("1.0"));
     }
 
+    void setVariantIndexSameIndexIsNoOp() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        ModEntry a; a.type = EntryType::Mod; a.id = "a"; a.name = "ModA";
+        a.version = "1.0"; a.stagingFolder = "MA (1.0)"; a.enabled = true;
+        prof.modList().append(a);
+        prof.modList().keepBothAddVariant("a", {"2.0", "f2", "MA (2.0)", "/dl/a2.zip", false});
+        ModListModel model;
+        model.setProfile(&prof);
+        const QModelIndex vIdx = model.index(model.rowForModId("a"), ModListModel::ColVersion);
+
+        // keepBoth left variant 1 active - re-picking it must not redeploy.
+        QSignalSpy spy(&model, &ModListModel::variantSwitched);
+        QVERIFY(model.setData(vIdx, 1, ModListModel::VariantIndexRole));
+        QCOMPARE(spy.count(), 0);
+        QCOMPARE(prof.modList().findById("a")->activeVariant, 1);
+    }
+
 };
 QTEST_MAIN(TestModListModel)
 #include "test_ModListModel.moc"

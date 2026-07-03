@@ -551,7 +551,12 @@ bool ModListModel::setData(const QModelIndex& idx, const QVariant& value, int ro
     int raw = rawIndexForRow(idx.row());
     if (raw < 0) return false;
     if (role == VariantIndexRole) {
-        const QString id = m_profile->modList().at(raw).id;
+        const ModEntry& entry = m_profile->modList().at(raw);
+        const QString id = entry.id;
+        // Re-picking the already-active variant is a no-op: don't save, signal, or
+        // redeploy. (setActiveVariant would still succeed and re-sync mirrors, but
+        // variantSwitched would trigger a pointless deploy.)
+        if (value.toInt() == entry.activeVariant) return true;
         if (!m_profile->modList().setActiveVariant(id, value.toInt()))
             return false;
         m_profile->save();

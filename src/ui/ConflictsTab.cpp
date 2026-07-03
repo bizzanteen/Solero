@@ -146,6 +146,7 @@ void ConflictsTab::showContextMenu(const QPoint& pos) {
         });
     }
     if (!forced.isEmpty()) {
+        if (!menu.isEmpty()) menu.addSeparator(); // separate Set from Clear when both show
         menu.addAction(QString("Clear winner override (currently: %1)").arg(modDisplayName(forced)),
                        this, [this, relPath]{
             m_profile->clearWinnerOverride(relPath);

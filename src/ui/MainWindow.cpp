@@ -507,21 +507,23 @@ void MainWindow::setupToolbar() {
     auto* profileMenuBtn = new QToolButton(tb);
     profileMenuBtn->setText("\xe2\x9a\x99");
     auto* profileMenu = new QMenu(profileMenuBtn);
-    profileMenu->addAction("New Profile...", this, &MainWindow::onNewProfile);
-    profileMenu->addAction("Delete Current Profile", this, &MainWindow::onDeleteProfile);
-    profileMenu->addAction("Rename Current Profile...", this, &MainWindow::onRenameProfile);
+    const QChar ell(0x2026);
+    profileMenu->addAction(QStringLiteral("New Profile") + ell, this, &MainWindow::onNewProfile);
+    profileMenu->addAction(QStringLiteral("Rename Current Profile") + ell, this, &MainWindow::onRenameProfile);
     profileMenu->addSeparator();
-    profileMenu->addAction("Export Profile...", this, &MainWindow::onExportProfile);
-    profileMenu->addAction("Import Profile...", this, &MainWindow::onImportProfile);
-    profileMenu->addSeparator();
-    profileMenu->addAction("Import MO2 Profile...", this, &MainWindow::onImportMo2);
-    profileMenu->addAction("Install Wabbajack Modlist\xe2\x80\xa6", this, &MainWindow::onInstallWabbajack);
+    profileMenu->addAction(QStringLiteral("Export Profile") + ell, this, &MainWindow::onExportProfile);
+    profileMenu->addAction(QStringLiteral("Import Profile") + ell, this, &MainWindow::onImportProfile);
+    profileMenu->addAction(QStringLiteral("Import MO2 Profile") + ell, this, &MainWindow::onImportMo2);
+    profileMenu->addAction(QStringLiteral("Install Wabbajack Modlist") + ell, this, &MainWindow::onInstallWabbajack);
     profileMenu->addSeparator();
     m_checkUpdatesAction = profileMenu->addAction(
         "Check for Updates", this, &MainWindow::onCheckUpdates);
     m_checkUpdatesAction->setShortcut(QKeySequence(Qt::Key_F5));
     m_checkUpdatesAction->setToolTip("Check installed mods for newer files on Nexus (F5)");
-    profileMenu->addAction("Scan for FOMOD mods\xe2\x80\xa6", this, &MainWindow::onScanFomod);
+    profileMenu->addAction(QStringLiteral("Scan for FOMOD Mods") + ell, this, &MainWindow::onScanFomod);
+    profileMenu->addSeparator();
+    // Destructive - kept last with an ellipsis (opens a confirm dialog).
+    profileMenu->addAction(QStringLiteral("Delete Current Profile") + ell, this, &MainWindow::onDeleteProfile);
     profileMenuBtn->setMenu(profileMenu);
     profileMenuBtn->setPopupMode(QToolButton::InstantPopup);
     tb->addWidget(profileMenuBtn);
@@ -4149,12 +4151,13 @@ void MainWindow::rebuildToolsMenu() {
     if (!tools.isEmpty()) m_toolsMenu->addSeparator();
     // Built-in: always available regardless of configured tools.
     m_toolsMenu->addAction(QIcon::fromTheme("system-search", QIcon::fromTheme("edit-find")),
-                           "Patch Wizard\xe2\x80\xa6", this, &MainWindow::onPatchWizard);
+                           QStringLiteral("Patch Wizard") + QChar(0x2026), this, &MainWindow::onPatchWizard);
     m_toolsMenu->addSeparator();
     // Use real icons (in the icon column) so these align with the tool entries above.
-    m_toolsMenu->addAction(QIcon::fromTheme("list-add"), "Add tool\xe2\x80\xa6", this, &MainWindow::onAddTool2);
+    m_toolsMenu->addAction(QIcon::fromTheme("list-add"),
+                           QStringLiteral("Add Tool") + QChar(0x2026), this, &MainWindow::onAddTool2);
     m_toolsMenu->addAction(QIcon::fromTheme("configure", QIcon::fromTheme("settings-configure")),
-                           "Manage tools\xe2\x80\xa6", this, &MainWindow::onManageTools);
+                           QStringLiteral("Manage Tools") + QChar(0x2026), this, &MainWindow::onManageTools);
 }
 
 QList<QPair<QString,QString>> MainWindow::modChoices() const {

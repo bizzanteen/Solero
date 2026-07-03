@@ -249,22 +249,22 @@ void PluginListView::contextMenuEvent(QContextMenuEvent* event) {
     if (idx.isValid())
         srcRow = (model() == m_proxy) ? m_proxy->mapToSource(idx).row() : idx.row();
 
-    // Pin/unpin only makes sense for movable (non-official) plugins.
-    if (srcRow >= 0 && !m_model->isRowOfficial(srcRow)) {
-        const bool pinned = m_model->isRowPinned(srcRow);
-        menu.addAction(pinned ? "Unpin" : "Pin to current position",
-                       [this, srcRow]{ m_model->togglePin(srcRow); });
-        menu.addSeparator();
-    }
     if (srcRow >= 0) {
         const QString fn = pluginFilenameAt(idx);
         if (!fn.isEmpty()) {
-            menu.addAction("Go to origin mod", [this, fn]{ emit pluginActivated(fn); });
+            menu.addAction("Go to Origin Mod", [this, fn]{ emit pluginActivated(fn); });
             menu.addSeparator();
         }
     }
-    menu.addAction("Enable all",  [this]{ setAllEnabled(true); });
-    menu.addAction("Disable all", [this]{ setAllEnabled(false); });
+    menu.addAction("Enable All",  [this]{ setAllEnabled(true); });
+    menu.addAction("Disable All", [this]{ setAllEnabled(false); });
+    // Pin/unpin only makes sense for movable (non-official) plugins.
+    if (srcRow >= 0 && !m_model->isRowOfficial(srcRow)) {
+        const bool pinned = m_model->isRowPinned(srcRow);
+        menu.addSeparator();
+        menu.addAction(pinned ? "Unpin from Current Position" : "Pin to Current Position",
+                       [this, srcRow]{ m_model->togglePin(srcRow); });
+    }
     menu.exec(event->globalPos());
 }
 

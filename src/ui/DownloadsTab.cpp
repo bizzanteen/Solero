@@ -247,7 +247,7 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
             const bool downloading = statusItem && statusItem->text().startsWith("Downloading");
             if (nameItem && noPath && downloading) activeFileName = nameItem->text();
         }
-        auto* cancelAction = menu.addAction("Cancel download");
+        auto* cancelAction = menu.addAction("Cancel Download");
         cancelAction->setEnabled(!activeFileName.isEmpty());
         connect(cancelAction, &QAction::triggered, this, [this, activeFileName]{
             emit cancelRequested(activeFileName);
@@ -263,7 +263,7 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
             if (nameItem && nameItem->data(Qt::UserRole + 1).toString() == "failed")
                 failedFileName = nameItem->text();
         }
-        auto* retryAction = menu.addAction("Retry download");
+        auto* retryAction = menu.addAction("Retry Download");
         retryAction->setEnabled(!failedFileName.isEmpty());
         connect(retryAction, &QAction::triggered, this, [this, failedFileName]{
             emit retryRequested(failedFileName);
@@ -281,7 +281,7 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
         }
     }
 
-    auto* deleteSelected = menu.addAction("Delete Selected");
+    auto* deleteSelected = menu.addAction(QStringLiteral("Delete Selected") + QChar(0x2026));
     deleteSelected->setEnabled(!selectedPaths.isEmpty());
     connect(deleteSelected, &QAction::triggered, this, [this, selectedPaths]{
         const int n = selectedPaths.size();
@@ -294,7 +294,7 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
         refresh();
     });
 
-    auto* deleteAll = menu.addAction("Delete All Downloads");
+    auto* deleteAll = menu.addAction(QStringLiteral("Delete All Downloads") + QChar(0x2026));
     connect(deleteAll, &QAction::triggered, this, [this]{
         const QString dir = AppConfig::instance().downloadsDir();
         QDir d(dir);

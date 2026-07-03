@@ -753,6 +753,8 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onModsChanged);
     connect(m_modListView, &solero::ModListView::modActivated,
             m_rightPane, &solero::RightPane::showDataFor);
+    connect(m_modListView, &solero::ModListView::variantSwitched,
+            this, &MainWindow::onVariantSwitched);
     connect(m_modListView, &solero::ModListView::createModFromOverwriteRequested,
             this, &MainWindow::onCreateModFromOverwrite);
     connect(m_modListView, &solero::ModListView::clearShaderCacheRequested,
@@ -1359,6 +1361,21 @@ void MainWindow::onDataRename(const QString& modId, const QString& relPath,
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     updatePluginNotice();
     refreshHealthIndicator();
+}
+
+void MainWindow::onVariantSwitched(const QString& modId) {
+    // The mod's active version changed, so its staged files differ - drop cached
+    // scans and rescan plugins for it (mirrors the install tail).
+    m_modListView->invalidateModCache(modId);
+    m_rightPane->invalidateModPluginCache(modId);
+    if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
+    updatePluginNotice();
+    refreshHealthIndicator();
+    // Auto-redeploy so the new version's files replace the old ones in the game
+    // Data. If nothing is deployed yet, just mark dirty (deferred until deploy).
+    if (m_deployed)
+        redeployForTool("Switching version", QStringLiteral("Re-deploying") + QChar(0x2026));
+    else { m_deployDirty = true; updateDeployButton(); }
 }
 
 void MainWindow::onDataDelete(const QString& modId, const QString& relPath,

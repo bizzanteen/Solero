@@ -75,6 +75,9 @@ signals:
     // Re-emitted from the model whenever the reorder undo/redo stack state changes,
     // so the LeftPane can enable/disable its Undo/Redo buttons.
     void undoRedoStateChanged(bool canUndo, bool canRedo);
+    // Re-emitted from the model when a mod's active version variant is switched via
+    // the Version-column dropdown; MainWindow rescans plugins and auto-redeploys.
+    void variantSwitched(const QString& modId);
 
 protected:
     void contextMenuEvent(QContextMenuEvent* event) override;

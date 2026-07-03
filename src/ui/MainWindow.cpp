@@ -2128,7 +2128,15 @@ void MainWindow::onReinstallMod(const QString& modId) {
     if (archive.isEmpty()) return;
     // Persist the located/chosen archive so future reinstalls skip the search.
     if (archive != existing->sourceArchive) {
-        existing->sourceArchive = archive;
+        if (!existing->variants.isEmpty()) {
+            // Route the mirror write through the active variant so variants[] stays
+            // in sync (updateVariant re-syncs the mirrors for the active index).
+            solero::ModVariant nv = existing->variants[existing->activeVariant];
+            nv.sourceArchive = archive;
+            profile->modList().updateVariant(modId, existing->activeVariant, nv);
+        } else {
+            existing->sourceArchive = archive;
+        }
         profile->save();
     }
 
@@ -2244,8 +2252,17 @@ void MainWindow::onReinstallMod(const QString& modId) {
         QFile f(cp);
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     }
-    existing->hasFomodChoices = !choiceLog.isEmpty();
-    existing->sourceArchive = archive;
+    if (!existing->variants.isEmpty()) {
+        // Route the mirror writes through the active variant so variants[] stays in
+        // sync (updateVariant re-syncs the mirrors for the active index).
+        solero::ModVariant nv = existing->variants[existing->activeVariant];
+        nv.sourceArchive   = archive;
+        nv.hasFomodChoices = !choiceLog.isEmpty();
+        profile->modList().updateVariant(modId, existing->activeVariant, nv);
+    } else {
+        existing->hasFomodChoices = !choiceLog.isEmpty();
+        existing->sourceArchive = archive;
+    }
     profile->save();
 
     // Restaged files for this mod - drop its cached empty/plugin scans.

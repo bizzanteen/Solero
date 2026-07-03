@@ -2293,17 +2293,21 @@ static QSet<QString> takenStagingFolders(solero::Profile* profile) {
     for (const auto& e : profile->modList())
         if (e.type == solero::EntryType::Mod && !e.stagingFolder.isEmpty())
             taken.insert(e.stagingFolder.toLower());
-    // The managed shader cache lives outside the list but owns a staging folder too.
-    if (!profile->shaderCache().stagingFolder.isEmpty())
-        taken.insert(profile->shaderCache().stagingFolder.toLower());
+    // The managed shader cache lives outside the list but owns staging folder(s) too.
+    const QString cacheFolder = profile->shaderCache().folderFor(
+        solero::activeCacheKey(profile->modList()));
+    if (!cacheFolder.isEmpty())
+        taken.insert(cacheFolder.toLower());
     return taken;
 }
 
 // On-disk staging path of the profile's managed shader cache, or empty if inactive.
 static QString cacheStagingPath(solero::Profile* profile) {
     if (!profile || !profile->shaderCache().active()) return {};
-    return solero::AppConfig::instance().stagingDir() + "/"
-         + profile->shaderCache().stagingFolder;
+    const QString folder = profile->shaderCache().folderFor(
+        solero::activeCacheKey(profile->modList()));
+    if (folder.isEmpty()) return {};
+    return solero::AppConfig::instance().stagingDir() + "/" + folder;
 }
 
 QString MainWindow::stagingRootForId(const QString& modId) const {
@@ -2465,8 +2469,8 @@ void MainWindow::enableManagedCache() {
     const QString folder = solero::uniqueStagingFolder(
         solero::sanitizeStagingFolder("Community Shaders - Shader Cache"),
         takenStagingFolders(profile));
-    profile->shaderCache().managed       = true;
-    profile->shaderCache().stagingFolder = folder;
+    profile->shaderCache().managed = true;
+    profile->shaderCache().folders.insert(solero::activeCacheKey(profile->modList()), folder);
 
     // Create the staging dir with an empty Data/ShaderCache so captures land there.
     const QString modRoot = solero::AppConfig::instance().stagingDir() + "/" + folder;

@@ -415,8 +415,8 @@ private slots:
         ModEntry mod; mod.type = EntryType::Mod; mod.id = "aaa";
         mod.name = "RealMod"; mod.enabled = true; // staging folder falls back to id
         profile.modList().append(mod);
-        profile.shaderCache().managed       = true;
-        profile.shaderCache().stagingFolder = "cachefolder";
+        profile.shaderCache().managed = true;
+        profile.shaderCache().folders.insert("default", "cachefolder"); // no CS mod -> key="default"
         profile.save();
 
         DeployEngine engine(gameDir, stagingRoot);

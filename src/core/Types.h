@@ -3,6 +3,7 @@
 #include <QStringList>
 #include <QDateTime>
 #include <QList>
+#include <QMap>
 
 namespace solero {
 
@@ -73,12 +74,16 @@ struct ModEntry {
 
 // Managed Community Shaders shader cache
 // First-class per-profile state (not a mod-list entry): the captured shaders live
-// at <stagingDir>/<stagingFolder>/Data/ShaderCache/, are deployed last so they win
-// all conflicts, and are invisible in the mod list. "Active" = managed && folder set.
+// at <stagingDir>/<folderFor(activeKey)>/Data/ShaderCache/, are deployed last so
+// they win all conflicts, and are invisible in the mod list.
+// "Active" = managed && at least one folder entry exists.
+// Cache keys are derived from the CS mod's nexusFileId, its normalised version, or
+// "default" as fallback (see activeCacheKey in ShaderCache.h).
 struct ManagedShaderCache {
     bool managed = false;
-    QString stagingFolder;
-    bool active() const { return managed && !stagingFolder.isEmpty(); }
+    QMap<QString, QString> folders;            // cacheKey -> staging folder
+    QString folderFor(const QString& key) const { return folders.value(key); }
+    bool active() const { return managed && !folders.isEmpty(); }
 };
 
 // Plugin list entry

@@ -2,6 +2,7 @@
 #include "Linker.h"
 #include "loot/LootSorter.h"
 #include "core/Profile.h"
+#include "core/ShaderCache.h"
 #include "core/AppConfig.h"
 #include "core/StagingFolder.h"
 #include "core/FileUtil.h"
@@ -91,7 +92,8 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
         cacheEntry.id            = QStringLiteral("__shadercache__");
         cacheEntry.name          = QStringLiteral("Shader Cache");
         cacheEntry.enabled       = true;
-        cacheEntry.stagingFolder = profile.shaderCache().stagingFolder;
+        cacheEntry.stagingFolder = profile.shaderCache().folderFor(
+            activeCacheKey(profile.modList()));
         failures += deployMod(cacheEntry, m_gameDir, linker, record, conflicts, ciOwners);
         ++done;
         if (onProgress) onProgress(done, total);

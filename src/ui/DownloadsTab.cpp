@@ -72,9 +72,13 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     auto* hh = m_table->horizontalHeader();
     hh->setStretchLastSection(false);
     hh->setSectionResizeMode(0, QHeaderView::Stretch);          // Name absorbs slack
-    hh->setSectionResizeMode(1, QHeaderView::ResizeToContents); // Status
-    hh->setSectionResizeMode(2, QHeaderView::ResizeToContents); // Size
-    hh->setSectionResizeMode(3, QHeaderView::ResizeToContents); // Downloaded
+    // Status/Size/Downloaded are Interactive with fixed defaults, not
+    // ResizeToContents: refresh() runs on every progress tick and the status text
+    // width changes ("Downloading 0%" -> "Installed"), so ResizeToContents made the
+    // columns visibly jump each tick (B-3). Interactive keeps them steady.
+    hh->setSectionResizeMode(1, QHeaderView::Interactive); hh->resizeSection(1, 100); // Status
+    hh->setSectionResizeMode(2, QHeaderView::Interactive); hh->resizeSection(2,  70); // Size
+    hh->setSectionResizeMode(3, QHeaderView::Interactive); hh->resizeSection(3, 115); // Downloaded
     m_table->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_table, &QWidget::customContextMenuRequested, this, &DownloadsTab::showContextMenu);
     v->addWidget(m_table, 1);

@@ -76,6 +76,15 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
     setItemDelegateForColumn(PluginListModel::ColName, new NameDelegate(this));
     applyHeaderLayout();
     verticalHeader()->hide();
+    // Debounce column-resize saves (B-1): coalesce a resize drag into one config
+    // write 300ms after the user stops. The header object persists across model
+    // swaps, so this single connection stays valid.
+    m_headerSaveTimer = new QTimer(this);
+    m_headerSaveTimer->setSingleShot(true);
+    m_headerSaveTimer->setInterval(300);
+    connect(m_headerSaveTimer, &QTimer::timeout, this, &PluginListView::saveHeaderState);
+    connect(horizontalHeader(), &QHeaderView::sectionResized, this,
+            [this](int, int, int){ m_headerSaveTimer->start(); });
     connect(horizontalHeader(), &QHeaderView::sortIndicatorChanged,
             this, &PluginListView::onSortChanged);
     connect(m_model, &PluginListModel::loadOrderChanged,
@@ -88,11 +97,26 @@ void PluginListView::applyHeaderLayout() {
     // The Plugin (Name) column STRETCHES to fill whatever the other Interactive
     // columns leave, so the columns always span the full pane width exactly - no
     // gap, no overflow - however the user resizes the others or the pane.
-    horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
-    horizontalHeader()->setSectionResizeMode(PluginListModel::ColName, QHeaderView::Stretch);
-    horizontalHeader()->resizeSection(PluginListModel::ColEnabled, 28);
-    horizontalHeader()->resizeSection(PluginListModel::ColPriority, 40);
-    horizontalHeader()->resizeSection(PluginListModel::ColFlags, 50);
+    auto* hh = horizontalHeader();
+    hh->setSectionResizeMode(QHeaderView::Interactive);
+    hh->setSectionResizeMode(PluginListModel::ColName, QHeaderView::Stretch);
+    // With Name already stretching, don't ALSO stretch the last column (Flags) -
+    // that made Flags grow whenever the viewport exceeded the summed widths (B-4).
+    hh->setStretchLastSection(false);
+    hh->setMinimumSectionSize(22); // guard against unusably narrow columns (B-5)
+    hh->resizeSection(PluginListModel::ColEnabled, 28);
+    hh->resizeSection(PluginListModel::ColPriority, 40);
+    hh->resizeSection(PluginListModel::ColFlags, 50);
+    // Restore persisted column widths (B-1). applyHeaderLayout re-runs on every
+    // model swap (filter on/off), so re-apply the saved blob each time or a filter
+    // toggle would reset the user's widths back to the defaults above.
+    const QByteArray saved = AppConfig::instance().pluginListHeaderState();
+    if (!saved.isEmpty()) hh->restoreState(saved);
+}
+
+void PluginListView::saveHeaderState() {
+    AppConfig::instance().setPluginListHeaderState(horizontalHeader()->saveState());
+    AppConfig::instance().save();
 }
 
 void PluginListView::autoSizeColumns() {
@@ -112,9 +136,12 @@ void PluginListView::resizeEvent(QResizeEvent* event) {
 
 void PluginListView::showEvent(QShowEvent* event) {
     QTableView::showEvent(event);
+    // Auto-fit on first show only when there are no persisted widths (B-1/B-2);
+    // otherwise applyHeaderLayout already restored the user's columns.
     if (!m_didAutoSize) {
         m_didAutoSize = true;
-        QTimer::singleShot(0, this, [this]{ autoSizeColumns(); });
+        if (AppConfig::instance().pluginListHeaderState().isEmpty())
+            QTimer::singleShot(0, this, [this]{ autoSizeColumns(); });
     }
 }
 
@@ -172,9 +199,15 @@ void PluginListView::onSortChanged(int col, Qt::SortOrder order) {
 }
 void PluginListView::setProfile(Profile* profile) {
     m_model->setProfile(profile);
-    // Re-fit columns once the profile's plugins first populate. The viewport-width
-    // guard in autoSizeColumns() makes this a no-op if the view isn't shown yet.
-    QTimer::singleShot(0, this, [this]{ autoSizeColumns(); });
+    // Auto-fit columns to content only once, and only when the user has no saved
+    // widths to honour (B-2). Previously this fired on every profile switch and
+    // clobbered manual resizes.
+    QTimer::singleShot(0, this, [this]{
+        if (!m_didAutoSize && AppConfig::instance().pluginListHeaderState().isEmpty()) {
+            autoSizeColumns();
+            m_didAutoSize = true;
+        }
+    });
 }
 
 void PluginListView::reconcileWith(Profile* profile, const QString& stagingRoot) {

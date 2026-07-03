@@ -113,6 +113,10 @@ private:
     // persists the hidden set to AppConfig.
     void showHeaderMenu(const QPoint& pos);
     void applyHiddenColumns(); // apply AppConfig's persisted hidden-column set
+    // Persist the current header layout (column widths) to AppConfig; debounced via
+    // m_headerSaveTimer so a resize drag writes config once, not per pixel.
+    void saveHeaderState();
+    QTimer* m_headerSaveTimer = nullptr;
     ConflictIndex m_conflicts;
     // Recompute the green/red conflict highlight for the current single selection.
     void updateConflictHighlights();

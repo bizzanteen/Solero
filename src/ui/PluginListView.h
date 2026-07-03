@@ -3,6 +3,7 @@
 #include <QItemSelection>
 #include "core/Profile.h"
 class QSortFilterProxyModel;
+class QTimer;
 namespace solero {
 class PluginListModel;
 class PluginListView : public QTableView {
@@ -40,6 +41,10 @@ protected:
                           const QItemSelection& deselected) override;
 private:
     void applyHeaderLayout();
+    // Persist the current header layout (column widths) to AppConfig; debounced via
+    // m_headerSaveTimer so a resize drag writes config once, not per pixel.
+    void saveHeaderState();
+    QTimer* m_headerSaveTimer = nullptr;
     void autoSizeColumns();
     void fillNameColumn();
     void setAllEnabled(bool enabled);

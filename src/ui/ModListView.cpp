@@ -168,6 +168,24 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     hdr->resizeSection(ModListModel::ColPriority, 40);
     hdr->resizeSection(ModListModel::ColVersion,  80);
     hdr->resizeSection(ModListModel::ColFlags,    60);
+    // Never let a column be dragged so narrow its content vanishes with no easy
+    // way back (B-5). Keeps the checkbox/number/flags at least tap-visible.
+    hdr->setMinimumSectionSize(22);
+    // Restore persisted column widths (B-1). Done before applyHiddenColumns() so the
+    // AppConfig hidden-column set stays authoritative over any hidden state in the
+    // blob. Skipped on first run (empty blob) so the default widths above apply.
+    {
+        const QByteArray saved = AppConfig::instance().modListHeaderState();
+        if (!saved.isEmpty()) hdr->restoreState(saved);
+    }
+    // Debounce column-resize saves: a drag emits sectionResized rapidly, so coalesce
+    // into one AppConfig write 300ms after the user stops.
+    m_headerSaveTimer = new QTimer(this);
+    m_headerSaveTimer->setSingleShot(true);
+    m_headerSaveTimer->setInterval(300);
+    connect(m_headerSaveTimer, &QTimer::timeout, this, &ModListView::saveHeaderState);
+    connect(hdr, &QHeaderView::sectionResized, this,
+            [this](int, int, int){ m_headerSaveTimer->start(); });
     // The list is manually ordered (drag-reorder); there's no real sort(), so
     // clickable headers would only flip a lying sort indicator. Disable sorting.
     setSortingEnabled(false);
@@ -220,9 +238,21 @@ void ModListView::setProfile(Profile* profile) {
     }
     applyRowSpans(); // separators span full width; reset stale spans
     applyFilter(); // model rebuilt -> re-apply any active filter
-    // Re-fit columns once the profile's data first populates. The viewport-width
-    // guard in autoSizeColumns() makes this a no-op if the view isn't shown yet.
-    QTimer::singleShot(0, this, [this]{ autoSizeColumns(); });
+    // Auto-fit columns to content only once, and only when the user has no saved
+    // widths to honour (B-2). Previously this fired on every profile switch and
+    // clobbered manual resizes; now a saved header blob (or a prior auto-size)
+    // suppresses it so switching profiles keeps the user's column widths.
+    QTimer::singleShot(0, this, [this]{
+        if (!m_didAutoSize && AppConfig::instance().modListHeaderState().isEmpty()) {
+            autoSizeColumns();
+            m_didAutoSize = true;
+        }
+    });
+}
+
+void ModListView::saveHeaderState() {
+    AppConfig::instance().setModListHeaderState(header()->saveState());
+    AppConfig::instance().save();
 }
 
 void ModListView::selectModById(const QString& id) {
@@ -274,9 +304,12 @@ void ModListView::applyRowSpans() {
 
 void ModListView::showEvent(QShowEvent* event) {
     QTreeView::showEvent(event);
+    // Auto-fit on first show only when there are no persisted widths to honour;
+    // otherwise the constructor already restored the user's columns (B-1/B-2).
     if (!m_didAutoSize) {
         m_didAutoSize = true;
-        QTimer::singleShot(0, this, [this]{ autoSizeColumns(); });
+        if (AppConfig::instance().modListHeaderState().isEmpty())
+            QTimer::singleShot(0, this, [this]{ autoSizeColumns(); });
     }
 }
 

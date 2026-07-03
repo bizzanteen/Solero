@@ -4402,26 +4402,35 @@ void MainWindow::removeModEverywhere(const QString& id) {
     // Resolve the on-disk staging folder name (name-based after migration) from
     // whichever profile holds the mod, *before* the entry is removed. Staged
     // files are profile-independent, so we delete them once at the end.
-    QString folder;
-    auto captureFolder = [&](const solero::ModEntry* e) {
-        if (e && folder.isEmpty() && !e->stagingFolder.isEmpty()) folder = e->stagingFolder;
+    // A Keep-Both mod owns one staging folder per version variant; collect them all
+    // (plus the mirror folder) so deleting the mod removes every version's files.
+    QStringList folders;
+    auto captureFolders = [&](const solero::ModEntry* e) {
+        if (!e) return;
+        auto add = [&](const QString& f) {
+            if (!f.isEmpty() && !folders.contains(f)) folders << f;
+        };
+        add(e->stagingFolder);
+        for (const auto& v : e->variants) add(v.stagingFolder);
     };
     auto* active = m_profileMgr->activeProfile();
     for (const QString& name : m_profileMgr->profileNames()) {
         if (active && name == active->name()) {
-            captureFolder(active->modList().findById(id));
+            captureFolders(active->modList().findById(id));
             active->modList().remove(id);
             active->save();
         } else {
             QString path = profilesRoot() + "/" + name + "/modlist.json";
             solero::ModList ml = solero::ModList::loadFromFile(path);
-            captureFolder(ml.findById(id));
+            captureFolders(ml.findById(id));
             ml.remove(id);
             ml.saveToFile(path);
         }
     }
-    if (folder.isEmpty()) folder = id; // pre-migration mods (or unknown) used the id
-    QDir(solero::AppConfig::instance().stagingDir() + "/" + folder).removeRecursively();
+    if (folders.isEmpty()) folders << id; // pre-migration mods (or unknown) used the id
+    const QString stagingDir = solero::AppConfig::instance().stagingDir();
+    for (const QString& folder : folders)
+        QDir(stagingDir + "/" + folder).removeRecursively();
 }
 
 void MainWindow::onRemoveTool(const QString& id) {

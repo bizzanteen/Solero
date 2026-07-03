@@ -1664,6 +1664,7 @@ void MainWindow::installFromArchive(const QString& archive) {
         ? cleanModName(prep.modName, sidecarModId) : sidecarName;
 
     QString existingModId;     // non-empty -> Replace the existing mod in place
+    int existingVariantIdx = -1; // ≥0 -> SameFile targets this variant of existingModId
     QString stagingOverride;   // full mod dir for Replace (migrated staging folder)
     QString overrideName;      // non-empty -> Rename: install new with this name
     bool installAsSibling = false; // different file of an already-installed mod
@@ -1684,8 +1685,19 @@ void MainWindow::installFromArchive(const QString& archive) {
             // redownload pins the existing fileId, so it lands here -> silent Replace.
             if (solero::ModEntry* sameFile = ml.findById(conflict.targetEntryId)) {
                 existingModId = sameFile->id;
-                stagingOverride = solero::stagingPathFor(
-                    solero::AppConfig::instance().stagingDir(), *sameFile);
+                // The incoming fileId may belong to an INACTIVE variant. Stage into
+                // THAT variant's folder (not the mirror = active variant's folder),
+                // else we'd extract the wrong version's files over the active one and
+                // break the mirror invariant. The tail writes back via updateVariant.
+                const int vi = ml.variantIndexByFileId(sameFile->id, sidecarFileId);
+                if (vi >= 0) {
+                    existingVariantIdx = vi;
+                    stagingOverride = solero::AppConfig::instance().stagingDir()
+                                    + "/" + sameFile->variants[vi].stagingFolder;
+                } else {
+                    stagingOverride = solero::stagingPathFor(
+                        solero::AppConfig::instance().stagingDir(), *sameFile);
+                }
             }
         } else if (conflict.kind == solero::InstallConflictKind::SiblingFile) {
             // Different file of an already-installed mod at the same version (e.g. two
@@ -1888,13 +1900,31 @@ void MainWindow::installFromArchive(const QString& archive) {
         // files; keep the entry's load-order position + enabled state, just refresh
         // its archive/Nexus metadata (mirrors onReinstallMod).
         if (solero::ModEntry* existing = profile->modList().findById(existingModId)) {
-            existing->hasFomodChoices = !choiceLog.isEmpty();
-            existing->sourceArchive   = archive;
-            if (!sidecarModId.isEmpty())   existing->nexusModId  = sidecarModId;
-            if (!sidecarFileId.isEmpty())  existing->nexusFileId = sidecarFileId;
-            if (!sidecarVersion.isEmpty()) existing->version     = sidecarVersion;
-            existing->name = sidecarName.isEmpty()
-                ? cleanModName(existing->name, existing->nexusModId) : sidecarName;
+            if (existingVariantIdx >= 0 && !existing->variants.isEmpty()) {
+                // The reinstall targeted a specific variant (its fileId owned it).
+                // Write version/fileId/archive/fomod into THAT variant via
+                // updateVariant, which re-syncs the mirrors only when it's the active
+                // variant - never poke the mirrors directly (that desyncs variants[]).
+                solero::ModVariant nv = existing->variants[existingVariantIdx];
+                if (!sidecarVersion.isEmpty()) nv.version     = sidecarVersion;
+                if (!sidecarFileId.isEmpty())  nv.nexusFileId = sidecarFileId;
+                nv.sourceArchive   = archive;
+                nv.hasFomodChoices = !choiceLog.isEmpty();
+                // stagingFolder unchanged: we restaged into the variant's own folder.
+                profile->modList().updateVariant(existingModId, existingVariantIdx, nv);
+                // Entry-level (non-variant) metadata still refreshes.
+                if (!sidecarModId.isEmpty()) existing->nexusModId = sidecarModId;
+                existing->name = sidecarName.isEmpty()
+                    ? cleanModName(existing->name, existing->nexusModId) : sidecarName;
+            } else {
+                existing->hasFomodChoices = !choiceLog.isEmpty();
+                existing->sourceArchive   = archive;
+                if (!sidecarModId.isEmpty())   existing->nexusModId  = sidecarModId;
+                if (!sidecarFileId.isEmpty())  existing->nexusFileId = sidecarFileId;
+                if (!sidecarVersion.isEmpty()) existing->version     = sidecarVersion;
+                existing->name = sidecarName.isEmpty()
+                    ? cleanModName(existing->name, existing->nexusModId) : sidecarName;
+            }
         }
         profile->save();
     } else {

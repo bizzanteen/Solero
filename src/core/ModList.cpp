@@ -331,6 +331,23 @@ bool ModList::replaceActiveVersion(const QString& id, const ModVariant& v,
     return true;
 }
 
+int ModList::variantIndexByFileId(const QString& id, const QString& fileId) const {
+    if (fileId.isEmpty()) return -1;
+    const ModEntry* e = findById(id);
+    if (!e || e->variants.isEmpty()) return -1;
+    for (int i = 0; i < e->variants.size(); ++i)
+        if (e->variants[i].nexusFileId == fileId) return i;
+    return -1;
+}
+
+bool ModList::updateVariant(const QString& id, int index, const ModVariant& v) {
+    ModEntry* e = findById(id);
+    if (!e || index < 0 || index >= e->variants.size()) return false;
+    e->variants[index] = v;
+    if (index == e->activeVariant) syncVariantMirrors(*e);
+    return true;
+}
+
 void ModList::normalizeVariants() {
     for (auto& e : m_entries) {
         if (e.variants.isEmpty()) { e.activeVariant = -1; continue; }

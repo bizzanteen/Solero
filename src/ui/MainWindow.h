@@ -70,7 +70,9 @@ private:
     void detachProfileFromViews();
 
 private:
+    void setupMenuBar();
     void setupToolbar();
+    void setupStatusBar();
     void setupCentralWidget();
     void switchProfile(const QString& name);
     // After a profile is newly created (manual, Wabbajack, or MO2 import), ask
@@ -300,7 +302,6 @@ private:
     solero::RightPane*      m_rightPane = nullptr;
     solero::BottomPanel*    m_bottomPanel = nullptr;
     solero::BethiniWindow*  m_bethiniWindow = nullptr;
-    QToolButton* m_toolsBtn = nullptr;
     QMenu* m_toolsMenu = nullptr;
     solero::ToolStore* m_toolStore = nullptr;
     solero::DownloadManager* m_downloads = nullptr;

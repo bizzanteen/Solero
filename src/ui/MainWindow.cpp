@@ -79,6 +79,10 @@
 #include <QListWidget>
 #include <QPair>
 #include <QMenu>
+#include <QMenuBar>
+#include <QFont>
+#include <QPalette>
+#include <QSizePolicy>
 #include <QIcon>
 #include <QStatusBar>
 #include <QTimer>
@@ -191,7 +195,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     m_ipcServer->setTransactionLog(m_txLog);
     m_ipcServer->start("solero-ipc");
 
+    setupMenuBar();
     setupToolbar();
+    setupStatusBar();
     setupCentralWidget();
     statusBar()->showMessage("Ready");
 
@@ -489,33 +495,30 @@ QString MainWindow::txLogPath() const {
     return solero::AppConfig::dataRoot() + "/ai-transactions.json";
 }
 
-void MainWindow::setupToolbar() {
-    auto* tb = addToolBar("Main");
-    tb->setMovable(false);
-    tb->setIconSize({24, 24});
-
-    // Profile selector
-    tb->addWidget(new QLabel("Profile: "));
-    m_profileCombo = new QComboBox(tb);
-    m_profileCombo->setMinimumWidth(150);
-    refreshProfileCombo();
-    connect(m_profileCombo, &QComboBox::currentTextChanged,
-            this, &MainWindow::switchProfile);
-    tb->addWidget(m_profileCombo);
-
-    // Profile management button
-    auto* profileMenuBtn = new QToolButton(tb);
-    profileMenuBtn->setText("\xe2\x9a\x99");
-    auto* profileMenu = new QMenu(profileMenuBtn);
+void MainWindow::setupMenuBar() {
     const QChar ell(0x2026);
+    auto* mb = menuBar();
+
+    // ---- File: acquire mods + move profiles between machines + app-level ----
+    QMenu* fileMenu = mb->addMenu("&File");
+    fileMenu->addAction(QStringLiteral("Install Mod") + ell, this, &MainWindow::onInstallMod);
+    fileMenu->addAction(QStringLiteral("Install Wabbajack Modlist") + ell, this, &MainWindow::onInstallWabbajack);
+    fileMenu->addSeparator();
+    fileMenu->addAction(QStringLiteral("Export Profile") + ell, this, &MainWindow::onExportProfile);
+    fileMenu->addAction(QStringLiteral("Import Profile") + ell, this, &MainWindow::onImportProfile);
+    fileMenu->addSeparator();
+    fileMenu->addAction(QStringLiteral("Settings") + ell, this, [this]{ openSettingsDialog(); });
+    fileMenu->addSeparator();
+    fileMenu->addAction("Quit", QKeySequence(QKeySequence::Quit), this, &QWidget::close);
+
+    // ---- Profile: create/rename/delete + imports + update/FOMOD scans ----
+    QMenu* profileMenu = mb->addMenu("&Profile");
     profileMenu->addAction(QStringLiteral("New Profile") + ell, this, &MainWindow::onNewProfile);
     profileMenu->addAction(QStringLiteral("Rename Current Profile") + ell, this, &MainWindow::onRenameProfile);
     profileMenu->addSeparator();
-    profileMenu->addAction(QStringLiteral("Export Profile") + ell, this, &MainWindow::onExportProfile);
-    profileMenu->addAction(QStringLiteral("Import Profile") + ell, this, &MainWindow::onImportProfile);
     profileMenu->addAction(QStringLiteral("Import MO2 Profile") + ell, this, &MainWindow::onImportMo2);
-    profileMenu->addAction(QStringLiteral("Install Wabbajack Modlist") + ell, this, &MainWindow::onInstallWabbajack);
     profileMenu->addSeparator();
+    // Same QAction as before: keeps the F5 shortcut + disable-while-running state.
     m_checkUpdatesAction = profileMenu->addAction(
         "Check for Updates", this, &MainWindow::onCheckUpdates);
     m_checkUpdatesAction->setShortcut(QKeySequence(Qt::Key_F5));
@@ -524,57 +527,77 @@ void MainWindow::setupToolbar() {
     profileMenu->addSeparator();
     // Destructive - kept last with an ellipsis (opens a confirm dialog).
     profileMenu->addAction(QStringLiteral("Delete Current Profile") + ell, this, &MainWindow::onDeleteProfile);
-    profileMenuBtn->setMenu(profileMenu);
-    profileMenuBtn->setPopupMode(QToolButton::InstantPopup);
-    tb->addWidget(profileMenuBtn);
-    // Expose the update check as a visible toolbar button too (same QAction, so the
-    // F5 shortcut and the disable-while-running state are shared).
-    tb->addAction(m_checkUpdatesAction);
-    tb->addSeparator();
 
-    // Install Mod action
-    tb->addAction("Install Mod...", this, &MainWindow::onInstallMod);
-    m_browseAction = tb->addAction("\xe2\x86\x92 Browse Nexus");
+    // ---- Tools: DYNAMIC - repopulated from activeTools() each time it opens,
+    // mirroring the old dropdown (which rebuilt via rebuildToolsMenu()). ----
+    m_toolsMenu = mb->addMenu("&Tools");
+    connect(m_toolsMenu, &QMenu::aboutToShow, this, &MainWindow::rebuildToolsMenu);
+
+    // ---- View: the Browse Nexus page toggle (same checkable QAction) ----
+    QMenu* viewMenu = mb->addMenu("&View");
+    m_browseAction = viewMenu->addAction("Browse Nexus");
     m_browseAction->setCheckable(true);
     m_browseAction->setToolTip("Toggle a full nexusmods.com browser in the main view");
     connect(m_browseAction, &QAction::toggled, this, &MainWindow::onToggleNexus);
-    tb->addSeparator();
 
-    // Tools dropdown
-    m_toolsBtn = new QToolButton(tb);
-    m_toolsBtn->setText("Tools");
-    m_toolsBtn->setPopupMode(QToolButton::InstantPopup);
-    m_toolsMenu = new QMenu(m_toolsBtn);
-    m_toolsBtn->setMenu(m_toolsMenu);
-    tb->addWidget(m_toolsBtn);
+    rebuildToolsMenu();
+}
 
-    // BethINI (modal window)
-    tb->addAction("BethINI", this, &MainWindow::onOpenBethini);
-    tb->addSeparator();
+void MainWindow::setupToolbar() {
+    auto* tb = addToolBar("Main");
+    tb->setMovable(false);
+    tb->setIconSize({24, 24});
 
-    // Deploy toggle
+    // Profile selector (all other actions now live in the menu bar).
+    tb->addWidget(new QLabel("Profile: "));
+    m_profileCombo = new QComboBox(tb);
+    m_profileCombo->setMinimumWidth(150);
+    refreshProfileCombo();
+    connect(m_profileCombo, &QComboBox::currentTextChanged,
+            this, &MainWindow::switchProfile);
+    tb->addWidget(m_profileCombo);
+
+    // Stretch pushes the primary Deploy/Play pair to the right edge.
+    auto* spacer = new QWidget(tb);
+    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    tb->addWidget(spacer);
+
+    // Deploy + Play are THE primary controls - the workflow's terminus.
     m_deployAction = tb->addAction("\xe2\x9c\x97 Not Deployed", this, &MainWindow::onDeployToggle);
     m_deployAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
     m_deployAction->setToolTip("Click to deploy mods to game directory (Ctrl+D)");
-    tb->addSeparator();
+    auto* playAction = tb->addAction("\xe2\x96\xb6 Play", this, &MainWindow::onPlay);
+    playAction->setToolTip("Launch the game via Steam");
 
-    // Play (launch Skyrim via Steam)
-    tb->addAction("\xe2\x96\xb6 Play", this, &MainWindow::onPlay);
-    tb->addSeparator();
+    // Promote the pair so it dominates: bold text + accent (highlight) colour,
+    // taken from the palette (no hardcoded colours - same source as
+    // DataTab::accentColor() / ThemeAdapter). The Deploy label mutates at
+    // runtime; the button keeps this styling across setText().
+    for (QAction* a : {m_deployAction, playAction}) {
+        if (auto* btn = qobject_cast<QToolButton*>(tb->widgetForAction(a))) {
+            btn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+            QFont f = btn->font();
+            f.setBold(true);
+            btn->setFont(f);
+            QPalette pal = btn->palette();
+            pal.setColor(QPalette::ButtonText, pal.color(QPalette::Highlight));
+            btn->setPalette(pal);
+        }
+    }
+}
 
-    // Problems / health indicator: count + worst-severity icon, opens the panel.
-    m_problemsBtn = new QToolButton(tb);
+void MainWindow::setupStatusBar() {
+    // Problems / health indicator relocates here as a permanent widget on the
+    // right. Flat (autoRaise) so it reads as status text rather than a button;
+    // click opens the ProblemsDialog. refreshHealthIndicator() drives the
+    // text/icon and shows plain "No problems" when the profile is clean.
+    m_problemsBtn = new QToolButton(this);
+    m_problemsBtn->setAutoRaise(true);
     m_problemsBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    m_problemsBtn->setText("Problems");
+    m_problemsBtn->setText("No problems");
     m_problemsBtn->setToolTip("Show problems (missing masters, dependencies, conflicts, FOMOD, deploy)");
     connect(m_problemsBtn, &QToolButton::clicked, this, &MainWindow::onShowProblems);
-    tb->addWidget(m_problemsBtn);
-    tb->addSeparator();
-
-    // Game settings
-    tb->addAction("\xe2\x9a\x99 Settings", this, [this]{ openSettingsDialog(); });
-
-    rebuildToolsMenu();
+    statusBar()->addPermanentWidget(m_problemsBtn);
 }
 
 void MainWindow::setupCentralWidget() {
@@ -590,7 +613,7 @@ void MainWindow::setupCentralWidget() {
     filterRow->setContentsMargins(0, 0, 0, 0);
     filterRow->setSpacing(4);
     auto* modFilter = new QLineEdit(leftContainer);
-    modFilter->setPlaceholderText("Filter mods\xe2\x80\xa6");
+    modFilter->setPlaceholderText(QStringLiteral("Search mods") + QChar(0x2026));
     modFilter->setClearButtonEnabled(true);
     auto* stateFilter = new QComboBox(leftContainer);
     stateFilter->setToolTip("Show only mods in a given state");
@@ -1339,7 +1362,7 @@ void MainWindow::refreshHealthIndicator() {
 
     const int worst = solero::worstSeverity(issues);
     if (issues.isEmpty()) {
-        m_problemsBtn->setText("No Problems");
+        m_problemsBtn->setText("No problems");
         m_problemsBtn->setIcon(QIcon());
     } else {
         m_problemsBtn->setText(QString("Problems (%1)").arg(issues.size()));
@@ -4149,9 +4172,12 @@ void MainWindow::rebuildToolsMenu() {
         }
     }
     if (!tools.isEmpty()) m_toolsMenu->addSeparator();
-    // Built-in: always available regardless of configured tools.
+    // Built-ins: always available regardless of configured tools.
     m_toolsMenu->addAction(QIcon::fromTheme("system-search", QIcon::fromTheme("edit-find")),
                            QStringLiteral("Patch Wizard") + QChar(0x2026), this, &MainWindow::onPatchWizard);
+    // BethINI (INI editor) folded into Tools per the declutter spec.
+    m_toolsMenu->addAction(QIcon::fromTheme("preferences-system"),
+                           QStringLiteral("BethINI"), this, &MainWindow::onOpenBethini);
     m_toolsMenu->addSeparator();
     // Use real icons (in the icon column) so these align with the tool entries above.
     m_toolsMenu->addAction(QIcon::fromTheme("list-add"),

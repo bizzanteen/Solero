@@ -17,7 +17,12 @@ public:
     // For the synthetic [Overwrite] row only: the active profile's name, so the
     // ColName delegate can render "[Overwrite] - <ProfileName>" with the name styled.
     // Invalid QVariant for every other row.
-    enum Role { OverwriteProfileRole = Qt::UserRole + 1 };
+    enum Role {
+        OverwriteProfileRole = Qt::UserRole + 1,
+        // Version-variant (Keep Both) roles, queried by the ColVersion delegate:
+        VariantListRole  = Qt::UserRole + 41, // QStringList of variant versions (empty if <2)
+        VariantIndexRole = Qt::UserRole + 42, // int: active variant index
+    };
 
     explicit ModListModel(QObject* parent = nullptr);
     void setProfile(Profile* profile);
@@ -120,6 +125,9 @@ public:
 
 signals:
     void modsChanged();
+    // Emitted after setData switches a mod's active version variant (VariantIndexRole);
+    // MainWindow rescans the mod's plugins and auto-redeploys.
+    void variantSwitched(const QString& modId);
     // Emitted whenever the undo/redo stack state changes (push, undo, redo, clear).
     void undoRedoStateChanged(bool canUndo, bool canRedo);
 

@@ -411,6 +411,10 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
                     return u.first + " \xe2\x86\x92 " + u.second; // installed -> latest (already normalized)
                 }
                 // Display a clean version (strip MO2's ".0" padding / variant tails).
+                // Multi-variant (Keep Both) mods get a ▾ affordance so it reads as a
+                // dropdown.
+                if (entry.variants.size() >= 2)
+                    return normalizeVersion(entry.version) + QStringLiteral(" ") + QChar(0x25BE);
                 return normalizeVersion(entry.version);
             case ColFlags: {
                 if (isSep) return QString();
@@ -526,6 +530,19 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     if (role == Qt::UserRole)
         return entry.id;
 
+    // Version-variant roles for the ColVersion delegate. Only multi-variant mods
+    // expose a list; single-version rows return an empty list (delegate -> no editor).
+    if (!isSep && entry.type == EntryType::Mod && idx.column() == ColVersion) {
+        if (role == VariantListRole) {
+            if (entry.variants.size() < 2) return QStringList();
+            QStringList versions;
+            for (const auto& v : entry.variants) versions << v.version;
+            return versions;
+        }
+        if (role == VariantIndexRole)
+            return entry.activeVariant;
+    }
+
     return {};
 }
 
@@ -533,6 +550,15 @@ bool ModListModel::setData(const QModelIndex& idx, const QVariant& value, int ro
     if (!m_profile) return false;
     int raw = rawIndexForRow(idx.row());
     if (raw < 0) return false;
+    if (role == VariantIndexRole) {
+        const QString id = m_profile->modList().at(raw).id;
+        if (!m_profile->modList().setActiveVariant(id, value.toInt()))
+            return false;
+        m_profile->save();
+        emit dataChanged(idx, idx);
+        emit variantSwitched(id);
+        return true;
+    }
     if (role == Qt::CheckStateRole && idx.column() == ColEnabled) {
         const ModEntry rawEntry = m_profile->modList().at(raw);
         m_profile->modList().setEnabled(rawEntry.id, value.toInt() == Qt::Checked);
@@ -642,6 +668,10 @@ Qt::ItemFlags ModListModel::flags(const QModelIndex& idx) const {
         if (entry.type == EntryType::Mod && idx.column() == ColEnabled)
             f |= Qt::ItemIsUserCheckable;
         if (entry.type == EntryType::Mod && idx.column() == ColName)
+            f |= Qt::ItemIsEditable;
+        // Multi-variant mods edit their ColVersion cell (opens the version dropdown).
+        if (entry.type == EntryType::Mod && idx.column() == ColVersion
+                && entry.variants.size() >= 2)
             f |= Qt::ItemIsEditable;
         // Separators render full-width in the spanned column 0, so rename edits
         // that cell rather than ColName.

@@ -3385,18 +3385,18 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     if (auto* p = m_profileMgr->activeProfile(); p && !resolvedOutputModId.isEmpty())
         outFolder = p->stagingFolderFor(resolvedOutputModId);
 
-    // PGPatcher and Radium read the deployed (merged) game Data. If the tool's own
-    // output mod is deployed, the tool ingests its own prior output (double-patching
-    // / re-compressing). MO2 users disable the output mod before running; Solero is
-    // VFS-less, so "disable" only takes effect after a redeploy removes the output
-    // mod's files from the game Data. Toggle the output mod off in memory (never
-    // persisted - a mid-run crash leaves the on-disk profile enabled), redeploy,
-    // run, then re-enable + redeploy to bring the fresh output back. Skip entirely
-    // on first run (no staged output to interfere with). restoreOutput() runs before
-    // every early-return and once on the normal path; it's idempotent via the guard.
+    // Tools read the deployed (merged) game Data. If the tool's own output mod is
+    // deployed, the tool ingests its own prior output (double-patching, re-scanning
+    // already-processed plugins/assets). MO2 users disable a tool's output mod
+    // before re-running it; Solero is VFS-less, so "disable" only takes effect
+    // after a redeploy removes the output mod's files from the game Data. For ANY
+    // tool with an output mod, toggle it off in memory (never persisted - a mid-run
+    // crash leaves the on-disk profile enabled), redeploy, run, then re-enable +
+    // redeploy to bring the fresh output back. Skip entirely on first run (no
+    // staged output to interfere with). restoreOutput() runs before every
+    // early-return and once on the normal path; it's idempotent via the guard.
     auto* tp = m_profileMgr->activeProfile();
-    const bool wantToggle = (exe.id == "pgpatcher" || exe.id == "radium")
-                            && tp && !resolvedOutputModId.isEmpty()
+    const bool wantToggle = tp && !resolvedOutputModId.isEmpty()
                             && outputModHasStagedFiles(tp, resolvedOutputModId);
     bool toggledOutput = false;
     auto restoreOutput = [&]() {

@@ -252,6 +252,12 @@ private:
     // at setup - so resolve/remove a mod across all profiles, not just the active one.
     QString modNameAnywhere(const QString& id) const;
     void removeModEverywhere(const QString& id);
+    // Profile/config writes can fail silently (disk full, permissions), losing the
+    // user's change on the next launch. checkSave() surfaces a plain-language
+    // status-bar warning when a save returns false; it passes `ok` straight
+    // through so it can wrap a save call inline: checkSave(profile->save()).
+    bool checkSave(bool ok);
+    void reportSaveFailure(); // slot for ModListView::saveFailed
     void onEditTool(const QString& id);
     void onRemoveTool(const QString& id);
     void onManageTools();

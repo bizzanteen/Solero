@@ -761,6 +761,8 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onCreateModFromOverwrite);
     connect(m_modListView, &solero::ModListView::clearShaderCacheRequested,
             this, &MainWindow::onClearShaderCache);
+    connect(m_modListView, &solero::ModListView::saveFailed,
+            this, &MainWindow::reportSaveFailure);
 
     // Plugins tab: manual reorder marks the load order dirty; "Sort Now" runs LOOT.
     connect(m_rightPane->pluginsView(), &solero::PluginListView::loadOrderChanged,
@@ -888,8 +890,11 @@ void MainWindow::switchProfile(const QString& name) {
     if (wasDeployed && solero::AppConfig::instance().isConfigured()) {
         solero::DeployEngine engine(solero::AppConfig::instance().gameDir(),
                                     solero::AppConfig::instance().stagingDir());
-        engine.undeploy(solero::AppConfig::instance().gameDir(),
-                        [&](int d, int t){ if (prog) { prog->setProgress(d, t); prog->pump(); } });
+        if (!engine.undeploy(solero::AppConfig::instance().gameDir(),
+                        [&](int d, int t){ if (prog) { prog->setProgress(d, t); prog->pump(); } }))
+            statusBar()->showMessage(
+                "Undeploy of the previous profile finished with warnings - some "
+                "deployed files may remain in the game folder.", 6000);
     }
 
     if (prog) prog->setMessage("Loading " + name + "...");
@@ -1244,9 +1249,14 @@ void MainWindow::onDeployToggle() {
         solero::DeployEngine engine(
             solero::AppConfig::instance().gameDir(),
             solero::AppConfig::instance().stagingDir());
-        engine.undeploy(solero::AppConfig::instance().gameDir(), [&](int d, int t){ prog.setProgress(d, t); prog.pump(); });
+        const bool undeployOk = engine.undeploy(solero::AppConfig::instance().gameDir(),
+            [&](int d, int t){ prog.setProgress(d, t); prog.pump(); });
 
         prog.close();
+        if (!undeployOk)
+            statusBar()->showMessage(
+                "Undeploy finished with warnings - some deployed files may remain "
+                "in the game folder.", 6000);
         m_deployed = false;
         m_deployDirty = false;
         m_loadOrderDirty = false; // not deployed -> manual sort no longer applies
@@ -1254,7 +1264,7 @@ void MainWindow::onDeployToggle() {
         if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
         m_lastConflicts.clear();      // no live deployment -> no conflict winners
         m_lastDeployWarning.clear();
-        statusBar()->showMessage("Undeployed.");
+        if (undeployOk) statusBar()->showMessage("Undeployed."); // else keep the warning above
     }
 
     updateDeployButton();
@@ -1431,7 +1441,7 @@ void MainWindow::onLockOrderToggled(bool checked) {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) return;
     profile->pluginList().setLoadOrderLocked(checked);
-    profile->save();
+    checkSave(profile->save());
     updateSortButton();
     statusBar()->showMessage(checked
         ? "Load order locked - LOOT auto-sort disabled; manual order kept."
@@ -1477,7 +1487,7 @@ void MainWindow::onSortRequested() {
     }
 
     profile->pluginList().applyPins(); // restore pinned plugins after the sort
-    profile->save();
+    checkSave(profile->save());
     m_rightPane->setProfile(profile); // refresh the plugins view with the sorted order
     m_loadOrderDirty = false;
     updateSortButton();
@@ -1893,15 +1903,20 @@ void MainWindow::installFromArchive(const QString& archive) {
         if (variantReplace) {
             QString retired;
             profile->modList().replaceActiveVersion(variantTargetId, nv, &retired);
-            profile->save();
+            checkSave(profile->save());
             // The user explicitly chose Replace and the new install already landed,
             // so it's safe to drop the retired version's staging folder now.
-            if (!retired.isEmpty())
-                QDir(solero::AppConfig::instance().stagingDir() + "/" + retired)
-                    .removeRecursively();
+            if (!retired.isEmpty()) {
+                QDir retiredDir(solero::AppConfig::instance().stagingDir() + "/" + retired);
+                if (retiredDir.exists() && !retiredDir.removeRecursively())
+                    statusBar()->showMessage(
+                        "Replaced the version, but the old version's files couldn't "
+                        "be removed - you can delete them manually from the staging "
+                        "directory.", 6000);
+            }
         } else {
             profile->modList().keepBothAddVariant(variantTargetId, nv);
-            profile->save();
+            checkSave(profile->save());
         }
     } else if (!existingModId.isEmpty()) {
         // Replace in place
@@ -1935,7 +1950,7 @@ void MainWindow::installFromArchive(const QString& archive) {
                     ? cleanModName(existing->name, existing->nexusModId) : sidecarName;
             }
         }
-        profile->save();
+        checkSave(profile->save());
     } else {
         // Install as a new mod
         solero::ModEntry mod;
@@ -2016,7 +2031,7 @@ void MainWindow::installFromArchive(const QString& archive) {
                     ml.reorder({from}, to); // insert just before the dependent
             }
         }
-        profile->save();
+        checkSave(profile->save());
     }
 
     // Newly staged files for this mod - drop its cached empty/plugin scans. On the
@@ -2146,7 +2161,7 @@ void MainWindow::onReinstallMod(const QString& modId) {
         } else {
             existing->sourceArchive = archive;
         }
-        profile->save();
+        checkSave(profile->save());
     }
 
     statusBar()->showMessage("Preparing...");
@@ -2272,7 +2287,7 @@ void MainWindow::onReinstallMod(const QString& modId) {
         existing->hasFomodChoices = !choiceLog.isEmpty();
         existing->sourceArchive = archive;
     }
-    profile->save();
+    checkSave(profile->save());
 
     // Restaged files for this mod - drop its cached empty/plugin scans.
     m_modListView->invalidateModCache(modId);
@@ -3784,7 +3799,7 @@ QString MainWindow::ensureOutputMod(const QString& name) {
         solero::AppConfig::instance().stagingDir(), mod) + "/Data");
 
     profile->modList().append(mod);
-    profile->save();
+    checkSave(profile->save());
     m_modListView->setProfile(profile);
 
     return mod.id;
@@ -4013,7 +4028,7 @@ void MainWindow::setUpImportedTools(const QList<solero::ImportedTool>& tools) {
         }
     }
 
-    if (storeChanged) { m_toolStore->save(); profile->save(); rebuildToolsMenu(); }
+    if (storeChanged) { m_toolStore->save(); checkSave(profile->save()); rebuildToolsMenu(); }
 
     // Summary (non-blocking; skipped when nothing was discovered/actionable).
     if (configured.isEmpty() && unresolved.isEmpty()) return;
@@ -4043,7 +4058,7 @@ QList<solero::Executable>& MainWindow::activeTools() {
 }
 
 void MainWindow::saveActiveTools() {
-    if (auto* p = m_profileMgr->activeProfile()) p->save();
+    if (auto* p = m_profileMgr->activeProfile()) checkSave(p->save());
 }
 
 void MainWindow::migrateToolsToActiveProfileOnce() {
@@ -4450,7 +4465,7 @@ void MainWindow::removeModEverywhere(const QString& id) {
         if (active && name == active->name()) {
             captureFolders(active->modList().findById(id));
             active->modList().remove(id);
-            active->save();
+            checkSave(active->save());
         } else {
             QString path = profilesRoot() + "/" + name + "/modlist.json";
             solero::ModList ml = solero::ModList::loadFromFile(path);
@@ -4461,8 +4476,28 @@ void MainWindow::removeModEverywhere(const QString& id) {
     }
     if (folders.isEmpty()) folders << id; // pre-migration mods (or unknown) used the id
     const QString stagingDir = solero::AppConfig::instance().stagingDir();
-    for (const QString& folder : folders)
-        QDir(stagingDir + "/" + folder).removeRecursively();
+    bool anyLeftBehind = false;
+    for (const QString& folder : folders) {
+        QDir dir(stagingDir + "/" + folder);
+        if (dir.exists() && !dir.removeRecursively()) anyLeftBehind = true;
+    }
+    if (anyLeftBehind)
+        statusBar()->showMessage(
+            "Some staged files couldn't be deleted and may remain in the staging "
+            "directory - delete them manually if you need the disk space.", 8000);
+}
+
+bool MainWindow::checkSave(bool ok) {
+    if (!ok) reportSaveFailure();
+    return ok;
+}
+
+void MainWindow::reportSaveFailure() {
+    // Plain-language: what happened, why it matters, what to do. 8s so it doesn't
+    // vanish before the user reads it.
+    statusBar()->showMessage(
+        "Could not save the profile - check disk space and permissions. "
+        "Your last change may not survive a restart.", 8000);
 }
 
 void MainWindow::onRemoveTool(const QString& id) {

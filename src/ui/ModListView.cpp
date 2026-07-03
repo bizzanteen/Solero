@@ -255,6 +255,14 @@ void ModListView::saveHeaderState() {
     AppConfig::instance().save();
 }
 
+void ModListView::saveProfile() {
+    // Persist the active profile after a list edit (separator/group/delete/enable).
+    // A failed write (disk full, permissions) would otherwise silently lose the
+    // change on next launch, so surface it via saveFailed() (MainWindow warns).
+    Profile* p = m_model->profile();
+    if (p && !p->save()) emit saveFailed();
+}
+
 void ModListView::selectModById(const QString& id) {
     Profile* profile = m_model->profile();
     if (!profile || id.isEmpty()) return;
@@ -490,7 +498,7 @@ void ModListView::showIconPicker(int row, const QPoint& gpos) {
         if (auto* e = m_model->profile() ? m_model->profile()->modList().findById(id) : nullptr) {
             ModEntry up = *e; up.icon = it->data(Qt::UserRole).toString();
             m_model->profile()->modList().update(id, up);
-            m_model->profile()->save();
+            saveProfile();
             m_model->rebuild();
         }
         menu.close();
@@ -683,7 +691,7 @@ void ModListView::onAddSeparatorAt(int visibleRow) {
     int newRaw = m_model->profile()->modList().count() - 1;
     if (rawPos < newRaw)
         m_model->profile()->modList().move(newRaw, rawPos);
-    m_model->profile()->save();
+    saveProfile();
     m_model->rebuild();
 
     // Open edit dialog immediately so user can pick colour/icon. Resolve the
@@ -703,7 +711,7 @@ void ModListView::onEditSeparator(int visibleRow) {
     SeparatorDialog dlg(*entry, this);
     if (dlg.exec() == QDialog::Accepted) {
         m_model->profile()->modList().update(entry->id, dlg.result());
-        m_model->profile()->save();
+        saveProfile();
         m_model->rebuild();
     }
 }
@@ -717,7 +725,7 @@ void ModListView::onDeleteSeparator(int visibleRow) {
             QString("Delete separator \"%1\"? (Mods under it are not deleted.)").arg(name))
         != QMessageBox::Yes) return;
     m_model->profile()->modList().remove(id);
-    m_model->profile()->save();
+    saveProfile();
     m_model->rebuild();
 }
 
@@ -736,7 +744,7 @@ void ModListView::onIndentSeparator(int visibleRow) {
     up.separatorLevel = qMin(up.separatorLevel + 1, maxLevel);
     if (up.separatorLevel == entry->separatorLevel) return; // no-op (already at max)
     list.update(entry->id, up);
-    m_model->profile()->save();
+    saveProfile();
     m_model->rebuild();
 }
 
@@ -747,7 +755,7 @@ void ModListView::onOutdentSeparator(int visibleRow) {
     ModEntry up = *entry;
     up.separatorLevel = up.separatorLevel - 1;
     m_model->profile()->modList().update(entry->id, up);
-    m_model->profile()->save();
+    saveProfile();
     m_model->rebuild();
 }
 
@@ -783,17 +791,31 @@ void ModListView::deleteSelectedMods() {
     }
 
     const QString stagingDir = AppConfig::instance().stagingDir();
-    for (const QString& id : ids) {
+    QStringList notFullyDeleted; // names whose staged files couldn't be fully removed
+    for (int i = 0; i < ids.size(); ++i) {
+        const QString& id = ids.at(i);
         // Resolve the on-disk folder (name-based after migration) before removing
-        // the entry, then delete it.
+        // the entry, then delete it. We remove the list entry regardless (the user
+        // asked to delete it) but track any folder that didn't fully delete so we
+        // can tell the user files may remain rather than losing them silently.
         const QString folder = m_model->profile() ? m_model->profile()->stagingFolderFor(id) : id;
-        QDir(stagingDir + "/" + folder).removeRecursively();
+        QDir dir(stagingDir + "/" + folder);
+        if (dir.exists() && !dir.removeRecursively())
+            notFullyDeleted << names.value(i, folder);
         m_model->profile()->modList().remove(id);
         m_model->invalidateModCache(id); // its staged files are now gone
     }
-    m_model->profile()->save();
+    saveProfile();
     m_model->rebuild();
     emit modsChanged();
+
+    if (!notFullyDeleted.isEmpty()) {
+        const QString bullet = QString(QChar('\n')) + QChar(0x2022) + QChar(' '); // "\n• "
+        QMessageBox::warning(this, "Delete Incomplete",
+            "Removed from the list, but some staged files could not be deleted "
+            "(they may be locked or in use). You can delete these folders manually "
+            "from the staging directory:\n" + bullet + notFullyDeleted.join(bullet));
+    }
 }
 
 void ModListView::setFilter(const QString& text) {
@@ -907,7 +929,7 @@ void ModListView::setSelectedModsEnabled(bool enabled) {
     if (ids.isEmpty()) return;
     for (const QString& id : ids)
         m_model->profile()->modList().setEnabled(id, enabled);
-    m_model->profile()->save();
+    saveProfile();
     m_model->rebuild();
     applyFilter();
     emit modsChanged();
@@ -1019,7 +1041,7 @@ void ModListView::groupSelectedMods() {
     auto& list = m_model->profile()->modList();
     for (int i = 1; i < ids.size(); ++i)
         list.groupUnder(ids.at(i), parentId);
-    m_model->profile()->save();
+    saveProfile();
     m_model->rebuild();
     applyFilter();
     emit modsChanged();
@@ -1028,7 +1050,7 @@ void ModListView::groupSelectedMods() {
 void ModListView::ungroupMod(const QString& id) {
     if (!m_model->profile()) return;
     m_model->profile()->modList().ungroup(id);
-    m_model->profile()->save();
+    saveProfile();
     m_model->rebuild();
     applyFilter();
     emit modsChanged();

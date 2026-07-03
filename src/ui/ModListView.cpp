@@ -134,6 +134,9 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     // Model resets (rebuild()/setProfile()) clear first-column spans, so re-apply
     // them whenever the model is reset to keep separators full-width.
     connect(m_model, &QAbstractItemModel::modelReset, this, &ModListView::applyRowSpans);
+    // Incremental moves (beginMoveRows) emit rowsMoved, not modelReset, and shift
+    // separator row indices, so re-apply the full-width spans after those too.
+    connect(m_model, &QAbstractItemModel::rowsMoved, this, &ModListView::applyRowSpans);
     setRootIsDecorated(false);
     setIndentation(0); // remove the empty tree-indent column before the checkbox
     setDragDropMode(QAbstractItemView::InternalMove);

@@ -156,6 +156,71 @@ private slots:
         QCOMPARE(ids.join(","), QString("sepB,m2,sepA,m0,m1"));
     }
 
+    void separatorSectionMove_usesRowsMovedNotReset() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        // [sepA, m0, m1, sepB, m2] - drag sepA's whole section to the bottom.
+        ModEntry sepA; sepA.type = EntryType::Separator; sepA.id = "sepA"; sepA.name = "A";
+        ModEntry m0; m0.type = EntryType::Mod; m0.id = "m0"; m0.name = "Mod0";
+        ModEntry m1; m1.type = EntryType::Mod; m1.id = "m1"; m1.name = "Mod1";
+        ModEntry sepB; sepB.type = EntryType::Separator; sepB.id = "sepB"; sepB.name = "B";
+        ModEntry m2; m2.type = EntryType::Mod; m2.id = "m2"; m2.name = "Mod2";
+        prof.modList().append(sepA);
+        prof.modList().append(m0);
+        prof.modList().append(m1);
+        prof.modList().append(sepB);
+        prof.modList().append(m2);
+        ModListModel model;
+        model.setProfile(&prof);
+        // A contiguous separator-section move must animate incrementally (rowsMoved),
+        // never tear down the whole model (modelReset), while producing the same order.
+        QSignalSpy moved(&model, &QAbstractItemModel::rowsMoved);
+        QSignalSpy wasReset(&model, &QAbstractItemModel::modelReset);
+        QScopedPointer<QMimeData> mime(modMime(0));
+        model.dropMimeData(mime.data(), Qt::MoveAction, 5, 0, {});
+        QCOMPARE(moved.count(), 1);
+        QCOMPARE(wasReset.count(), 0);
+        QCOMPARE(order(prof), QString("sepB,m2,sepA,m0,m1"));
+    }
+
+    void groupParentMove_usesRowsMovedNotReset() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        ModEntry parent; parent.type = EntryType::Mod; parent.id = "P0"; parent.name = "Parent";
+        ModEntry c0; c0.type = EntryType::Mod; c0.id = "c0"; c0.name = "Child0"; c0.parentId = "P0";
+        ModEntry c1; c1.type = EntryType::Mod; c1.id = "c1"; c1.name = "Child1"; c1.parentId = "P0";
+        ModEntry other; other.type = EntryType::Mod; other.id = "u0"; other.name = "Other";
+        prof.modList().append(parent);
+        prof.modList().append(c0);
+        prof.modList().append(c1);
+        prof.modList().append(other);
+        ModListModel model;
+        model.setProfile(&prof);
+        QSignalSpy moved(&model, &QAbstractItemModel::rowsMoved);
+        QSignalSpy wasReset(&model, &QAbstractItemModel::modelReset);
+        QScopedPointer<QMimeData> mime(modMime(0)); // drag parent to the bottom
+        model.dropMimeData(mime.data(), Qt::MoveAction, 4, 0, {});
+        QCOMPARE(moved.count(), 1);
+        QCOMPARE(wasReset.count(), 0);
+        QCOMPARE(order(prof), QString("u0,P0,c0,c1"));
+    }
+
+    void multiContiguousSelection_usesRowsMovedNotReset() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        addMods(prof, 4); // m0,m1,m2,m3
+        ModListModel model;
+        model.setProfile(&prof);
+        // Drag the contiguous run {m1,m2} to the bottom: one incremental span.
+        QSignalSpy moved(&model, &QAbstractItemModel::rowsMoved);
+        QSignalSpy wasReset(&model, &QAbstractItemModel::modelReset);
+        QScopedPointer<QMimeData> mime(modMimeMulti({1, 2}));
+        model.dropMimeData(mime.data(), Qt::MoveAction, 4, 0, {});
+        QCOMPARE(moved.count(), 1);
+        QCOMPARE(wasReset.count(), 0);
+        QCOMPARE(order(prof), QString("m0,m3,m1,m2"));
+    }
+
     void group_collapseHidesChildren_and_helpers() {
         QTemporaryDir tmp;
         Profile prof("P", tmp.path());

@@ -169,10 +169,27 @@ private:
 
     void rebuildVisibleRows();
     bool isModEmpty(const QString& id) const;
+
+    // Visible-coordinate span for a contiguous RAW block move [from, from+count) to
+    // moveSection insertion index `to`, as a single beginMoveRows would announce it.
+    // ok=false when the move can't be expressed as one clean visible span (hidden
+    // anchor, or a no-op destination) so the caller falls back to a model reset.
+    struct VisibleMove { bool ok = false; int first = 0, last = 0, dest = 0; };
+    VisibleMove visibleMoveFor(int from, int count, int to) const;
+    // Announce + apply a contiguous moveSection via beginMoveRows when the span is
+    // clean, else a full reset. Persists modlist-only. Does not push undo or emit.
+    void applyBlockMove(int srcRaw, int blockLen, int to);
     // Drag a non-contiguous multi-selection: expand each visible source row into
     // its unit (mod / group block / separator section), lift them all and drop
     // them as one contiguous block at dstVisible. Returns true iff anything moved.
     bool moveSelection(const QList<int>& srcVisibleRows, int dstVisible);
+    // Shared tail for the multi-unit reorders (moveSelection / moveModsToSeparatorEnd):
+    // lift the already-expanded, sorted raw units and reinsert them at dstRaw. A
+    // single contiguous run is announced incrementally (beginMoveRows); anything else
+    // keeps the reset. Records undo (only if the order changed), persists modlist-only
+    // and emits modsReordered. Returns true iff the order changed.
+    bool reorderUnits(const QList<int>& orderedSrcRaws, int dstRaw,
+                      const QStringList& beforeOrder);
 };
 
 } // namespace solero

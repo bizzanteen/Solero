@@ -83,13 +83,13 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     connect(m_table, &QWidget::customContextMenuRequested, this, &DownloadsTab::showContextMenu);
     v->addWidget(m_table, 1);
 
+    // The persistent Refresh button is gone (the tab already refreshes on change;
+    // a manual "Refresh List" also lives in the row context menu). Only the
+    // primary "Install Selected" stays on the bar.
     auto* bar = new QHBoxLayout;
-    auto* refreshBtn = new QPushButton("Refresh", this);
     auto* installBtn = new QPushButton("Install Selected", this);
-    bar->addWidget(refreshBtn); bar->addStretch(); bar->addWidget(installBtn);
+    bar->addStretch(); bar->addWidget(installBtn);
     v->addLayout(bar);
-
-    connect(refreshBtn, &QPushButton::clicked, this, &DownloadsTab::refresh);
 
     auto installSelected = [this]{
         int row = m_table->currentRow();
@@ -216,6 +216,11 @@ void DownloadsTab::setFailedDownloads(const QList<QPair<QString,QString>>& failu
 
 void DownloadsTab::showContextMenu(const QPoint& pos) {
     QMenu menu(this);
+
+    // Manual refresh (the persistent toolbar button was removed; the list also
+    // auto-refreshes when downloads change).
+    menu.addAction("Refresh List", this, &DownloadsTab::refresh);
+    menu.addSeparator();
 
     auto* hideInstalled = menu.addAction("Hide Installed");
     hideInstalled->setCheckable(true);

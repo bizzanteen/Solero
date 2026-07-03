@@ -170,20 +170,32 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     statusBar()->showMessage("Ready");
 
     // When the off-thread update check finishes, apply results on the UI thread.
-    connect(&m_updateWatcher,
-            &QFutureWatcher<QHash<QString, QPair<QString,QString>>>::finished,
-            this, [this]() {
-        const auto results = m_updateWatcher.result();
-        m_modListView->setUpdateInfo(results);
+    connect(&m_updateWatcher, &QFutureWatcher<UpdateScan>::finished, this, [this]() {
+        const UpdateScan scan = m_updateWatcher.result();
+        // Persist any fileIds resolved by MD5 this run so future checks are accurate
+        // (and so Update/Redownload can act on them) - this must happen on the UI thread.
+        if (!scan.backfill.isEmpty()) {
+            if (auto* profile = m_profileMgr->activeProfile()) {
+                for (auto it = scan.backfill.constBegin(); it != scan.backfill.constEnd(); ++it) {
+                    if (auto* e = profile->modList().findById(it.key())) {
+                        e->nexusFileId = it.value().first;
+                        if (!it.value().second.isEmpty()) e->version = it.value().second;
+                    }
+                }
+                profile->save();
+            }
+        }
+        m_modListView->setUpdateInfo(scan.updates);
+        saveUpdateFlags(scan.updates); // persist so the flags show at next launch
         if (m_checkUpdatesAction) m_checkUpdatesAction->setEnabled(true);
         solero::AppConfig::instance().setLastUpdateCheckEpoch(
             QDateTime::currentSecsSinceEpoch());
         solero::AppConfig::instance().save();
-        if (results.isEmpty())
+        if (scan.updates.isEmpty())
             statusBar()->showMessage("All mods up to date.");
         else
             statusBar()->showMessage(
-                QString("%1 update(s) available.").arg(results.size()));
+                QString("%1 update(s) available.").arg(scan.updates.size()));
     });
 
     // Per-mod update resolve finished: kick off the download (or report an error).
@@ -480,13 +492,16 @@ void MainWindow::setupToolbar() {
     profileMenu->addAction("Install Wabbajack Modlist\xe2\x80\xa6", this, &MainWindow::onInstallWabbajack);
     profileMenu->addSeparator();
     m_checkUpdatesAction = profileMenu->addAction(
-        "Check for Mod Updates\xe2\x80\xa6", this, &MainWindow::onCheckUpdates);
+        "Check for Updates", this, &MainWindow::onCheckUpdates);
     m_checkUpdatesAction->setShortcut(QKeySequence(Qt::Key_F5));
-    m_checkUpdatesAction->setToolTip("Check for Mod Updates (F5)");
+    m_checkUpdatesAction->setToolTip("Check installed mods for newer files on Nexus (F5)");
     profileMenu->addAction("Scan for FOMOD mods\xe2\x80\xa6", this, &MainWindow::onScanFomod);
     profileMenuBtn->setMenu(profileMenu);
     profileMenuBtn->setPopupMode(QToolButton::InstantPopup);
     tb->addWidget(profileMenuBtn);
+    // Expose the update check as a visible toolbar button too (same QAction, so the
+    // F5 shortcut and the disable-while-running state are shared).
+    tb->addAction(m_checkUpdatesAction);
     tb->addSeparator();
 
     // Install Mod action
@@ -643,6 +658,16 @@ void MainWindow::setupCentralWidget() {
                         }
                         statusBar()->showMessage("Updated " + e2->name + " to " + pu.version + ".");
                     }
+                    // This mod is now current - drop just its update flag and persist,
+                    // leaving every other mod's flag intact (setProfile during the
+                    // reinstall above no longer wipes them).
+                    {
+                        auto flags = loadUpdateFlags();
+                        if (flags.remove(pu.modId) > 0) {
+                            saveUpdateFlags(flags);
+                            m_modListView->setUpdateInfo(flags);
+                        }
+                    }
                     return; // do not fall through to the install-as-new path
                 }
                 // Mod no longer exists - fall through and treat as a fresh install.
@@ -761,6 +786,16 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onDataRename);
     connect(m_rightPane, &solero::RightPane::deleteRequested,
             this, &MainWindow::onDataDelete);
+    connect(m_rightPane, &solero::RightPane::highlightOriginMods, this,
+            [this](const QHash<QString,int>& roles) {
+        m_modListView->setPluginOriginHighlights(roles);
+    });
+    connect(m_rightPane, &solero::RightPane::goToOriginMod, this,
+            [this](const QString& id) {
+        if (m_browseAction && m_browseAction->isChecked())
+            m_browseAction->setChecked(false); // leave the Nexus browser first
+        m_modListView->selectModById(id);
+    });
 
     m_bottomPanel = new solero::BottomPanel(outer);
     connect(m_modListView, &solero::ModListView::modsSelected,
@@ -880,6 +915,9 @@ void MainWindow::switchProfile(const QString& name) {
     } else {
         m_lastConflicts.clear();
     }
+    // Show the last-known "update available" flags immediately (setProfile cleared
+    // them); the auto-check at the end of this switch refreshes them.
+    m_modListView->setUpdateInfo(loadUpdateFlags());
     m_lastDeployWarning.clear(); // stale once we switch profiles
     setWindowTitle(QString("Solero - %1").arg(name));
 
@@ -1863,6 +1901,11 @@ void MainWindow::installFromArchive(const QString& archive) {
     // offer (no-op if CS isn't present, already managed, or previously declined).
     maybeOfferShaderCacheManagement();
 
+    // If this install satisfied a requirement listed in an open RequirementsDialog,
+    // flip that row from "Installing…" to "Installed".
+    if (!sidecarModId.isEmpty())
+        markRequirementResult(sidecarModId, /*installed=*/true);
+
     // Fresh Nexus install: check its requirements and offer any that are missing.
     // (Skip Replace/reinstall - existingModId set - to avoid nagging on every update.)
     if (existingModId.isEmpty() && !sidecarModId.isEmpty())
@@ -2674,6 +2717,17 @@ void MainWindow::installSkseVersion(const QString& fileId, const QString& versio
     statusBar()->showMessage("Downloading SKSE " + version + "\xe2\x80\xa6");
 }
 
+void MainWindow::markRequirementResult(const QString& reqModId, bool installed) {
+    // Notify every open RequirementsDialog (modal dialogs can stack via nested
+    // exec()). QPointers auto-null when a dialog closes; prune them as we go.
+    for (int i = m_openReqDialogs.size() - 1; i >= 0; --i) {
+        auto& d = m_openReqDialogs[i];
+        if (!d) { m_openReqDialogs.removeAt(i); continue; }
+        if (installed) d->markInstalled(reqModId);
+        else           d->markFailed(reqModId);
+    }
+}
+
 void MainWindow::checkRequirementsAfterInstall(solero::Profile* profile,
                                                const QString& dependentModId,
                                                const QString& nexusModId,
@@ -2689,6 +2743,21 @@ void MainWindow::checkRequirementsAfterInstall(solero::Profile* profile,
         QApplication::restoreOverrideCursor();
     }
     if (reqs.isEmpty()) return;
+
+    // Skyrim VR vs SE: when the install is the flatscreen SE build (no SkyrimVR.exe),
+    // VR-specific requirements (VR ports / VRIK / "for VR only" patches) don't apply,
+    // so they're suppressed below.
+    const QString gameDir = solero::AppConfig::instance().gameDir();
+    const bool isVR = QFile::exists(gameDir + "/SkyrimVR.exe");
+    auto looksVrSpecific = [](const QString& name, const QString& notes) {
+        // Standalone "VR" token, "SkyrimVR", or "VRIK" in the name/notes. \bvr\b
+        // catches "VR", "(VR)", "for VR", "VR only" without matching words like
+        // "Verdant" or "improved".
+        static const QRegularExpression re(
+            QStringLiteral(R"(\bvr\b|skyrimvr|\bvrik\b)"),
+            QRegularExpression::CaseInsensitiveOption);
+        return re.match(name).hasMatch() || re.match(notes).hasMatch();
+    };
 
     // Keep only requirements not already satisfied in this profile.
     QList<solero::RequirementsDialog::Item> missing;
@@ -2708,6 +2777,8 @@ void MainWindow::checkRequirementsAfterInstall(solero::Profile* profile,
         if (r.modId == "30379"
             || r.url.contains(QStringLiteral("silverlock.org"), Qt::CaseInsensitive))
             continue;
+        // Not on Skyrim VR -> don't list VR-specific requirements.
+        if (!isVR && looksVrSpecific(r.modName, r.notes)) continue;
         missing.append({r.modId, r.modName, r.notes, r.url, r.external});
     }
     if (missing.isEmpty()) return;
@@ -2721,6 +2792,9 @@ void MainWindow::checkRequirementsAfterInstall(solero::Profile* profile,
             [this, dependentModId, g](const QString& modId, const QString& modName) {
                 downloadRequirement(modId, modName, dependentModId, g);
             });
+    // Track the dialog so a requirement's async install can flip its row to
+    // "Installed"/"Retry" when it finishes (the QPointer auto-nulls on close).
+    m_openReqDialogs.append(dlg);
     dlg->exec();
 }
 
@@ -2747,6 +2821,7 @@ void MainWindow::downloadRequirement(const QString& reqModId, const QString& req
     if (fileId.isEmpty()) {
         QMessageBox::warning(this, "Install requirement",
             QString("Couldn't find a downloadable file for \"%1\" on Nexus.").arg(reqName));
+        markRequirementResult(reqModId, /*installed=*/false); // reset the stuck "Installing…"
         return;
     }
 
@@ -2755,6 +2830,7 @@ void MainWindow::downloadRequirement(const QString& reqModId, const QString& req
         QMessageBox::information(this, "Install requirement",
             QString("In-app download of \"%1\" needs Nexus Premium. Use the mod page's "
                     "'Mod Manager Download' (nxm) button on the website instead.").arg(reqName));
+        markRequirementResult(reqModId, /*installed=*/false); // reset the stuck "Installing…"
         return;
     }
     QString fn = QUrl(url).fileName();
@@ -2791,14 +2867,16 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) return;
 
-    // Collect mods that have Nexus metadata: {id, nexusModId, current version}.
-    struct Item { QString id, modId, version; };
+    // Collect mods with Nexus metadata. fileId enables an ACCURATE check (is there a
+    // newer main file than the one installed?); archive enables MD5 back-fill of a
+    // missing fileId. version is the installed file's version.
+    struct Item { QString id, modId, version, fileId, archive; };
     QList<Item> items;
     const auto& list = profile->modList();
     for (int i = 0; i < list.count(); ++i) {
         const auto& e = list.at(i);
         if (e.type != solero::EntryType::Mod || e.nexusModId.isEmpty()) continue;
-        items.append({e.id, e.nexusModId, e.version});
+        items.append({e.id, e.nexusModId, e.version, e.nexusFileId, e.sourceArchive});
     }
     if (items.isEmpty()) {
         if (!silentIfNone)
@@ -2815,15 +2893,59 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
     statusBar()->showMessage(
         QString("Checking %1 mods for updates\xe2\x80\xa6").arg(items.size()));
 
-    auto future = QtConcurrent::run([items]() {
-        QHash<QString, QPair<QString,QString>> results; // local id -> {installed, latest}
+    // Only the EXPLICIT check (not the silent on-open one) does MD5 back-fill, so a
+    // launch never spends time hashing archives.
+    const bool doBackfill = !silentIfNone;
+
+    auto future = QtConcurrent::run([items, doBackfill]() -> UpdateScan {
+        UpdateScan scan;
+        int backfilled = 0;
+        // The explicit check back-fills every identifiable mod (so one run covers the
+        // whole list); the silent on-open check never hashes (cap 0) to keep launches fast.
+        const int kBackfillCap = doBackfill ? items.size() : 0;
         for (const auto& it : items) {
-            QString latest = solero::NexusApi::latestVersion(it.modId);
-            if (!latest.isEmpty() && !it.version.isEmpty() && isVersionNewer(it.version, latest))
-                results.insert(it.id, qMakePair(normalizeVersion(it.version),
-                                                normalizeVersion(latest)));
+            QString fileId = it.fileId, installedVer = it.version;
+
+            // A mod with no fileId can't be checked accurately. Identify it by MD5 so
+            // coverage grows; never flag on a guessed version.
+            if (fileId.isEmpty()) {
+                if (!doBackfill || backfilled >= kBackfillCap
+                    || it.archive.isEmpty() || !QFile::exists(it.archive))
+                    continue;
+                QFile f(it.archive);
+                if (!f.open(QIODevice::ReadOnly)) continue;
+                QCryptographicHash hash(QCryptographicHash::Md5);
+                constexpr qint64 kChunk = 1 << 20;
+                while (!f.atEnd()) {
+                    const QByteArray c = f.read(kChunk);
+                    if (c.isEmpty()) break;
+                    hash.addData(c);
+                }
+                f.close();
+                ++backfilled;
+                const auto m = solero::NexusApi::md5Search(QString::fromLatin1(hash.result().toHex()));
+                if (!m.ok || m.fileId.isEmpty()) continue;
+                fileId = m.fileId;
+                if (!m.version.isEmpty()) installedVer = m.version;
+                scan.backfill.insert(it.id, qMakePair(fileId, installedVer));
+            }
+
+            // Accurate check: find the newest main file and flag only when it is a
+            // DIFFERENT, newer-versioned file than the one installed - so having the
+            // current file never false-flags.
+            const auto files = solero::NexusApi::files(it.modId);
+            const solero::NexusApi::NexusFile* latestMain = nullptr;
+            for (const auto& f : files) {
+                if (f.category.compare("MAIN", Qt::CaseInsensitive) != 0) continue;
+                if (!latestMain || isVersionNewer(latestMain->version, f.version)) latestMain = &f;
+            }
+            if (!latestMain || latestMain->fileId == fileId) continue;
+            if (!installedVer.isEmpty() && !latestMain->version.isEmpty()
+                && isVersionNewer(installedVer, latestMain->version))
+                scan.updates.insert(it.id, qMakePair(normalizeVersion(installedVer),
+                                                     normalizeVersion(latestMain->version)));
         }
-        return results;
+        return scan;
     });
     m_updateWatcher.setFuture(future);
 }
@@ -2885,6 +3007,31 @@ void MainWindow::maybeAutoCheckUpdates() {
         if (now - cfg.lastUpdateCheckEpoch() <= 6 * 3600) return;
     }
     runUpdateCheck(/*silentIfNone=*/true);
+}
+
+void MainWindow::saveUpdateFlags(const QHash<QString, QPair<QString,QString>>& updates) const {
+    auto* profile = m_profileMgr ? m_profileMgr->activeProfile() : nullptr;
+    if (!profile) return;
+    QJsonObject obj; // local mod id -> [installed, latest]
+    for (auto it = updates.constBegin(); it != updates.constEnd(); ++it)
+        obj[it.key()] = QJsonArray{ it.value().first, it.value().second };
+    QFile f(profile->path() + "/updates.json");
+    if (f.open(QIODevice::WriteOnly))
+        f.write(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+}
+
+QHash<QString, QPair<QString,QString>> MainWindow::loadUpdateFlags() const {
+    QHash<QString, QPair<QString,QString>> out;
+    auto* profile = m_profileMgr ? m_profileMgr->activeProfile() : nullptr;
+    if (!profile) return out;
+    QFile f(profile->path() + "/updates.json");
+    if (!f.open(QIODevice::ReadOnly)) return out;
+    const QJsonObject obj = QJsonDocument::fromJson(f.readAll()).object();
+    for (auto it = obj.constBegin(); it != obj.constEnd(); ++it) {
+        const QJsonArray a = it.value().toArray();
+        if (a.size() == 2) out.insert(it.key(), qMakePair(a[0].toString(), a[1].toString()));
+    }
+    return out;
 }
 
 bool MainWindow::ensureNexusIds(solero::ModEntry* mod) {
@@ -3877,6 +4024,27 @@ void MainWindow::onPlay() {
             const QStringList iniDst = { iniDir + "/Skyrim.ini", iniDir + "/SkyrimPrefs.ini", iniDir + "/SkyrimCustom.ini" };
             for (int i = 0; i < iniSrc.size(); ++i)
                 if (QFile::exists(iniSrc[i])) solero::copyOverwrite(iniSrc[i], iniDst[i]);
+        }
+    }
+
+    // Re-assert the managed shader cache into the live game dir on every launch,
+    // for the same reason as the INI re-sync above: Community Shaders OWNS
+    // Data/ShaderCache at runtime and DELETES the whole tree whenever it invalidates
+    // the cache, silently removing the hardlinks we deployed. ensureDeployed() skips
+    // redeploy when the modlist is deployed-and-clean, so the staged Info.ini would
+    // otherwise never get re-linked - CS then finds no Info.ini ("no plugin version
+    // found"), wipes, and recompiles every launch. This re-links only staged files
+    // missing from the live dir; it's a cheap no-op when the cache is already whole.
+    if (auto* prof = m_profileMgr->activeProfile()) {
+        const QString cacheStaging = cacheStagingPath(prof);
+        if (!cacheStaging.isEmpty()) {
+            const bool hardlink =
+                solero::AppConfig::instance().deployMode() == solero::DeployMode::HardLink;
+            const int relinked = solero::assertShaderCacheDeployed(
+                solero::AppConfig::instance().gameDir(), cacheStaging, hardlink);
+            if (relinked > 0)
+                statusBar()->showMessage(
+                    QString("Restored %1 shader cache file(s) into the game dir.").arg(relinked));
         }
     }
 

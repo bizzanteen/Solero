@@ -15,6 +15,13 @@ public:
     struct Item { QString modId, modName, notes, url; bool external = false; };
     RequirementsDialog(const QString& dependentName, const QList<Item>& missing,
                        QWidget* parent = nullptr);
+
+    // Owner callbacks driven by the async install lifecycle: flip a requirement's
+    // row to a finished state once the install actually lands (or fails). No-op if
+    // this dialog has no button for `modId`.
+    void markInstalled(const QString& modId); // green "Installed", button disabled
+    void markFailed(const QString& modId);    // re-enable the button, show "Retry"
+
 signals:
     // Emitted once per requirement the user chooses to install (also fired for
     // each item when "Install all" is clicked). modId is the Nexus mod id.

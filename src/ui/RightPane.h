@@ -2,6 +2,8 @@
 #include <QTabWidget>
 #include <QHash>
 #include <QStringList>
+#include <QLineEdit>
+#include <QTimer>
 #include "deploy/ConflictIndex.h"
 #include "core/Profile.h"
 
@@ -65,12 +67,22 @@ signals:
     void renameRequested(const QString& modId, const QString& relPath,
                          const QString& newName, bool isFolder);
     void deleteRequested(const QString& modId, const QString& relPath, bool isFolder);
+    // Highlight a clicked plugin's providers in the mod pane: modId -> 1 winner /
+    // 2 other provider. Empty map clears the highlight.
+    void highlightOriginMods(const QHash<QString,int>& roles);
+    // Navigate the mod pane to a plugin's winning origin mod.
+    void goToOriginMod(const QString& modId);
 
 public slots:
     void onSelectionChanged(const QStringList& ids);
     void showDataFor(const QString& modId);
 
+private slots:
+    void onPluginClicked(const QString& filename);
+    void onPluginActivated(const QString& filename);
+
 private:
+    void ensurePluginOriginIndex();
     // True if the mod's staging root contains at least one deployable LOOSE file
     // (not a plugin, not per-mod metadata) - i.e. the Data tab would show real
     // content for it. Used to decide whether to auto-switch a single-mod
@@ -84,6 +96,8 @@ private:
     QLabel*         m_pluginNotice = nullptr;
     QPushButton*    m_sortBtn = nullptr;
     QPushButton*    m_lockBtn = nullptr;
+    QLineEdit*      m_pluginSearch = nullptr;
+    QTimer*         m_pluginSearchDebounce = nullptr;
     DataTab*        m_dataTab;
     ConflictsTab*   m_conflictsTab;
     DownloadsTab*   m_downloadsTab;
@@ -92,6 +106,10 @@ private:
     // Cache of each mod's staged Data plugin filenames (*.esp/*.esm/*.esl),
     // keyed by mod id. Filled lazily in onSelectionChanged.
     QHash<QString, QStringList> m_modPluginCache;
+    // Reverse index: lowercased plugin filename -> providing mod ids (low->high
+    // priority; last = winner). Built lazily, invalidated with m_modPluginCache.
+    QHash<QString, QStringList> m_pluginOriginCache;
+    bool m_originIndexBuilt = false;
 };
 
 } // namespace solero

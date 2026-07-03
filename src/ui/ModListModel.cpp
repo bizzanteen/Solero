@@ -44,16 +44,23 @@ QString fomodChoicesSummary(const QString& modId) {
 ModListModel::ModListModel(QObject* parent) : QAbstractItemModel(parent) {}
 
 void ModListModel::setProfile(Profile* profile) {
+    // setProfile is also used as a plain REFRESH (after install/update/reorder) with
+    // the same profile pointer. Only the cross-profile resets below should fire on an
+    // actual change; on a refresh we must preserve the update flags (otherwise
+    // updating one mod blanks the whole "update available" column), the per-mod
+    // caches, and the undo history.
+    const bool changed = (profile != m_profile);
     beginResetModel();
     m_profile = profile;
-    // A new profile means entirely different staging contents - drop all caches.
-    m_emptyCache.clear();
-    m_overwriteHasFiles = -1;
-    m_updates.clear();
+    if (changed) {
+        // A new profile means entirely different staging contents - drop all caches.
+        m_emptyCache.clear();
+        m_overwriteHasFiles = -1;
+        m_updates.clear();
+    }
     rebuildVisibleRows();
     endResetModel();
-    // Undo history must not cross profiles.
-    clearUndoRedo();
+    if (changed) clearUndoRedo(); // undo history must not cross profiles
 }
 
 void ModListModel::setUpdateInfo(const QHash<QString, QPair<QString,QString>>& info) {
@@ -65,6 +72,13 @@ void ModListModel::setUpdateInfo(const QHash<QString, QPair<QString,QString>>& i
 void ModListModel::setConflictHighlights(const QHash<QString,int>& roles) {
     if (m_conflictHi == roles) return;
     m_conflictHi = roles;
+    if (rowCount() > 0)
+        emit dataChanged(index(0,0), index(rowCount()-1, ColCount-1), {Qt::BackgroundRole});
+}
+
+void ModListModel::setPluginOriginHighlights(const QHash<QString,int>& roles) {
+    if (m_pluginOriginHi == roles) return;
+    m_pluginOriginHi = roles;
     if (rowCount() > 0)
         emit dataChanged(index(0,0), index(rowCount()-1, ColCount-1), {Qt::BackgroundRole});
 }
@@ -233,6 +247,39 @@ void ModListModel::toggleCollapse(int visibleRow) {
     rebuild();
 }
 
+void ModListModel::expandSeparatorDuringDrag(int visibleRow) {
+    int raw = rawIndexForRow(visibleRow);
+    if (raw < 0 || !m_profile) return;
+    const ModEntry* entry = &m_profile->modList().at(raw);
+    if (entry->type != EntryType::Separator || !entry->collapsed) return;
+
+    // Flip + persist the collapse flag in the data layer.
+    ModEntry updated = *entry;
+    updated.collapsed = false;
+    m_profile->modList().update(entry->id, updated);
+    m_profile->save();
+
+    // Compute the post-expand visible rows by a throwaway rebuild, then RESTORE the
+    // pre-expand view so rowCount() still reports the old count for beginInsertRows.
+    const QList<int> oldRows = m_visibleRows;
+    const QHash<int,int> oldPrio = m_priorityByRaw;
+    rebuildVisibleRows();                 // m_visibleRows now reflects the expansion
+    const QList<int> newRows = m_visibleRows;
+    m_visibleRows = oldRows;
+    m_priorityByRaw = oldPrio;
+
+    const int added = newRows.size() - oldRows.size();
+    // Expect a single contiguous block inserted immediately after `visibleRow`.
+    const bool contiguous = added > 0
+        && newRows.mid(0, visibleRow + 1) == oldRows.mid(0, visibleRow + 1)
+        && newRows.mid(visibleRow + 1 + added) == oldRows.mid(visibleRow + 1);
+    if (!contiguous) { rebuild(); return; } // rare (nested collapsed sub-separators)
+
+    beginInsertRows(QModelIndex(), visibleRow + 1, visibleRow + added);
+    rebuildVisibleRows();                 // actually apply the expansion
+    endInsertRows();
+}
+
 void ModListModel::toggleModCollapse(int visibleRow) {
     int raw = rawIndexForRow(visibleRow);
     if (raw < 0 || !m_profile) return;
@@ -292,7 +339,12 @@ int ModListModel::rowCount(const QModelIndex& parent) const {
 QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     if (!m_profile || !idx.isValid()) return {};
 
-    if (role == Qt::TextAlignmentRole && idx.column() == ColPriority)
+    // Center every data column except Name (left-aligned). ColEnabled is a checkbox
+    // and separators render their label in the spanned ColEnabled cell, so only the
+    // text/flag columns are centered here.
+    if (role == Qt::TextAlignmentRole
+        && (idx.column() == ColPriority || idx.column() == ColVersion
+            || idx.column() == ColFlags))
         return QVariant(Qt::AlignCenter);
 
     int raw = rawIndexForRow(idx.row());
@@ -366,7 +418,8 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
                 // DecorationRole; this textual part keeps the mod-kind labels.
                 QStringList parts;
                 if (entry.isOutputMod) parts << "Output";
-                if (entry.hasFomodChoices) parts << "FOMOD";
+                // FOMOD mods are shown by the green "F" icon (DecorationRole) alone -
+                // no redundant "FOMOD" text label.
                 return parts.join(" ");
             }
             default: return {};
@@ -433,7 +486,8 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
         if (m_overwritingMods.contains(entry.id)) icons << solero::greenUpTriangleIcon();
         if (m_overwrittenMods.contains(entry.id)) icons << solero::redDownTriangleIcon();
         if (m_depWarnings.contains(entry.id))      icons << solero::redBangIcon(solero::kFlagIconPx);
-        if (m_updates.contains(entry.id))          icons << solero::yellowUpArrowIcon();
+        // The "update available" indicator lives in the Version column only (the
+        // yellow up-arrow + "installed -> latest" text), not here in Flags.
         if (!entry.note.isEmpty())                 icons << solero::noteIcon();
         if (entry.isFomod)                         icons << solero::fomodIcon(entry.fomodStatus);
         if (icons.isEmpty()) return {};
@@ -448,6 +502,12 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     // MO2-style conflict highlight (when a mod is selected): green = this mod
     // overwrites the selected one; red = it is overwritten by the selected one.
     if (role == Qt::BackgroundRole && !isSep && entry.type == EntryType::Mod) {
+        // Plugin-origin highlight takes precedence over the selection conflict
+        // highlight (they're mutually exclusive in practice; last action wins).
+        auto oi = m_pluginOriginHi.constFind(entry.id);
+        if (oi != m_pluginOriginHi.constEnd())
+            return oi.value() == 1 ? QColor(0x3d, 0x6d, 0xb5)   // winner: bright blue
+                                   : QColor(0x2b, 0x3f, 0x5c);  // other provider: dim blue
         auto ci = m_conflictHi.constFind(entry.id);
         if (ci != m_conflictHi.constEnd())
             return ci.value() == 1 ? QColor(0x2e, 0x5d, 0x34)   // green: overwrites selected (wins over it)
@@ -854,6 +914,59 @@ bool ModListModel::moveSelection(const QList<int>& srcVisibleRows, int dstVisibl
     bool ok = m_profile->modList().reorder(orderedSrcRaws, dstRaw);
     if (ok) {
         m_undoStack.append(beforeOrder);
+        if (m_undoStack.size() > kUndoCap) m_undoStack.removeFirst();
+        m_redoStack.clear();
+        m_profile->save();
+    }
+    rebuildVisibleRows();
+    endResetModel();
+    if (ok) {
+        emit modsChanged();
+        emit undoRedoStateChanged(canUndo(), canRedo());
+    }
+    return ok;
+}
+
+bool ModListModel::moveModsToSeparatorEnd(const QStringList& modIds, const QString& sepId) {
+    if (!m_profile || modIds.isEmpty() || sepId.isEmpty()) return false;
+    auto& list = m_profile->modList();
+
+    // Locate the target separator and the END of its section: the next separator at
+    // the same or shallower level (nested sub-categories stay inside), or the end of
+    // the list. That raw index is the insertion point for "bottom of this section".
+    int sepRaw = -1;
+    for (int i = 0; i < list.count(); ++i)
+        if (list.at(i).type == EntryType::Separator && list.at(i).id == sepId) { sepRaw = i; break; }
+    if (sepRaw < 0) return false;
+    const int level = list.at(sepRaw).separatorLevel;
+    int sectionEnd = sepRaw + 1;
+    for (; sectionEnd < list.count(); ++sectionEnd) {
+        const auto& e = list.at(sectionEnd);
+        if (e.type == EntryType::Separator && e.separatorLevel <= level) break;
+    }
+
+    // Expand the selected mods into the raw UNITS they carry: a group parent brings
+    // its contiguous child run; plain mods move alone. (Children selected on their
+    // own are ignored - they move with their parent.)
+    QSet<int> rawSet;
+    for (const QString& id : modIds) {
+        int raw = -1;
+        for (int i = 0; i < list.count(); ++i) if (list.at(i).id == id) { raw = i; break; }
+        if (raw < 0 || list.at(raw).type != EntryType::Mod || isGroupChild(raw)) continue;
+        rawSet.insert(raw);
+        if (isGroupParent(raw))
+            for (int k = 1; k <= groupChildCount(raw); ++k) rawSet.insert(raw + k);
+    }
+    if (rawSet.isEmpty()) return false;
+    QList<int> srcRaws(rawSet.begin(), rawSet.end());
+    std::sort(srcRaws.begin(), srcRaws.end());
+
+    // Reorder, persist, refresh - mirrors moveSelection's undo/reset/emit handling.
+    const QStringList before = list.orderIds();
+    beginResetModel();
+    bool ok = list.reorder(srcRaws, sectionEnd);
+    if (ok) {
+        m_undoStack.append(before);
         if (m_undoStack.size() > kUndoCap) m_undoStack.removeFirst();
         m_redoStack.clear();
         m_profile->save();

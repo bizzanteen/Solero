@@ -2,6 +2,7 @@
 #include <QTemporaryDir>
 #include <QMimeData>
 #include <QByteArray>
+#include <QSignalSpy>
 #include "ui/ModListModel.h"
 #include "core/Profile.h"
 #include "deploy/ConflictIndex.h"
@@ -434,6 +435,88 @@ private slots:
         model.setProfile(&prof);
         QVERIFY(model.moveRows({}, 0, 1, {}, 3)); // move m0 to the end slot
         QCOMPARE(order(prof), QString("m1,m2,m0"));
+    }
+
+    void pluginOriginHighlight_distinctColorsAndPrecedence() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        addMods(prof, 3); // m0,m1,m2
+        ModListModel model;
+        model.setProfile(&prof);
+
+        QHash<QString,int> origin;
+        origin.insert("m0", 1); // winner
+        origin.insert("m1", 2); // other provider
+        model.setPluginOriginHighlights(origin);
+
+        const QColor c0 = model.data(model.index(0, ModListModel::ColName),
+                                     Qt::BackgroundRole).value<QColor>();
+        const QColor c1 = model.data(model.index(1, ModListModel::ColName),
+                                     Qt::BackgroundRole).value<QColor>();
+        const QVariant c2 = model.data(model.index(2, ModListModel::ColName),
+                                       Qt::BackgroundRole);
+        QVERIFY(c0.isValid());
+        QVERIFY(c1.isValid());
+        QVERIFY(c0 != c1);             // winner vs provider are visually distinct
+        QVERIFY(!c2.isValid());        // uninvolved mod has no origin highlight
+
+        // Origin highlight takes precedence over a conflict highlight on the same row.
+        QHash<QString,int> conf;
+        conf.insert("m0", 2);          // would normally be the red "loses" color
+        model.setConflictHighlights(conf);
+        const QColor c0withConf = model.data(model.index(0, ModListModel::ColName),
+                                             Qt::BackgroundRole).value<QColor>();
+        QCOMPARE(c0withConf, c0);      // still the winner color, not red
+
+        // Clearing the origin highlight lets the conflict color show through.
+        model.setPluginOriginHighlights({});
+        const QColor c0cleared = model.data(model.index(0, ModListModel::ColName),
+                                            Qt::BackgroundRole).value<QColor>();
+        QVERIFY(c0cleared.isValid());
+        QVERIFY(c0cleared != c0);      // now the red conflict color
+    }
+
+    void expandSeparatorDuringDrag_incrementalInsertNotReset() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        // [sepA(L0, collapsed), m0, m1, sepB(L0), m2]. Collapsed -> m0,m1 hidden.
+        ModEntry sepA; sepA.type = EntryType::Separator; sepA.id = "sepA";
+        sepA.name = "A"; sepA.separatorLevel = 0; sepA.collapsed = true;
+        ModEntry m0; m0.type = EntryType::Mod; m0.id = "m0"; m0.name = "Mod0"; m0.enabled = true;
+        ModEntry m1; m1.type = EntryType::Mod; m1.id = "m1"; m1.name = "Mod1"; m1.enabled = true;
+        ModEntry sepB; sepB.type = EntryType::Separator; sepB.id = "sepB";
+        sepB.name = "B"; sepB.separatorLevel = 0;
+        ModEntry m2; m2.type = EntryType::Mod; m2.id = "m2"; m2.name = "Mod2"; m2.enabled = true;
+        prof.modList().append(sepA);
+        prof.modList().append(m0);
+        prof.modList().append(m1);
+        prof.modList().append(sepB);
+        prof.modList().append(m2);
+        ModListModel model;
+        model.setProfile(&prof);
+
+        // Collapsed: sepA, sepB, m2, Overwrite = 4 visible rows.
+        QCOMPARE(model.rowCount(), 4);
+
+        QSignalSpy inserted(&model, &QAbstractItemModel::rowsInserted);
+        QSignalSpy wasReset(&model, &QAbstractItemModel::modelReset);
+
+        model.expandSeparatorDuringDrag(0); // sepA at visible row 0
+
+        // Expanded: sepA, m0, m1, sepB, m2, Overwrite = 6.
+        QCOMPARE(model.rowCount(), 6);
+        // Incremental, not a reset (the whole point: keeps the drag alive).
+        QCOMPARE(inserted.count(), 1);
+        QCOMPARE(wasReset.count(), 0);
+        const QList<QVariant> args = inserted.takeFirst();
+        QCOMPARE(args.at(1).toInt(), 1); // first inserted visible row
+        QCOMPARE(args.at(2).toInt(), 2); // last inserted visible row
+        // Collapse flag persisted as expanded.
+        QVERIFY(!prof.modList().findById("sepA")->collapsed);
+
+        // Already-expanded separator -> no-op (no extra inserts).
+        model.expandSeparatorDuringDrag(0);
+        QCOMPARE(model.rowCount(), 6);
     }
 
 };

@@ -6,6 +6,8 @@
 #include <QSet>
 #include <QJsonObject>
 #include <QFutureWatcher>
+#include <QPointer>
+#include <QList>
 #include "core/ProfileManager.h"
 #include "ai/AITransaction.h"
 #include "ipc/IPCServer.h"
@@ -37,6 +39,7 @@ class RightPane;
 class BottomPanel;
 class BethiniWindow;
 class ProblemsDialog;
+class RequirementsDialog;
 }
 
 class MainWindow : public QMainWindow {
@@ -176,6 +179,10 @@ private:
     // After a profile finishes loading, fire an auto update check if enabled and
     // not throttled (>6h since the last check) and a key is available.
     void maybeAutoCheckUpdates();
+    // Persist / restore the "update available" flags per profile (updates.json) so
+    // they show at launch immediately; the check then refreshes them.
+    void saveUpdateFlags(const QHash<QString, QPair<QString,QString>>& updates) const;
+    QHash<QString, QPair<QString,QString>> loadUpdateFlags() const;
     // Ensure the mod has Nexus mod/file ids. Returns true if known (or resolved
     // via MD5 archive lookup). Shows an explanatory message + returns false when
     // it can't (no source archive, no Nexus match). Used by re-download.
@@ -290,7 +297,14 @@ private:
     QAction* m_browseAction = nullptr;
     QAction* m_checkUpdatesAction = nullptr;
     // Receives the result of the off-thread update check (local id -> {installed, latest}).
-    QFutureWatcher<QHash<QString, QPair<QString,QString>>> m_updateWatcher;
+    // Result of an accurate (file-id based) update scan: mods with a real newer
+    // main file on Nexus, plus any fileIds back-filled via MD5 this run (applied +
+    // persisted on the UI thread).
+    struct UpdateScan {
+        QHash<QString, QPair<QString,QString>> updates;  // local id -> {installed, latest}
+        QHash<QString, QPair<QString,QString>> backfill; // local id -> {fileId, version}
+    };
+    QFutureWatcher<UpdateScan> m_updateWatcher;
 
     // Per-mod "Update Mod" flow: resolve the latest Nexus file off the UI thread,
     // then download it and reinstall the existing mod in place.
@@ -328,6 +342,10 @@ private:
     // requirement's Nexus modId -> the dependent mod's id it should be placed above,
     // applied when the requirement finishes installing (see checkRequirementsAfterInstall).
     QHash<QString, QString> m_placeAboveByModId;
+    // Open requirements dialogs (modal, but can stack via nested exec()). Lets an
+    // async install flip the matching row to Installed / Retry when it finishes.
+    QList<QPointer<solero::RequirementsDialog>> m_openReqDialogs;
+    void markRequirementResult(const QString& reqModId, bool installed);
 
     QWidget* m_runOverlay = nullptr;
     QLabel* m_runLockLabel = nullptr;

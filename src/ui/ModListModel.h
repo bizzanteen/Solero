@@ -47,6 +47,11 @@ public:
     int rowForModId(const QString& id) const;
     const ModEntry* entryAt(int visibleRow) const;
     void toggleCollapse(int visibleRow);
+    // Expand a collapsed separator during an in-flight drag without a model reset
+    // (a reset tears down the view's drag state and the drop is lost). Reveals the
+    // section's rows via beginInsertRows; no-op unless `visibleRow` is a collapsed
+    // separator. Falls back to rebuild() if the revealed rows aren't contiguous.
+    void expandSeparatorDuringDrag(int visibleRow);
     // Toggle the collapsed state of a group-PARENT mod (mirrors toggleCollapse,
     // which is for separators). No-op if the entry isn't a group parent.
     void toggleModCollapse(int visibleRow);
@@ -59,6 +64,13 @@ public:
     // Count of the contiguous run of child Mods after a parent.
     int groupChildCount(int parentRaw) const;
     void rebuild();  // call after any structural change
+
+    // Move the given mods to the BOTTOM of separator `sepId`'s section (just before
+    // the next separator at the same/shallower level, or the end of the list). Group
+    // parents carry their children. Persists + records undo + emits modsChanged, like
+    // a manual reorder. Returns true iff the order actually changed.
+    bool moveModsToSeparatorEnd(const QStringList& modIds, const QString& sepId);
+
     // While searching, reveal mods inside collapsed separators / collapsed group
     // parents so a name/state filter can match them. Toggling this does a model
     // reset and rebuilds the visible rows; it never mutates persisted collapse
@@ -71,6 +83,10 @@ public:
     // MO2-style conflict highlight for the selected mod: id -> 1 (green: this mod
     // overwrites the selection) / 2 (red: overwritten by the selection). Empty = clear.
     void setConflictHighlights(const QHash<QString,int>& roles);
+    // Plugin-origin highlight (when a plugin is clicked in the Plugins tab): id ->
+    // 1 (winner, emphasized) / 2 (other provider). Takes precedence over the
+    // selection conflict highlight; the two are mutually exclusive in practice.
+    void setPluginOriginHighlights(const QHash<QString,int>& roles);
     // Full per-file conflict index, used to paint always-ON winner/loser flag icons
     // in the Flags column (independent of the transient on-select highlight above).
     void setConflictIndex(const ConflictIndex& index);
@@ -117,6 +133,7 @@ private:
     QHash<QString,QStringList> m_depWarnings;
     QHash<QString, QPair<QString,QString>> m_updates; // modId -> {installed, latest}
     QHash<QString,int> m_conflictHi; // modId -> 1 green / 2 red (selection conflicts)
+    QHash<QString,int> m_pluginOriginHi; // modId -> 1 winner / 2 other provider
     ConflictIndex m_conflicts;       // full index for the always-on Flags icons
     QSet<QString> m_overwritingMods; // mods that win ≥1 file conflict (overwrite others)
     QSet<QString> m_overwrittenMods; // mods that lose ≥1 file conflict (overwritten)

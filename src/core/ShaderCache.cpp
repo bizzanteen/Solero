@@ -3,6 +3,7 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <filesystem>
 
 namespace solero {
 
@@ -94,6 +95,59 @@ int captureShaderCache(const QString& gameDir, const QString& cacheStagingDir,
         }
     }
     return moved;
+}
+
+int assertShaderCacheDeployed(const QString& gameDir, const QString& cacheStagingDir,
+                              bool hardlink, QStringList* relinked) {
+    if (cacheStagingDir.isEmpty()) return 0;
+
+    const QString srcRoot = cacheStagingDir + "/Data/ShaderCache";
+    if (!QDir(srcRoot).exists()) return 0;
+
+    const QString stagingData = cacheStagingDir + "/Data";
+    const QString gameData = gameDir + "/Data";
+
+    int placed = 0;
+    QDirIterator it(srcRoot, QDir::Files | QDir::NoDotAndDotDot,
+                    QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QString srcPath = it.next();
+        const QString rel = srcPath.mid(stagingData.length() + 1); // e.g. ShaderCache/foo.bin
+        const QString dstPath = gameData + "/" + rel;
+
+        // Leave already-correct live files alone: under hardlink deploy that means
+        // the live file shares an inode with the staged master; in copy mode any
+        // existing live file is assumed current (CS only ever deletes, never edits,
+        // a cache file in place). Only missing or divergent files are re-placed.
+        const bool present = QFile::exists(dstPath);
+        if (present) {
+            if (!hardlink) continue;
+            std::error_code ec;
+            if (std::filesystem::equivalent(srcPath.toStdString(),
+                                            dstPath.toStdString(), ec) && !ec)
+                continue; // same inode - already deployed
+        }
+
+        QDir().mkpath(QFileInfo(dstPath).path());
+        if (present) QFile::remove(dstPath); // hardlink/copy can't overwrite
+
+        bool done = false;
+        if (hardlink) {
+            std::error_code ec;
+            std::filesystem::create_hard_link(srcPath.toStdString(),
+                                              dstPath.toStdString(), ec);
+            // Cross-device (or other) hardlink failure -> fall back to a copy.
+            done = !ec || QFile::copy(srcPath, dstPath);
+        } else {
+            done = QFile::copy(srcPath, dstPath);
+        }
+        if (done) {
+            ++placed;
+            if (relinked)
+                relinked->append(QStringLiteral("Data/") + rel);
+        }
+    }
+    return placed;
 }
 
 } // namespace solero

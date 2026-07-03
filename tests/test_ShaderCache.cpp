@@ -2,6 +2,7 @@
 #include <QTemporaryDir>
 #include <QDir>
 #include <QFile>
+#include <filesystem>
 #include "core/ShaderCache.h"
 #include "core/ModList.h"
 #include "core/Types.h"
@@ -160,6 +161,61 @@ private slots:
         QFile blob(staging + "/Data/ShaderCache/Effect/abc.pso");
         QVERIFY(blob.open(QIODevice::ReadOnly));
         QCOMPARE(blob.readAll(), QByteArray("staged-blob"));
+    }
+
+    // Community Shaders DELETES the live Data/ShaderCache at runtime whenever it
+    // invalidates the cache, removing the hardlinks Solero deployed. The deploy
+    // record then reads "clean" while the staged Info.ini is no longer in the live
+    // dir, so CS recompiles every launch. assertShaderCacheDeployed re-links any
+    // staged file missing from the live dir (independent of the deploy-clean flag)
+    // and leaves already-correctly-linked files untouched.
+    void assert_relinksMissingCacheFilesIntoLiveDir() {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const QString gameDir = tmp.path() + "/game";
+        const QString staging = tmp.path() + "/staging/cachemod";
+
+        // Staged managed cache: an Info.ini (CS's validation file) + a blob.
+        writeFile(staging + "/Data/ShaderCache/Info.ini", "plugin=1-7-1-0");
+        writeFile(staging + "/Data/ShaderCache/Effect/abc.pso", "blob");
+
+        // Live game dir: the blob is already hard-linked in (same inode), but CS
+        // deleted Info.ini this session - it's missing from the live dir.
+        QDir().mkpath(gameDir + "/Data/ShaderCache/Effect");
+        std::error_code ec;
+        std::filesystem::create_hard_link(
+            (staging + "/Data/ShaderCache/Effect/abc.pso").toStdString(),
+            (gameDir + "/Data/ShaderCache/Effect/abc.pso").toStdString(), ec);
+        QVERIFY(!ec);
+
+        QStringList relinked;
+        const int n = assertShaderCacheDeployed(gameDir, staging, /*hardlink=*/true, &relinked);
+
+        // Only the missing Info.ini is restored; the already-linked blob is skipped.
+        QCOMPARE(n, 1);
+        QCOMPARE(relinked, (QStringList{"Data/ShaderCache/Info.ini"}));
+
+        // Info.ini now lives in the game dir with the staged content...
+        QFile info(gameDir + "/Data/ShaderCache/Info.ini");
+        QVERIFY(info.open(QIODevice::ReadOnly));
+        QCOMPARE(info.readAll(), QByteArray("plugin=1-7-1-0"));
+        // ...and as a hardlink (same inode) to staging, so deploy stays in sync.
+        QVERIFY(std::filesystem::equivalent(
+            (staging + "/Data/ShaderCache/Info.ini").toStdString(),
+            (gameDir + "/Data/ShaderCache/Info.ini").toStdString(), ec));
+        QVERIFY(!ec);
+
+        // The already-linked blob was left alone (still present, still linked).
+        QVERIFY(QFile::exists(gameDir + "/Data/ShaderCache/Effect/abc.pso"));
+    }
+
+    // Empty staging or a missing staged ShaderCache dir -> no-op returning 0.
+    void assert_noopWhenNothingStaged() {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const QString gameDir = tmp.path() + "/game";
+        QCOMPARE(assertShaderCacheDeployed(gameDir, QString(), true), 0);
+        QCOMPARE(assertShaderCacheDeployed(gameDir, tmp.path() + "/staging", true), 0);
     }
 
     // Missing source / empty staging -> no-op returning 0.

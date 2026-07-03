@@ -8,6 +8,7 @@
 #include <QSet>
 #include <QMenu>
 #include <QContextMenuEvent>
+#include <QMouseEvent>
 #include <QShowEvent>
 #include <QTimer>
 #include <QStyledItemDelegate>
@@ -81,16 +82,14 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
             this, &PluginListView::loadOrderChanged);
     connect(m_model, &PluginListModel::pluginEnabledChanged,
             this, &PluginListView::pluginEnabledChanged);
-    // Resizing another column lets the Plugin column absorb the slack (no gap).
-    connect(horizontalHeader(), &QHeaderView::sectionResized, this, [this](int idx, int, int) {
-        if (idx != PluginListModel::ColName) fillNameColumn();
-    });
 }
 
 void PluginListView::applyHeaderLayout() {
-    // All columns Interactive (no middle Stretch) so manual resizes behave
-    // predictably; the Plugin column is auto-fitted on first show instead.
+    // The Plugin (Name) column STRETCHES to fill whatever the other Interactive
+    // columns leave, so the columns always span the full pane width exactly - no
+    // gap, no overflow - however the user resizes the others or the pane.
     horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    horizontalHeader()->setSectionResizeMode(PluginListModel::ColName, QHeaderView::Stretch);
     horizontalHeader()->resizeSection(PluginListModel::ColEnabled, 28);
     horizontalHeader()->resizeSection(PluginListModel::ColPriority, 40);
     horizontalHeader()->resizeSection(PluginListModel::ColFlags, 50);
@@ -101,18 +100,10 @@ void PluginListView::autoSizeColumns() {
     fillNameColumn();
 }
 
-// Resize the Plugin column so the columns always span the full viewport.
-void PluginListView::fillNameColumn() {
-    if (!model()) return;
-    const int vw = viewport()->width();
-    if (vw <= 0) return;
-    int other = 0;
-    for (int c = 0; c < model()->columnCount(); ++c)
-        if (c != PluginListModel::ColName) other += horizontalHeader()->sectionSize(c);
-    const int target = qMax(160, vw - other);
-    if (target != horizontalHeader()->sectionSize(PluginListModel::ColName))
-        horizontalHeader()->resizeSection(PluginListModel::ColName, target);
-}
+// The Plugin column is now a Stretch section (see applyHeaderLayout), so Qt keeps
+// the columns spanning the full viewport automatically. Kept as a no-op so existing
+// call sites stay valid; manually resizing the stretch section would only fight it.
+void PluginListView::fillNameColumn() {}
 
 void PluginListView::resizeEvent(QResizeEvent* event) {
     QTableView::resizeEvent(event);
@@ -127,14 +118,47 @@ void PluginListView::showEvent(QShowEvent* event) {
     }
 }
 
-void PluginListView::onSortChanged(int col, Qt::SortOrder order) {
-    if (col == PluginListModel::ColPriority) {
+void PluginListView::setFilter(const QString& text) {
+    const QString t = text.trimmed();
+    m_filterActive = !t.isEmpty();
+    if (m_filterActive) {
+        if (model() != m_proxy) {
+            m_proxy->setSourceModel(m_model);
+            setModel(m_proxy);
+            applyHeaderLayout();
+        }
+        m_proxy->setFilterKeyColumn(PluginListModel::ColName);
+        m_proxy->setFilterCaseSensitivity(Qt::CaseInsensitive);
+        m_proxy->setFilterFixedString(t);
+        // Reordering a filtered subset is meaningless - suspend drag-and-drop.
+        setDragDropMode(QAbstractItemView::NoDragDrop);
+        setDragEnabled(false);
+        setAcceptDrops(false);
+    } else {
+        // Restore the priority-sorted source model + manual drag-reorder.
+        m_proxy->setFilterFixedString(QString());
         if (model() != m_model) { setModel(m_model); applyHeaderLayout(); }
         setDragDropMode(QAbstractItemView::InternalMove);
-        setDragEnabled(true); setAcceptDrops(true);
+        setDragEnabled(true);
+        setAcceptDrops(true);
         setDropIndicatorShown(true);
         setDragDropOverwriteMode(false);
         setDefaultDropAction(Qt::MoveAction);
+        horizontalHeader()->setSortIndicator(PluginListModel::ColPriority, Qt::AscendingOrder);
+    }
+    fillNameColumn();
+}
+
+void PluginListView::onSortChanged(int col, Qt::SortOrder order) {
+    if (col == PluginListModel::ColPriority) {
+        if (!m_filterActive) {
+            if (model() != m_model) { setModel(m_model); applyHeaderLayout(); }
+            setDragDropMode(QAbstractItemView::InternalMove);
+            setDragEnabled(true); setAcceptDrops(true);
+            setDropIndicatorShown(true);
+            setDragDropOverwriteMode(false);
+            setDefaultDropAction(Qt::MoveAction);
+        }
     } else {
         if (model() != m_proxy) {
             m_proxy->setSourceModel(m_model);
@@ -199,6 +223,13 @@ void PluginListView::contextMenuEvent(QContextMenuEvent* event) {
                        [this, srcRow]{ m_model->togglePin(srcRow); });
         menu.addSeparator();
     }
+    if (srcRow >= 0) {
+        const QString fn = pluginFilenameAt(idx);
+        if (!fn.isEmpty()) {
+            menu.addAction("Go to origin mod", [this, fn]{ emit pluginActivated(fn); });
+            menu.addSeparator();
+        }
+    }
     menu.addAction("Enable all",  [this]{ setAllEnabled(true); });
     menu.addAction("Disable all", [this]{ setAllEnabled(false); });
     menu.exec(event->globalPos());
@@ -233,5 +264,29 @@ void PluginListView::highlightPlugins(const QStringList& filenames) {
     QSet<QString> set;
     for (const QString& f : filenames) set.insert(f.toLower());
     m_model->setHighlighted(set);
+}
+
+QString PluginListView::pluginFilenameAt(const QModelIndex& viewIdx) const {
+    Profile* profile = m_model->profile();
+    if (!profile) return {};
+    const QModelIndex idx = viewIdx.isValid() ? viewIdx : currentIndex();
+    if (!idx.isValid()) return {};
+    const int srcRow = (model() == m_proxy) ? m_proxy->mapToSource(idx).row() : idx.row();
+    if (srcRow < 0 || srcRow >= profile->pluginList().count()) return {};
+    return profile->pluginList().at(srcRow).filename; // already pin-glyph-free
+}
+
+void PluginListView::selectionChanged(const QItemSelection& selected,
+                                      const QItemSelection& deselected) {
+    QTableView::selectionChanged(selected, deselected);
+    if (!selectionModel() || !selectionModel()->hasSelection()) return;
+    const QString fn = pluginFilenameAt(QModelIndex());
+    if (!fn.isEmpty()) emit pluginClicked(fn);
+}
+
+void PluginListView::mouseDoubleClickEvent(QMouseEvent* event) {
+    const QString fn = pluginFilenameAt(indexAt(event->pos()));
+    if (!fn.isEmpty()) { emit pluginActivated(fn); return; }
+    QTableView::mouseDoubleClickEvent(event);
 }
 }

@@ -4,6 +4,7 @@
 #include "ConflictsTab.h"
 #include "DownloadsTab.h"
 #include "core/AppConfig.h"
+#include "core/PluginOrigin.h"
 #include <QDir>
 #include <QDirIterator>
 #include <QFileInfo>
@@ -31,11 +32,14 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     m_pluginNotice->hide();
     pluginsLayout->addWidget(m_pluginNotice);
 
-    // Top row with right-aligned "Backup LO" / "Restore LO…" / "LOOT Rules" /
-    // "Sort Now" (LOOT) buttons.
+    // Top row: the plugin search sits inline on the left, with the right-aligned
+    // "Backup LO" / "Restore LO…" / "LOOT Rules" / "Lock" / "Sort Now" buttons.
     auto* sortRow = new QHBoxLayout();
     sortRow->setContentsMargins(4, 4, 4, 4);
-    sortRow->addStretch();
+    m_pluginSearch = new QLineEdit(pluginsContainer);
+    m_pluginSearch->setPlaceholderText(QStringLiteral("Search plugins…"));
+    m_pluginSearch->setClearButtonEnabled(true);
+    sortRow->addWidget(m_pluginSearch, 1); // grows to fill, pushing the buttons right
     auto* backupBtn = new QPushButton("Backup Load Order", pluginsContainer);
     backupBtn->setToolTip("Snapshot the current load order + active state");
     connect(backupBtn, &QPushButton::clicked, this, &RightPane::backupLoRequested);
@@ -60,6 +64,16 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     sortRow->addWidget(m_sortBtn);
     pluginsLayout->addLayout(sortRow);
 
+    // Debounce the search input (mirrors the Data tab): filter once typing pauses.
+    m_pluginSearchDebounce = new QTimer(this);
+    m_pluginSearchDebounce->setSingleShot(true);
+    m_pluginSearchDebounce->setInterval(200);
+    connect(m_pluginSearchDebounce, &QTimer::timeout, this, [this] {
+        m_pluginsTab->setFilter(m_pluginSearch->text());
+    });
+    connect(m_pluginSearch, &QLineEdit::textChanged, this,
+            [this](const QString&) { m_pluginSearchDebounce->start(); });
+
     pluginsLayout->addWidget(m_pluginsTab);
 
     addTab(pluginsContainer, "Plugins");
@@ -79,6 +93,10 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     connect(m_conflictsTab, &ConflictsTab::fileRulesChanged, this, &RightPane::fileRulesChanged);
     connect(m_dataTab,      &DataTab::renameRequested,       this, &RightPane::renameRequested);
     connect(m_dataTab,      &DataTab::deleteRequested,       this, &RightPane::deleteRequested);
+    connect(m_pluginsTab, &PluginListView::pluginClicked,
+            this, &RightPane::onPluginClicked);
+    connect(m_pluginsTab, &PluginListView::pluginActivated,
+            this, &RightPane::onPluginActivated);
 }
 
 void RightPane::showDownloadsTab() {
@@ -115,12 +133,16 @@ void RightPane::setLockOrderChecked(bool checked) {
 void RightPane::invalidateModPluginCache(const QString& id) {
     if (id.isEmpty()) m_modPluginCache.clear();
     else              m_modPluginCache.remove(id);
+    m_pluginOriginCache.clear();
+    m_originIndexBuilt = false;
 }
 
 void RightPane::setProfile(Profile* profile, bool reconcilePlugins) {
     m_currentProfile = profile;
     // New profile -> different mods; drop the per-mod plugin highlight cache.
     m_modPluginCache.clear();
+    m_pluginOriginCache.clear();
+    m_originIndexBuilt = false;
     if (reconcilePlugins)
         m_pluginsTab->reconcileWith(profile, AppConfig::instance().stagingDir());
     else
@@ -131,6 +153,12 @@ void RightPane::setProfile(Profile* profile, bool reconcilePlugins) {
 }
 
 void RightPane::refreshPlugins(Profile* profile) {
+    // The origin index depends on mod order + enabled state, both of which can
+    // change via a reorder / enable-disable that lands here - invalidate it so the
+    // next plugin click rebuilds against the current order. (Only the flag + the
+    // derived index; the per-mod filename cache is order/enabled-independent.)
+    m_originIndexBuilt = false;
+    m_pluginOriginCache.clear();
     m_pluginsTab->reconcileWith(profile, AppConfig::instance().stagingDir());
 }
 
@@ -199,6 +227,7 @@ QString RightPane::firstPluginInLoadOrder(const QStringList& filenames) const {
 }
 
 void RightPane::onSelectionChanged(const QStringList& ids) {
+    emit highlightOriginMods({}); // a mod selection supersedes any plugin-origin highlight
     m_dataTab->setSelection(ids);
 
     // Conflicts tab shows a single mod only; clear it otherwise.
@@ -249,6 +278,43 @@ void RightPane::onSelectionChanged(const QStringList& ids) {
             if (!first.isEmpty()) selectPlugin(first);
         }
     }
+}
+
+void RightPane::ensurePluginOriginIndex() {
+    if (m_originIndexBuilt || !m_currentProfile) return;
+    QStringList ordered;                       // enabled mods, list order (low->high)
+    QHash<QString, QStringList> byMod;
+    const ModList& ml = m_currentProfile->modList();
+    for (int i = 0; i < ml.count(); ++i) {
+        const auto& e = ml.at(i);
+        if (e.type != EntryType::Mod || !e.enabled) continue;
+        ordered << e.id;
+        auto it = m_modPluginCache.constFind(e.id);
+        if (it == m_modPluginCache.constEnd()) {
+            const QString data = AppConfig::instance().stagingDir() + "/"
+                               + m_currentProfile->stagingFolderFor(e.id) + "/Data";
+            it = m_modPluginCache.insert(e.id,
+                     QDir(data).entryList({"*.esp","*.esm","*.esl"}, QDir::Files));
+        }
+        byMod.insert(e.id, it.value());
+    }
+    m_pluginOriginCache = PluginOrigin::buildIndex(ordered, byMod);
+    m_originIndexBuilt = true;
+}
+
+void RightPane::onPluginClicked(const QString& filename) {
+    ensurePluginOriginIndex();
+    const QStringList providers = m_pluginOriginCache.value(filename.toLower());
+    QHash<QString,int> roles;
+    for (int i = 0; i < providers.size(); ++i)
+        roles.insert(providers.at(i), i == providers.size() - 1 ? 1 : 2); // last = winner
+    emit highlightOriginMods(roles);
+}
+
+void RightPane::onPluginActivated(const QString& filename) {
+    ensurePluginOriginIndex();
+    const QString w = PluginOrigin::winner(m_pluginOriginCache.value(filename.toLower()));
+    if (!w.isEmpty()) emit goToOriginMod(w);
 }
 
 } // namespace solero

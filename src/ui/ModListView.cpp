@@ -108,6 +108,7 @@ public:
 protected:
     void initStyleOption(QStyleOptionViewItem* opt, const QModelIndex& idx) const override {
         QStyledItemDelegate::initStyleOption(opt, idx);
+        opt->decorationAlignment = Qt::AlignCenter; // center the flag-icon strip
         if (!opt->icon.isNull()) {
             // actualSize keeps the strip at its drawn height (kFlagIconPx) and
             // returns its true width, so the base delegate draws it un-squished.
@@ -144,12 +145,14 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     setEditTriggers(QAbstractItemView::SelectedClicked | QAbstractItemView::EditKeyPressed);
     setItemDelegateForColumn(ModListModel::ColName, new RenameDelegate(this));
     setItemDelegateForColumn(ModListModel::ColFlags, new FlagsDelegate(this));
-    // Every column is user-resizable (Interactive). A middle Stretch section makes
-    // manual resizes feel inverted, so we instead auto-fit on first show.
+    // The Name column STRETCHES to fill whatever space the other (Interactive)
+    // columns leave, so the columns always span the full pane width exactly - no
+    // gap on the right, no overflow - however the user resizes the other columns
+    // or the pane. (Name itself isn't manually resizable; it's the flex column.)
     auto* hdr = header();
     hdr->setSectionResizeMode(ModListModel::ColEnabled,  QHeaderView::Interactive);
     hdr->setSectionResizeMode(ModListModel::ColPriority, QHeaderView::Interactive);
-    hdr->setSectionResizeMode(ModListModel::ColName,     QHeaderView::Interactive);
+    hdr->setSectionResizeMode(ModListModel::ColName,     QHeaderView::Stretch);
     hdr->setSectionResizeMode(ModListModel::ColVersion,  QHeaderView::Interactive);
     hdr->setSectionResizeMode(ModListModel::ColFlags,    QHeaderView::Interactive);
     hdr->setStretchLastSection(false);
@@ -161,11 +164,6 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     // clickable headers would only flip a lying sort indicator. Disable sorting.
     setSortingEnabled(false);
     header()->setSectionsClickable(false);
-    // When the user resizes any OTHER column, the Name column absorbs the slack so
-    // the columns keep filling the pane (no gap). Resizing Name itself is left alone.
-    connect(header(), &QHeaderView::sectionResized, this, [this](int idx, int, int) {
-        if (idx != ModListModel::ColName) fillNameColumn();
-    });
     // Right-click the header to toggle column visibility (persisted in AppConfig).
     header()->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(header(), &QWidget::customContextMenuRequested,
@@ -200,7 +198,7 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
         // one that's since opened, and don't act on a stale row).
         const auto* entry = m_model->entryAt(m_autoExpandRow);
         if (entry && entry->type == EntryType::Separator && entry->collapsed)
-            m_model->toggleCollapse(m_autoExpandRow);
+            m_model->expandSeparatorDuringDrag(m_autoExpandRow);
         m_autoExpandRow = -1;
     });
 }
@@ -244,18 +242,10 @@ void ModListView::autoSizeColumns() {
     fillNameColumn();
 }
 
-// Resize the Name column so the columns always span the full viewport (no empty
-// gap on the right, no Stretch section so manual resizes stay intuitive).
-void ModListView::fillNameColumn() {
-    const int vw = viewport()->width();
-    if (vw <= 0) return; // not laid out yet
-    int other = 0;
-    for (int c = 0; c < m_model->columnCount(); ++c)
-        if (c != ModListModel::ColName) other += header()->sectionSize(c);
-    const int target = qMax(160, vw - other);
-    if (target != header()->sectionSize(ModListModel::ColName))
-        header()->resizeSection(ModListModel::ColName, target);
-}
+// The Name column is now a Stretch section (see the constructor), so Qt keeps the
+// columns spanning the full viewport automatically. Kept as a no-op so existing
+// call sites stay valid; manually resizing the stretch section would only fight it.
+void ModListView::fillNameColumn() {}
 
 void ModListView::resizeEvent(QResizeEvent* event) {
     QTreeView::resizeEvent(event);
@@ -316,6 +306,10 @@ void ModListView::setConflictIndex(const ConflictIndex& index) {
 
 void ModListView::refreshFlags() {
     m_model->refreshFlags();
+}
+
+void ModListView::setPluginOriginHighlights(const QHash<QString,int>& roles) {
+    m_model->setPluginOriginHighlights(roles);
 }
 
 void ModListView::updateConflictHighlights() {
@@ -554,6 +548,31 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
             if (m_model->isGroupChild(raw)) {
                 menu.addSeparator();
                 menu.addAction("Ungroup", [this, id = entry->id]{ ungroupMod(id); });
+            }
+        }
+        // Send to group: move the selected mod(s) to the bottom of a chosen
+        // separator's section. The submenu lists every separator (indented by
+        // nesting level); empty/disabled when the profile has no separators.
+        {
+            const QStringList sels = selectedModIds();
+            if (!sels.isEmpty() && m_model->profile()) {
+                const auto& list = m_model->profile()->modList();
+                QMenu* sendMenu = menu.addMenu("Send to group");
+                bool any = false;
+                for (int i = 0; i < list.count(); ++i) {
+                    const auto& e = list.at(i);
+                    if (e.type != EntryType::Separator) continue;
+                    any = true;
+                    const QString label = QString(e.separatorLevel * 4, QChar(' ')) + e.name;
+                    const QString sepId = e.id;
+                    sendMenu->addAction(label, [this, sels, sepId] {
+                        m_model->moveModsToSeparatorEnd(sels, sepId);
+                        applyFilter();
+                        selectModsByIds(sels);
+                        emit modsChanged();
+                    });
+                }
+                sendMenu->setEnabled(any);
             }
         }
         menu.addSeparator();

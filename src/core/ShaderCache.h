@@ -40,4 +40,23 @@ ShaderCacheClearResult clearShaderCache(const QString& gameDir,
 int captureShaderCache(const QString& gameDir, const QString& cacheStagingDir,
                        QStringList* movedRelPaths = nullptr);
 
+// Re-assert the managed shader cache into the live game dir. Community Shaders
+// OWNS <gameDir>/Data/ShaderCache at runtime and DELETES the whole tree whenever
+// it invalidates the cache - silently removing the hardlinks Solero deployed. The
+// deploy record then reads "clean" while the staged Info.ini is no longer in the
+// live dir, so CS finds no Info.ini ("no plugin version found"), wipes, and
+// recompiles every launch. Calling this before launch (independent of the
+// deploy-clean flag) restores the staged snapshot so CS validates against it.
+//
+// For each file under <cacheStagingDir>/Data/ShaderCache/**, ensure an identical
+// entry exists at the mirrored path under <gameDir>/Data/. When hardlink is true a
+// live file that is already the same inode as its staged master is left untouched;
+// in copy mode an already-present live file is left untouched. Anything missing (or,
+// under hardlink, pointing at a different inode) is re-linked/copied. Returns the
+// number of files (re)placed; appends each one's gameDir-relative path (e.g.
+// "Data/ShaderCache/Info.ini") to relinked if non-null. Returns 0 when cacheStagingDir
+// is empty or the staged ShaderCache dir is missing.
+int assertShaderCacheDeployed(const QString& gameDir, const QString& cacheStagingDir,
+                              bool hardlink, QStringList* relinked = nullptr);
+
 } // namespace solero

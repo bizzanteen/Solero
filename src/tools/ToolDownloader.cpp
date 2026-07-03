@@ -1,4 +1,5 @@
 #include "ToolDownloader.h"
+#include "ExeResolve.h"
 #include "install/ArchiveTool.h"
 #include <QFile>
 #include <QDir>
@@ -203,22 +204,17 @@ ToolDownloadResult ToolDownloader::fetch(const ToolPreset& preset, const QString
 
     // Resolve exe path case-insensitively.
     if (!preset.exeRelPath.isEmpty()) {
-        r.exePath = dest + "/" + preset.exeRelPath;
-        if (!QFile::exists(r.exePath)) {
-            // shallow search
-            QDir dd(dest);
-            for (const QString& e : dd.entryList(QDir::Files))
-                if (e.compare(preset.exeRelPath, Qt::CaseInsensitive) == 0) { r.exePath = dest + "/" + e; break; }
-        }
-        if (!QFile::exists(r.exePath)) {
-            // recursive search (archives may nest one or more levels deeper)
-            QDirIterator it(dest, QDir::Files, QDirIterator::Subdirectories);
-            while (it.hasNext()) {
-                QString f = it.next();
-                if (QFileInfo(f).fileName().compare(preset.exeRelPath, Qt::CaseInsensitive) == 0) {
-                    r.exePath = f; break;
-                }
-            }
+        r.exePath = resolveToolExe(dest, preset.exeRelPath);
+        if (r.exePath.isEmpty()) {
+            // The archive extracted fine but doesn't contain the tool at all -
+            // e.g. the catalog points at the wrong Nexus mod/file. Registering
+            // a phantom exe path would only fail later at launch, so fail the
+            // setup now and don't leave the junk extraction behind.
+            QDir(dest).removeRecursively();
+            r.error = "The downloaded archive doesn't contain " + preset.exeRelPath
+                    + ", so it isn't " + preset.name
+                    + ". The download source may be wrong - please report this.";
+            return r;
         }
         // Native (non-Proton) binaries download without an exec bit; set it.
         if (!preset.proton && !r.exePath.isEmpty() && QFile::exists(r.exePath)) {

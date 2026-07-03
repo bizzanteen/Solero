@@ -65,6 +65,9 @@ signals:
     void viewNexusPageRequested(const QString& modId);
     void updateRequested(const QString& modId);
     void modsChanged();
+    // Re-emitted from the model for order-only changes; wired to a lighter handler
+    // that skips the plugin rescan + dependency-health walk (see MainWindow).
+    void modsReordered();
     void modActivated(const QString& modId);
     // Right-click the Overwrite row -> "Create Mod from Overwrite…": promote the
     // captured overwrite files into a new, named, sortable mod (MO2 parity).
@@ -78,6 +81,9 @@ signals:
     // Re-emitted from the model when a mod's active version variant is switched via
     // the Version-column dropdown; MainWindow rescans plugins and auto-redeploys.
     void variantSwitched(const QString& modId);
+    // A profile save (after a list edit) failed to write to disk; MainWindow shows
+    // a status-bar warning so the change loss isn't silent.
+    void saveFailed();
 
 protected:
     void contextMenuEvent(QContextMenuEvent* event) override;
@@ -110,6 +116,12 @@ private:
     // persists the hidden set to AppConfig.
     void showHeaderMenu(const QPoint& pos);
     void applyHiddenColumns(); // apply AppConfig's persisted hidden-column set
+    // Persist the current header layout (column widths) to AppConfig; debounced via
+    // m_headerSaveTimer so a resize drag writes config once, not per pixel.
+    void saveHeaderState();
+    QTimer* m_headerSaveTimer = nullptr;
+    // Save the active profile after a list edit; emits saveFailed() on write error.
+    void saveProfile();
     ConflictIndex m_conflicts;
     // Recompute the green/red conflict highlight for the current single selection.
     void updateConflictHighlights();

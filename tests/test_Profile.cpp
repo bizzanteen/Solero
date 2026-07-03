@@ -20,6 +20,11 @@ static ModEntry mkMod(const QString& id, const QString& name) {
     return e;
 }
 
+static QByteArray readFile(const QString& path) {
+    QFile f(path);
+    return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+}
+
 class TestProfile : public QObject {
     Q_OBJECT
 private slots:
@@ -399,6 +404,39 @@ private slots:
         QCOMPARE(p.executables()[0].outputModId, QString("PROFILE_LOCAL_ID"));
         QCOMPARE(p.executables()[0].extraActions.size(), 1);
         QVERIFY(p.executables()[0].extraActions[0].outputModId.isEmpty());
+    }
+
+    void saveModListOnly_writesModlistLeavesOthersUntouched() {
+        QTemporaryDir tmp;
+        ProfileManager mgr(tmp.path());
+        mgr.createProfile("P");
+        Profile* p = mgr.loadProfile("P");
+        QVERIFY(p);
+        p->modList().append(mkMod("m0", "Mod0"));
+        p->modList().append(mkMod("m1", "Mod1"));
+        p->modList().append(mkMod("m2", "Mod2"));
+        QVERIFY(p->save()); // writes modlist.json + the sibling files
+
+        // The sibling files a reorder must not rewrite. (shadercache.json is absent
+        // for an unmanaged cache - save() removes it - so it isn't in this set.)
+        const QStringList siblings = {
+            p->pluginsPath(), p->executablesPath(),
+            p->fileRulesPath(), p->loadOrderStatePath()
+        };
+        for (const QString& f : siblings) QVERIFY2(QFile::exists(f), qPrintable(f));
+
+        // Delete the siblings, then reorder + saveModListOnly(). Only modlist.json
+        // should be (re)written; the deleted siblings must stay gone.
+        for (const QString& f : siblings) QVERIFY(QFile::remove(f));
+        const QByteArray before = readFile(p->modlistPath());
+        p->modList().move(0, 2); // m0,m1,m2 -> m1,m2,m0
+        QVERIFY(p->saveModListOnly());
+
+        const QByteArray after = readFile(p->modlistPath());
+        QVERIFY(after != before);            // modlist.json rewritten with new order
+        QVERIFY(after.contains("\"m1\""));   // new order persisted
+        for (const QString& f : siblings)
+            QVERIFY2(!QFile::exists(f), qPrintable(f)); // untouched (still absent)
     }
 
     void matchOutputModId_caseInsensitiveAndMisses() {

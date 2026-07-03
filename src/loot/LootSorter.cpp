@@ -110,7 +110,7 @@ LootSorter::SortResult LootSorter::sort(PluginList& pluginList,
         result.errorMessage = QString::fromStdString(e.what());
     } catch (...) {
         result.success = false;
-        result.errorMessage = "unknown LOOT error";
+        result.errorMessage = "An unexpected LOOT error occurred. Try deploying first, then sort again.";
     }
     return result;
 }

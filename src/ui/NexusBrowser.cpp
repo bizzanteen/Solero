@@ -175,7 +175,7 @@ NexusBrowser::NexusBrowser(QWidget* parent) : QDialog(parent) {
             QMessageBox::information(this, "Endorse", "Endorsed. Thank you!");
         else
             QMessageBox::warning(this, "Endorse",
-                res.message.isEmpty() ? QString("Could not endorse this mod.") : res.message);
+                res.message.isEmpty() ? QString("The endorsement could not be submitted - Nexus did not return a result. Try again from the mod page.") : res.message);
     });
 
     showList("trending");
@@ -287,7 +287,7 @@ void NexusBrowser::openMod(const QString& modId) {
     auto files = NexusApi::files(modId);
 
     if (!d.ok) {
-        QMessageBox::warning(this, "Nexus", "Could not load this mod's details.");
+        QMessageBox::warning(this, "Nexus", "Could not load this mod's details from Nexus. Check your connection or try refreshing.");
         return;
     }
 

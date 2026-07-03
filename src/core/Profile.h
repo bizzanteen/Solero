@@ -60,6 +60,11 @@ public:
     const QHash<QString, QString>& fileOverrides() const { return m_fileOverrides; }
 
     bool save() const;
+    // Persist only modlist.json (via the same atomicWrite path save() uses). A
+    // pure mod-list reorder changes nothing in plugins.txt / executables.json /
+    // filerules.json / shadercache.json / loadorder-state.json, so the move paths
+    // use this to avoid rewriting five untouched files per drag.
+    bool saveModListOnly() const;
     bool load();
 
     // Seed this profile's executables from a template (the global tool library)

@@ -263,6 +263,31 @@ private slots:
         QCOMPARE(result.conflicts.winnerOf("data/x.dll"), QString("aaa"));
         QVERIFY(result.conflicts.losersOf("data/x.dll").contains("bbb"));
     }
+    void winnerOverride_linkFailureCountsAsDeployFailure() {
+        // A forced conflict winner that can't be linked must fail the deploy (so the
+        // user learns their override didn't apply) instead of silently succeeding.
+        // A missing staged source is *skipped* by design; to exercise the actual
+        // link-failure path we stage the override's source as a DIRECTORY, which
+        // exists (passes validation) but can't be hard-linked/copied as a file.
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QDir().mkpath(gameDir);
+        QDir().mkpath(stagingRoot + "/aaa/Data/x.dll"); // source is a dir -> unlinkable
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry ma; ma.type = EntryType::Mod; ma.id = "aaa"; ma.name = "Low"; ma.enabled = true;
+        profile.modList().append(ma);
+        profile.setWinnerOverride("Data/x.dll", "aaa");
+
+        DeployEngine engine(gameDir, stagingRoot);
+        auto result = engine.deploy(profile, DeployMode::Copy);
+
+        // The failed forced-winner link is counted, so the deploy is reported failed
+        // with an errorMessage the UI can surface.
+        QVERIFY(!result.success);
+        QVERIFY(result.errorMessage.contains("failed to deploy"));
+    }
     void deploy_normalizesDirectoryCaseToSingleVariant() {
         // Two mods stage DIFFERENT files under a same-named dir with different
         // case (textures vs Textures). Wine/Proton is case-insensitive but the

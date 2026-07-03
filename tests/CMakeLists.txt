@@ -35,11 +35,23 @@ target_include_directories(test_ExeResolve PRIVATE ../src ${CMAKE_BINARY_DIR}/in
 target_link_libraries(test_ExeResolve PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_ExeResolve COMMAND test_ExeResolve)
 
+# menuFilterMatch is header-only (ui/MenuFilter.h), so no extra sources to compile.
+add_executable(test_MenuFilter test_MenuFilter.cpp)
+target_include_directories(test_MenuFilter PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_MenuFilter PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_MenuFilter COMMAND test_MenuFilter)
+
 # dirHasFiles is header-only (core/FileUtil.h), so no extra sources to compile.
 add_executable(test_DirHasFiles test_DirHasFiles.cpp)
 target_include_directories(test_DirHasFiles PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_DirHasFiles PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_DirHasFiles COMMAND test_DirHasFiles)
+
+# curlStderrHint is header-only (tools/CurlError.h), so no extra sources to compile.
+add_executable(test_CurlError test_CurlError.cpp)
+target_include_directories(test_CurlError PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_CurlError PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_CurlError COMMAND test_CurlError)
 
 # HealthCheck aggregates Profile + ConflictIndex data, so link the core profile
 # set plus ConflictIndex and HealthCheck itself.

@@ -690,6 +690,50 @@ Qt::DropActions ModListModel::supportedDropActions() const {
     return Qt::MoveAction;
 }
 
+ModListModel::VisibleMove ModListModel::visibleMoveFor(int from, int count, int to) const {
+    VisibleMove vm;
+    if (!m_profile) return vm;
+    const int n = m_profile->modList().count();
+    // moveSection inserts the block before post-removal index `to`; the entry that
+    // ends up immediately after the block is at original raw index anchorRaw.
+    const int anchorRaw = (to < from) ? to : to + count;
+
+    // Visible span of the block: contiguous visible rows whose raw index is in the
+    // block (hidden entries in the block simply don't appear).
+    const int vFirst = rawToVisible(from);
+    if (vFirst < 0) return vm; // block head hidden -> can't express one clean span
+    int vLast = vFirst;
+    while (vLast + 1 < m_visibleRows.size()) {
+        const int r = m_visibleRows.at(vLast + 1);
+        if (r >= from && r < from + count) ++vLast; else break;
+    }
+
+    int vDest;
+    if (anchorRaw >= n) vDest = rowCount() - 1; // land before the pinned Overwrite row
+    else {
+        vDest = rawToVisible(anchorRaw);
+        if (vDest < 0) return vm; // anchor hidden (collapsed) -> fall back to reset
+    }
+    // beginMoveRows forbids a same-parent destination inside [first, last+1] (that
+    // range is the block itself / a no-op move).
+    if (vDest >= vFirst && vDest <= vLast + 1) return vm;
+
+    vm.ok = true; vm.first = vFirst; vm.last = vLast; vm.dest = vDest;
+    return vm;
+}
+
+void ModListModel::applyBlockMove(int srcRaw, int blockLen, int to) {
+    auto& list = m_profile->modList();
+    const VisibleMove vm = visibleMoveFor(srcRaw, blockLen, to);
+    if (vm.ok) beginMoveRows({}, vm.first, vm.last, {}, vm.dest);
+    else       beginResetModel();
+    list.moveSection(srcRaw, blockLen, to);
+    m_profile->saveModListOnly();
+    rebuildVisibleRows();
+    if (vm.ok) endMoveRows();
+    else       endResetModel();
+}
+
 bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModelIndex&, int dst) {
     if (!m_profile) return false;
     int srcRaw = rawIndexForRow(src);
@@ -731,12 +775,8 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
         if (destRaw == srcRaw) return false; // no-op
 
         pushUndoSnapshot();
-        beginResetModel();
-        list.moveSection(srcRaw, blockLen, destRaw);
-        m_profile->save();
-        rebuildVisibleRows();
-        endResetModel();
-        emit modsChanged();
+        applyBlockMove(srcRaw, blockLen, destRaw);
+        emit modsReordered();
         return true;
     }
 
@@ -745,7 +785,7 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
         // (but excluding) the next separator whose level is <= this one's. That
         // carries any nested sub-categories (deeper separators) and their mods as a
         // single block, preserving their relative levels. Reordering a section
-        // changes deploy order, so we reset + persist + emit modsChanged.
+        // changes deploy order only, so we persist modlist-only + emit modsReordered.
         const int srcLevel = list.at(srcRaw).separatorLevel;
         int blockLen = 1;
         for (int i = srcRaw + 1; i < list.count(); ++i) {
@@ -760,12 +800,8 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
         if (destRaw < 0) destRaw = 0;
 
         if (destRaw != srcRaw) pushUndoSnapshot();
-        beginResetModel();
-        list.moveSection(srcRaw, blockLen, destRaw);
-        m_profile->save();
-        rebuildVisibleRows();
-        endResetModel();
-        emit modsChanged();
+        applyBlockMove(srcRaw, blockLen, destRaw);
+        emit modsReordered();
         return true;
     }
 
@@ -799,37 +835,36 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
     // no longer corresponds 1:1 to the visible (src->dst) pair, so use a full reset
     // (like the group-parent/separator paths) to keep the row mapping consistent.
     if (snapped) {
+        // list.move(srcRaw, moveTo) == moveSection(srcRaw, 1, moveTo); route through
+        // applyBlockMove so the snapped single mod animates as one incremental move.
         pushUndoSnapshot();
-        beginResetModel();
-        list.move(srcRaw, moveTo);
-        m_profile->save();
-        rebuildVisibleRows();
-        endResetModel();
-        emit modsChanged();
+        applyBlockMove(srcRaw, 1, moveTo);
+        emit modsReordered();
         return true;
     }
 
     // A group child dragged away can't be expressed as a 1:1 (src->dst) move:
     // normalizeGroups() snaps it back adjacent to its parent, which may reorder
-    // beyond the move. Use a full reset (like the snapped/group-parent paths).
+    // beyond the move. It is not a single contiguous span, so this branch keeps the
+    // full reset (a beginMoveRows conversion would misdescribe the change).
     const bool movingChild = !list.at(srcRaw).parentId.isEmpty();
     pushUndoSnapshot();
     if (movingChild) {
         beginResetModel();
         list.move(srcRaw, moveTo);
         list.normalizeGroups();   // snap the child back into its parent's run
-        m_profile->save();
+        m_profile->saveModListOnly();
         rebuildVisibleRows();
         endResetModel();
-        emit modsChanged();
+        emit modsReordered();
         return true;
     }
     beginMoveRows({}, src, src, {}, dst > src ? dst + 1 : dst);
     list.move(srcRaw, moveTo);
-    m_profile->save();
+    m_profile->saveModListOnly();
     rebuildVisibleRows();
     endMoveRows();
-    emit modsChanged();
+    emit modsReordered();
     return true;
 }
 
@@ -942,21 +977,53 @@ bool ModListModel::moveSelection(const QList<int>& srcVisibleRows, int dstVisibl
            && !list.at(dstRaw).parentId.isEmpty())
         ++dstRaw;
 
-    // 6. Reorder, persist, refresh. Capture the pre-move order so we can record an
-    // undo snapshot only if the reorder actually changes anything.
-    const QStringList beforeOrder = list.orderIds();
-    beginResetModel();
-    bool ok = m_profile->modList().reorder(orderedSrcRaws, dstRaw);
+    // 6. Reorder, persist, refresh. Capture the pre-move order so undo is recorded
+    // only when the reorder actually changes anything.
+    return reorderUnits(orderedSrcRaws, dstRaw, list.orderIds());
+}
+
+bool ModListModel::reorderUnits(const QList<int>& orderedSrcRaws, int dstRaw,
+                                const QStringList& beforeOrder) {
+    auto& list = m_profile->modList();
+    // A single contiguous run of units is expressible as one incremental
+    // beginMoveRows span; anything else keeps the reset (no multi-span engine).
+    const bool contiguous = !orderedSrcRaws.isEmpty()
+        && orderedSrcRaws.last() - orderedSrcRaws.first() + 1 == orderedSrcRaws.size();
+    VisibleMove vm;
+    int from = 0, cnt = 0, to = 0;
+    if (contiguous) {
+        from = orderedSrcRaws.first();
+        cnt  = orderedSrcRaws.size();
+        // reorder() inserts the block before the first entry >= dstRaw not in the
+        // block. Translate that to moveSection's post-removal insertion index `to`;
+        // a drop inside/adjacent to the block collapses to a no-op (to == from).
+        int anchor = dstRaw;
+        if (anchor > from && anchor < from + cnt) anchor = from + cnt;
+        to = (anchor <= from) ? anchor : anchor - cnt;
+        if (to < 0) to = 0;
+        if (to > list.count() - cnt) to = list.count() - cnt;
+        vm = visibleMoveFor(from, cnt, to);
+    }
+
+    bool ok;
+    if (vm.ok) {
+        beginMoveRows({}, vm.first, vm.last, {}, vm.dest);
+        list.moveSection(from, cnt, to);
+        ok = (list.orderIds() != beforeOrder);
+        rebuildVisibleRows();
+        endMoveRows();
+    } else {
+        beginResetModel();
+        ok = list.reorder(orderedSrcRaws, dstRaw);
+        rebuildVisibleRows();
+        endResetModel();
+    }
     if (ok) {
         m_undoStack.append(beforeOrder);
         if (m_undoStack.size() > kUndoCap) m_undoStack.removeFirst();
         m_redoStack.clear();
-        m_profile->save();
-    }
-    rebuildVisibleRows();
-    endResetModel();
-    if (ok) {
-        emit modsChanged();
+        m_profile->saveModListOnly();
+        emit modsReordered();
         emit undoRedoStateChanged(canUndo(), canRedo());
     }
     return ok;
@@ -996,23 +1063,8 @@ bool ModListModel::moveModsToSeparatorEnd(const QStringList& modIds, const QStri
     QList<int> srcRaws(rawSet.begin(), rawSet.end());
     std::sort(srcRaws.begin(), srcRaws.end());
 
-    // Reorder, persist, refresh - mirrors moveSelection's undo/reset/emit handling.
-    const QStringList before = list.orderIds();
-    beginResetModel();
-    bool ok = list.reorder(srcRaws, sectionEnd);
-    if (ok) {
-        m_undoStack.append(before);
-        if (m_undoStack.size() > kUndoCap) m_undoStack.removeFirst();
-        m_redoStack.clear();
-        m_profile->save();
-    }
-    rebuildVisibleRows();
-    endResetModel();
-    if (ok) {
-        emit modsChanged();
-        emit undoRedoStateChanged(canUndo(), canRedo());
-    }
-    return ok;
+    // Reorder, persist, refresh - shared incremental/reset tail with moveSelection.
+    return reorderUnits(srcRaws, sectionEnd, list.orderIds());
 }
 
 // --- Reorder undo/redo -------------------------------------------------------
@@ -1029,10 +1081,10 @@ bool ModListModel::applyOrder(const QStringList& ids) {
     if (!m_profile) return false;
     beginResetModel();
     bool ok = m_profile->modList().setOrder(ids);
-    if (ok) m_profile->save();
+    if (ok) m_profile->saveModListOnly();
     rebuildVisibleRows();
     endResetModel();
-    if (ok) emit modsChanged();
+    if (ok) emit modsReordered();
     return ok;
 }
 

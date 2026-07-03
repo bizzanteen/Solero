@@ -1,10 +1,36 @@
 #include <QtTest>
+#include <QTemporaryDir>
 #include "core/AppConfig.h"
 
 using namespace solero;
 
 class TestAppConfig : public QObject { Q_OBJECT
 private slots:
+    // The mod-list / plugin-list header-state blobs round-trip through config.json
+    // (stored base64) so manually-resized column widths survive a restart.
+    void headerState_roundTrips() {
+        QTemporaryDir home;
+        QVERIFY(home.isValid());
+        qputenv("HOME", home.path().toLocal8Bit()); // configPath() resolves via $HOME
+
+        // Bytes that include NUL and high bytes, to prove base64 survives them.
+        const QByteArray modBlob("\x00\x01\xfe\xff mod-header \x7f", 24);
+        const QByteArray pluginBlob("plugin\x00\x10state", 12);
+
+        auto& cfg = AppConfig::instance();
+        cfg.setModListHeaderState(modBlob);
+        cfg.setPluginListHeaderState(pluginBlob);
+        QVERIFY(cfg.save());
+
+        // Wipe the in-memory copies, then reload from disk.
+        cfg.setModListHeaderState(QByteArray());
+        cfg.setPluginListHeaderState(QByteArray());
+        QVERIFY(cfg.load());
+
+        QCOMPARE(cfg.modListHeaderState(), modBlob);
+        QCOMPARE(cfg.pluginListHeaderState(), pluginBlob);
+    }
+
     // Modern nested libraryfolders.vdf form.
     void parseVdf_nestedForm() {
         const QString vdf = R"(

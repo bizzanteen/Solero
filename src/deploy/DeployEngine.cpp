@@ -111,20 +111,23 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
 
     // Force per-path winners (Vortex/MO2 per-file conflict choice). Runs after the
     // normal load-order loop so a chosen mod wins regardless of its priority.
-    applyWinnerOverrides(profile, m_gameDir, linker, record, conflicts, ciOwners);
+    failures += applyWinnerOverrides(profile, m_gameDir, linker, record, conflicts, ciOwners);
 
     // Sort plugins with LOOT (if enabled) before writing plugins.txt. The mod
     // files must already be deployed above so LOOT can read the plugin headers.
     // A locked load order skips the auto-sort entirely and deploys the current
     // manual order as-is.
+    QString lootSortError; // non-empty => append to the deploy warning below
     if (m_lootEnabled && !profile.pluginList().loadOrderLocked()) {
         auto sortResult = LootSorter::sort(
             profile.pluginList(),
             m_gameDir,
             m_userlistPath.isEmpty() ? profile.lootUserlistPath() : m_userlistPath);
-        if (!sortResult.success)
+        if (!sortResult.success) {
             qWarning() << "LOOT sort failed (deploying with current order):"
                        << sortResult.errorMessage;
+            lootSortError = sortResult.errorMessage;
+        }
         profile.pluginList().applyPins(); // restore pinned plugins after the sort
         profile.save(); // persist the sorted order back to the profile
     }
@@ -196,13 +199,27 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
         result.errorMessage = QString("%1 file(s) failed to deploy; "
                                       "the rest were deployed.").arg(failures);
 
+    auto appendWarning = [&](const QString& msg) {
+        if (msg.isEmpty()) return;
+        if (!result.warning.isEmpty()) result.warning += "\n\n";
+        result.warning += msg;
+    };
+
     // Cross-filesystem hardlinks silently degrade to copies. Warn so the user
     // knows they're paying extra disk and not getting hardlink semantics.
     if (mode == DeployMode::HardLink
         && onDifferentFilesystems(m_stagingRoot, m_gameDir)) {
-        result.warning = "Staging and game dir are on different filesystems "
-                         "- deployed as copies (uses extra disk), not hardlinks.";
+        appendWarning("Staging and game dir are on different filesystems "
+                      "- deployed as copies (uses extra disk), not hardlinks.");
     }
+
+    // LOOT couldn't sort the load order - the mods deployed fine, but plugins are
+    // in their previous manual order, which may be wrong. Surface it so the user
+    // can fix the cause (usually a bad rule in the LOOT userlist) and re-sort.
+    if (!lootSortError.isEmpty())
+        appendWarning("Could not sort plugins with LOOT - the load order was left "
+                      "as it was. Your mods still deployed. Check your LOOT rules, "
+                      "then use Sort Now to try again.\n\nDetails: " + lootSortError);
 
     result.conflicts = std::move(conflicts);
     result.filesDeployed = record.count();
@@ -315,12 +332,13 @@ int DeployEngine::deployMod(const ModEntry& mod,
     return failures;
 }
 
-void DeployEngine::applyWinnerOverrides(Profile& profile,
-                                        const QString& gameDir,
-                                        const Linker& linker,
-                                        DeployRecord& record,
-                                        ConflictIndex& conflicts,
-                                        QHash<QString, QString>& ciOwners) {
+int DeployEngine::applyWinnerOverrides(Profile& profile,
+                                       const QString& gameDir,
+                                       const Linker& linker,
+                                       DeployRecord& record,
+                                       ConflictIndex& conflicts,
+                                       QHash<QString, QString>& ciOwners) {
+    int failures = 0;
     for (auto it = m_fileOverrides.cbegin(); it != m_fileOverrides.cend(); ++it) {
         const QString relPath = it.key();
         const QString modId   = it.value();
@@ -382,6 +400,7 @@ void DeployEngine::applyWinnerOverrides(Profile& profile,
         if (realSrc.isEmpty()) realSrc = srcPath;
         if (!linker.deploy(realSrc, dstPath)) {
             qWarning() << "Winner override failed to link" << relPath << "(mod" << modId << ")";
+            ++failures;
             continue;
         }
         // The displaced load-order winner becomes a loser of the forced choice.
@@ -394,6 +413,7 @@ void DeployEngine::applyWinnerOverrides(Profile& profile,
         record.add(destRel, modId);
         ciOwners.insert(ciKey, destRel);
     }
+    return failures;
 }
 
 bool DeployEngine::undeploy(const QString& gameDir, const std::function<void(int,int)>& onProgress) {

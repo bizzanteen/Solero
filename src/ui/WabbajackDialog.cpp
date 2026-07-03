@@ -603,12 +603,12 @@ void WabbajackDialog::triggerInstall(const QString& target, bool isLocalFile,
     const QString installDir = installEdit->text().trimmed();
     const QString downloadsDir = dlEdit->text().trimmed();
     if (installDir.isEmpty() || downloadsDir.isEmpty()) {
-        QMessageBox::warning(this, "Install", "Both directories are required.");
+        QMessageBox::warning(this, "Install", "Both the install folder and the downloads folder are required. Please fill in both paths before continuing.");
         return;
     }
     if (!QDir().mkpath(installDir) || !QDir().mkpath(downloadsDir)) {
         QMessageBox::warning(this, "Install",
-            "Could not create the install/downloads directories.");
+            "Could not create the install or downloads folder - check that the path is valid and that you have permission to write there.");
         return;
     }
 
@@ -679,9 +679,8 @@ void WabbajackDialog::onInstallFailed(int exitCode, const QList<FailedArchive>& 
     if (failed.isEmpty()) {
         // Unknown failure - fall back to the bare exit-code message.
         QMessageBox::warning(this, "Install failed",
-            QString("Install failed (exit code %1) - see log.\n\n"
-                    "You can Retry / Resume to continue from where it left off.")
-                .arg(exitCode));
+            "Installation stopped unexpectedly. The log above may show what went wrong.\n\n"
+            "Click Retry to resume - jackify-engine will pick up where it left off.");
         return;
     }
     showFailureReport(exitCode, failed);
@@ -962,7 +961,8 @@ void WabbajackDialog::doImport() {
     if (!QDir(profilesDir).exists()) {
         m_backBtn->setVisible(true);
         QMessageBox::warning(this, "Import",
-            "Install completed but the expected MO2 layout wasn't found at\n" + m_installDir);
+            "Installation finished but the modlist couldn't be imported - the expected folder layout wasn't found in the install directory.\n\n"
+            "Try clicking Retry, or check that the install directory is correct.");
         return;
     }
 
@@ -985,7 +985,10 @@ void WabbajackDialog::doImport() {
         // so there is nothing to clean up here - do not add a second delete loop.
         m_backBtn->setVisible(true);
         QMessageBox::critical(this, "Import Failed",
-            r.errorMessage.isEmpty() ? "Unknown error importing the installed modlist." : r.errorMessage);
+            r.errorMessage.isEmpty()
+                ? "The modlist installed but could not be imported into Solero - the profile could not be created. "
+                  "Try the operation again, or check that your staging folder is configured and writable."
+                : r.errorMessage);
         return;
     }
 

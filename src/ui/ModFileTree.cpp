@@ -433,8 +433,8 @@ void ModFileTree::contextMenuEvent(QContextMenuEvent* e) {
         if (ownerModId.isEmpty() || ownerModId.startsWith("__")) return;
         const bool hidden = m_gameHidden.contains(relPath);
         QMenu menu(this);
-        menu.addAction(hidden ? QStringLiteral("Unhide file")
-                              : QStringLiteral("Hide file in this mod"),
+        menu.addAction(hidden ? QStringLiteral("Unhide File in This Mod")
+                              : QStringLiteral("Hide File in This Mod"),
                        this, [this, ownerModId, relPath, hidden, item]{
             const bool nowHidden = !hidden;
             emit hideToggled(ownerModId, relPath, nowHidden);
@@ -461,8 +461,8 @@ void ModFileTree::contextMenuEvent(QContextMenuEvent* e) {
     QMenu menu(this);
     if (!isFolder) {
         const bool hidden = m_hiddenRelPaths.contains(relPath);
-        menu.addAction(hidden ? QStringLiteral("Unhide file")
-                              : QStringLiteral("Hide file in this mod"),
+        menu.addAction(hidden ? QStringLiteral("Unhide File in This Mod")
+                              : QStringLiteral("Hide File in This Mod"),
                        this, [this, relPath, hidden, item]{
             const bool nowHidden = !hidden;
             emit hideToggled(m_modId, relPath, nowHidden);
@@ -506,7 +506,7 @@ void ModFileTree::contextMenuEvent(QContextMenuEvent* e) {
     });
 
     // Delete - confirm first; defaults to No.
-    menu.addAction(QStringLiteral("Delete"), this,
+    menu.addAction(QStringLiteral("Delete") + QChar(0x2026), this,
                    [this, relPath, name, isFolder]{
         const QString msg = isFolder
             ? QStringLiteral("Are you sure you want to delete '%1'?\n"

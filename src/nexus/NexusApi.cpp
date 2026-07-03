@@ -2,6 +2,7 @@
 #include "MirrorPick.h"
 #include "core/AppConfig.h"
 #include "tools/ToolDownloader.h"
+#include "tools/CurlError.h"
 #include "core/FileUtil.h"
 #include <QProcess>
 #include <QJsonDocument>
@@ -24,11 +25,16 @@ QString NexusApi::modPageUrl(const QString& modId, const QString& game) {
 static QByteArray curlRun(const QStringList& extraArgs, QString* err = nullptr) {
     const QString key = ToolDownloader::nexusApiKey();
     QProcess p;
-    QStringList args; args << "-s" << "-H" << ("apikey: " + key) << extraArgs;
+    QStringList args; args << "-sS" << "-H" << ("apikey: " + key) << extraArgs;
     p.start("curl", args);
     p.waitForFinished(60000);
     if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
-        if (err) *err = "Network request failed (curl exit " + QString::number(p.exitCode()) + ")";
+        if (err) {
+            const QString hint = curlStderrHint(
+                QString::fromUtf8(p.readAllStandardError()).trimmed());
+            *err = "No response from Nexus - check your internet connection."
+                 + (hint.isEmpty() ? QString() : " (" + hint + ")");
+        }
         return {};
     }
     return p.readAllStandardOutput();

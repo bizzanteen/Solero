@@ -37,6 +37,11 @@ bool Profile::save() const {
     return saveLoadOrderState();
 }
 
+bool Profile::saveModListOnly() const {
+    QDir().mkpath(m_path);
+    return m_modList.saveToFile(modlistPath());
+}
+
 bool Profile::saveShaderCache() const {
     // Only persist when active; otherwise remove a stale file so an un-managed
     // profile has no shadercache.json lying around.

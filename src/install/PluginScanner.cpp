@@ -4,6 +4,7 @@
 #include "core/StagingFolder.h"
 #include <QDir>
 #include <QFile>
+#include <QSet>
 namespace solero {
 static QString childCI(const QString& parent, const QString& name) {
     QDir d(parent);
@@ -14,6 +15,7 @@ static QString childCI(const QString& parent, const QString& name) {
 }
 QStringList PluginScanner::scan(const ModList& list, const QString& stagingRoot) {
     QStringList out;
+    QSet<QString> seen; // lowercased plugin names already emitted (case-insensitive dedup)
     for (const auto& e : list) {
         if (e.type != EntryType::Mod || !e.enabled) continue;
         QString data = childCI(stagingPathFor(stagingRoot, e), "Data");
@@ -21,7 +23,8 @@ QStringList PluginScanner::scan(const ModList& list, const QString& stagingRoot)
         QDir d(data);
         const auto plugins = d.entryList({"*.esp","*.esm","*.esl","*.ESP","*.ESM","*.ESL"},
                                          QDir::Files, QDir::Name);
-        for (const QString& p : plugins) if (!out.contains(p, Qt::CaseInsensitive)) out << p;
+        for (const QString& p : plugins)
+            if (!seen.contains(p.toLower())) { seen.insert(p.toLower()); out << p; }
     }
     return out;
 }

@@ -72,9 +72,13 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     auto* hh = m_table->horizontalHeader();
     hh->setStretchLastSection(false);
     hh->setSectionResizeMode(0, QHeaderView::Stretch);          // Name absorbs slack
-    hh->setSectionResizeMode(1, QHeaderView::ResizeToContents); // Status
-    hh->setSectionResizeMode(2, QHeaderView::ResizeToContents); // Size
-    hh->setSectionResizeMode(3, QHeaderView::ResizeToContents); // Downloaded
+    // Status/Size/Downloaded are Interactive with fixed defaults, not
+    // ResizeToContents: refresh() runs on every progress tick and the status text
+    // width changes ("Downloading 0%" -> "Installed"), so ResizeToContents made the
+    // columns visibly jump each tick (B-3). Interactive keeps them steady.
+    hh->setSectionResizeMode(1, QHeaderView::Interactive); hh->resizeSection(1, 100); // Status
+    hh->setSectionResizeMode(2, QHeaderView::Interactive); hh->resizeSection(2,  70); // Size
+    hh->setSectionResizeMode(3, QHeaderView::Interactive); hh->resizeSection(3, 115); // Downloaded
     m_table->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_table, &QWidget::customContextMenuRequested, this, &DownloadsTab::showContextMenu);
     v->addWidget(m_table, 1);
@@ -243,7 +247,7 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
             const bool downloading = statusItem && statusItem->text().startsWith("Downloading");
             if (nameItem && noPath && downloading) activeFileName = nameItem->text();
         }
-        auto* cancelAction = menu.addAction("Cancel download");
+        auto* cancelAction = menu.addAction("Cancel Download");
         cancelAction->setEnabled(!activeFileName.isEmpty());
         connect(cancelAction, &QAction::triggered, this, [this, activeFileName]{
             emit cancelRequested(activeFileName);
@@ -259,7 +263,7 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
             if (nameItem && nameItem->data(Qt::UserRole + 1).toString() == "failed")
                 failedFileName = nameItem->text();
         }
-        auto* retryAction = menu.addAction("Retry download");
+        auto* retryAction = menu.addAction("Retry Download");
         retryAction->setEnabled(!failedFileName.isEmpty());
         connect(retryAction, &QAction::triggered, this, [this, failedFileName]{
             emit retryRequested(failedFileName);
@@ -277,7 +281,7 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
         }
     }
 
-    auto* deleteSelected = menu.addAction("Delete Selected");
+    auto* deleteSelected = menu.addAction(QStringLiteral("Delete Selected") + QChar(0x2026));
     deleteSelected->setEnabled(!selectedPaths.isEmpty());
     connect(deleteSelected, &QAction::triggered, this, [this, selectedPaths]{
         const int n = selectedPaths.size();
@@ -290,7 +294,7 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
         refresh();
     });
 
-    auto* deleteAll = menu.addAction("Delete All Downloads");
+    auto* deleteAll = menu.addAction(QStringLiteral("Delete All Downloads") + QChar(0x2026));
     connect(deleteAll, &QAction::triggered, this, [this]{
         const QString dir = AppConfig::instance().downloadsDir();
         QDir d(dir);

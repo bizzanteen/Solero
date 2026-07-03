@@ -1,4 +1,5 @@
 #include "ToolDownloader.h"
+#include "CurlError.h"
 #include "ExeResolve.h"
 #include "install/ArchiveTool.h"
 #include <QFile>
@@ -26,14 +27,18 @@ bool ToolDownloader::nexusApiKeyAvailable() { return !nexusApiKey().isEmpty(); }
 // returns empty. The body is not validated as JSON here; callers parse it.
 static QByteArray curlJson(const QString& url, const QString& header, QString* err = nullptr) {
     QProcess p;
-    QStringList args; args << "-s";
+    QStringList args; args << "-sS";
     if (!header.isEmpty()) { args << "-H" << header; }
     args << url;
     p.start("curl", args);
     p.waitForFinished(60000);
     if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
-        if (err) *err = "Network request failed (curl exit " + QString::number(p.exitCode())
-                      + "): " + QString::fromUtf8(p.readAllStandardError()).trimmed();
+        if (err) {
+            const QString hint = curlStderrHint(
+                QString::fromUtf8(p.readAllStandardError()).trimmed());
+            *err = "Could not reach Nexus - check your internet connection and try again."
+                 + (hint.isEmpty() ? QString() : " (" + hint + ")");
+        }
         return {};
     }
     return p.readAllStandardOutput();
@@ -50,8 +55,8 @@ QString ToolDownloader::nexusDownloadUrl(const ToolPreset& pr, QString* error, Q
     QJsonParseError pe{};
     auto filesDoc = QJsonDocument::fromJson(filesBody, &pe);
     if (pe.error != QJsonParseError::NoError || !filesDoc.isObject()) {
-        if (error) *error = "Nexus API returned an unexpected response (not JSON): "
-                          + QString::fromUtf8(filesBody.left(200)).trimmed();
+        if (error) *error = "The Nexus API returned an unexpected response. "
+                            "The service may be temporarily down - try again in a moment.";
         return {};
     }
     auto files = filesDoc.object();
@@ -122,7 +127,9 @@ bool ToolDownloader::curlDownload(const QString& url, const QString& dest,
     p.start("curl", args);
     if (!p.waitForStarted(15000)) {
         QFile::remove(dest);
-        if (errorOut) *errorOut = "curl failed to start";
+        if (errorOut) *errorOut = "Download could not start - curl is not available. "
+                                  "Install it via your package manager "
+                                  "(on Bazzite: rpm-ostree install curl).";
         return false;
     }
     while (p.state() != QProcess::NotRunning) {
@@ -134,11 +141,8 @@ bool ToolDownloader::curlDownload(const QString& url, const QString& dest,
         QFile::remove(dest);   // never leave a partial/empty archive behind
         if (errorOut) {
             const QString stderrText = QString::fromUtf8(p.readAllStandardError()).trimmed();
-            QString lastLine;
-            for (const QString& line : stderrText.split('\n', Qt::SkipEmptyParts))
-                if (!line.trimmed().isEmpty()) lastLine = line.trimmed();
-            *errorOut = "curl exit " + QString::number(p.exitCode())
-                      + (lastLine.isEmpty() ? "" : ": " + lastLine);
+            const QString hint = curlStderrHint(stderrText);
+            *errorOut = hint.isEmpty() ? "Download failed - the server did not respond." : hint;
         }
     }
     return ok;
@@ -177,7 +181,7 @@ ToolDownloadResult ToolDownloader::fetch(const ToolPreset& preset, const QString
     QString dlErr;
     if (!curlDownload(url, archive, header, onProgress, &dlErr)) {
         QFile::remove(archive);   // ensure no partial/empty archive lingers for re-extract
-        r.error = dlErr.isEmpty() ? "Download failed." : "Download failed - " + dlErr;
+        r.error = dlErr.isEmpty() ? "Download failed - no further details available." : dlErr;
         return r;
     }
 
@@ -185,7 +189,8 @@ ToolDownloadResult ToolDownloader::fetch(const ToolPreset& preset, const QString
     QDir(dest).removeRecursively();
     if (!ArchiveTool::extract(archive, dest, onProgress)) {
         QFile::remove(archive);   // a corrupt/partial archive that won't extract - don't keep it
-        r.error = "Extraction failed.";
+        r.error = "Could not extract the downloaded archive. "
+                  "The file may be corrupt - delete it and try setting up the tool again.";
         return r;
     }
     // Tool archive is dead weight once extracted into the tools dir; unlike mod

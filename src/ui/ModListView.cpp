@@ -2,6 +2,7 @@
 #include "ModListModel.h"
 #include "VersionDelegate.h"
 #include "SeparatorDialog.h"
+#include "SearchableMenu.h"
 #include "install/DependencyChecker.h"
 #include "core/AppConfig.h"
 #include "core/Profile.h"
@@ -124,6 +125,7 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     m_model = new ModListModel(this);
     setModel(m_model);
     connect(m_model, &ModListModel::modsChanged, this, &ModListView::modsChanged);
+    connect(m_model, &ModListModel::modsReordered, this, &ModListView::modsReordered);
     // Re-expose the model's reorder undo/redo state so the LeftPane toolbar can
     // enable/disable its buttons without reaching into the model.
     connect(m_model, &ModListModel::undoRedoStateChanged,
@@ -133,6 +135,9 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     // Model resets (rebuild()/setProfile()) clear first-column spans, so re-apply
     // them whenever the model is reset to keep separators full-width.
     connect(m_model, &QAbstractItemModel::modelReset, this, &ModListView::applyRowSpans);
+    // Incremental moves (beginMoveRows) emit rowsMoved, not modelReset, and shift
+    // separator row indices, so re-apply the full-width spans after those too.
+    connect(m_model, &QAbstractItemModel::rowsMoved, this, &ModListView::applyRowSpans);
     setRootIsDecorated(false);
     setIndentation(0); // remove the empty tree-indent column before the checkbox
     setDragDropMode(QAbstractItemView::InternalMove);
@@ -164,6 +169,24 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     hdr->resizeSection(ModListModel::ColPriority, 40);
     hdr->resizeSection(ModListModel::ColVersion,  80);
     hdr->resizeSection(ModListModel::ColFlags,    60);
+    // Never let a column be dragged so narrow its content vanishes with no easy
+    // way back (B-5). Keeps the checkbox/number/flags at least tap-visible.
+    hdr->setMinimumSectionSize(22);
+    // Restore persisted column widths (B-1). Done before applyHiddenColumns() so the
+    // AppConfig hidden-column set stays authoritative over any hidden state in the
+    // blob. Skipped on first run (empty blob) so the default widths above apply.
+    {
+        const QByteArray saved = AppConfig::instance().modListHeaderState();
+        if (!saved.isEmpty()) hdr->restoreState(saved);
+    }
+    // Debounce column-resize saves: a drag emits sectionResized rapidly, so coalesce
+    // into one AppConfig write 300ms after the user stops.
+    m_headerSaveTimer = new QTimer(this);
+    m_headerSaveTimer->setSingleShot(true);
+    m_headerSaveTimer->setInterval(300);
+    connect(m_headerSaveTimer, &QTimer::timeout, this, &ModListView::saveHeaderState);
+    connect(hdr, &QHeaderView::sectionResized, this,
+            [this](int, int, int){ m_headerSaveTimer->start(); });
     // The list is manually ordered (drag-reorder); there's no real sort(), so
     // clickable headers would only flip a lying sort indicator. Disable sorting.
     setSortingEnabled(false);
@@ -216,9 +239,29 @@ void ModListView::setProfile(Profile* profile) {
     }
     applyRowSpans(); // separators span full width; reset stale spans
     applyFilter(); // model rebuilt -> re-apply any active filter
-    // Re-fit columns once the profile's data first populates. The viewport-width
-    // guard in autoSizeColumns() makes this a no-op if the view isn't shown yet.
-    QTimer::singleShot(0, this, [this]{ autoSizeColumns(); });
+    // Auto-fit columns to content only once, and only when the user has no saved
+    // widths to honour (B-2). Previously this fired on every profile switch and
+    // clobbered manual resizes; now a saved header blob (or a prior auto-size)
+    // suppresses it so switching profiles keeps the user's column widths.
+    QTimer::singleShot(0, this, [this]{
+        if (!m_didAutoSize && AppConfig::instance().modListHeaderState().isEmpty()) {
+            autoSizeColumns();
+            m_didAutoSize = true;
+        }
+    });
+}
+
+void ModListView::saveHeaderState() {
+    AppConfig::instance().setModListHeaderState(header()->saveState());
+    AppConfig::instance().save();
+}
+
+void ModListView::saveProfile() {
+    // Persist the active profile after a list edit (separator/group/delete/enable).
+    // A failed write (disk full, permissions) would otherwise silently lose the
+    // change on next launch, so surface it via saveFailed() (MainWindow warns).
+    Profile* p = m_model->profile();
+    if (p && !p->save()) emit saveFailed();
 }
 
 void ModListView::selectModById(const QString& id) {
@@ -270,9 +313,12 @@ void ModListView::applyRowSpans() {
 
 void ModListView::showEvent(QShowEvent* event) {
     QTreeView::showEvent(event);
+    // Auto-fit on first show only when there are no persisted widths to honour;
+    // otherwise the constructor already restored the user's columns (B-1/B-2).
     if (!m_didAutoSize) {
         m_didAutoSize = true;
-        QTimer::singleShot(0, this, [this]{ autoSizeColumns(); });
+        if (AppConfig::instance().modListHeaderState().isEmpty())
+            QTimer::singleShot(0, this, [this]{ autoSizeColumns(); });
     }
 }
 
@@ -453,7 +499,7 @@ void ModListView::showIconPicker(int row, const QPoint& gpos) {
         if (auto* e = m_model->profile() ? m_model->profile()->modList().findById(id) : nullptr) {
             ModEntry up = *e; up.icon = it->data(Qt::UserRole).toString();
             m_model->profile()->modList().update(id, up);
-            m_model->profile()->save();
+            saveProfile();
             m_model->rebuild();
         }
         menu.close();
@@ -493,13 +539,13 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
             QDesktopServices::openUrl(QUrl::fromLocalFile(ow));
         });
     } else if (entry->type == EntryType::Separator) {
-        menu.addAction("Edit Separator", [this, row = idx.row()]{ onEditSeparator(row); });
         menu.addAction(entry->collapsed ? "Expand" : "Collapse",
                        [this, row = idx.row()]{ m_model->toggleCollapse(row); });
-        menu.addAction("Delete Separator", [this, row = idx.row()]{ onDeleteSeparator(row); });
+        menu.addAction(QStringLiteral("Edit Separator") + QChar(0x2026),
+                       [this, row = idx.row()]{ onEditSeparator(row); });
         menu.addSeparator();
         // Nest / un-nest into sub-categories. Indent is disabled when it would jump
-        // past (nearest preceding separator level + 1); promote is disabled at top.
+        // past (nearest preceding separator level + 1); outdent is disabled at top.
         {
             const int raw = m_model->rawIndexForRow(idx.row());
             const auto& list = m_model->profile()->modList();
@@ -508,15 +554,16 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
                 if (list.at(i).type == EntryType::Separator) {
                     prevLevel = list.at(i).separatorLevel; break;
                 }
-            QAction* indentAct = menu.addAction("Make sub-category (indent)",
+            QAction* indentAct = menu.addAction("Indent (Make Sub-category)",
                 [this, row = idx.row()]{ onIndentSeparator(row); });
             indentAct->setEnabled(entry->separatorLevel < prevLevel + 1);
-            QAction* promoteAct = menu.addAction("Promote (outdent)",
+            QAction* promoteAct = menu.addAction("Outdent (Promote to Parent)",
                 [this, row = idx.row()]{ onOutdentSeparator(row); });
             promoteAct->setEnabled(entry->separatorLevel > 0);
         }
-        menu.addSeparator();
         menu.addAction("Add Separator Below", [this, row = idx.row()]{ onAddSeparatorAt(row + 1); });
+        menu.addSeparator();
+        menu.addAction("Delete Separator", [this, row = idx.row()]{ onDeleteSeparator(row); });
     } else {
         // If the right-clicked mod isn't part of the current selection, make it
         // the sole selection so delete/operations act on what the user clicked.
@@ -530,48 +577,41 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
             QString dir = AppConfig::instance().stagingDir() + "/" + folder;
             QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
         });
-        menu.addAction(entry->hasFomodChoices ? "Reinstall (FOMOD)..." : "Reinstall...",
-                       [this, id = entry->id]{ emit reinstallRequested(id); });
-        if (!entry->nexusModId.isEmpty()) {
-            menu.addAction("Update Mod",
-                           [this, id = entry->id]{ emit updateRequested(id); });
-            menu.addAction("Endorse on Nexus",
-                           [this, id = entry->id]{ emit endorseRequested(id); });
-            menu.addAction("View Nexus Page",
-                           [this, id = entry->id]{ emit viewNexusPageRequested(id); });
-        }
-        // Always offered: if the mod's Nexus file id is unknown, the handler
-        // identifies it by MD5 first, then downloads.
-        menu.addAction("Redownload from Nexus",
-                       [this, id = entry->id]{ emit redownloadRequested(id); });
-        menu.addAction("Delete Mod...", [this]{ deleteSelectedMods(); });
+
+        // Enable/Disable - most-used actions, kept near the top.
+        menu.addSeparator();
+        menu.addAction("Enable Selected",  [this]{ setSelectedModsEnabled(true); });
+        menu.addAction("Disable Selected", [this]{ setSelectedModsEnabled(false); });
+
+        menu.addSeparator();
         menu.addAction("Rename", [this, row = idx.row()]{ edit(m_model->index(row, ModListModel::ColName)); });
+        menu.addAction(entry->hasFomodChoices
+                           ? QStringLiteral("Reinstall (FOMOD)") + QChar(0x2026)
+                           : QStringLiteral("Reinstall") + QChar(0x2026),
+                       [this, id = entry->id]{ emit reinstallRequested(id); });
+
+        // Grouping + placement.
+        menu.addSeparator();
         if (m_model->isGroupParent(m_model->rawIndexForRow(idx.row()))) {
-            menu.addSeparator();
-            menu.addAction(entry->collapsed ? "Expand group" : "Collapse group",
+            menu.addAction(entry->collapsed ? "Expand Group" : "Collapse Group",
                            [this, row = idx.row()]{ m_model->toggleModCollapse(row); });
         }
-        // Group / Ungroup actions.
         {
             int raw = m_model->rawIndexForRow(idx.row());
             QStringList selModIds = selectedModIds();
-            if (selModIds.size() >= 2) {
-                menu.addSeparator();
-                menu.addAction("Group selected mods", [this]{ groupSelectedMods(); });
-            }
-            if (m_model->isGroupChild(raw)) {
-                menu.addSeparator();
+            if (selModIds.size() >= 2)
+                menu.addAction("Group Selected Mods", [this]{ groupSelectedMods(); });
+            if (m_model->isGroupChild(raw))
                 menu.addAction("Ungroup", [this, id = entry->id]{ ungroupMod(id); });
-            }
         }
-        // Send to group: move the selected mod(s) to the bottom of a chosen
-        // separator's section. The submenu lists every separator (indented by
-        // nesting level); empty/disabled when the profile has no separators.
+        // Send to Group: move the selected mod(s) to the bottom of a chosen
+        // separator's section. Searchable submenu listing every separator
+        // (indented by nesting level); disabled when the profile has none.
         {
             const QStringList sels = selectedModIds();
             if (!sels.isEmpty() && m_model->profile()) {
                 const auto& list = m_model->profile()->modList();
-                QMenu* sendMenu = menu.addMenu("Send to group");
+                auto* sendMenu = new SearchableMenu("Send to Group", &menu);
                 bool any = false;
                 for (int i = 0; i < list.count(); ++i) {
                     const auto& e = list.at(i);
@@ -579,19 +619,34 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
                     any = true;
                     const QString label = QString(e.separatorLevel * 4, QChar(' ')) + e.name;
                     const QString sepId = e.id;
-                    sendMenu->addAction(label, [this, sels, sepId] {
+                    sendMenu->addItem(label, [this, sels, sepId] {
                         m_model->moveModsToSeparatorEnd(sels, sepId);
                         applyFilter();
                         selectModsByIds(sels);
-                        emit modsChanged();
+                        emit modsReordered(); // order-only: take the light refresh path
                     });
                 }
                 sendMenu->setEnabled(any);
+                menu.addMenu(sendMenu);
             }
         }
+        menu.addAction("Add Separator Above", [this, row = idx.row()]{ onAddSeparatorAt(row); });
+
+        // Nexus operations. Update/Endorse/View need a known Nexus mod id;
+        // Redownload is always offered (handler identifies by MD5 if needed).
         menu.addSeparator();
-        menu.addAction("Enable selected",  [this]{ setSelectedModsEnabled(true); });
-        menu.addAction("Disable selected", [this]{ setSelectedModsEnabled(false); });
+        if (!entry->nexusModId.isEmpty())
+            menu.addAction("Update Mod",
+                           [this, id = entry->id]{ emit updateRequested(id); });
+        menu.addAction("Redownload from Nexus",
+                       [this, id = entry->id]{ emit redownloadRequested(id); });
+        if (!entry->nexusModId.isEmpty()) {
+            menu.addAction("Endorse on Nexus",
+                           [this, id = entry->id]{ emit endorseRequested(id); });
+            menu.addAction("View Nexus Page",
+                           [this, id = entry->id]{ emit viewNexusPageRequested(id); });
+        }
+
         // Community Shaders base mod: offer to wipe its compiled shader cache.
         if (entry->nexusModId == "86492"
             || entry->name.compare("Community Shaders", Qt::CaseInsensitive) == 0) {
@@ -602,8 +657,11 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
             menu.addAction(clearLabel,
                            [this, id = entry->id]{ emit clearShaderCacheRequested(id); });
         }
+
+        // Destructive - always last.
         menu.addSeparator();
-        menu.addAction("Add Separator Above", [this, row = idx.row()]{ onAddSeparatorAt(row); });
+        menu.addAction(QStringLiteral("Delete Mod") + QChar(0x2026),
+                       [this]{ deleteSelectedMods(); });
     }
     menu.exec(event->globalPos());
 }
@@ -646,7 +704,7 @@ void ModListView::onAddSeparatorAt(int visibleRow) {
     int newRaw = m_model->profile()->modList().count() - 1;
     if (rawPos < newRaw)
         m_model->profile()->modList().move(newRaw, rawPos);
-    m_model->profile()->save();
+    saveProfile();
     m_model->rebuild();
 
     // Open edit dialog immediately so user can pick colour/icon. Resolve the
@@ -666,7 +724,7 @@ void ModListView::onEditSeparator(int visibleRow) {
     SeparatorDialog dlg(*entry, this);
     if (dlg.exec() == QDialog::Accepted) {
         m_model->profile()->modList().update(entry->id, dlg.result());
-        m_model->profile()->save();
+        saveProfile();
         m_model->rebuild();
     }
 }
@@ -680,7 +738,7 @@ void ModListView::onDeleteSeparator(int visibleRow) {
             QString("Delete separator \"%1\"? (Mods under it are not deleted.)").arg(name))
         != QMessageBox::Yes) return;
     m_model->profile()->modList().remove(id);
-    m_model->profile()->save();
+    saveProfile();
     m_model->rebuild();
 }
 
@@ -699,7 +757,7 @@ void ModListView::onIndentSeparator(int visibleRow) {
     up.separatorLevel = qMin(up.separatorLevel + 1, maxLevel);
     if (up.separatorLevel == entry->separatorLevel) return; // no-op (already at max)
     list.update(entry->id, up);
-    m_model->profile()->save();
+    saveProfile();
     m_model->rebuild();
 }
 
@@ -710,7 +768,7 @@ void ModListView::onOutdentSeparator(int visibleRow) {
     ModEntry up = *entry;
     up.separatorLevel = up.separatorLevel - 1;
     m_model->profile()->modList().update(entry->id, up);
-    m_model->profile()->save();
+    saveProfile();
     m_model->rebuild();
 }
 
@@ -746,17 +804,31 @@ void ModListView::deleteSelectedMods() {
     }
 
     const QString stagingDir = AppConfig::instance().stagingDir();
-    for (const QString& id : ids) {
+    QStringList notFullyDeleted; // names whose staged files couldn't be fully removed
+    for (int i = 0; i < ids.size(); ++i) {
+        const QString& id = ids.at(i);
         // Resolve the on-disk folder (name-based after migration) before removing
-        // the entry, then delete it.
+        // the entry, then delete it. We remove the list entry regardless (the user
+        // asked to delete it) but track any folder that didn't fully delete so we
+        // can tell the user files may remain rather than losing them silently.
         const QString folder = m_model->profile() ? m_model->profile()->stagingFolderFor(id) : id;
-        QDir(stagingDir + "/" + folder).removeRecursively();
+        QDir dir(stagingDir + "/" + folder);
+        if (dir.exists() && !dir.removeRecursively())
+            notFullyDeleted << names.value(i, folder);
         m_model->profile()->modList().remove(id);
         m_model->invalidateModCache(id); // its staged files are now gone
     }
-    m_model->profile()->save();
+    saveProfile();
     m_model->rebuild();
     emit modsChanged();
+
+    if (!notFullyDeleted.isEmpty()) {
+        const QString bullet = QString(QChar('\n')) + QChar(0x2022) + QChar(' '); // "\n• "
+        QMessageBox::warning(this, "Delete Incomplete",
+            "Removed from the list, but some staged files could not be deleted "
+            "(they may be locked or in use). You can delete these folders manually "
+            "from the staging directory:\n" + bullet + notFullyDeleted.join(bullet));
+    }
 }
 
 void ModListView::setFilter(const QString& text) {
@@ -870,7 +942,7 @@ void ModListView::setSelectedModsEnabled(bool enabled) {
     if (ids.isEmpty()) return;
     for (const QString& id : ids)
         m_model->profile()->modList().setEnabled(id, enabled);
-    m_model->profile()->save();
+    saveProfile();
     m_model->rebuild();
     applyFilter();
     emit modsChanged();
@@ -982,7 +1054,7 @@ void ModListView::groupSelectedMods() {
     auto& list = m_model->profile()->modList();
     for (int i = 1; i < ids.size(); ++i)
         list.groupUnder(ids.at(i), parentId);
-    m_model->profile()->save();
+    saveProfile();
     m_model->rebuild();
     applyFilter();
     emit modsChanged();
@@ -991,7 +1063,7 @@ void ModListView::groupSelectedMods() {
 void ModListView::ungroupMod(const QString& id) {
     if (!m_model->profile()) return;
     m_model->profile()->modList().ungroup(id);
-    m_model->profile()->save();
+    saveProfile();
     m_model->rebuild();
     applyFilter();
     emit modsChanged();

@@ -218,6 +218,29 @@ private slots:
         QCOMPARE(assertShaderCacheDeployed(gameDir, tmp.path() + "/staging", true), 0);
     }
 
+    // A staged file that can't be placed (its live destination is blocked by an
+    // un-removable directory of the same name) is reported via outFailed, distinct
+    // from the "nothing to do" 0 return, so the caller can warn the user.
+    void assert_reportsFailedRelinkViaOutFailed() {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const QString gameDir = tmp.path() + "/game";
+        const QString staging = tmp.path() + "/staging/cachemod";
+
+        // One staged cache file whose live destination is occupied by a NON-empty
+        // directory of the same name: QFile::remove can't delete it and the
+        // link/copy can't overwrite it, so placement fails.
+        writeFile(staging + "/Data/ShaderCache/Info.ini", "plugin=1-7-1-0");
+        QDir().mkpath(gameDir + "/Data/ShaderCache/Info.ini/blocker");
+        writeFile(gameDir + "/Data/ShaderCache/Info.ini/blocker/keep.txt", "x");
+
+        int failed = 0;
+        const int placed =
+            assertShaderCacheDeployed(gameDir, staging, /*hardlink=*/true, nullptr, &failed);
+        QCOMPARE(placed, 0);
+        QCOMPARE(failed, 1);
+    }
+
     // Missing source / empty staging -> no-op returning 0.
     void capture_noopWhenMissing() {
         QTemporaryDir tmp;

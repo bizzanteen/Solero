@@ -101,6 +101,31 @@ namespace {
 using solero::isVersionNewer;   // robust version compare (handles MO2 ".0SE"/".0c" tails)
 using solero::normalizeVersion;
 
+// Returns true when a string looks suitable for direct display to the user:
+// not a raw file path, not a Qt/process debug string.
+static bool looksHumanReadable(const QString& s) {
+    // Reject Windows/Wine-style drive paths: "C:\..." or "C:/..."
+    const bool hasDrivePath = s.length() >= 3
+        && s[0].isLetter()
+        && (s[1] == QLatin1Char(':'))
+        && (s[2] == QLatin1Char('\\') || s[2] == QLatin1Char('/'));
+    return !s.isEmpty()
+        && !s.startsWith(QLatin1Char('/'))
+        && !hasDrivePath
+        && !s.contains(QLatin1String("exit code"), Qt::CaseInsensitive)
+        && !s.contains(QLatin1String("errno"), Qt::CaseInsensitive);
+}
+
+// Strips a leading file-path prefix from LOOT exception strings, e.g.
+// "/path/to/Plugin.esm: Cyclic interaction ..." -> "Cyclic interaction ..."
+static QString stripLootPathPrefix(const QString& msg) {
+    if (msg.startsWith(QLatin1Char('/'))) {
+        const int colon = msg.indexOf(QLatin1String(": "));
+        if (colon > 0) return msg.mid(colon + 2);
+    }
+    return msg;
+}
+
 // Nexus archive names look like "<name>-<modId>-<version-parts>-<timestamp>"
 // (e.g. "SkyUI_5_2_SE-12604-5-2-SE-1462810437"). When we know the exact modId
 // from the Nexus sidecar, strip everything from that "-<modId>" boundary on so
@@ -482,21 +507,23 @@ void MainWindow::setupToolbar() {
     auto* profileMenuBtn = new QToolButton(tb);
     profileMenuBtn->setText("\xe2\x9a\x99");
     auto* profileMenu = new QMenu(profileMenuBtn);
-    profileMenu->addAction("New Profile...", this, &MainWindow::onNewProfile);
-    profileMenu->addAction("Delete Current Profile", this, &MainWindow::onDeleteProfile);
-    profileMenu->addAction("Rename Current Profile...", this, &MainWindow::onRenameProfile);
+    const QChar ell(0x2026);
+    profileMenu->addAction(QStringLiteral("New Profile") + ell, this, &MainWindow::onNewProfile);
+    profileMenu->addAction(QStringLiteral("Rename Current Profile") + ell, this, &MainWindow::onRenameProfile);
     profileMenu->addSeparator();
-    profileMenu->addAction("Export Profile...", this, &MainWindow::onExportProfile);
-    profileMenu->addAction("Import Profile...", this, &MainWindow::onImportProfile);
-    profileMenu->addSeparator();
-    profileMenu->addAction("Import MO2 Profile...", this, &MainWindow::onImportMo2);
-    profileMenu->addAction("Install Wabbajack Modlist\xe2\x80\xa6", this, &MainWindow::onInstallWabbajack);
+    profileMenu->addAction(QStringLiteral("Export Profile") + ell, this, &MainWindow::onExportProfile);
+    profileMenu->addAction(QStringLiteral("Import Profile") + ell, this, &MainWindow::onImportProfile);
+    profileMenu->addAction(QStringLiteral("Import MO2 Profile") + ell, this, &MainWindow::onImportMo2);
+    profileMenu->addAction(QStringLiteral("Install Wabbajack Modlist") + ell, this, &MainWindow::onInstallWabbajack);
     profileMenu->addSeparator();
     m_checkUpdatesAction = profileMenu->addAction(
         "Check for Updates", this, &MainWindow::onCheckUpdates);
     m_checkUpdatesAction->setShortcut(QKeySequence(Qt::Key_F5));
     m_checkUpdatesAction->setToolTip("Check installed mods for newer files on Nexus (F5)");
-    profileMenu->addAction("Scan for FOMOD mods\xe2\x80\xa6", this, &MainWindow::onScanFomod);
+    profileMenu->addAction(QStringLiteral("Scan for FOMOD Mods") + ell, this, &MainWindow::onScanFomod);
+    profileMenu->addSeparator();
+    // Destructive - kept last with an ellipsis (opens a confirm dialog).
+    profileMenu->addAction(QStringLiteral("Delete Current Profile") + ell, this, &MainWindow::onDeleteProfile);
     profileMenuBtn->setMenu(profileMenu);
     profileMenuBtn->setPopupMode(QToolButton::InstantPopup);
     tb->addWidget(profileMenuBtn);
@@ -751,6 +778,8 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onUpdateMod);
     connect(m_modListView, &solero::ModListView::modsChanged,
             this, &MainWindow::onModsChanged);
+    connect(m_modListView, &solero::ModListView::modsReordered,
+            this, &MainWindow::onModsReordered);
     connect(m_modListView, &solero::ModListView::modActivated,
             m_rightPane, &solero::RightPane::showDataFor);
     connect(m_modListView, &solero::ModListView::variantSwitched,
@@ -759,6 +788,8 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onCreateModFromOverwrite);
     connect(m_modListView, &solero::ModListView::clearShaderCacheRequested,
             this, &MainWindow::onClearShaderCache);
+    connect(m_modListView, &solero::ModListView::saveFailed,
+            this, &MainWindow::reportSaveFailure);
 
     // Plugins tab: manual reorder marks the load order dirty; "Sort Now" runs LOOT.
     connect(m_rightPane->pluginsView(), &solero::PluginListView::loadOrderChanged,
@@ -886,8 +917,11 @@ void MainWindow::switchProfile(const QString& name) {
     if (wasDeployed && solero::AppConfig::instance().isConfigured()) {
         solero::DeployEngine engine(solero::AppConfig::instance().gameDir(),
                                     solero::AppConfig::instance().stagingDir());
-        engine.undeploy(solero::AppConfig::instance().gameDir(),
-                        [&](int d, int t){ if (prog) { prog->setProgress(d, t); prog->pump(); } });
+        if (!engine.undeploy(solero::AppConfig::instance().gameDir(),
+                        [&](int d, int t){ if (prog) { prog->setProgress(d, t); prog->pump(); } }))
+            statusBar()->showMessage(
+                "Undeploy of the previous profile finished with warnings - some "
+                "deployed files may remain in the game folder.", 6000);
     }
 
     if (prog) prog->setMessage("Loading " + name + "...");
@@ -1039,7 +1073,7 @@ bool MainWindow::ensureDeployed(const QString& reason) {
     if (solero::AppConfig::instance().autoDeployBeforeLaunch()) {
         if (!deployCurrent()) {
             QMessageBox::critical(this, "Deploy Failed",
-                "Could not deploy - see status bar.");
+                "Deployment failed - see the status bar below for details. Fix the reported issue, then click Deploy again.");
             return false;
         }
         return true;
@@ -1063,7 +1097,7 @@ bool MainWindow::ensureDeployed(const QString& reason) {
     }
     if (!deployCurrent()) {
         QMessageBox::critical(this, "Deploy Failed",
-            "Could not deploy - see status bar.");
+            "Deployment failed - see the status bar below for details. Fix the reported issue, then click Deploy again.");
         return false;
     }
     return true;
@@ -1084,9 +1118,9 @@ bool MainWindow::deployCurrent() {
         solero::AppConfig::instance().localAppDataDir().isEmpty()) {
         m_warnedMissingAppData = true;
         QMessageBox::warning(this, "Skyrim AppData Not Found",
-            "Couldn't locate Skyrim's AppData/Documents (Proton prefix) - "
-            "Plugins.txt/INIs may not reach the game. "
-            "Check the game path in Settings.");
+            "Couldn't find Skyrim's save-data folder. Plugins.txt may not reach the game, "
+            "so plugins may silently not load. Check the game path in Settings and make sure "
+            "you've launched Skyrim at least once through Steam.");
     }
 
     statusBar()->showMessage("Deploying...");
@@ -1207,8 +1241,9 @@ void MainWindow::runPostDeployTools() {
 
     if (!failed.isEmpty())
         QMessageBox::warning(this, "Post-Deploy Tools",
-            "These tools flagged \"Run on deployment\" failed to launch:\n\n"
-            + failed.join("\n"));
+            "These tools are set to run automatically after deployment, but failed to launch:\n\n"
+            + failed.join("\n")
+            + "\n\nCheck each tool's binary path in the Tools panel.");
     else
         statusBar()->showMessage("Post-deploy tools finished.");
 }
@@ -1242,9 +1277,14 @@ void MainWindow::onDeployToggle() {
         solero::DeployEngine engine(
             solero::AppConfig::instance().gameDir(),
             solero::AppConfig::instance().stagingDir());
-        engine.undeploy(solero::AppConfig::instance().gameDir(), [&](int d, int t){ prog.setProgress(d, t); prog.pump(); });
+        const bool undeployOk = engine.undeploy(solero::AppConfig::instance().gameDir(),
+            [&](int d, int t){ prog.setProgress(d, t); prog.pump(); });
 
         prog.close();
+        if (!undeployOk)
+            statusBar()->showMessage(
+                "Undeploy finished with warnings - some deployed files may remain "
+                "in the game folder.", 6000);
         m_deployed = false;
         m_deployDirty = false;
         m_loadOrderDirty = false; // not deployed -> manual sort no longer applies
@@ -1252,7 +1292,7 @@ void MainWindow::onDeployToggle() {
         if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
         m_lastConflicts.clear();      // no live deployment -> no conflict winners
         m_lastDeployWarning.clear();
-        statusBar()->showMessage("Undeployed.");
+        if (undeployOk) statusBar()->showMessage("Undeployed."); // else keep the warning above
     }
 
     updateDeployButton();
@@ -1352,7 +1392,7 @@ void MainWindow::onDataRename(const QString& modId, const QString& relPath,
     const bool ok = isFolder ? QDir().rename(src, dst) : QFile::rename(src, dst);
     if (!ok) {
         QMessageBox::warning(this, "Rename Failed",
-                             QString("Could not rename '%1'.").arg(relPath));
+                             QString("Could not rename '%1'. The file may be in use or the staging folder may not be writable.").arg(relPath));
         return;
     }
     // Staged files for this mod changed - drop its cached scans and mark dirty.
@@ -1389,7 +1429,7 @@ void MainWindow::onDataDelete(const QString& modId, const QString& relPath,
                              : QFile::remove(path);
     if (!ok) {
         QMessageBox::warning(this, "Delete Failed",
-                             QString("Could not delete '%1'.").arg(relPath));
+                             QString("Could not delete '%1'. The file may be in use or the staging folder may not be writable.").arg(relPath));
         return;
     }
     m_modListView->invalidateModCache(modId);
@@ -1429,7 +1469,7 @@ void MainWindow::onLockOrderToggled(bool checked) {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) return;
     profile->pluginList().setLoadOrderLocked(checked);
-    profile->save();
+    checkSave(profile->save());
     updateSortButton();
     statusBar()->showMessage(checked
         ? "Load order locked - LOOT auto-sort disabled; manual order kept."
@@ -1470,12 +1510,15 @@ void MainWindow::onSortRequested() {
 
     if (!res.success) {
         QMessageBox::warning(this, "LOOT Sort Failed",
-            res.errorMessage.isEmpty() ? "Unknown LOOT error." : res.errorMessage);
+            res.errorMessage.isEmpty()
+                ? "LOOT could not sort plugins. Make sure the game is deployed first "
+                  "(plugins need to be in Data/), then try Sort again."
+                : "LOOT sort failed: " + stripLootPathPrefix(res.errorMessage));
         return;
     }
 
     profile->pluginList().applyPins(); // restore pinned plugins after the sort
-    profile->save();
+    checkSave(profile->save());
     m_rightPane->setProfile(profile); // refresh the plugins view with the sorted order
     m_loadOrderDirty = false;
     updateSortButton();
@@ -1584,6 +1627,13 @@ void MainWindow::onModsChanged() {
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     updatePluginNotice();
     refreshHealthIndicator();
+}
+
+void MainWindow::onModsReordered() {
+    // Order-only change: plugin membership and dependency health are unchanged, so
+    // skip the full-staging plugin rescan (refreshPlugins) and dependency-health
+    // walk (refreshHealthIndicator). Deploy order DID change, so still mark dirty.
+    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
 }
 
 // Defined later in this file; used by installFromArchive to pick a unique
@@ -1884,15 +1934,20 @@ void MainWindow::installFromArchive(const QString& archive) {
         if (variantReplace) {
             QString retired;
             profile->modList().replaceActiveVersion(variantTargetId, nv, &retired);
-            profile->save();
+            checkSave(profile->save());
             // The user explicitly chose Replace and the new install already landed,
             // so it's safe to drop the retired version's staging folder now.
-            if (!retired.isEmpty())
-                QDir(solero::AppConfig::instance().stagingDir() + "/" + retired)
-                    .removeRecursively();
+            if (!retired.isEmpty()) {
+                QDir retiredDir(solero::AppConfig::instance().stagingDir() + "/" + retired);
+                if (retiredDir.exists() && !retiredDir.removeRecursively())
+                    statusBar()->showMessage(
+                        "Replaced the version, but the old version's files couldn't "
+                        "be removed - you can delete them manually from the staging "
+                        "directory.", 6000);
+            }
         } else {
             profile->modList().keepBothAddVariant(variantTargetId, nv);
-            profile->save();
+            checkSave(profile->save());
         }
     } else if (!existingModId.isEmpty()) {
         // Replace in place
@@ -1926,7 +1981,7 @@ void MainWindow::installFromArchive(const QString& archive) {
                     ? cleanModName(existing->name, existing->nexusModId) : sidecarName;
             }
         }
-        profile->save();
+        checkSave(profile->save());
     } else {
         // Install as a new mod
         solero::ModEntry mod;
@@ -2007,7 +2062,7 @@ void MainWindow::installFromArchive(const QString& archive) {
                     ml.reorder({from}, to); // insert just before the dependent
             }
         }
-        profile->save();
+        checkSave(profile->save());
     }
 
     // Newly staged files for this mod - drop its cached empty/plugin scans. On the
@@ -2137,7 +2192,7 @@ void MainWindow::onReinstallMod(const QString& modId) {
         } else {
             existing->sourceArchive = archive;
         }
-        profile->save();
+        checkSave(profile->save());
     }
 
     statusBar()->showMessage("Preparing...");
@@ -2263,7 +2318,7 @@ void MainWindow::onReinstallMod(const QString& modId) {
         existing->hasFomodChoices = !choiceLog.isEmpty();
         existing->sourceArchive = archive;
     }
-    profile->save();
+    checkSave(profile->save());
 
     // Restaged files for this mod - drop its cached empty/plugin scans.
     m_modListView->invalidateModCache(modId);
@@ -2691,7 +2746,7 @@ void MainWindow::onEndorseMod(const QString& modId) {
             "Thanks - endorsed " + mod->name + "!");
     else
         QMessageBox::warning(this, "Endorse on Nexus",
-            res.message.isEmpty() ? QString("Could not endorse this mod.") : res.message);
+            res.message.isEmpty() ? QString("The endorsement could not be submitted - Nexus did not return a result. Try again from the mod page.") : res.message);
 }
 
 void MainWindow::onViewNexusPage(const QString& modId) {
@@ -3237,7 +3292,7 @@ bool MainWindow::ensureNexusIds(solero::ModEntry* mod) {
         QFile f(mod->sourceArchive);
         if (!f.open(QIODevice::ReadOnly)) {
             QMessageBox::warning(this, "Redownload from Nexus",
-                "Could not open the source archive for hashing.");
+                "Could not read the source archive for this mod. The file may have been moved or deleted from the downloads folder.");
             return false;
         }
         QCryptographicHash hash(QCryptographicHash::Md5);
@@ -3290,7 +3345,7 @@ void MainWindow::onNewProfile() {
     if (!ok || name.trimmed().isEmpty()) return;
     name = name.trimmed();
     if (!m_profileMgr->createProfile(name)) {
-        QMessageBox::warning(this, "Error", QString("Profile '%1' already exists.").arg(name));
+        QMessageBox::warning(this, "New Profile", QString("A profile named '%1' already exists. Choose a different name.").arg(name));
         return;
     }
     // refreshProfileCombo blocks combo signals while it repopulates, so merely
@@ -3304,7 +3359,7 @@ void MainWindow::onDeleteProfile() {
     QString current = m_profileCombo->currentText();
     if (current.isEmpty()) return;
     if (m_profileMgr->profileNames().count() <= 1) {
-        QMessageBox::warning(this, "Error", "Cannot delete the last profile.");
+        QMessageBox::warning(this, "Delete Profile", "You can't delete the only profile. Create another profile first.");
         return;
     }
     auto ret = QMessageBox::question(this, "Delete Profile",
@@ -3327,7 +3382,7 @@ void MainWindow::onRenameProfile() {
     if (name.isEmpty() || name == current) return;
 
     if (!m_profileMgr->renameProfile(current, name)) {
-        QMessageBox::warning(this, "Error",
+        QMessageBox::warning(this, "Rename Profile",
             QString("Couldn't rename to '%1'. The name may be invalid or already in use.").arg(name));
         return;
     }
@@ -3587,7 +3642,7 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
         if (!redeployForTool("Preparing " + exe.name, "Temporarily removing the output mod\xe2\x80\xa6")) {
             tp->modList().setEnabled(resolvedOutputModId, true);   // restore in memory
             hideRunLock(); m_toolRunning = false;
-            QMessageBox::warning(this, exe.name, "Could not redeploy without the output mod.");
+            QMessageBox::warning(this, exe.name, "Could not temporarily remove the output mod for this run. Make sure the output mod is configured in the tool's settings, then try again.");
             return;
         }
         toggledOutput = true;
@@ -3622,7 +3677,7 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
             hideRunLock();
             m_toolRunning = false;
             QMessageBox::warning(this, "Radium Textures",
-                err.isEmpty() ? "Could not prepare Radium's configuration." : err);
+                err.isEmpty() ? "Could not write Radium's configuration files. Make sure the staging folder is writable." : err);
             return;
         }
     }
@@ -3663,7 +3718,7 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
             restoreOutput();
             hideRunLock(); m_toolRunning = false;
             QMessageBox::warning(this, "PGPatcher",
-                err.isEmpty() ? "Could not prepare PGPatcher's fake-MO2 instance." : err);
+                err.isEmpty() ? "Could not prepare PGPatcher's working files. Make sure the tool's install folder is writable." : err);
             return;
         }
 
@@ -3704,7 +3759,9 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     restoreOutput();
 
     if (!res.launched) {
-        QMessageBox::warning(this, "Tool", res.error.isEmpty() ? ("Failed to launch " + exe.name) : res.error);
+        QMessageBox::warning(this, "Tool",
+            looksHumanReadable(res.error) ? res.error
+                : (exe.name + " could not be launched. Make sure the binary path is correct in the tool's settings (right-click → Edit)."));
     } else if (!res.output.isEmpty()) {
         // Surface tool output (helps diagnose e.g. wine 'Not implemented').
         statusBar()->showMessage(exe.name + " finished.");
@@ -3775,7 +3832,7 @@ QString MainWindow::ensureOutputMod(const QString& name) {
         solero::AppConfig::instance().stagingDir(), mod) + "/Data");
 
     profile->modList().append(mod);
-    profile->save();
+    checkSave(profile->save());
     m_modListView->setProfile(profile);
 
     return mod.id;
@@ -4004,7 +4061,7 @@ void MainWindow::setUpImportedTools(const QList<solero::ImportedTool>& tools) {
         }
     }
 
-    if (storeChanged) { m_toolStore->save(); profile->save(); rebuildToolsMenu(); }
+    if (storeChanged) { m_toolStore->save(); checkSave(profile->save()); rebuildToolsMenu(); }
 
     // Summary (non-blocking; skipped when nothing was discovered/actionable).
     if (configured.isEmpty() && unresolved.isEmpty()) return;
@@ -4034,7 +4091,7 @@ QList<solero::Executable>& MainWindow::activeTools() {
 }
 
 void MainWindow::saveActiveTools() {
-    if (auto* p = m_profileMgr->activeProfile()) p->save();
+    if (auto* p = m_profileMgr->activeProfile()) checkSave(p->save());
 }
 
 void MainWindow::migrateToolsToActiveProfileOnce() {
@@ -4094,12 +4151,13 @@ void MainWindow::rebuildToolsMenu() {
     if (!tools.isEmpty()) m_toolsMenu->addSeparator();
     // Built-in: always available regardless of configured tools.
     m_toolsMenu->addAction(QIcon::fromTheme("system-search", QIcon::fromTheme("edit-find")),
-                           "Patch Wizard\xe2\x80\xa6", this, &MainWindow::onPatchWizard);
+                           QStringLiteral("Patch Wizard") + QChar(0x2026), this, &MainWindow::onPatchWizard);
     m_toolsMenu->addSeparator();
     // Use real icons (in the icon column) so these align with the tool entries above.
-    m_toolsMenu->addAction(QIcon::fromTheme("list-add"), "Add tool\xe2\x80\xa6", this, &MainWindow::onAddTool2);
+    m_toolsMenu->addAction(QIcon::fromTheme("list-add"),
+                           QStringLiteral("Add Tool") + QChar(0x2026), this, &MainWindow::onAddTool2);
     m_toolsMenu->addAction(QIcon::fromTheme("configure", QIcon::fromTheme("settings-configure")),
-                           "Manage tools\xe2\x80\xa6", this, &MainWindow::onManageTools);
+                           QStringLiteral("Manage Tools") + QChar(0x2026), this, &MainWindow::onManageTools);
 }
 
 QList<QPair<QString,QString>> MainWindow::modChoices() const {
@@ -4216,9 +4274,15 @@ void MainWindow::onPlay() {
         if (!cacheStaging.isEmpty()) {
             const bool hardlink =
                 solero::AppConfig::instance().deployMode() == solero::DeployMode::HardLink;
+            int failedRelink = 0;
             const int relinked = solero::assertShaderCacheDeployed(
-                solero::AppConfig::instance().gameDir(), cacheStaging, hardlink);
-            if (relinked > 0)
+                solero::AppConfig::instance().gameDir(), cacheStaging, hardlink,
+                nullptr, &failedRelink);
+            if (failedRelink > 0)
+                statusBar()->showMessage(
+                    QString("Couldn't restore %1 shader cache file(s) - Community "
+                            "Shaders may recompile shaders on this launch.").arg(failedRelink));
+            else if (relinked > 0)
                 statusBar()->showMessage(
                     QString("Restored %1 shader cache file(s) into the game dir.").arg(relinked));
         }
@@ -4312,7 +4376,8 @@ void MainWindow::onPlay() {
     }
     if (!res.launched) {
         QMessageBox::warning(this, "Play",
-            res.error.isEmpty() ? "Failed to launch the game." : res.error);
+            looksHumanReadable(res.error) ? "The game failed to start: " + res.error
+                : "The game failed to start. Make sure Steam is running, SKSE is installed and deployed, and the game path is correct in Settings.");
     } else if (ranMs < 8000) {
         // The game exited almost immediately - almost always a launch problem.
         QMessageBox::warning(this, "Play",
@@ -4435,7 +4500,7 @@ void MainWindow::removeModEverywhere(const QString& id) {
         if (active && name == active->name()) {
             captureFolders(active->modList().findById(id));
             active->modList().remove(id);
-            active->save();
+            checkSave(active->save());
         } else {
             QString path = profilesRoot() + "/" + name + "/modlist.json";
             solero::ModList ml = solero::ModList::loadFromFile(path);
@@ -4446,8 +4511,28 @@ void MainWindow::removeModEverywhere(const QString& id) {
     }
     if (folders.isEmpty()) folders << id; // pre-migration mods (or unknown) used the id
     const QString stagingDir = solero::AppConfig::instance().stagingDir();
-    for (const QString& folder : folders)
-        QDir(stagingDir + "/" + folder).removeRecursively();
+    bool anyLeftBehind = false;
+    for (const QString& folder : folders) {
+        QDir dir(stagingDir + "/" + folder);
+        if (dir.exists() && !dir.removeRecursively()) anyLeftBehind = true;
+    }
+    if (anyLeftBehind)
+        statusBar()->showMessage(
+            "Some staged files couldn't be deleted and may remain in the staging "
+            "directory - delete them manually if you need the disk space.", 8000);
+}
+
+bool MainWindow::checkSave(bool ok) {
+    if (!ok) reportSaveFailure();
+    return ok;
+}
+
+void MainWindow::reportSaveFailure() {
+    // Plain-language: what happened, why it matters, what to do. 8s so it doesn't
+    // vanish before the user reads it.
+    statusBar()->showMessage(
+        "Could not save the profile - check disk space and permissions. "
+        "Your last change may not survive a restart.", 8000);
 }
 
 void MainWindow::onRemoveTool(const QString& id) {

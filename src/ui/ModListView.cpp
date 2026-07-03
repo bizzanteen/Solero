@@ -2,6 +2,7 @@
 #include "ModListModel.h"
 #include "VersionDelegate.h"
 #include "SeparatorDialog.h"
+#include "SearchableMenu.h"
 #include "install/DependencyChecker.h"
 #include "core/AppConfig.h"
 #include "core/Profile.h"
@@ -538,13 +539,13 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
             QDesktopServices::openUrl(QUrl::fromLocalFile(ow));
         });
     } else if (entry->type == EntryType::Separator) {
-        menu.addAction("Edit Separator", [this, row = idx.row()]{ onEditSeparator(row); });
         menu.addAction(entry->collapsed ? "Expand" : "Collapse",
                        [this, row = idx.row()]{ m_model->toggleCollapse(row); });
-        menu.addAction("Delete Separator", [this, row = idx.row()]{ onDeleteSeparator(row); });
+        menu.addAction(QStringLiteral("Edit Separator") + QChar(0x2026),
+                       [this, row = idx.row()]{ onEditSeparator(row); });
         menu.addSeparator();
         // Nest / un-nest into sub-categories. Indent is disabled when it would jump
-        // past (nearest preceding separator level + 1); promote is disabled at top.
+        // past (nearest preceding separator level + 1); outdent is disabled at top.
         {
             const int raw = m_model->rawIndexForRow(idx.row());
             const auto& list = m_model->profile()->modList();
@@ -553,15 +554,16 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
                 if (list.at(i).type == EntryType::Separator) {
                     prevLevel = list.at(i).separatorLevel; break;
                 }
-            QAction* indentAct = menu.addAction("Make sub-category (indent)",
+            QAction* indentAct = menu.addAction("Indent (Make Sub-category)",
                 [this, row = idx.row()]{ onIndentSeparator(row); });
             indentAct->setEnabled(entry->separatorLevel < prevLevel + 1);
-            QAction* promoteAct = menu.addAction("Promote (outdent)",
+            QAction* promoteAct = menu.addAction("Outdent (Promote to Parent)",
                 [this, row = idx.row()]{ onOutdentSeparator(row); });
             promoteAct->setEnabled(entry->separatorLevel > 0);
         }
-        menu.addSeparator();
         menu.addAction("Add Separator Below", [this, row = idx.row()]{ onAddSeparatorAt(row + 1); });
+        menu.addSeparator();
+        menu.addAction("Delete Separator", [this, row = idx.row()]{ onDeleteSeparator(row); });
     } else {
         // If the right-clicked mod isn't part of the current selection, make it
         // the sole selection so delete/operations act on what the user clicked.
@@ -575,48 +577,41 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
             QString dir = AppConfig::instance().stagingDir() + "/" + folder;
             QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
         });
-        menu.addAction(entry->hasFomodChoices ? "Reinstall (FOMOD)..." : "Reinstall...",
-                       [this, id = entry->id]{ emit reinstallRequested(id); });
-        if (!entry->nexusModId.isEmpty()) {
-            menu.addAction("Update Mod",
-                           [this, id = entry->id]{ emit updateRequested(id); });
-            menu.addAction("Endorse on Nexus",
-                           [this, id = entry->id]{ emit endorseRequested(id); });
-            menu.addAction("View Nexus Page",
-                           [this, id = entry->id]{ emit viewNexusPageRequested(id); });
-        }
-        // Always offered: if the mod's Nexus file id is unknown, the handler
-        // identifies it by MD5 first, then downloads.
-        menu.addAction("Redownload from Nexus",
-                       [this, id = entry->id]{ emit redownloadRequested(id); });
-        menu.addAction("Delete Mod...", [this]{ deleteSelectedMods(); });
+
+        // Enable/Disable - most-used actions, kept near the top.
+        menu.addSeparator();
+        menu.addAction("Enable Selected",  [this]{ setSelectedModsEnabled(true); });
+        menu.addAction("Disable Selected", [this]{ setSelectedModsEnabled(false); });
+
+        menu.addSeparator();
         menu.addAction("Rename", [this, row = idx.row()]{ edit(m_model->index(row, ModListModel::ColName)); });
+        menu.addAction(entry->hasFomodChoices
+                           ? QStringLiteral("Reinstall (FOMOD)") + QChar(0x2026)
+                           : QStringLiteral("Reinstall") + QChar(0x2026),
+                       [this, id = entry->id]{ emit reinstallRequested(id); });
+
+        // Grouping + placement.
+        menu.addSeparator();
         if (m_model->isGroupParent(m_model->rawIndexForRow(idx.row()))) {
-            menu.addSeparator();
-            menu.addAction(entry->collapsed ? "Expand group" : "Collapse group",
+            menu.addAction(entry->collapsed ? "Expand Group" : "Collapse Group",
                            [this, row = idx.row()]{ m_model->toggleModCollapse(row); });
         }
-        // Group / Ungroup actions.
         {
             int raw = m_model->rawIndexForRow(idx.row());
             QStringList selModIds = selectedModIds();
-            if (selModIds.size() >= 2) {
-                menu.addSeparator();
-                menu.addAction("Group selected mods", [this]{ groupSelectedMods(); });
-            }
-            if (m_model->isGroupChild(raw)) {
-                menu.addSeparator();
+            if (selModIds.size() >= 2)
+                menu.addAction("Group Selected Mods", [this]{ groupSelectedMods(); });
+            if (m_model->isGroupChild(raw))
                 menu.addAction("Ungroup", [this, id = entry->id]{ ungroupMod(id); });
-            }
         }
-        // Send to group: move the selected mod(s) to the bottom of a chosen
-        // separator's section. The submenu lists every separator (indented by
-        // nesting level); empty/disabled when the profile has no separators.
+        // Send to Group: move the selected mod(s) to the bottom of a chosen
+        // separator's section. Searchable submenu listing every separator
+        // (indented by nesting level); disabled when the profile has none.
         {
             const QStringList sels = selectedModIds();
             if (!sels.isEmpty() && m_model->profile()) {
                 const auto& list = m_model->profile()->modList();
-                QMenu* sendMenu = menu.addMenu("Send to group");
+                auto* sendMenu = new SearchableMenu("Send to Group", &menu);
                 bool any = false;
                 for (int i = 0; i < list.count(); ++i) {
                     const auto& e = list.at(i);
@@ -624,7 +619,7 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
                     any = true;
                     const QString label = QString(e.separatorLevel * 4, QChar(' ')) + e.name;
                     const QString sepId = e.id;
-                    sendMenu->addAction(label, [this, sels, sepId] {
+                    sendMenu->addItem(label, [this, sels, sepId] {
                         m_model->moveModsToSeparatorEnd(sels, sepId);
                         applyFilter();
                         selectModsByIds(sels);
@@ -632,11 +627,26 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
                     });
                 }
                 sendMenu->setEnabled(any);
+                menu.addMenu(sendMenu);
             }
         }
+        menu.addAction("Add Separator Above", [this, row = idx.row()]{ onAddSeparatorAt(row); });
+
+        // Nexus operations. Update/Endorse/View need a known Nexus mod id;
+        // Redownload is always offered (handler identifies by MD5 if needed).
         menu.addSeparator();
-        menu.addAction("Enable selected",  [this]{ setSelectedModsEnabled(true); });
-        menu.addAction("Disable selected", [this]{ setSelectedModsEnabled(false); });
+        if (!entry->nexusModId.isEmpty())
+            menu.addAction("Update Mod",
+                           [this, id = entry->id]{ emit updateRequested(id); });
+        menu.addAction("Redownload from Nexus",
+                       [this, id = entry->id]{ emit redownloadRequested(id); });
+        if (!entry->nexusModId.isEmpty()) {
+            menu.addAction("Endorse on Nexus",
+                           [this, id = entry->id]{ emit endorseRequested(id); });
+            menu.addAction("View Nexus Page",
+                           [this, id = entry->id]{ emit viewNexusPageRequested(id); });
+        }
+
         // Community Shaders base mod: offer to wipe its compiled shader cache.
         if (entry->nexusModId == "86492"
             || entry->name.compare("Community Shaders", Qt::CaseInsensitive) == 0) {
@@ -647,8 +657,11 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
             menu.addAction(clearLabel,
                            [this, id = entry->id]{ emit clearShaderCacheRequested(id); });
         }
+
+        // Destructive - always last.
         menu.addSeparator();
-        menu.addAction("Add Separator Above", [this, row = idx.row()]{ onAddSeparatorAt(row); });
+        menu.addAction(QStringLiteral("Delete Mod") + QChar(0x2026),
+                       [this]{ deleteSelectedMods(); });
     }
     menu.exec(event->globalPos());
 }

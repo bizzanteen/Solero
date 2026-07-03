@@ -99,6 +99,14 @@ NexusApi::EndorseResult NexusApi::endorse(const QString& modId, const QString& v
     const QString status = o["status"].toString();
     const QString message = o["message"].toString();
     r.message = !message.isEmpty() ? message : status;
+    // Nexus error codes are terse and user-hostile; translate the known ones.
+    if (message == "NOT_DOWNLOADED_MOD")
+        r.message = "Nexus only lets you endorse mods you've downloaded with your account.";
+    else if (message == "TOO_SOON_AFTER_DOWNLOAD")
+        r.message = "Nexus requires some time between downloading and endorsing - "
+                    "try again later from the mod page.";
+    else if (message == "IS_OWN_MOD")
+        r.message = "You can't endorse your own mod.";
     // Success if the status reflects the requested state, or there's no error-like
     // message. Nexus errors come back as uppercase codes (NOT_DOWNLOADED_MOD,
     // TOO_SOON_AFTER_DOWNLOAD, ...) in the message field.

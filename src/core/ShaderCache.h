@@ -4,6 +4,9 @@
 
 namespace solero {
 
+// Forward-declared to avoid pulling the full mod model into every ShaderCache consumer.
+class ModList;
+
 // Result of clearShaderCache(): which ShaderCache dirs were actually removed and
 // the total bytes freed (sum of file sizes deleted).
 struct ShaderCacheClearResult {
@@ -58,5 +61,10 @@ int captureShaderCache(const QString& gameDir, const QString& cacheStagingDir,
 // is empty or the staged ShaderCache dir is missing.
 int assertShaderCacheDeployed(const QString& gameDir, const QString& cacheStagingDir,
                               bool hardlink, QStringList* relinked = nullptr);
+
+// Derive the cache key for the profile's Community Shaders install: the active
+// CS variant's nexusFileId (most specific), then its normalised version, then
+// "default". Every consumer of the managed cache derives the key through here.
+QString activeCacheKey(const ModList& ml);
 
 } // namespace solero

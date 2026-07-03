@@ -3,8 +3,21 @@
 #include <QStringList>
 #include <QDateTime>
 #include <QList>
+#include <QMap>
 
 namespace solero {
+
+// Mod version variant (Keep Both)
+// One installed version of a Nexus mod (Keep Both). The owning ModEntry's
+// version/nexusFileId/stagingFolder/sourceArchive/hasFomodChoices fields always
+// mirror variants[activeVariant]; ModList::setActiveVariant is the only writer.
+struct ModVariant {
+    QString version;
+    QString nexusFileId;
+    QString stagingFolder;
+    QString sourceArchive;
+    bool    hasFomodChoices = false;
+};
 
 // Mod list entry
 
@@ -46,6 +59,8 @@ struct ModEntry {
     QStringList tags;
     QString sourceArchive; // archive path this mod was installed from (for Reinstall)
     QString note;          // free-form user note (shown/edited in the Mod Info panel)
+    QList<ModVariant> variants; // empty for single-version mods
+    int activeVariant = -1;     // index into variants; -1 iff variants is empty
 
     // Separator fields
     QString color;       // hex e.g. "#c0392b"
@@ -59,12 +74,16 @@ struct ModEntry {
 
 // Managed Community Shaders shader cache
 // First-class per-profile state (not a mod-list entry): the captured shaders live
-// at <stagingDir>/<stagingFolder>/Data/ShaderCache/, are deployed last so they win
-// all conflicts, and are invisible in the mod list. "Active" = managed && folder set.
+// at <stagingDir>/<folderFor(activeKey)>/Data/ShaderCache/, are deployed last so
+// they win all conflicts, and are invisible in the mod list.
+// "Active" = managed && at least one folder entry exists.
+// Cache keys are derived from the CS mod's nexusFileId, its normalised version, or
+// "default" as fallback (see activeCacheKey in ShaderCache.h).
 struct ManagedShaderCache {
     bool managed = false;
-    QString stagingFolder;
-    bool active() const { return managed && !stagingFolder.isEmpty(); }
+    QMap<QString, QString> folders;            // cacheKey -> staging folder
+    QString folderFor(const QString& key) const { return folders.value(key); }
+    bool active() const { return managed && !folders.isEmpty(); }
 };
 
 // Plugin list entry

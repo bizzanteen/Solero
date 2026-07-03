@@ -60,6 +60,21 @@ public:
     // have displaced a child, and on load.
     void normalizeGroups();
 
+    // Version variants (Keep Both). See Types.h ModVariant for the mirror invariant.
+    bool keepBothAddVariant(const QString& id, const ModVariant& v);
+    bool setActiveVariant(const QString& id, int index);
+    bool replaceActiveVersion(const QString& id, const ModVariant& v,
+                              QString* retiredFolder = nullptr);
+    // Index of the variant that owns the given Nexus fileId, or -1 if the mod has
+    // no variants / no match / empty fileId. Used so a same-file reinstall targets
+    // the variant that actually owns the incoming file, not just the active one.
+    int variantIndexByFileId(const QString& id, const QString& fileId) const;
+    // Overwrite variants[index] in place (bounds-checked). Re-syncs the entry's
+    // mirror fields iff index == activeVariant. Returns false on unknown id or
+    // out-of-range index.
+    bool updateVariant(const QString& id, int index, const ModVariant& v);
+    void normalizeVariants();
+
     int count() const { return m_entries.size(); }
     const ModEntry& at(int index) const { return m_entries.at(index); }
     // Direct access to the backing list (e.g. for staging-folder migration).

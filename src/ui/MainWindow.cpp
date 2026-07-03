@@ -17,6 +17,7 @@
 #include "core/LoadOrderBackup.h"
 #include "core/FileMove.h"
 #include "install/ModInstaller.h"
+#include "install/InstallConflict.h"
 #include "import/Mo2Importer.h"
 #include "io/ProfileManifest.h"
 #include "ui/WabbajackDialog.h"
@@ -752,6 +753,8 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onModsChanged);
     connect(m_modListView, &solero::ModListView::modActivated,
             m_rightPane, &solero::RightPane::showDataFor);
+    connect(m_modListView, &solero::ModListView::variantSwitched,
+            this, &MainWindow::onVariantSwitched);
     connect(m_modListView, &solero::ModListView::createModFromOverwriteRequested,
             this, &MainWindow::onCreateModFromOverwrite);
     connect(m_modListView, &solero::ModListView::clearShaderCacheRequested,
@@ -1360,6 +1363,21 @@ void MainWindow::onDataRename(const QString& modId, const QString& relPath,
     refreshHealthIndicator();
 }
 
+void MainWindow::onVariantSwitched(const QString& modId) {
+    // The mod's active version changed, so its staged files differ - drop cached
+    // scans and rescan plugins for it (mirrors the install tail).
+    m_modListView->invalidateModCache(modId);
+    m_rightPane->invalidateModPluginCache(modId);
+    if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
+    updatePluginNotice();
+    refreshHealthIndicator();
+    // Auto-redeploy so the new version's files replace the old ones in the game
+    // Data. If nothing is deployed yet, just mark dirty (deferred until deploy).
+    if (m_deployed)
+        redeployForTool("Switching version", QStringLiteral("Re-deploying") + QChar(0x2026));
+    else { m_deployDirty = true; updateDeployButton(); }
+}
+
 void MainWindow::onDataDelete(const QString& modId, const QString& relPath,
                               bool isFolder) {
     const QString root = stagingRootForId(modId);
@@ -1568,6 +1586,10 @@ void MainWindow::onModsChanged() {
     refreshHealthIndicator();
 }
 
+// Defined later in this file; used by installFromArchive to pick a unique
+// staging folder for a Keep Both / Replace version variant.
+static QSet<QString> takenStagingFolders(solero::Profile* profile);
+
 void MainWindow::onInstallMod() {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) { statusBar()->showMessage("No active profile."); return; }
@@ -1642,29 +1664,99 @@ void MainWindow::installFromArchive(const QString& archive) {
         ? cleanModName(prep.modName, sidecarModId) : sidecarName;
 
     QString existingModId;     // non-empty -> Replace the existing mod in place
+    int existingVariantIdx = -1; // ≥0 -> SameFile targets this variant of existingModId
     QString stagingOverride;   // full mod dir for Replace (migrated staging folder)
     QString overrideName;      // non-empty -> Rename: install new with this name
     bool installAsSibling = false; // different file of an already-installed mod
+    QString variantTargetId;   // non-empty -> add/replace a version variant on this entry
+    bool    variantReplace = false; // variant path: Replace active version vs Keep Both
+    QString variantFolder;     // new unique staging folder name for the variant
     {
         auto& ml = profile->modList();
-        // Identity ladder. (modId,fileId) is the reliable identity: the same file.
-        // A redownload pins the existing fileId, so it always lands here -> silent
-        // Replace, never a duplicate.
-        if (solero::ModEntry* sameFile =
-                ml.findByNexusFile(sidecarModId, sidecarFileId)) {
-            existingModId = sameFile->id;
-            stagingOverride = solero::stagingPathFor(
-                solero::AppConfig::instance().stagingDir(), *sameFile);
-        }
-        // Different file of an already-installed mod (e.g. two main files of one
-        // Nexus page). Not a duplicate - install it as a grouped sibling. The
-        // auto-group pass below nests it; Task 4 names it from the archive so the
-        // two siblings don't share the catalog name.
-        else if (!sidecarModId.isEmpty() && ml.findByNexusId(sidecarModId)) {
+        // Classify the incoming Nexus identity (sidecar) against the mod list once.
+        // SameFile -> silent in-place reinstall; SiblingFile -> silent grouped sibling;
+        // VersionConflict -> Replace / Keep Both / Rename dialog; NoConflict -> the
+        // name-collision fallback below.
+        const auto conflict = solero::classifyInstallConflict(
+            ml, sidecarModId, sidecarFileId, sidecarVersion);
+
+        if (conflict.kind == solero::InstallConflictKind::SameFile) {
+            // (modId,fileId) is the reliable identity: literally the same file. A
+            // redownload pins the existing fileId, so it lands here -> silent Replace.
+            if (solero::ModEntry* sameFile = ml.findById(conflict.targetEntryId)) {
+                existingModId = sameFile->id;
+                // The incoming fileId may belong to an INACTIVE variant. Stage into
+                // THAT variant's folder (not the mirror = active variant's folder),
+                // else we'd extract the wrong version's files over the active one and
+                // break the mirror invariant. The tail writes back via updateVariant.
+                const int vi = ml.variantIndexByFileId(sameFile->id, sidecarFileId);
+                if (vi >= 0) {
+                    existingVariantIdx = vi;
+                    stagingOverride = solero::AppConfig::instance().stagingDir()
+                                    + "/" + sameFile->variants[vi].stagingFolder;
+                } else {
+                    stagingOverride = solero::stagingPathFor(
+                        solero::AppConfig::instance().stagingDir(), *sameFile);
+                }
+            }
+        } else if (conflict.kind == solero::InstallConflictKind::SiblingFile) {
+            // Different file of an already-installed mod at the same version (e.g. two
+            // main files of one Nexus page). Not a duplicate - install as a grouped
+            // sibling; the auto-group pass below nests it.
             installAsSibling = true;
-        }
-        // No Nexus identity (or a genuinely new mod): fall back to name collision.
-        else {
+        } else if (conflict.kind == solero::InstallConflictKind::VersionConflict) {
+            // A different version of an already-installed mod: let the user decide.
+            solero::ModEntry* existing = ml.findById(conflict.targetEntryId);
+            extractProg->hide(); // step the progress modal aside for the prompt
+            QMessageBox box(this);
+            box.setWindowTitle("Different Version");
+            box.setText(QString("\"%1\" is already installed as version %2.")
+                            .arg(existing->name, existing->version));
+            box.setInformativeText(QString(
+                "You're installing version %1. Replace the installed version, keep "
+                "both (switchable from the Version column), or install it as a "
+                "separate mod?").arg(sidecarVersion));
+            QPushButton* replaceBtn = box.addButton("Replace",   QMessageBox::AcceptRole);
+            QPushButton* keepBtn    = box.addButton("Keep Both", QMessageBox::ActionRole);
+            QPushButton* renameBtn  = box.addButton(QString::fromUtf8("Rename…"),
+                                                    QMessageBox::ActionRole);
+            box.addButton("Cancel", QMessageBox::RejectRole);
+            box.setDefaultButton(keepBtn);
+            box.exec();
+            QAbstractButton* clicked = box.clickedButton();
+            if (clicked == replaceBtn || clicked == keepBtn) {
+                // Both extract into a new uniquely-named staging folder; the post-
+                // install tail attaches it as a variant of the existing entry.
+                variantTargetId = existing->id;
+                variantReplace  = (clicked == replaceBtn);
+                variantFolder   = solero::uniqueStagingFolder(
+                    solero::sanitizeStagingFolder(
+                        existing->name + " (" + sidecarVersion + ")"),
+                    takenStagingFolders(profile));
+                stagingOverride = solero::AppConfig::instance().stagingDir()
+                                + "/" + variantFolder;
+            } else if (clicked == renameBtn) {
+                bool ok = false;
+                QString nm = QInputDialog::getText(
+                    this, "Rename Mod", "Mod name:", QLineEdit::Normal,
+                    uniqueModName(existing->name + " " + sidecarVersion, profile), &ok);
+                nm = nm.trimmed();
+                if (!ok || nm.isEmpty()) {
+                    extractProg->close();
+                    statusBar()->showMessage("Install cancelled.");
+                    return;
+                }
+                // Install as a separate, grouped sibling under the chosen name.
+                overrideName    = nm;
+                installAsSibling = true;
+            } else {
+                extractProg->close();
+                statusBar()->showMessage("Install cancelled.");
+                return;
+            }
+            extractProg->show(); extractProg->pump();
+        } else {
+            // No Nexus identity (or a genuinely new mod): fall back to name collision.
             solero::ModEntry* collide = ml.findByName(proposedName);
             if (collide) {
                 extractProg->hide(); // step the progress modal aside for the prompt
@@ -1783,19 +1875,56 @@ void MainWindow::installFromArchive(const QString& archive) {
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     }
 
-    if (!existingModId.isEmpty()) {
+    if (!variantTargetId.isEmpty()) {
+        // Keep Both / Replace a version variant
+        // The archive (+ FOMOD picks) landed in `variantFolder`; attach it to the
+        // existing entry as a variant instead of creating a new ModEntry.
+        solero::ModVariant nv{sidecarVersion, sidecarFileId, variantFolder, archive,
+                              !choiceLog.isEmpty()};
+        if (variantReplace) {
+            QString retired;
+            profile->modList().replaceActiveVersion(variantTargetId, nv, &retired);
+            profile->save();
+            // The user explicitly chose Replace and the new install already landed,
+            // so it's safe to drop the retired version's staging folder now.
+            if (!retired.isEmpty())
+                QDir(solero::AppConfig::instance().stagingDir() + "/" + retired)
+                    .removeRecursively();
+        } else {
+            profile->modList().keepBothAddVariant(variantTargetId, nv);
+            profile->save();
+        }
+    } else if (!existingModId.isEmpty()) {
         // Replace in place
         // stageSimple/stageFomod reused the existing mod's UUID and replaced its
         // files; keep the entry's load-order position + enabled state, just refresh
         // its archive/Nexus metadata (mirrors onReinstallMod).
         if (solero::ModEntry* existing = profile->modList().findById(existingModId)) {
-            existing->hasFomodChoices = !choiceLog.isEmpty();
-            existing->sourceArchive   = archive;
-            if (!sidecarModId.isEmpty())   existing->nexusModId  = sidecarModId;
-            if (!sidecarFileId.isEmpty())  existing->nexusFileId = sidecarFileId;
-            if (!sidecarVersion.isEmpty()) existing->version     = sidecarVersion;
-            existing->name = sidecarName.isEmpty()
-                ? cleanModName(existing->name, existing->nexusModId) : sidecarName;
+            if (existingVariantIdx >= 0 && !existing->variants.isEmpty()) {
+                // The reinstall targeted a specific variant (its fileId owned it).
+                // Write version/fileId/archive/fomod into THAT variant via
+                // updateVariant, which re-syncs the mirrors only when it's the active
+                // variant - never poke the mirrors directly (that desyncs variants[]).
+                solero::ModVariant nv = existing->variants[existingVariantIdx];
+                if (!sidecarVersion.isEmpty()) nv.version     = sidecarVersion;
+                if (!sidecarFileId.isEmpty())  nv.nexusFileId = sidecarFileId;
+                nv.sourceArchive   = archive;
+                nv.hasFomodChoices = !choiceLog.isEmpty();
+                // stagingFolder unchanged: we restaged into the variant's own folder.
+                profile->modList().updateVariant(existingModId, existingVariantIdx, nv);
+                // Entry-level (non-variant) metadata still refreshes.
+                if (!sidecarModId.isEmpty()) existing->nexusModId = sidecarModId;
+                existing->name = sidecarName.isEmpty()
+                    ? cleanModName(existing->name, existing->nexusModId) : sidecarName;
+            } else {
+                existing->hasFomodChoices = !choiceLog.isEmpty();
+                existing->sourceArchive   = archive;
+                if (!sidecarModId.isEmpty())   existing->nexusModId  = sidecarModId;
+                if (!sidecarFileId.isEmpty())  existing->nexusFileId = sidecarFileId;
+                if (!sidecarVersion.isEmpty()) existing->version     = sidecarVersion;
+                existing->name = sidecarName.isEmpty()
+                    ? cleanModName(existing->name, existing->nexusModId) : sidecarName;
+            }
         }
         profile->save();
     } else {
@@ -1881,16 +2010,24 @@ void MainWindow::installFromArchive(const QString& archive) {
         profile->save();
     }
 
-    // Newly staged files for this mod - drop its cached empty/plugin scans.
-    m_modListView->invalidateModCache(result.modId);
-    m_rightPane->invalidateModPluginCache(result.modId);
+    // Newly staged files for this mod - drop its cached empty/plugin scans. On the
+    // variant path result.modId is a throwaway UUID (no ModEntry was created); the
+    // entry whose staged files actually changed is the variant target.
+    const QString refreshId =
+        variantTargetId.isEmpty() ? result.modId : variantTargetId;
+    m_modListView->invalidateModCache(refreshId);
+    m_rightPane->invalidateModPluginCache(refreshId);
 
     m_modListView->setProfile(profile);
     if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     m_rightPane->downloadsTab()->refresh();
     updatePluginNotice();
-    if (!existingModId.isEmpty()) {
+    if (!variantTargetId.isEmpty()) {
+        const solero::ModEntry* e = profile->modList().findById(variantTargetId);
+        const QString verb = variantReplace ? "Replaced version of: " : "Added version to: ";
+        statusBar()->showMessage(verb + (e ? e->name : result.modName));
+    } else if (!existingModId.isEmpty()) {
         const solero::ModEntry* e = profile->modList().findById(existingModId);
         statusBar()->showMessage("Replaced: " + (e ? e->name : result.modName));
     } else {
@@ -1907,8 +2044,9 @@ void MainWindow::installFromArchive(const QString& archive) {
         markRequirementResult(sidecarModId, /*installed=*/true);
 
     // Fresh Nexus install: check its requirements and offer any that are missing.
-    // (Skip Replace/reinstall - existingModId set - to avoid nagging on every update.)
-    if (existingModId.isEmpty() && !sidecarModId.isEmpty())
+    // (Skip Replace/reinstall and Keep Both/Replace variants - they update a mod
+    // already present - to avoid nagging on every update.)
+    if (existingModId.isEmpty() && variantTargetId.isEmpty() && !sidecarModId.isEmpty())
         checkRequirementsAfterInstall(profile, result.modId, sidecarModId, sidecarGame);
 }
 
@@ -1990,7 +2128,15 @@ void MainWindow::onReinstallMod(const QString& modId) {
     if (archive.isEmpty()) return;
     // Persist the located/chosen archive so future reinstalls skip the search.
     if (archive != existing->sourceArchive) {
-        existing->sourceArchive = archive;
+        if (!existing->variants.isEmpty()) {
+            // Route the mirror write through the active variant so variants[] stays
+            // in sync (updateVariant re-syncs the mirrors for the active index).
+            solero::ModVariant nv = existing->variants[existing->activeVariant];
+            nv.sourceArchive = archive;
+            profile->modList().updateVariant(modId, existing->activeVariant, nv);
+        } else {
+            existing->sourceArchive = archive;
+        }
         profile->save();
     }
 
@@ -2106,8 +2252,17 @@ void MainWindow::onReinstallMod(const QString& modId) {
         QFile f(cp);
         if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     }
-    existing->hasFomodChoices = !choiceLog.isEmpty();
-    existing->sourceArchive = archive;
+    if (!existing->variants.isEmpty()) {
+        // Route the mirror writes through the active variant so variants[] stays in
+        // sync (updateVariant re-syncs the mirrors for the active index).
+        solero::ModVariant nv = existing->variants[existing->activeVariant];
+        nv.sourceArchive   = archive;
+        nv.hasFomodChoices = !choiceLog.isEmpty();
+        profile->modList().updateVariant(modId, existing->activeVariant, nv);
+    } else {
+        existing->hasFomodChoices = !choiceLog.isEmpty();
+        existing->sourceArchive = archive;
+    }
     profile->save();
 
     // Restaged files for this mod - drop its cached empty/plugin scans.
@@ -2182,20 +2337,31 @@ QString MainWindow::uniqueModName(const QString& base, solero::Profile* profile)
 static QSet<QString> takenStagingFolders(solero::Profile* profile) {
     QSet<QString> taken;
     if (!profile) return taken;
-    for (const auto& e : profile->modList())
-        if (e.type == solero::EntryType::Mod && !e.stagingFolder.isEmpty())
+    for (const auto& e : profile->modList()) {
+        if (e.type != solero::EntryType::Mod) continue;
+        if (!e.stagingFolder.isEmpty())
             taken.insert(e.stagingFolder.toLower());
-    // The managed shader cache lives outside the list but owns a staging folder too.
-    if (!profile->shaderCache().stagingFolder.isEmpty())
-        taken.insert(profile->shaderCache().stagingFolder.toLower());
+        // Inactive Keep-Both variants own their own on-disk folders too; reserve
+        // them so a new folder name can't collide with a non-active variant.
+        for (const auto& v : e.variants)
+            if (!v.stagingFolder.isEmpty())
+                taken.insert(v.stagingFolder.toLower());
+    }
+    // The managed shader cache lives outside the list but owns a folder per CS
+    // version - reserve every key's folder, not just the active one.
+    for (const QString& f : profile->shaderCache().folders.values())
+        if (!f.isEmpty())
+            taken.insert(f.toLower());
     return taken;
 }
 
 // On-disk staging path of the profile's managed shader cache, or empty if inactive.
 static QString cacheStagingPath(solero::Profile* profile) {
     if (!profile || !profile->shaderCache().active()) return {};
-    return solero::AppConfig::instance().stagingDir() + "/"
-         + profile->shaderCache().stagingFolder;
+    const QString folder = profile->shaderCache().folderFor(
+        solero::activeCacheKey(profile->modList()));
+    if (folder.isEmpty()) return {};
+    return solero::AppConfig::instance().stagingDir() + "/" + folder;
 }
 
 QString MainWindow::stagingRootForId(const QString& modId) const {
@@ -2310,6 +2476,15 @@ void MainWindow::onClearShaderCache(const QString& modId) {
     auto* scP = m_profileMgr->activeProfile();
     const QString cacheStaging = cacheStagingPath(scP);
 
+    // Name the CS version in the status so it's clear WHICH version's cache cleared
+    // (only the active version's staged folder is touched).
+    QString versionSuffix;
+    if (scP) {
+        const solero::ModEntry* cs = scP->modList().findCommunityShaders();
+        if (cs && !cs->version.isEmpty())
+            versionSuffix = " (" + cs->version + ")";
+    }
+
     const auto result = solero::clearShaderCache(
         solero::AppConfig::instance().gameDir(),
         solero::AppConfig::overwriteDir(scP ? scP->name() : QString()),
@@ -2319,12 +2494,13 @@ void MainWindow::onClearShaderCache(const QString& modId) {
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
 
     if (result.removedPaths.isEmpty()) {
-        statusBar()->showMessage("Shader cache already clear - nothing to remove.");
+        statusBar()->showMessage(
+            "Shader cache" + versionSuffix + " already clear - nothing to remove.");
     } else {
         const double mb = result.bytesRemoved / (1024.0 * 1024.0);
         statusBar()->showMessage(
-            QString("Cleared shader cache (%1 location(s), %2 MB freed).")
-                .arg(result.removedPaths.size()).arg(mb, 0, 'f', 1));
+            QString("Cleared shader cache%1 (%2 location(s), %3 MB freed).")
+                .arg(versionSuffix).arg(result.removedPaths.size()).arg(mb, 0, 'f', 1));
     }
 }
 
@@ -2357,8 +2533,8 @@ void MainWindow::enableManagedCache() {
     const QString folder = solero::uniqueStagingFolder(
         solero::sanitizeStagingFolder("Community Shaders - Shader Cache"),
         takenStagingFolders(profile));
-    profile->shaderCache().managed       = true;
-    profile->shaderCache().stagingFolder = folder;
+    profile->shaderCache().managed = true;
+    profile->shaderCache().folders.insert(solero::activeCacheKey(profile->modList()), folder);
 
     // Create the staging dir with an empty Data/ShaderCache so captures land there.
     const QString modRoot = solero::AppConfig::instance().stagingDir() + "/" + folder;
@@ -4151,7 +4327,26 @@ void MainWindow::onPlay() {
     // newly-compiled shaders out of the live game dir into the managed mod's
     // staging (scoped strictly to Data/ShaderCache). Best-effort; never blocks.
     if (auto* p = m_profileMgr->activeProfile()) {
-        const QString cacheStaging = cacheStagingPath(p);
+        const QString key = solero::activeCacheKey(p->modList());
+        QString cacheFolder = p->shaderCache().folderFor(key);
+        // First play on a new CS version: managed but no folder yet for this key.
+        // Create it now (named after the CS version, or the key as fallback) so the
+        // freshly-compiled shaders are captured into this version's own cache.
+        if (p->shaderCache().managed && cacheFolder.isEmpty()) {
+            const solero::ModEntry* cs = p->modList().findCommunityShaders();
+            const QString label = (cs && !cs->version.isEmpty()) ? cs->version : key;
+            cacheFolder = solero::uniqueStagingFolder(
+                solero::sanitizeStagingFolder(
+                    p->name() + " - Shader Cache (" + label + ")"),
+                takenStagingFolders(p));
+            QDir().mkpath(solero::AppConfig::instance().stagingDir()
+                          + "/" + cacheFolder + "/Data");
+            p->shaderCache().folders.insert(key, cacheFolder);
+            p->save();
+        }
+        const QString cacheStaging = cacheFolder.isEmpty()
+            ? QString()
+            : solero::AppConfig::instance().stagingDir() + "/" + cacheFolder;
         if (!cacheStaging.isEmpty()) {
             QStringList moved;
             solero::captureShaderCache(gameDir, cacheStaging, &moved);
@@ -4224,26 +4419,35 @@ void MainWindow::removeModEverywhere(const QString& id) {
     // Resolve the on-disk staging folder name (name-based after migration) from
     // whichever profile holds the mod, *before* the entry is removed. Staged
     // files are profile-independent, so we delete them once at the end.
-    QString folder;
-    auto captureFolder = [&](const solero::ModEntry* e) {
-        if (e && folder.isEmpty() && !e->stagingFolder.isEmpty()) folder = e->stagingFolder;
+    // A Keep-Both mod owns one staging folder per version variant; collect them all
+    // (plus the mirror folder) so deleting the mod removes every version's files.
+    QStringList folders;
+    auto captureFolders = [&](const solero::ModEntry* e) {
+        if (!e) return;
+        auto add = [&](const QString& f) {
+            if (!f.isEmpty() && !folders.contains(f)) folders << f;
+        };
+        add(e->stagingFolder);
+        for (const auto& v : e->variants) add(v.stagingFolder);
     };
     auto* active = m_profileMgr->activeProfile();
     for (const QString& name : m_profileMgr->profileNames()) {
         if (active && name == active->name()) {
-            captureFolder(active->modList().findById(id));
+            captureFolders(active->modList().findById(id));
             active->modList().remove(id);
             active->save();
         } else {
             QString path = profilesRoot() + "/" + name + "/modlist.json";
             solero::ModList ml = solero::ModList::loadFromFile(path);
-            captureFolder(ml.findById(id));
+            captureFolders(ml.findById(id));
             ml.remove(id);
             ml.saveToFile(path);
         }
     }
-    if (folder.isEmpty()) folder = id; // pre-migration mods (or unknown) used the id
-    QDir(solero::AppConfig::instance().stagingDir() + "/" + folder).removeRecursively();
+    if (folders.isEmpty()) folders << id; // pre-migration mods (or unknown) used the id
+    const QString stagingDir = solero::AppConfig::instance().stagingDir();
+    for (const QString& folder : folders)
+        QDir(stagingDir + "/" + folder).removeRecursively();
 }
 
 void MainWindow::onRemoveTool(const QString& id) {

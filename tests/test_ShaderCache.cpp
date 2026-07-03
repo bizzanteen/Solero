@@ -230,6 +230,23 @@ private slots:
         QCOMPARE(captureShaderCache(gameDir, QString()), 0);
     }
 
+    // activeCacheKey returns nexusFileId > normalised version > "default".
+    void activeCacheKey_fallbackChain() {
+        ModList ml;
+        QCOMPARE(activeCacheKey(ml), QString("default")); // no CS mod
+
+        ModEntry cs;
+        cs.type = EntryType::Mod;
+        cs.id   = "cs";
+        cs.name = "Community Shaders";
+        cs.version = "1.6.1";
+        ml.append(cs);
+        QCOMPARE(activeCacheKey(ml), QString("1.6.1")); // normalised version fallback
+
+        ml.entries().last().nexusFileId = "f77";
+        QCOMPARE(activeCacheKey(ml), QString("f77")); // fileId wins
+    }
+
     // findCommunityShaders matches nexusModId 86492.
     void modList_findCommunityShaders() {
         ModList list;

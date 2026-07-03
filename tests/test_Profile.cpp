@@ -215,8 +215,8 @@ private slots:
         AppConfig::instance().setStagingDir(staging.path());
         {
             Profile p("RT", profiles.path());
-            p.shaderCache().managed       = true;
-            p.shaderCache().stagingFolder = "MyCacheFolder";
+            p.shaderCache().managed = true;
+            p.shaderCache().folders.insert("default", "MyCacheFolder"); // no CS mod -> key="default"
             QVERIFY(p.save());
             QVERIFY(QFile::exists(p.shaderCachePath()));
         }
@@ -224,7 +224,7 @@ private slots:
         QVERIFY(p2.load());
         QVERIFY(p2.shaderCache().managed);
         QVERIFY(p2.shaderCache().active());
-        QCOMPARE(p2.shaderCache().stagingFolder, QString("MyCacheFolder"));
+        QCOMPARE(p2.shaderCache().folderFor("default"), QString("MyCacheFolder"));
     }
 
     // A legacy profile stored the cache as a hidden isManagedCache mod-list entry;
@@ -248,9 +248,9 @@ private slots:
         // Cache entry lifted out of the list…
         QVERIFY(p.modList().findById("cache") == nullptr);
         QCOMPARE(p.modList().count(), 1);
-        // …into shaderCache state.
+        // …into shaderCache state. No CS mod in the list -> key="default".
         QVERIFY(p.shaderCache().managed);
-        QCOMPARE(p.shaderCache().stagingFolder, QString("CSCacheFolder"));
+        QCOMPARE(p.shaderCache().folderFor("default"), QString("CSCacheFolder"));
         QVERIFY(QFile::exists(p.shaderCachePath()));
 
         // Persisted: a fresh reload still has the cache out of the list.
@@ -258,7 +258,69 @@ private slots:
         QVERIFY(p2.load());
         QVERIFY(p2.modList().findById("cache") == nullptr);
         QVERIFY(p2.shaderCache().managed);
-        QCOMPARE(p2.shaderCache().stagingFolder, QString("CSCacheFolder"));
+        QCOMPARE(p2.shaderCache().folderFor("default"), QString("CSCacheFolder"));
+    }
+
+    // Legacy shadercache.json {managed, stagingFolder} migrates to folders[csFileId].
+    void shaderCache_legacyJsonMigrates() {
+        QTemporaryDir profiles, staging;
+        AppConfig::instance().setStagingDir(staging.path());
+        const QString dir = profiles.path() + "/LegacyJson";
+        QVERIFY(QDir().mkpath(dir));
+
+        // Modlist with a CS entry carrying nexusFileId "f9"
+        const QByteArray modlist = R"([
+          {"type":"mod","id":"cs","name":"Community Shaders","enabled":true,
+           "nexusModId":"86492","nexusFileId":"f9","stagingFolder":"CS"}
+        ])";
+        QFile ml(dir + "/modlist.json");
+        QVERIFY(ml.open(QIODevice::WriteOnly));
+        ml.write(modlist); ml.close();
+
+        // Legacy shadercache.json (old schema)
+        const QByteArray legacy = R"({"managed":true,"stagingFolder":"X - Shader Cache"})";
+        QFile sc(dir + "/shadercache.json");
+        QVERIFY(sc.open(QIODevice::WriteOnly));
+        sc.write(legacy); sc.close();
+
+        Profile p("LegacyJson", profiles.path());
+        QVERIFY(p.load());
+        QVERIFY(p.shaderCache().managed);
+        QCOMPARE(p.shaderCache().folderFor("f9"), QString("X - Shader Cache"));
+
+        // Persist new schema and reload
+        QVERIFY(p.save());
+        Profile p2("LegacyJson", profiles.path());
+        QVERIFY(p2.load());
+        QVERIFY(p2.shaderCache().managed);
+        QCOMPARE(p2.shaderCache().folderFor("f9"), QString("X - Shader Cache"));
+
+        // Confirm saved file uses new schema (no "stagingFolder" key)
+        QFile saved(p2.shaderCachePath());
+        QVERIFY(saved.open(QIODevice::ReadOnly));
+        const auto obj = QJsonDocument::fromJson(saved.readAll()).object();
+        QVERIFY(!obj.contains("stagingFolder"));
+        QVERIFY(obj.contains("folders"));
+    }
+
+    // A map with multiple keys survives save + load (round-trip).
+    void shaderCache_mapRoundTrips() {
+        QTemporaryDir profiles, staging;
+        AppConfig::instance().setStagingDir(staging.path());
+        {
+            Profile p("MapRT", profiles.path());
+            p.shaderCache().managed = true;
+            p.shaderCache().folders.insert("k1", "folder-one");
+            p.shaderCache().folders.insert("k2", "folder-two");
+            QVERIFY(p.save());
+        }
+        Profile p2("MapRT", profiles.path());
+        QVERIFY(p2.load());
+        QVERIFY(p2.shaderCache().managed);
+        QVERIFY(p2.shaderCache().active());
+        QCOMPARE(p2.shaderCache().folderFor("k1"), QString("folder-one"));
+        QCOMPARE(p2.shaderCache().folderFor("k2"), QString("folder-two"));
+        QCOMPARE(p2.shaderCache().folders.size(), 2);
     }
 
     // Executables: round-trip + per-profile seeding

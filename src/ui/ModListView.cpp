@@ -1,5 +1,6 @@
 #include "ModListView.h"
 #include "ModListModel.h"
+#include "VersionDelegate.h"
 #include "SeparatorDialog.h"
 #include "install/DependencyChecker.h"
 #include "core/AppConfig.h"
@@ -127,6 +128,8 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     // enable/disable its buttons without reaching into the model.
     connect(m_model, &ModListModel::undoRedoStateChanged,
             this, &ModListView::undoRedoStateChanged);
+    // Re-expose the model's version-switch signal so MainWindow can rescan + redeploy.
+    connect(m_model, &ModListModel::variantSwitched, this, &ModListView::variantSwitched);
     // Model resets (rebuild()/setProfile()) clear first-column spans, so re-apply
     // them whenever the model is reset to keep separators full-width.
     connect(m_model, &QAbstractItemModel::modelReset, this, &ModListView::applyRowSpans);
@@ -145,6 +148,7 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     setEditTriggers(QAbstractItemView::SelectedClicked | QAbstractItemView::EditKeyPressed);
     setItemDelegateForColumn(ModListModel::ColName, new RenameDelegate(this));
     setItemDelegateForColumn(ModListModel::ColFlags, new FlagsDelegate(this));
+    setItemDelegateForColumn(ModListModel::ColVersion, new VersionDelegate(this));
     // The Name column STRETCHES to fill whatever space the other (Interactive)
     // columns leave, so the columns always span the full pane width exactly - no
     // gap on the right, no overflow - however the user resizes the other columns
@@ -398,6 +402,16 @@ void ModListView::mousePressEvent(QMouseEvent* event) {
                 return; // consume
             }
         }
+        // Single left-click on a multi-variant Version cell opens the version
+        // dropdown directly (default triggers would require a second click). Let the
+        // base handler run first so the row selects normally, then open the editor.
+        if (event->button() == Qt::LeftButton
+                && idx.column() == ModListModel::ColVersion
+                && idx.data(ModListModel::VariantListRole).toStringList().size() >= 2) {
+            QTreeView::mousePressEvent(event);
+            edit(idx);
+            return;
+        }
     }
     QTreeView::mousePressEvent(event);
 }
@@ -582,7 +596,10 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         if (entry->nexusModId == "86492"
             || entry->name.compare("Community Shaders", Qt::CaseInsensitive) == 0) {
             menu.addSeparator();
-            menu.addAction("Clear Shader Cache",
+            const QString clearLabel = entry->version.isEmpty()
+                ? QStringLiteral("Clear Shader Cache")
+                : QString("Clear Shader Cache (%1)").arg(entry->version);
+            menu.addAction(clearLabel,
                            [this, id = entry->id]{ emit clearShaderCacheRequested(id); });
         }
         menu.addSeparator();

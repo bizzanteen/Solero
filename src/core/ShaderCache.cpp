@@ -1,4 +1,6 @@
 #include "ShaderCache.h"
+#include "ModList.h"
+#include "VersionUtil.h"
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -148,6 +150,15 @@ int assertShaderCacheDeployed(const QString& gameDir, const QString& cacheStagin
         }
     }
     return placed;
+}
+
+QString activeCacheKey(const ModList& ml) {
+    const ModEntry* cs = ml.findCommunityShaders();
+    if (!cs) return QStringLiteral("default");
+    if (!cs->nexusFileId.isEmpty()) return cs->nexusFileId;
+    const QString nv = normalizeVersion(cs->version);
+    if (!nv.isEmpty()) return nv;
+    return QStringLiteral("default");
 }
 
 } // namespace solero

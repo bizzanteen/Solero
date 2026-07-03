@@ -519,6 +519,69 @@ private slots:
         QCOMPARE(model.rowCount(), 6);
     }
 
+    // --- Version variants (Keep Both) exposed on the ColVersion cell ----------
+    void variantRolesExposeVersions() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        ModEntry a; a.type = EntryType::Mod; a.id = "a"; a.name = "ModA";
+        a.version = "1.0"; a.stagingFolder = "MA (1.0)"; a.enabled = true;
+        prof.modList().append(a);
+        prof.modList().keepBothAddVariant("a", {"2.0", "f2", "MA (2.0)", "/dl/a2.zip", false});
+        ModEntry b; b.type = EntryType::Mod; b.id = "b"; b.name = "ModB";
+        b.version = "3.0"; b.enabled = true;
+        prof.modList().append(b);
+        ModListModel model;
+        model.setProfile(&prof);
+
+        const int rowA = model.rowForModId("a");
+        QVERIFY(rowA >= 0);
+        const QModelIndex vIdx = model.index(rowA, ModListModel::ColVersion);
+        QCOMPARE(model.data(vIdx, ModListModel::VariantListRole).toStringList(),
+                 QStringList({"1.0", "2.0"}));
+        QCOMPARE(model.data(vIdx, ModListModel::VariantIndexRole).toInt(), 1);
+
+        // Single-version mod -> empty variant list.
+        const QModelIndex bIdx = model.index(model.rowForModId("b"), ModListModel::ColVersion);
+        QVERIFY(model.data(bIdx, ModListModel::VariantListRole).toStringList().isEmpty());
+    }
+
+    void setVariantIndexSwitchesAndSignals() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        ModEntry a; a.type = EntryType::Mod; a.id = "a"; a.name = "ModA";
+        a.version = "1.0"; a.stagingFolder = "MA (1.0)"; a.enabled = true;
+        prof.modList().append(a);
+        prof.modList().keepBothAddVariant("a", {"2.0", "f2", "MA (2.0)", "/dl/a2.zip", false});
+        ModListModel model;
+        model.setProfile(&prof);
+        const QModelIndex vIdx = model.index(model.rowForModId("a"), ModListModel::ColVersion);
+
+        // keepBoth left variant 1 ("2.0") active; switch back to 0 ("1.0").
+        QSignalSpy spy(&model, &ModListModel::variantSwitched);
+        QVERIFY(model.setData(vIdx, 0, ModListModel::VariantIndexRole));
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.takeFirst().at(0).toString(), QString("a"));
+        QCOMPARE(prof.modList().findById("a")->version, QString("1.0"));
+    }
+
+    void setVariantIndexSameIndexIsNoOp() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        ModEntry a; a.type = EntryType::Mod; a.id = "a"; a.name = "ModA";
+        a.version = "1.0"; a.stagingFolder = "MA (1.0)"; a.enabled = true;
+        prof.modList().append(a);
+        prof.modList().keepBothAddVariant("a", {"2.0", "f2", "MA (2.0)", "/dl/a2.zip", false});
+        ModListModel model;
+        model.setProfile(&prof);
+        const QModelIndex vIdx = model.index(model.rowForModId("a"), ModListModel::ColVersion);
+
+        // keepBoth left variant 1 active - re-picking it must not redeploy.
+        QSignalSpy spy(&model, &ModListModel::variantSwitched);
+        QVERIFY(model.setData(vIdx, 1, ModListModel::VariantIndexRole));
+        QCOMPARE(spy.count(), 0);
+        QCOMPARE(prof.modList().findById("a")->activeVariant, 1);
+    }
+
 };
 QTEST_MAIN(TestModListModel)
 #include "test_ModListModel.moc"

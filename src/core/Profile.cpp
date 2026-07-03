@@ -1,4 +1,5 @@
 #include "Profile.h"
+#include "ShaderCache.h"
 #include "FileUtil.h"
 #include "StagingFolder.h"
 #include "AppConfig.h"
@@ -43,9 +44,12 @@ bool Profile::saveShaderCache() const {
         QFile::remove(shaderCachePath());
         return true;
     }
+    QJsonObject foldersObj;
+    for (auto it = m_shaderCache.folders.cbegin(); it != m_shaderCache.folders.cend(); ++it)
+        foldersObj.insert(it.key(), it.value());
     QJsonObject root;
-    root["managed"]       = m_shaderCache.managed;
-    root["stagingFolder"] = m_shaderCache.stagingFolder;
+    root["managed"] = m_shaderCache.managed;
+    root["folders"] = foldersObj;
     return atomicWrite(shaderCachePath(), QJsonDocument(root).toJson(QJsonDocument::Indented));
 }
 
@@ -54,8 +58,19 @@ bool Profile::loadShaderCache() {
     QFile f(shaderCachePath());
     if (!f.open(QIODevice::ReadOnly)) return false; // missing == not managed
     const auto root = QJsonDocument::fromJson(f.readAll()).object();
-    m_shaderCache.managed       = root["managed"].toBool(false);
-    m_shaderCache.stagingFolder = root["stagingFolder"].toString();
+    m_shaderCache.managed = root["managed"].toBool(false);
+    if (root.contains("folders")) {
+        // New schema: {"managed": bool, "folders": {key: folder, ...}}
+        const auto fobj = root["folders"].toObject();
+        for (auto it = fobj.constBegin(); it != fobj.constEnd(); ++it)
+            m_shaderCache.folders.insert(it.key(), it.value().toString());
+    } else {
+        // Legacy schema migration: {"managed": bool, "stagingFolder": str}
+        // m_modList must already be loaded before this is called (see Profile::load).
+        const QString sf = root["stagingFolder"].toString();
+        if (!sf.isEmpty())
+            m_shaderCache.folders.insert(activeCacheKey(m_modList), sf);
+    }
     return true;
 }
 
@@ -67,8 +82,10 @@ bool Profile::migrateManagedCacheEntry() {
     for (int i = 0; i < entries.size(); ++i) {
         if (entries[i].type != EntryType::Mod || !entries[i].isManagedCache) continue;
         if (!m_shaderCache.active()) { // don't clobber state already in shadercache.json
-            m_shaderCache.managed       = entries[i].enabled;
-            m_shaderCache.stagingFolder = entries[i].stagingFolder;
+            m_shaderCache.managed = entries[i].enabled;
+            const QString key = activeCacheKey(m_modList);
+            if (!entries[i].stagingFolder.isEmpty())
+                m_shaderCache.folders.insert(key, entries[i].stagingFolder);
         }
         m_modList.remove(entries[i].id);
         return true;

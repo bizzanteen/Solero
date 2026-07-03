@@ -106,6 +106,9 @@ private:
     void onDataRename(const QString& modId, const QString& relPath,
                       const QString& newName, bool isFolder);
     void onDataDelete(const QString& modId, const QString& relPath, bool isFolder);
+    // A mod's active version variant was switched from the Version dropdown: rescan
+    // its plugins and auto-redeploy (or mark dirty if not currently deployed).
+    void onVariantSwitched(const QString& modId);
     void updatePluginNotice();   // show/hide the Plugins-tab staleness notice
     void updateSortButton();     // enable "Sort Now" only when deployed && load order dirty
     void onLoadOrderChanged();   // user manually reordered a plugin -> mark order dirty

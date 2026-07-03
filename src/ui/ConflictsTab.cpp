@@ -20,7 +20,7 @@ ConflictsTab::ConflictsTab(QWidget* parent) : QWidget(parent) {
     layout->setSpacing(2);
 
     m_filter = new QLineEdit(this);
-    m_filter->setPlaceholderText("Filter conflicts\xe2\x80\xa6");
+    m_filter->setPlaceholderText(QStringLiteral("Search conflicts") + QChar(0x2026));
     m_filter->setClearButtonEnabled(true);
     connect(m_filter, &QLineEdit::textChanged, this, [this](const QString& t){
         m_filterText = t.trimmed();

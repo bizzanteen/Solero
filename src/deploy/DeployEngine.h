@@ -50,12 +50,15 @@ private:
     QHash<QString, QString>       m_fileOverrides;  // relPath -> forced winner modId
 
     // Re-link forced per-path winners after the normal mod loop. See deploy().
-    void applyWinnerOverrides(Profile& profile,
-                              const QString& gameDir,
-                              const Linker& linker,
-                              DeployRecord& record,
-                              ConflictIndex& conflicts,
-                              QHash<QString, QString>& ciOwners);
+    // Returns the number of forced winners that FAILED to link (a mod present and
+    // enabled that staged the path but couldn't be deployed) - these are added to
+    // the deploy failure count so a silently-wrong conflict winner is reported.
+    int applyWinnerOverrides(Profile& profile,
+                             const QString& gameDir,
+                             const Linker& linker,
+                             DeployRecord& record,
+                             ConflictIndex& conflicts,
+                             QHash<QString, QString>& ciOwners);
 
     // Deploys one mod's files. Returns the number of files that FAILED to link.
     // record/conflicts are only updated for files that actually deployed.

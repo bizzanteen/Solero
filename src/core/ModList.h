@@ -60,6 +60,13 @@ public:
     // have displaced a child, and on load.
     void normalizeGroups();
 
+    // Version variants (Keep Both). See Types.h ModVariant for the mirror invariant.
+    bool keepBothAddVariant(const QString& id, const ModVariant& v);
+    bool setActiveVariant(const QString& id, int index);
+    bool replaceActiveVersion(const QString& id, const ModVariant& v,
+                              QString* retiredFolder = nullptr);
+    void normalizeVariants();
+
     int count() const { return m_entries.size(); }
     const ModEntry& at(int index) const { return m_entries.at(index); }
     // Direct access to the backing list (e.g. for staging-folder migration).

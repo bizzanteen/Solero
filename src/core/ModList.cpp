@@ -284,6 +284,61 @@ const ModEntry* ModList::findCommunityShaders() const {
     return nullptr;
 }
 
+static void syncVariantMirrors(ModEntry& e) {
+    if (e.activeVariant < 0 || e.activeVariant >= e.variants.size()) return;
+    const ModVariant& v = e.variants[e.activeVariant];
+    e.version = v.version;             e.nexusFileId = v.nexusFileId;
+    e.stagingFolder = v.stagingFolder; e.sourceArchive = v.sourceArchive;
+    e.hasFomodChoices = v.hasFomodChoices;
+}
+
+bool ModList::keepBothAddVariant(const QString& id, const ModVariant& v) {
+    ModEntry* e = findById(id);
+    if (!e || e->type != EntryType::Mod || v.stagingFolder.isEmpty()) return false;
+    if (e->variants.isEmpty()) {
+        // Snapshot the current single install as variant 0.
+        e->variants.append({e->version, e->nexusFileId, e->stagingFolder,
+                            e->sourceArchive, e->hasFomodChoices});
+    }
+    e->variants.append(v);
+    e->activeVariant = e->variants.size() - 1;
+    syncVariantMirrors(*e);
+    return true;
+}
+
+bool ModList::setActiveVariant(const QString& id, int index) {
+    ModEntry* e = findById(id);
+    if (!e || index < 0 || index >= e->variants.size()) return false;
+    e->activeVariant = index;
+    syncVariantMirrors(*e);
+    return true;
+}
+
+bool ModList::replaceActiveVersion(const QString& id, const ModVariant& v,
+                                   QString* retiredFolder) {
+    ModEntry* e = findById(id);
+    if (!e || e->type != EntryType::Mod) return false;
+    const QString old = e->stagingFolder;
+    if (e->variants.isEmpty()) {
+        e->version = v.version; e->nexusFileId = v.nexusFileId;
+        e->stagingFolder = v.stagingFolder; e->sourceArchive = v.sourceArchive;
+        e->hasFomodChoices = v.hasFomodChoices;
+    } else {
+        e->variants[e->activeVariant] = v;
+        syncVariantMirrors(*e);
+    }
+    if (retiredFolder) *retiredFolder = (old == v.stagingFolder) ? QString() : old;
+    return true;
+}
+
+void ModList::normalizeVariants() {
+    for (auto& e : m_entries) {
+        if (e.variants.isEmpty()) { e.activeVariant = -1; continue; }
+        e.activeVariant = qBound(0, e.activeVariant, int(e.variants.size()) - 1);
+        syncVariantMirrors(e);
+    }
+}
+
 static QJsonObject entryToJson(const ModEntry& e) {
     QJsonObject o;
     o["type"]            = (e.type == EntryType::Mod) ? "mod" : "separator";
@@ -310,6 +365,20 @@ static QJsonObject entryToJson(const ModEntry& e) {
     QJsonArray tags;
     for (const auto& t : e.tags) tags.append(t);
     o["tags"] = tags;
+    if (!e.variants.isEmpty()) {
+        QJsonArray varArr;
+        for (const auto& v : e.variants) {
+            QJsonObject vo;
+            vo["version"]        = v.version;
+            vo["nexusFileId"]    = v.nexusFileId;
+            vo["stagingFolder"]  = v.stagingFolder;
+            vo["sourceArchive"]  = v.sourceArchive;
+            vo["hasFomodChoices"] = v.hasFomodChoices;
+            varArr.append(vo);
+        }
+        o["variants"]     = varArr;
+        o["activeVariant"] = e.activeVariant;
+    }
     return o;
 }
 
@@ -336,6 +405,18 @@ static ModEntry entryFromJson(const QJsonObject& o) {
     e.stagingFolder   = o["stagingFolder"].toString(); // absent in older files -> empty (backfilled by migration)
     e.note            = o["note"].toString(); // absent in older files -> empty
     for (const auto& t : o["tags"].toArray()) e.tags.append(t.toString());
+    if (o.contains("variants")) {
+        for (const auto& val : o["variants"].toArray()) {
+            const QJsonObject vo = val.toObject();
+            e.variants.append({vo["version"].toString(),
+                               vo["nexusFileId"].toString(),
+                               vo["stagingFolder"].toString(),
+                               vo["sourceArchive"].toString(),
+                               vo["hasFomodChoices"].toBool(false)});
+        }
+        e.activeVariant = o["activeVariant"].toInt(-1);
+    }
+    // absent "variants" key -> e.variants stays empty, e.activeVariant stays -1
     return e;
 }
 
@@ -359,7 +440,8 @@ ModList ModList::loadFromFile(const QString& path) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return {};
     ModList list = fromJson(QJsonDocument::fromJson(f.readAll()));
-    list.normalizeGroups(); // heal any persisted group-invariant corruption on load
+    list.normalizeGroups();    // heal any persisted group-invariant corruption on load
+    list.normalizeVariants();  // clamp activeVariant into range after load
     return list;
 }
 

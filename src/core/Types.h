@@ -6,6 +6,18 @@
 
 namespace solero {
 
+// Mod version variant (Keep Both)
+// One installed version of a Nexus mod (Keep Both). The owning ModEntry's
+// version/nexusFileId/stagingFolder/sourceArchive/hasFomodChoices fields always
+// mirror variants[activeVariant]; ModList::setActiveVariant is the only writer.
+struct ModVariant {
+    QString version;
+    QString nexusFileId;
+    QString stagingFolder;
+    QString sourceArchive;
+    bool    hasFomodChoices = false;
+};
+
 // Mod list entry
 
 enum class EntryType { Mod, Separator };
@@ -46,6 +58,8 @@ struct ModEntry {
     QStringList tags;
     QString sourceArchive; // archive path this mod was installed from (for Reinstall)
     QString note;          // free-form user note (shown/edited in the Mod Info panel)
+    QList<ModVariant> variants; // empty for single-version mods
+    int activeVariant = -1;     // index into variants; -1 iff variants is empty
 
     // Separator fields
     QString color;       // hex e.g. "#c0392b"

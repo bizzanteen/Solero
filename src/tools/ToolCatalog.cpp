@@ -68,7 +68,7 @@ const QList<ToolPreset>& ToolCatalog::presets() {
         }
 
         {
-            ToolPreset t = nexus("eslifier", "ESLifier", "MaskPlague", "119846",
+            ToolPreset t = nexus("eslifier", "ESLifier", "MaskPlague", "145168",
                                  "ESLifier.exe", "");
             t.description = "Compact and ESL-flag plugins to save load-order slots.";
             t.docsUrl = "https://github.com/MaskPlague/ESLifier";

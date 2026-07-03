@@ -124,7 +124,13 @@ public:
     void clearUndoRedo();
 
 signals:
+    // Membership/enabled-set changed (install, delete, checkbox toggle, group/
+    // ungroup): downstream must do the full refresh (plugin rescan + dep health).
     void modsChanged();
+    // Order-only change (drag reorder, send-to-group, reorder undo/redo). A pure
+    // reorder can't change plugin membership or dependency health, so downstream
+    // takes the light path (mark deploy dirty + repaint) and skips the rescans.
+    void modsReordered();
     // Emitted after setData switches a mod's active version variant (VariantIndexRole);
     // MainWindow rescans the mod's plugins and auto-redeploys.
     void variantSwitched(const QString& modId);

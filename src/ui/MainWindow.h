@@ -226,6 +226,10 @@ private:
     void downloadRequirement(const QString& reqModId, const QString& reqName,
                              const QString& dependentModId, const QString& game);
     void onModsChanged();
+    // Light handler for order-only mod-list changes: a reorder can't alter plugin
+    // membership or dependency health, so it only marks the deploy dirty and skips
+    // the plugin rescan + dependency-health walk that onModsChanged does.
+    void onModsReordered();
     void onZoomIn();
     void onZoomOut();
     void onZoomReset();

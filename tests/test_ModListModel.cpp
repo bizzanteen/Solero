@@ -61,6 +61,37 @@ private slots:
         QCOMPARE(order(prof), QString("m1,m2,m0,m3"));
     }
 
+    void reorder_emitsModsReordered_notModsChanged() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        addMods(prof, 4);
+        ModListModel model;
+        model.setProfile(&prof);
+        QSignalSpy reordered(&model, &ModListModel::modsReordered);
+        QSignalSpy changed(&model, &ModListModel::modsChanged);
+        // A pure drag reorder takes the light "order-only" signal, not modsChanged.
+        QScopedPointer<QMimeData> mime(modMime(0));
+        model.dropMimeData(mime.data(), Qt::MoveAction, 2, 0, {});
+        QCOMPARE(reordered.count(), 1);
+        QCOMPARE(changed.count(), 0);
+    }
+
+    void checkboxToggle_emitsModsChanged_notModsReordered() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        addMods(prof, 3);
+        ModListModel model;
+        model.setProfile(&prof);
+        QSignalSpy reordered(&model, &ModListModel::modsReordered);
+        QSignalSpy changed(&model, &ModListModel::modsChanged);
+        // Toggling a mod's enabled checkbox changes plugin membership, so it must
+        // fire the full-refresh modsChanged (never the order-only signal).
+        model.setData(model.index(0, ModListModel::ColEnabled),
+                      Qt::Unchecked, Qt::CheckStateRole);
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(reordered.count(), 0);
+    }
+
     void dropMimeData_moveUp() {
         QTemporaryDir tmp;
         Profile prof("P", tmp.path());

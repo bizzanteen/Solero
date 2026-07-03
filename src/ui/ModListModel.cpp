@@ -733,10 +733,10 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
         pushUndoSnapshot();
         beginResetModel();
         list.moveSection(srcRaw, blockLen, destRaw);
-        m_profile->save();
+        m_profile->saveModListOnly();
         rebuildVisibleRows();
         endResetModel();
-        emit modsChanged();
+        emit modsReordered();
         return true;
     }
 
@@ -762,10 +762,10 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
         if (destRaw != srcRaw) pushUndoSnapshot();
         beginResetModel();
         list.moveSection(srcRaw, blockLen, destRaw);
-        m_profile->save();
+        m_profile->saveModListOnly();
         rebuildVisibleRows();
         endResetModel();
-        emit modsChanged();
+        emit modsReordered();
         return true;
     }
 
@@ -802,10 +802,10 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
         pushUndoSnapshot();
         beginResetModel();
         list.move(srcRaw, moveTo);
-        m_profile->save();
+        m_profile->saveModListOnly();
         rebuildVisibleRows();
         endResetModel();
-        emit modsChanged();
+        emit modsReordered();
         return true;
     }
 
@@ -818,18 +818,18 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
         beginResetModel();
         list.move(srcRaw, moveTo);
         list.normalizeGroups();   // snap the child back into its parent's run
-        m_profile->save();
+        m_profile->saveModListOnly();
         rebuildVisibleRows();
         endResetModel();
-        emit modsChanged();
+        emit modsReordered();
         return true;
     }
     beginMoveRows({}, src, src, {}, dst > src ? dst + 1 : dst);
     list.move(srcRaw, moveTo);
-    m_profile->save();
+    m_profile->saveModListOnly();
     rebuildVisibleRows();
     endMoveRows();
-    emit modsChanged();
+    emit modsReordered();
     return true;
 }
 
@@ -951,12 +951,12 @@ bool ModListModel::moveSelection(const QList<int>& srcVisibleRows, int dstVisibl
         m_undoStack.append(beforeOrder);
         if (m_undoStack.size() > kUndoCap) m_undoStack.removeFirst();
         m_redoStack.clear();
-        m_profile->save();
+        m_profile->saveModListOnly();
     }
     rebuildVisibleRows();
     endResetModel();
     if (ok) {
-        emit modsChanged();
+        emit modsReordered();
         emit undoRedoStateChanged(canUndo(), canRedo());
     }
     return ok;
@@ -1004,12 +1004,12 @@ bool ModListModel::moveModsToSeparatorEnd(const QStringList& modIds, const QStri
         m_undoStack.append(before);
         if (m_undoStack.size() > kUndoCap) m_undoStack.removeFirst();
         m_redoStack.clear();
-        m_profile->save();
+        m_profile->saveModListOnly();
     }
     rebuildVisibleRows();
     endResetModel();
     if (ok) {
-        emit modsChanged();
+        emit modsReordered();
         emit undoRedoStateChanged(canUndo(), canRedo());
     }
     return ok;
@@ -1029,10 +1029,10 @@ bool ModListModel::applyOrder(const QStringList& ids) {
     if (!m_profile) return false;
     beginResetModel();
     bool ok = m_profile->modList().setOrder(ids);
-    if (ok) m_profile->save();
+    if (ok) m_profile->saveModListOnly();
     rebuildVisibleRows();
     endResetModel();
-    if (ok) emit modsChanged();
+    if (ok) emit modsReordered();
     return ok;
 }
 

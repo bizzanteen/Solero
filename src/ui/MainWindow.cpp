@@ -751,6 +751,8 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onUpdateMod);
     connect(m_modListView, &solero::ModListView::modsChanged,
             this, &MainWindow::onModsChanged);
+    connect(m_modListView, &solero::ModListView::modsReordered,
+            this, &MainWindow::onModsReordered);
     connect(m_modListView, &solero::ModListView::modActivated,
             m_rightPane, &solero::RightPane::showDataFor);
     connect(m_modListView, &solero::ModListView::variantSwitched,
@@ -1584,6 +1586,13 @@ void MainWindow::onModsChanged() {
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     updatePluginNotice();
     refreshHealthIndicator();
+}
+
+void MainWindow::onModsReordered() {
+    // Order-only change: plugin membership and dependency health are unchanged, so
+    // skip the full-staging plugin rescan (refreshPlugins) and dependency-health
+    // walk (refreshHealthIndicator). Deploy order DID change, so still mark dirty.
+    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
 }
 
 // Defined later in this file; used by installFromArchive to pick a unique

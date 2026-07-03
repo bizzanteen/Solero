@@ -65,6 +65,9 @@ signals:
     void viewNexusPageRequested(const QString& modId);
     void updateRequested(const QString& modId);
     void modsChanged();
+    // Re-emitted from the model for order-only changes; wired to a lighter handler
+    // that skips the plugin rescan + dependency-health walk (see MainWindow).
+    void modsReordered();
     void modActivated(const QString& modId);
     // Right-click the Overwrite row -> "Create Mod from Overwrite…": promote the
     // captured overwrite files into a new, named, sortable mod (MO2 parity).

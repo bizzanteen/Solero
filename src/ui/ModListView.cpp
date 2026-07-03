@@ -124,6 +124,7 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     m_model = new ModListModel(this);
     setModel(m_model);
     connect(m_model, &ModListModel::modsChanged, this, &ModListView::modsChanged);
+    connect(m_model, &ModListModel::modsReordered, this, &ModListView::modsReordered);
     // Re-expose the model's reorder undo/redo state so the LeftPane toolbar can
     // enable/disable its buttons without reaching into the model.
     connect(m_model, &ModListModel::undoRedoStateChanged,
@@ -583,7 +584,7 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
                         m_model->moveModsToSeparatorEnd(sels, sepId);
                         applyFilter();
                         selectModsByIds(sels);
-                        emit modsChanged();
+                        emit modsReordered(); // order-only: take the light refresh path
                     });
                 }
                 sendMenu->setEnabled(any);

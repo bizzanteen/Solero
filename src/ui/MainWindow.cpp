@@ -101,6 +101,25 @@ namespace {
 using solero::isVersionNewer;   // robust version compare (handles MO2 ".0SE"/".0c" tails)
 using solero::normalizeVersion;
 
+// Returns true when a string looks suitable for direct display to the user:
+// not a raw file path, not a Qt/process debug string.
+static bool looksHumanReadable(const QString& s) {
+    return !s.isEmpty()
+        && !s.startsWith(QLatin1Char('/'))
+        && !s.contains(QLatin1String("exit code"), Qt::CaseInsensitive)
+        && !s.contains(QLatin1String("errno"), Qt::CaseInsensitive);
+}
+
+// Strips a leading file-path prefix from LOOT exception strings, e.g.
+// "/path/to/Plugin.esm: Cyclic interaction ..." -> "Cyclic interaction ..."
+static QString stripLootPathPrefix(const QString& msg) {
+    if (msg.startsWith(QLatin1Char('/'))) {
+        const int colon = msg.indexOf(QLatin1String(": "));
+        if (colon > 0) return msg.mid(colon + 2);
+    }
+    return msg;
+}
+
 // Nexus archive names look like "<name>-<modId>-<version-parts>-<timestamp>"
 // (e.g. "SkyUI_5_2_SE-12604-5-2-SE-1462810437"). When we know the exact modId
 // from the Nexus sidecar, strip everything from that "-<modId>" boundary on so
@@ -1046,7 +1065,7 @@ bool MainWindow::ensureDeployed(const QString& reason) {
     if (solero::AppConfig::instance().autoDeployBeforeLaunch()) {
         if (!deployCurrent()) {
             QMessageBox::critical(this, "Deploy Failed",
-                "Could not deploy - see status bar.");
+                "Deployment failed - see the status bar below for details. Fix the reported issue, then click Deploy again.");
             return false;
         }
         return true;
@@ -1091,9 +1110,9 @@ bool MainWindow::deployCurrent() {
         solero::AppConfig::instance().localAppDataDir().isEmpty()) {
         m_warnedMissingAppData = true;
         QMessageBox::warning(this, "Skyrim AppData Not Found",
-            "Couldn't locate Skyrim's AppData/Documents (Proton prefix) - "
-            "Plugins.txt/INIs may not reach the game. "
-            "Check the game path in Settings.");
+            "Couldn't find Skyrim's save-data folder. Plugins.txt may not reach the game, "
+            "so plugins may silently not load. Check the game path in Settings and make sure "
+            "you've launched Skyrim at least once through Steam.");
     }
 
     statusBar()->showMessage("Deploying...");
@@ -1214,8 +1233,9 @@ void MainWindow::runPostDeployTools() {
 
     if (!failed.isEmpty())
         QMessageBox::warning(this, "Post-Deploy Tools",
-            "These tools flagged \"Run on deployment\" failed to launch:\n\n"
-            + failed.join("\n"));
+            "These tools are set to run automatically after deployment, but failed to launch:\n\n"
+            + failed.join("\n")
+            + "\n\nCheck each tool's binary path in the Tools panel.");
     else
         statusBar()->showMessage("Post-deploy tools finished.");
 }
@@ -1364,7 +1384,7 @@ void MainWindow::onDataRename(const QString& modId, const QString& relPath,
     const bool ok = isFolder ? QDir().rename(src, dst) : QFile::rename(src, dst);
     if (!ok) {
         QMessageBox::warning(this, "Rename Failed",
-                             QString("Could not rename '%1'.").arg(relPath));
+                             QString("Could not rename '%1'. The file may be in use or the staging folder may not be writable.").arg(relPath));
         return;
     }
     // Staged files for this mod changed - drop its cached scans and mark dirty.
@@ -1401,7 +1421,7 @@ void MainWindow::onDataDelete(const QString& modId, const QString& relPath,
                              : QFile::remove(path);
     if (!ok) {
         QMessageBox::warning(this, "Delete Failed",
-                             QString("Could not delete '%1'.").arg(relPath));
+                             QString("Could not delete '%1'. The file may be in use or the staging folder may not be writable.").arg(relPath));
         return;
     }
     m_modListView->invalidateModCache(modId);
@@ -1482,7 +1502,10 @@ void MainWindow::onSortRequested() {
 
     if (!res.success) {
         QMessageBox::warning(this, "LOOT Sort Failed",
-            res.errorMessage.isEmpty() ? "Unknown LOOT error." : res.errorMessage);
+            res.errorMessage.isEmpty()
+                ? "LOOT could not sort plugins. Make sure the game is deployed first "
+                  "(plugins need to be in Data/), then try Sort again."
+                : "LOOT sort failed: " + stripLootPathPrefix(res.errorMessage));
         return;
     }
 
@@ -2715,7 +2738,7 @@ void MainWindow::onEndorseMod(const QString& modId) {
             "Thanks - endorsed " + mod->name + "!");
     else
         QMessageBox::warning(this, "Endorse on Nexus",
-            res.message.isEmpty() ? QString("Could not endorse this mod.") : res.message);
+            res.message.isEmpty() ? QString("The endorsement could not be submitted - Nexus did not return a result. Try again from the mod page.") : res.message);
 }
 
 void MainWindow::onViewNexusPage(const QString& modId) {
@@ -3261,7 +3284,7 @@ bool MainWindow::ensureNexusIds(solero::ModEntry* mod) {
         QFile f(mod->sourceArchive);
         if (!f.open(QIODevice::ReadOnly)) {
             QMessageBox::warning(this, "Redownload from Nexus",
-                "Could not open the source archive for hashing.");
+                "Could not read the source archive for this mod. The file may have been moved or deleted from the downloads folder.");
             return false;
         }
         QCryptographicHash hash(QCryptographicHash::Md5);
@@ -3314,7 +3337,7 @@ void MainWindow::onNewProfile() {
     if (!ok || name.trimmed().isEmpty()) return;
     name = name.trimmed();
     if (!m_profileMgr->createProfile(name)) {
-        QMessageBox::warning(this, "Error", QString("Profile '%1' already exists.").arg(name));
+        QMessageBox::warning(this, "New Profile", QString("A profile named '%1' already exists. Choose a different name.").arg(name));
         return;
     }
     // refreshProfileCombo blocks combo signals while it repopulates, so merely
@@ -3328,7 +3351,7 @@ void MainWindow::onDeleteProfile() {
     QString current = m_profileCombo->currentText();
     if (current.isEmpty()) return;
     if (m_profileMgr->profileNames().count() <= 1) {
-        QMessageBox::warning(this, "Error", "Cannot delete the last profile.");
+        QMessageBox::warning(this, "Delete Profile", "You can't delete the only profile. Create another profile first.");
         return;
     }
     auto ret = QMessageBox::question(this, "Delete Profile",
@@ -3351,7 +3374,7 @@ void MainWindow::onRenameProfile() {
     if (name.isEmpty() || name == current) return;
 
     if (!m_profileMgr->renameProfile(current, name)) {
-        QMessageBox::warning(this, "Error",
+        QMessageBox::warning(this, "Rename Profile",
             QString("Couldn't rename to '%1'. The name may be invalid or already in use.").arg(name));
         return;
     }
@@ -3611,7 +3634,7 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
         if (!redeployForTool("Preparing " + exe.name, "Temporarily removing the output mod\xe2\x80\xa6")) {
             tp->modList().setEnabled(resolvedOutputModId, true);   // restore in memory
             hideRunLock(); m_toolRunning = false;
-            QMessageBox::warning(this, exe.name, "Could not redeploy without the output mod.");
+            QMessageBox::warning(this, exe.name, "Could not temporarily remove the output mod for this run. Make sure the output mod is configured in the tool's settings, then try again.");
             return;
         }
         toggledOutput = true;
@@ -3646,7 +3669,7 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
             hideRunLock();
             m_toolRunning = false;
             QMessageBox::warning(this, "Radium Textures",
-                err.isEmpty() ? "Could not prepare Radium's configuration." : err);
+                err.isEmpty() ? "Could not write Radium's configuration files. Make sure the staging folder is writable." : err);
             return;
         }
     }
@@ -3687,7 +3710,7 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
             restoreOutput();
             hideRunLock(); m_toolRunning = false;
             QMessageBox::warning(this, "PGPatcher",
-                err.isEmpty() ? "Could not prepare PGPatcher's fake-MO2 instance." : err);
+                err.isEmpty() ? "Could not prepare PGPatcher's working files. Make sure the tool's install folder is writable." : err);
             return;
         }
 
@@ -3728,7 +3751,9 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     restoreOutput();
 
     if (!res.launched) {
-        QMessageBox::warning(this, "Tool", res.error.isEmpty() ? ("Failed to launch " + exe.name) : res.error);
+        QMessageBox::warning(this, "Tool",
+            looksHumanReadable(res.error) ? res.error
+                : (exe.name + " could not be launched. Make sure the binary path is correct in the tool's settings (right-click → Edit)."));
     } else if (!res.output.isEmpty()) {
         // Surface tool output (helps diagnose e.g. wine 'Not implemented').
         statusBar()->showMessage(exe.name + " finished.");
@@ -4342,7 +4367,8 @@ void MainWindow::onPlay() {
     }
     if (!res.launched) {
         QMessageBox::warning(this, "Play",
-            res.error.isEmpty() ? "Failed to launch the game." : res.error);
+            looksHumanReadable(res.error) ? res.error
+                : "The game failed to start. Make sure Steam is running, SKSE is installed and deployed, and the game path is correct in Settings.");
     } else if (ranMs < 8000) {
         // The game exited almost immediately - almost always a launch problem.
         QMessageBox::warning(this, "Play",

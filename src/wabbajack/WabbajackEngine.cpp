@@ -64,14 +64,14 @@ QList<WabbajackModlist> WabbajackEngine::parseModlistsJson(const QByteArray& std
     QList<WabbajackModlist> out;
     int brace = stdoutBytes.indexOf('{');
     if (brace < 0) {
-        if (error) *error = QStringLiteral("No JSON object found in engine output");
+        if (error) *error = QStringLiteral("Could not read the modlist catalogue - the engine returned an unexpected response. Try refreshing.");
         return out;
     }
     QByteArray json = stdoutBytes.mid(brace);
     QJsonParseError pe;
     QJsonDocument doc = QJsonDocument::fromJson(json, &pe);
     if (pe.error != QJsonParseError::NoError || !doc.isObject()) {
-        if (error) *error = QStringLiteral("JSON parse error: ") + pe.errorString();
+        if (error) *error = QStringLiteral("The modlist catalogue could not be parsed - try refreshing. If the problem persists, re-install jackify-engine.");
         return out;
     }
     const QJsonArray arr = doc.object().value("modlists").toArray();
@@ -437,7 +437,7 @@ void WabbajackEngine::fetchModlists() {
         if (status == QProcess::CrashExit) {
             emit failed(QStringLiteral("Engine crashed while listing modlists"));
         } else if (exitCode != 0) {
-            emit failed(QStringLiteral("Engine exited with code %1").arg(exitCode));
+            emit failed(QStringLiteral("The Wabbajack engine exited unexpectedly. The log above may show the cause."));
         } else {
             QString err;
             QList<WabbajackModlist> lists =
@@ -450,7 +450,7 @@ void WabbajackEngine::fetchModlists() {
     });
     connect(proc, &QProcess::errorOccurred, this,
             [this, proc](QProcess::ProcessError) {
-        emit failed(QStringLiteral("Failed to start engine: ") + proc->errorString());
+        emit failed(QStringLiteral("jackify-engine could not be started. Make sure the path is correct in Settings - it may need to be re-installed."));
         if (m_proc == proc) m_proc = nullptr;
         proc->deleteLater();
     });
@@ -546,7 +546,7 @@ void WabbajackEngine::install(const QString& machineUrlOrFile, bool isLocalFile,
     });
     connect(proc, &QProcess::errorOccurred, this,
             [this, proc](QProcess::ProcessError) {
-        emit logLine(QStringLiteral("Failed to start engine: ") + proc->errorString());
+        emit logLine(QStringLiteral("jackify-engine could not be started. Make sure the path is correct in Settings - it may need to be re-installed."));
         emit installFinished(false, -1);
         emit installFailed(-1, QList<FailedArchive>());
         if (m_proc == proc) m_proc = nullptr;

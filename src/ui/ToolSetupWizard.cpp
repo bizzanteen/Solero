@@ -205,7 +205,7 @@ static void endorsePreset(const ToolPreset* p, QWidget* parent) {
             "Thanks - endorsed " + p->name + "!");
     else
         QMessageBox::warning(parent, "Endorse",
-            res.message.isEmpty() ? QString("Could not endorse this tool.") : res.message);
+            res.message.isEmpty() ? QString("The endorsement could not be submitted. Try again from the mod page on Nexus.") : res.message);
 }
 
 ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store,
@@ -382,7 +382,7 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store,
             if (!depRes.ok) {
                 prog.close();
                 QMessageBox::warning(this, "Set Up Tool",
-                    "Dependency '" + dep->name + "' failed: " + depRes.error);
+                    "'" + dep->name + "' could not be downloaded. " + depRes.error);
                 return;
             }
             // Register the dependency too (so it appears as a tool / isn't re-fetched).
@@ -406,7 +406,8 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store,
         auto res = ToolDownloader::fetch(*p, downloadsDir, toolsRoot, cb);
         if (!res.ok) {
             prog.close();
-            QMessageBox::warning(this, "Set Up Tool", res.error);
+            QMessageBox::warning(this, "Set Up Tool",
+                res.error.startsWith("curl") ? "Download failed - check your internet connection and Nexus account." : res.error);
             return;
         }
 
@@ -461,11 +462,11 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store,
                 else if (!runtimeOk)      which = "the .NET runtime";
                 else                       which = "the .NET SDK";
                 QMessageBox::warning(this, "Set Up Tool",
-                    "The tool is set up, but installing " + which + " failed. "
-                    "Synthesis may not launch or build patchers until both the "
-                    ".NET runtime and SDK are installed in the prefix. Install the "
-                    "runtime with `protontricks 489830 dotnetdesktop8`, and the SDK "
-                    "by running the dotnet-sdk win-x64 installer through the prefix.");
+                    "Synthesis was installed, but " + which + " could not be set up automatically. "
+                    "To fix this, open a terminal and run:\n\n"
+                    "protontricks 489830 dotnetdesktop8\n\n"
+                    "Then download the .NET SDK (win-x64) from microsoft.com and install it via the same Proton bottle. "
+                    "Synthesis may not build patchers until both are in place.");
             }
         }
 

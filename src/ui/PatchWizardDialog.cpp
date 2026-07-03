@@ -376,7 +376,7 @@ void PatchWizardDialog::onInstallSelected() {
 
     if (installed == 0) {
         QMessageBox::information(this, "Patch Wizard",
-            "No patches were selected, or none could be installed.");
+            "No patches were installed. Either no patches were selected, or the selected patches are not compatible with your current mod list.");
         return;
     }
     emit patchesInstalled(changed);

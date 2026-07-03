@@ -107,7 +107,7 @@ void LootRulesEditor::onSave() {
     }
 
     if (!atomicWrite(m_profile->lootUserlistPath(), text.toUtf8())) {
-        QMessageBox::warning(this, "Save Failed", "Could not write userlist.yaml.");
+        QMessageBox::warning(this, "Save Failed", "Could not save the LOOT rules file. Make sure the profile folder is writable and try again.");
         return;
     }
     m_dirty = false;

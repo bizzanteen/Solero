@@ -41,6 +41,12 @@ target_include_directories(test_DirHasFiles PRIVATE ../src ${CMAKE_BINARY_DIR}/i
 target_link_libraries(test_DirHasFiles PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_DirHasFiles COMMAND test_DirHasFiles)
 
+# curlStderrHint is header-only (tools/CurlError.h), so no extra sources to compile.
+add_executable(test_CurlError test_CurlError.cpp)
+target_include_directories(test_CurlError PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_CurlError PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_CurlError COMMAND test_CurlError)
+
 # HealthCheck aggregates Profile + ConflictIndex data, so link the core profile
 # set plus ConflictIndex and HealthCheck itself.
 add_executable(test_HealthCheck test_HealthCheck.cpp

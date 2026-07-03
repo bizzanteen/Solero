@@ -35,7 +35,8 @@ void DownloadWorker::startNext() {
         const QString fn = m_active.fileName;
         delete m_file; m_file = nullptr;
         m_busy = false;
-        emit finished(fn, "", false, "Could not open file for writing: " + m_partPath);
+        emit finished(fn, "", false, "The download could not start - Solero could not create the output file. "
+                                     "Check that the downloads folder is writable.");
         startNext();
         return;
     }
@@ -88,7 +89,8 @@ void DownloadWorker::startNext() {
             emit finished(fileName, dest, true, "");
         } else {
             QFile::remove(partPath);
-            emit finished(fileName, "", false, "Could not finalize download: " + dest);
+            emit finished(fileName, "", false, "The download finished but could not be saved to disk. "
+                                               "Check that the downloads folder is writable and has enough free space.");
         }
         startNext();
     });

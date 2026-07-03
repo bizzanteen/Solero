@@ -100,7 +100,8 @@ int captureShaderCache(const QString& gameDir, const QString& cacheStagingDir,
 }
 
 int assertShaderCacheDeployed(const QString& gameDir, const QString& cacheStagingDir,
-                              bool hardlink, QStringList* relinked) {
+                              bool hardlink, QStringList* relinked, int* outFailed) {
+    if (outFailed) *outFailed = 0;
     if (cacheStagingDir.isEmpty()) return 0;
 
     const QString srcRoot = cacheStagingDir + "/Data/ShaderCache";
@@ -147,6 +148,8 @@ int assertShaderCacheDeployed(const QString& gameDir, const QString& cacheStagin
             ++placed;
             if (relinked)
                 relinked->append(QStringLiteral("Data/") + rel);
+        } else if (outFailed) {
+            ++(*outFailed);
         }
     }
     return placed;

@@ -4225,9 +4225,15 @@ void MainWindow::onPlay() {
         if (!cacheStaging.isEmpty()) {
             const bool hardlink =
                 solero::AppConfig::instance().deployMode() == solero::DeployMode::HardLink;
+            int failedRelink = 0;
             const int relinked = solero::assertShaderCacheDeployed(
-                solero::AppConfig::instance().gameDir(), cacheStaging, hardlink);
-            if (relinked > 0)
+                solero::AppConfig::instance().gameDir(), cacheStaging, hardlink,
+                nullptr, &failedRelink);
+            if (failedRelink > 0)
+                statusBar()->showMessage(
+                    QString("Couldn't restore %1 shader cache file(s) - Community "
+                            "Shaders may recompile shaders on this launch.").arg(failedRelink));
+            else if (relinked > 0)
                 statusBar()->showMessage(
                     QString("Restored %1 shader cache file(s) into the game dir.").arg(relinked));
         }

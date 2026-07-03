@@ -27,7 +27,7 @@ bool ToolDownloader::nexusApiKeyAvailable() { return !nexusApiKey().isEmpty(); }
 // returns empty. The body is not validated as JSON here; callers parse it.
 static QByteArray curlJson(const QString& url, const QString& header, QString* err = nullptr) {
     QProcess p;
-    QStringList args; args << "-s";
+    QStringList args; args << "-sS";
     if (!header.isEmpty()) { args << "-H" << header; }
     args << url;
     p.start("curl", args);

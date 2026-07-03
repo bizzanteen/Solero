@@ -104,8 +104,14 @@ using solero::normalizeVersion;
 // Returns true when a string looks suitable for direct display to the user:
 // not a raw file path, not a Qt/process debug string.
 static bool looksHumanReadable(const QString& s) {
+    // Reject Windows/Wine-style drive paths: "C:\..." or "C:/..."
+    const bool hasDrivePath = s.length() >= 3
+        && s[0].isLetter()
+        && (s[1] == QLatin1Char(':'))
+        && (s[2] == QLatin1Char('\\') || s[2] == QLatin1Char('/'));
     return !s.isEmpty()
         && !s.startsWith(QLatin1Char('/'))
+        && !hasDrivePath
         && !s.contains(QLatin1String("exit code"), Qt::CaseInsensitive)
         && !s.contains(QLatin1String("errno"), Qt::CaseInsensitive);
 }
@@ -1089,7 +1095,7 @@ bool MainWindow::ensureDeployed(const QString& reason) {
     }
     if (!deployCurrent()) {
         QMessageBox::critical(this, "Deploy Failed",
-            "Could not deploy - see status bar.");
+            "Deployment failed - see the status bar below for details. Fix the reported issue, then click Deploy again.");
         return false;
     }
     return true;
@@ -4367,7 +4373,7 @@ void MainWindow::onPlay() {
     }
     if (!res.launched) {
         QMessageBox::warning(this, "Play",
-            looksHumanReadable(res.error) ? res.error
+            looksHumanReadable(res.error) ? "The game failed to start: " + res.error
                 : "The game failed to start. Make sure Steam is running, SKSE is installed and deployed, and the game path is correct in Settings.");
     } else if (ranMs < 8000) {
         // The game exited almost immediately - almost always a launch problem.

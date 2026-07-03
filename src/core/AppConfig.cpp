@@ -113,6 +113,10 @@ bool AppConfig::load() {
     m_hiddenColumns.clear();
     for (const auto& v : obj["hiddenColumns"].toArray())
         m_hiddenColumns.append(v.toInt());
+    m_modListHeaderState   = QByteArray::fromBase64(
+        obj["modListHeaderState"].toString().toLatin1());
+    m_pluginListHeaderState = QByteArray::fromBase64(
+        obj["pluginListHeaderState"].toString().toLatin1());
     return true;
 }
 
@@ -148,6 +152,8 @@ bool AppConfig::save() const {
     QJsonArray hidden;
     for (int c : m_hiddenColumns) hidden.append(c);
     obj["hiddenColumns"] = hidden;
+    obj["modListHeaderState"]   = QString::fromLatin1(m_modListHeaderState.toBase64());
+    obj["pluginListHeaderState"] = QString::fromLatin1(m_pluginListHeaderState.toBase64());
     return atomicWrite(configPath(), QJsonDocument(obj).toJson(QJsonDocument::Indented));
 }
 

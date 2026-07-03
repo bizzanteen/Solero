@@ -1,5 +1,6 @@
 #pragma once
 #include <QString>
+#include <QByteArray>
 #include <QList>
 #include "deploy/DeployMode.h"
 
@@ -80,6 +81,13 @@ public:
     // Hidden mod-list columns (ModListModel::Column indices). Name is never hidden.
     const QList<int>& hiddenColumns() const   { return m_hiddenColumns; }
     void setHiddenColumns(const QList<int>& v) { m_hiddenColumns = v; }
+    // Persisted QHeaderView::saveState() blobs for the mod-list and plugin-list
+    // views, so manually-resized column widths survive a restart. Stored as base64
+    // in config.json. Empty until the user first resizes a column.
+    const QByteArray& modListHeaderState() const   { return m_modListHeaderState; }
+    void setModListHeaderState(const QByteArray& v) { m_modListHeaderState = v; }
+    const QByteArray& pluginListHeaderState() const { return m_pluginListHeaderState; }
+    void setPluginListHeaderState(const QByteArray& v) { m_pluginListHeaderState = v; }
 
     static QString dataRoot();   // ~/.local/share/solero
     // Per-profile Overwrite capture dir: dataRoot()/overwrite/<sanitized profileName>.
@@ -128,6 +136,8 @@ private:
     QString m_preferredDownloadServer;
     QStringList m_cachedDownloadServers;
     QList<int> m_hiddenColumns;
+    QByteArray m_modListHeaderState;
+    QByteArray m_pluginListHeaderState;
 };
 
 } // namespace solero

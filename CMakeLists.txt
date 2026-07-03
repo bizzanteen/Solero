@@ -86,6 +86,7 @@ set(SOLERO_SOURCES
   src/ui/MainWindow.cpp
   src/ui/ModListModel.cpp
   src/ui/ModListView.cpp
+  src/ui/SearchableMenu.cpp
   src/ui/VersionDelegate.cpp
   src/ui/PluginListModel.cpp
   src/ui/PluginListView.cpp

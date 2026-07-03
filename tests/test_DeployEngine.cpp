@@ -426,6 +426,57 @@ private slots:
         QVERIFY(f.open(QIODevice::ReadOnly));
         QCOMPARE(f.readAll(), QByteArray("CACHE")); // cache deployed last -> wins
     }
+
+    // Only the active CS version's cache folder deploys. The CS mod's nexusFileId
+    // ("f1") is the active key, so folderFor("f1")=CacheA is deployed and the other
+    // version's folder (CacheB, key "f2") is never touched.
+    void shaderCacheDeploysOnlyMatchingKey() {
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QDir().mkpath(gameDir);
+        writeFile(stagingRoot + "/CacheA/Data/ShaderCache/a.bin", "A");
+        writeFile(stagingRoot + "/CacheB/Data/ShaderCache/b.bin", "B");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry cs; cs.type = EntryType::Mod; cs.id = "cs";
+        cs.name = "Community Shaders"; cs.enabled = true; cs.nexusFileId = "f1";
+        profile.modList().append(cs);
+        profile.shaderCache().managed = true;
+        profile.shaderCache().folders.insert("f1", "CacheA"); // active key
+        profile.shaderCache().folders.insert("f2", "CacheB"); // other version
+        profile.save();
+
+        DeployEngine engine(gameDir, stagingRoot);
+        auto result = engine.deploy(profile, DeployMode::Copy);
+        QVERIFY(result.success);
+        QVERIFY(QFile::exists(gameDir + "/Data/ShaderCache/a.bin"));  // active key's cache
+        QVERIFY(!QFile::exists(gameDir + "/Data/ShaderCache/b.bin")); // never the wrong version
+    }
+
+    // No folder for the active CS key -> deploy NOTHING (never a different version's
+    // cache). The active key "f1" has no folder entry, so no ShaderCache dir is
+    // created in the game dir at all.
+    void shaderCacheMismatchDeploysNothing() {
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QDir().mkpath(gameDir);
+        writeFile(stagingRoot + "/CacheA/Data/ShaderCache/a.bin", "A");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry cs; cs.type = EntryType::Mod; cs.id = "cs";
+        cs.name = "Community Shaders"; cs.enabled = true; cs.nexusFileId = "f1";
+        profile.modList().append(cs);
+        profile.shaderCache().managed = true;
+        profile.shaderCache().folders.insert("f9", "CacheA"); // key mismatch -> no active folder
+        profile.save();
+
+        DeployEngine engine(gameDir, stagingRoot);
+        auto result = engine.deploy(profile, DeployMode::Copy);
+        QVERIFY(result.success);
+        QVERIFY(!QDir(gameDir + "/Data/ShaderCache").exists()); // nothing deployed
+    }
 };
 QTEST_MAIN(TestDeployEngine)
 #include "test_DeployEngine.moc"

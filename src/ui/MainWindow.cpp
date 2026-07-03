@@ -2290,14 +2290,21 @@ QString MainWindow::uniqueModName(const QString& base, solero::Profile* profile)
 static QSet<QString> takenStagingFolders(solero::Profile* profile) {
     QSet<QString> taken;
     if (!profile) return taken;
-    for (const auto& e : profile->modList())
-        if (e.type == solero::EntryType::Mod && !e.stagingFolder.isEmpty())
+    for (const auto& e : profile->modList()) {
+        if (e.type != solero::EntryType::Mod) continue;
+        if (!e.stagingFolder.isEmpty())
             taken.insert(e.stagingFolder.toLower());
-    // The managed shader cache lives outside the list but owns staging folder(s) too.
-    const QString cacheFolder = profile->shaderCache().folderFor(
-        solero::activeCacheKey(profile->modList()));
-    if (!cacheFolder.isEmpty())
-        taken.insert(cacheFolder.toLower());
+        // Inactive Keep-Both variants own their own on-disk folders too; reserve
+        // them so a new folder name can't collide with a non-active variant.
+        for (const auto& v : e.variants)
+            if (!v.stagingFolder.isEmpty())
+                taken.insert(v.stagingFolder.toLower());
+    }
+    // The managed shader cache lives outside the list but owns a folder per CS
+    // version - reserve every key's folder, not just the active one.
+    for (const QString& f : profile->shaderCache().folders.values())
+        if (!f.isEmpty())
+            taken.insert(f.toLower());
     return taken;
 }
 
@@ -2422,6 +2429,15 @@ void MainWindow::onClearShaderCache(const QString& modId) {
     auto* scP = m_profileMgr->activeProfile();
     const QString cacheStaging = cacheStagingPath(scP);
 
+    // Name the CS version in the status so it's clear WHICH version's cache cleared
+    // (only the active version's staged folder is touched).
+    QString versionSuffix;
+    if (scP) {
+        const solero::ModEntry* cs = scP->modList().findCommunityShaders();
+        if (cs && !cs->version.isEmpty())
+            versionSuffix = " (" + cs->version + ")";
+    }
+
     const auto result = solero::clearShaderCache(
         solero::AppConfig::instance().gameDir(),
         solero::AppConfig::overwriteDir(scP ? scP->name() : QString()),
@@ -2431,12 +2447,13 @@ void MainWindow::onClearShaderCache(const QString& modId) {
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
 
     if (result.removedPaths.isEmpty()) {
-        statusBar()->showMessage("Shader cache already clear - nothing to remove.");
+        statusBar()->showMessage(
+            "Shader cache" + versionSuffix + " already clear - nothing to remove.");
     } else {
         const double mb = result.bytesRemoved / (1024.0 * 1024.0);
         statusBar()->showMessage(
-            QString("Cleared shader cache (%1 location(s), %2 MB freed).")
-                .arg(result.removedPaths.size()).arg(mb, 0, 'f', 1));
+            QString("Cleared shader cache%1 (%2 location(s), %3 MB freed).")
+                .arg(versionSuffix).arg(result.removedPaths.size()).arg(mb, 0, 'f', 1));
     }
 }
 
@@ -4263,7 +4280,26 @@ void MainWindow::onPlay() {
     // newly-compiled shaders out of the live game dir into the managed mod's
     // staging (scoped strictly to Data/ShaderCache). Best-effort; never blocks.
     if (auto* p = m_profileMgr->activeProfile()) {
-        const QString cacheStaging = cacheStagingPath(p);
+        const QString key = solero::activeCacheKey(p->modList());
+        QString cacheFolder = p->shaderCache().folderFor(key);
+        // First play on a new CS version: managed but no folder yet for this key.
+        // Create it now (named after the CS version, or the key as fallback) so the
+        // freshly-compiled shaders are captured into this version's own cache.
+        if (p->shaderCache().managed && cacheFolder.isEmpty()) {
+            const solero::ModEntry* cs = p->modList().findCommunityShaders();
+            const QString label = (cs && !cs->version.isEmpty()) ? cs->version : key;
+            cacheFolder = solero::uniqueStagingFolder(
+                solero::sanitizeStagingFolder(
+                    p->name() + " - Shader Cache (" + label + ")"),
+                takenStagingFolders(p));
+            QDir().mkpath(solero::AppConfig::instance().stagingDir()
+                          + "/" + cacheFolder + "/Data");
+            p->shaderCache().folders.insert(key, cacheFolder);
+            p->save();
+        }
+        const QString cacheStaging = cacheFolder.isEmpty()
+            ? QString()
+            : solero::AppConfig::instance().stagingDir() + "/" + cacheFolder;
         if (!cacheStaging.isEmpty()) {
             QStringList moved;
             solero::captureShaderCache(gameDir, cacheStaging, &moved);

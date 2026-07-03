@@ -69,7 +69,11 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     int total = 0;
     for (const auto& entry : profile.modList())
         if (entry.type == EntryType::Mod && entry.enabled) ++total;
-    if (profile.shaderCache().active()) ++total; // deployed last, below
+    // Counts one step only when a cache folder for the active CS version will
+    // actually deploy (below) - mirrors that guard so progress isn't off by one.
+    if (profile.shaderCache().managed
+        && !profile.shaderCache().folderFor(activeCacheKey(profile.modList())).isEmpty())
+        ++total; // deployed last, below
     total += 1; // finalize/LOOT step
     int done = 0;
     if (onProgress) onProgress(0, total);
@@ -85,18 +89,24 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     }
     // The managed shader cache (profile-level state, not a list entry) deploys after
     // everything else so its captured shaders win all conflicts (last-wins). Applied
-    // via a synthetic ModEntry pointing at its staging folder.
-    if (profile.shaderCache().active()) {
-        ModEntry cacheEntry;
-        cacheEntry.type          = EntryType::Mod;
-        cacheEntry.id            = QStringLiteral("__shadercache__");
-        cacheEntry.name          = QStringLiteral("Shader Cache");
-        cacheEntry.enabled       = true;
-        cacheEntry.stagingFolder = profile.shaderCache().folderFor(
-            activeCacheKey(profile.modList()));
-        failures += deployMod(cacheEntry, m_gameDir, linker, record, conflicts, ciOwners);
-        ++done;
-        if (onProgress) onProgress(done, total);
+    // via a synthetic ModEntry pointing at the active CS version's staging folder.
+    if (profile.shaderCache().managed) {
+        const QString folder =
+            profile.shaderCache().folderFor(activeCacheKey(profile.modList()));
+        if (!folder.isEmpty()) {
+            ModEntry cacheEntry;
+            cacheEntry.type          = EntryType::Mod;
+            cacheEntry.id            = QStringLiteral("__shadercache__");
+            cacheEntry.name          = QStringLiteral("Shader Cache");
+            cacheEntry.enabled       = true;
+            cacheEntry.stagingFolder = folder;
+            failures += deployMod(cacheEntry, m_gameDir, linker, record, conflicts, ciOwners);
+            ++done;
+            if (onProgress) onProgress(done, total);
+        }
+        // No folder for this CS version -> deploy no cache at all. CS compiles fresh
+        // and the post-play capture populates this key. Never deploy a different
+        // version's cache.
     }
 
     // Force per-path winners (Vortex/MO2 per-file conflict choice). Runs after the

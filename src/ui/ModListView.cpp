@@ -596,7 +596,10 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         if (entry->nexusModId == "86492"
             || entry->name.compare("Community Shaders", Qt::CaseInsensitive) == 0) {
             menu.addSeparator();
-            menu.addAction("Clear Shader Cache",
+            const QString clearLabel = entry->version.isEmpty()
+                ? QStringLiteral("Clear Shader Cache")
+                : QString("Clear Shader Cache (%1)").arg(entry->version);
+            menu.addAction(clearLabel,
                            [this, id = entry->id]{ emit clearShaderCacheRequested(id); });
         }
         menu.addSeparator();

@@ -22,14 +22,25 @@ inline InstallConflict classifyInstallConflict(ModList& ml, const QString& modId
             for (const auto& v : e.variants)
                 if (!fileId.isEmpty() && v.nexusFileId == fileId)
                     return {InstallConflictKind::SameFile, e.id};
-    // Prefer a top-level entry with this modId over a grouped child.
+    // Prefer a top-level entry with this modId over a grouped child, and count how
+    // many entries share the modId.
     ModEntry* target = nullptr;
+    ModEntry* firstTop = nullptr;
+    int modIdCount = 0;
     for (auto& e : ml.entries())
         if (e.type == EntryType::Mod && e.nexusModId == modId) {
-            if (e.parentId.isEmpty()) { target = &e; break; }
+            ++modIdCount;
             if (!target) target = &e;
+            if (!firstTop && e.parentId.isEmpty()) firstTop = &e;
         }
+    if (firstTop) target = firstTop;
     if (!target) return {};
+    // A grouped multi-file mod (more than one entry shares the modId, e.g. a main
+    // file + an NG DLL) must never hit the version dialog - Keep Both would attach
+    // a sibling file as a bogus "version". Attach it silently to the top-level entry.
+    // VersionConflict only fires when exactly one entry owns the modId.
+    if (modIdCount > 1)
+        return {InstallConflictKind::SiblingFile, target->id};
     const QString a = normalizeVersion(version), b = normalizeVersion(target->version);
     if (!a.isEmpty() && !b.isEmpty() && a != b)
         return {InstallConflictKind::VersionConflict, target->id};

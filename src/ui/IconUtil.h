@@ -9,6 +9,7 @@
 #include <QRectF>
 #include <QColor>
 #include <QFont>
+#include <QGuiApplication>
 #include <QSvgRenderer>
 namespace solero {
 // Canonical square pixel size for every Flags-column status icon. Keeping it in
@@ -28,23 +29,163 @@ inline QIcon redCrossIcon(int px = 26) {
     p.drawLine(QPointF(px - m, m), QPointF(m, px - m));
     return QIcon(pm);
 }
-inline QIcon redBangIcon(int px = 26) {
-    QPixmap pm(px, px); pm.fill(Qt::transparent);
+// Shared "road-sign" severity glyph: an equilateral, point-up triangle with
+// softly rounded corners and a bold exclamation mark painted (not a font glyph,
+// which would misalign against the sloped sides). Colour signals severity -
+// warm yellow = warning, red = error, dim grey = neutral/no problems. Every
+// health surface (toolbar indicator, Problems panel, Flags column) shares this
+// one shape so a warning always reads as a warning.
+inline QIcon signTriangleIcon(int size, const QColor& fill,
+                              const QColor& border, const QColor& mark) {
+    const qreal dpr = qApp ? qApp->devicePixelRatio() : 1.0;
+    QPixmap pm(qRound(size * dpr), qRound(size * dpr));
+    pm.setDevicePixelRatio(dpr);
+    pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing, true);
-    // Red filled circle with a white "!" in the middle.
-    const QColor red("#e74c3c");
+
+    const qreal px     = size;
+    const qreal margin = px * 0.10;
+    const qreal side   = px - 2 * margin;
+    const qreal height = side * 0.86602540;      // equilateral: √3/2 · side
+    const qreal topY   = (px - height) / 2.0;    // vertically centred
+    const qreal cx     = px / 2.0;
+
+    // Triangle body. A RoundJoin pen rounds the three corners; the same pen
+    // draws the 1px darker border in a single stroke+fill pass.
+    QPainterPath tri;
+    tri.moveTo(cx, topY);
+    tri.lineTo(px - margin, topY + height);
+    tri.lineTo(margin,      topY + height);
+    tri.closeSubpath();
+    QPen edge(border);
+    edge.setWidthF(qMax<qreal>(1.0, px * 0.075));
+    edge.setJoinStyle(Qt::RoundJoin);
+    p.setPen(edge);
+    p.setBrush(fill);
+    p.drawPath(tri);
+
+    // Exclamation mark: a rounded-cap vertical bar plus a dot, together spanning
+    // ~55% of the triangle height and centred on the lower (wider) body.
+    const qreal markH      = height * 0.55;
+    const qreal markCenter = topY + height * 0.66;   // near the centroid
+    const qreal markTop    = markCenter - markH / 2.0;
+    const qreal barLen     = markH * 0.62;
+    const qreal dotR       = px * 0.055;
+    QPen bar(mark);
+    bar.setWidthF(px * 0.105);
+    bar.setCapStyle(Qt::RoundCap);
+    p.setPen(bar);
+    p.drawLine(QPointF(cx, markTop), QPointF(cx, markTop + barLen));
     p.setPen(Qt::NoPen);
-    p.setBrush(red);
-    double m = px * 0.10;
+    p.setBrush(mark);
+    p.drawEllipse(QPointF(cx, markTop + markH - dotR), dotR, dotR);
+
+    p.end();
+    return QIcon(pm);
+}
+inline QIcon warnSignIcon(int size = 20) {
+    return signTriangleIcon(size, QColor("#F2C230"), QColor("#B8901F"), QColor(Qt::black));
+}
+inline QIcon errorSignIcon(int size = 20) {
+    return signTriangleIcon(size, QColor("#D64550"), QColor("#A33038"), QColor(Qt::white));
+}
+inline QIcon neutralSignIcon(int size = 20) {
+    return signTriangleIcon(size, QColor("#5a5f66"), QColor("#42464c"), QColor("#3a3d42"));
+}
+
+// Downloads "status dot" icons
+// Small DPR-aware circles for the Downloads list Status column. A filled circle
+// carries a white glyph (check / down-arrow / en-dash); "not installed" is a
+// quiet hollow grey ring with no glyph. Same painted-QPixmap approach as the
+// sign icons so the whole app's status family stays visually consistent.
+
+// Shared setup: a transparent DPR-scaled pixmap + an antialiased painter on it.
+// Returns the pixmap by reference; the caller keeps the QPainter alive locally.
+inline QPixmap makeStatusPixmap(int size) {
+    const qreal dpr = qApp ? qApp->devicePixelRatio() : 1.0;
+    QPixmap pm(qRound(size * dpr), qRound(size * dpr));
+    pm.setDevicePixelRatio(dpr);
+    pm.fill(Qt::transparent);
+    return pm;
+}
+
+// Installed: green (#4CAF50, matching the former green status text) filled
+// circle with a white check.
+inline QIcon installedStatusIcon(int size = 14) {
+    QPixmap pm = makeStatusPixmap(size);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const qreal px = size, m = px * 0.08;
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor("#4CAF50"));
     p.drawEllipse(QRectF(m, m, px - 2 * m, px - 2 * m));
-    QPen pen(Qt::white); pen.setWidthF(px * 0.13); pen.setCapStyle(Qt::RoundCap);
-    p.setPen(pen);
-    double cx = px / 2.0;
-    p.drawLine(QPointF(cx, px * 0.28), QPointF(cx, px * 0.62));
-    p.setBrush(Qt::white);
+    QPen check(Qt::white);
+    check.setWidthF(px * 0.13);
+    check.setCapStyle(Qt::RoundCap);
+    check.setJoinStyle(Qt::RoundJoin);
+    p.setPen(check);
+    p.setBrush(Qt::NoBrush);
+    QPainterPath tick;
+    tick.moveTo(px * 0.28, px * 0.52);
+    tick.lineTo(px * 0.44, px * 0.68);
+    tick.lineTo(px * 0.72, px * 0.33);
+    p.drawPath(tick);
+    return QIcon(pm);
+}
+
+// Not installed: a quiet hollow grey ring, no glyph.
+inline QIcon notInstalledStatusIcon(int size = 14) {
+    QPixmap pm = makeStatusPixmap(size);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const qreal px = size, m = px * 0.16;
+    QPen ring(QColor("#7a7f87"));
+    ring.setWidthF(px * 0.11);
+    p.setPen(ring);
+    p.setBrush(Qt::NoBrush);
+    p.drawEllipse(QRectF(m, m, px - 2 * m, px - 2 * m));
+    return QIcon(pm);
+}
+
+// Downloading: blue filled circle with a white down-arrow.
+inline QIcon downloadingStatusIcon(int size = 14) {
+    QPixmap pm = makeStatusPixmap(size);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const qreal px = size, m = px * 0.08;
     p.setPen(Qt::NoPen);
-    p.drawEllipse(QPointF(cx, px * 0.76), px * 0.07, px * 0.07);
+    p.setBrush(QColor("#2196F3"));
+    p.drawEllipse(QRectF(m, m, px - 2 * m, px - 2 * m));
+    QPen arrow(Qt::white);
+    arrow.setWidthF(px * 0.12);
+    arrow.setCapStyle(Qt::RoundCap);
+    arrow.setJoinStyle(Qt::RoundJoin);
+    p.setPen(arrow);
+    p.setBrush(Qt::NoBrush);
+    p.drawLine(QPointF(px * 0.50, px * 0.28), QPointF(px * 0.50, px * 0.64));
+    QPainterPath head;
+    head.moveTo(px * 0.32, px * 0.50);
+    head.lineTo(px * 0.50, px * 0.68);
+    head.lineTo(px * 0.68, px * 0.50);
+    p.drawPath(head);
+    return QIcon(pm);
+}
+
+// Cancelled / terminal-neutral: grey filled circle with a white en-dash.
+inline QIcon neutralStatusIcon(int size = 14) {
+    QPixmap pm = makeStatusPixmap(size);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const qreal px = size, m = px * 0.08;
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor("#6b7078"));
+    p.drawEllipse(QRectF(m, m, px - 2 * m, px - 2 * m));
+    QPen dash(Qt::white);
+    dash.setWidthF(px * 0.13);
+    dash.setCapStyle(Qt::RoundCap);
+    p.setPen(dash);
+    p.drawLine(QPointF(px * 0.30, px * 0.50), QPointF(px * 0.70, px * 0.50));
     return QIcon(pm);
 }
 inline QIcon yellowUpArrowIcon(int px = kFlagIconPx) {

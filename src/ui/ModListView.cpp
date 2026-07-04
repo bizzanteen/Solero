@@ -289,10 +289,33 @@ void ModListView::selectModById(const QString& id) {
     for (int i = 0; i < ml.count(); ++i)
         if (ml.at(i).id == id) { raw = i; break; }
     if (raw < 0) return;
-    const int row = m_model->rawToVisible(raw);
-    if (row < 0) return; // hidden (e.g. inside a collapsed group/separator)
+
+    // The target may be masked three ways; reveal it before selecting/scrolling.
+    int row = m_model->rawToVisible(raw);
+    auto shown = [&] { return row >= 0 && !isRowHidden(row, rootIndex()); };
+
+    // 1) Hidden by an active name/state FILTER. Clear it via the widgets (they live
+    //    in MainWindow's left pane) so the filter box stays in sync with the list.
+    //    While a filter is active the model shows every entry (searchExpandAll), so
+    //    a collapsed target still has a visible row - but it may be filter-hidden,
+    //    or, once the filter clears, collapse-hidden (handled by step 2 below).
+    if (!shown() && (!m_filter.isEmpty() || m_stateFilter != StateFilter::All)) {
+        emit filterCleared(); // MainWindow resets the search box + state combo,
+                              // which synchronously re-runs applyFilter()
+        row = m_model->rawToVisible(raw);
+    }
+
+    // 2) Hidden by a collapsed SEPARATOR / group parent. Expand the target's
+    //    collapse ancestry (unrelated sections stay collapsed), then re-apply the
+    //    filter (the model reset clears row-hidden state) and re-query the row.
+    if (row < 0) {
+        if (m_model->expandToReveal(raw)) applyFilter();
+        row = m_model->rawToVisible(raw);
+    }
+
+    if (row < 0) return;
     const QModelIndex idx = m_model->index(row, ModListModel::ColName);
-    if (!idx.isValid()) return;
+    if (!idx.isValid() || isRowHidden(row, rootIndex())) return;
     selectionModel()->setCurrentIndex(
         idx, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
     scrollTo(idx, QAbstractItemView::PositionAtCenter);
@@ -1104,6 +1127,19 @@ void ModListView::keyPressEvent(QKeyEvent* event) {
     if (event->key() == Qt::Key_Delete) {
         deleteSelectedMods();
         return;
+    }
+    // Space toggles enabled on the selection: flip based on the topmost selected
+    // mod's current state so a mixed selection converges to one state per press.
+    if (event->key() == Qt::Key_Space) {
+        const auto rows = selectionModel()->selectedRows();
+        int topRow = -1;
+        bool topEnabled = false;
+        for (const auto& idx : rows) {
+            const auto* entry = m_model->entryAt(idx.row());
+            if (!entry || entry->type != EntryType::Mod) continue;
+            if (topRow < 0 || idx.row() < topRow) { topRow = idx.row(); topEnabled = entry->enabled; }
+        }
+        if (topRow >= 0) { setSelectedModsEnabled(!topEnabled); return; }
     }
     QTreeView::keyPressEvent(event);
 }

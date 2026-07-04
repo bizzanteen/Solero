@@ -8,7 +8,7 @@
 class QStackedWidget;
 class QLabel;
 class QLineEdit;
-class QPushButton;
+class QToolButton;
 
 namespace solero {
 
@@ -49,8 +49,8 @@ private:
     QStringList   m_selection;
 
     QLineEdit*      m_search;
-    QPushButton*    m_showAllBtn;
-    QPushButton*    m_collapseBtn;
+    QToolButton*    m_showAllBtn;
+    QToolButton*    m_collapseBtn;
     QString         m_filter;        // current search text
     QTimer*         m_filterDebounce = nullptr; // coalesces search keystrokes
     bool            m_showAllFiles = false; // mirror of m_showAllBtn

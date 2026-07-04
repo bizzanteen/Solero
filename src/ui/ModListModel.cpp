@@ -15,6 +15,7 @@
 #include "ui/IconUtil.h"
 #include <QSet>
 #include <QDebug>
+#include <climits>
 
 namespace solero {
 
@@ -280,6 +281,57 @@ void ModListModel::expandSeparatorDuringDrag(int visibleRow) {
     endInsertRows();
 }
 
+bool ModListModel::expandToReveal(int rawIndex) {
+    if (!m_profile) return false;
+    auto& list = m_profile->modList();
+    if (rawIndex < 0 || rawIndex >= list.count()) return false;
+
+    const ModEntry target = list.at(rawIndex);
+    bool changed = false;
+    auto clearCollapse = [&](const ModEntry& e) {
+        if (!e.collapsed) return;
+        ModEntry up = e; up.collapsed = false;
+        list.update(e.id, up);
+        changed = true;
+    };
+
+    // A group child is hidden when its parent Mod is collapsed. Find that parent
+    // (the nearest preceding Mod whose id == parentId) and open it.
+    if (target.type == EntryType::Mod && !target.parentId.isEmpty()) {
+        for (int i = rawIndex - 1; i >= 0; --i) {
+            const auto& e = list.at(i);
+            if (e.type == EntryType::Mod && e.id == target.parentId) {
+                clearCollapse(e);
+                break;
+            }
+        }
+    }
+
+    // Walk backwards collecting the collapse ancestry: the nearest preceding
+    // separator at each successively shallower level governs `rawIndex` (mirrors
+    // the collapsedLevel logic in rebuildVisibleRows). Clear every collapsed one so
+    // a nested target is fully revealed; stop once a level-0 governor is reached.
+    // A separator target ignores same/deeper-level separators (only shallower
+    // ancestors can hide it).
+    int minLevel = (target.type == EntryType::Separator)
+                       ? target.separatorLevel : INT_MAX;
+    for (int i = rawIndex - 1; i >= 0; --i) {
+        const auto& e = list.at(i);
+        if (e.type != EntryType::Separator) continue;
+        if (e.separatorLevel < minLevel) {
+            clearCollapse(e);
+            minLevel = e.separatorLevel;
+            if (minLevel == 0) break;
+        }
+    }
+
+    if (changed) {
+        m_profile->save();
+        rebuild();
+    }
+    return changed;
+}
+
 void ModListModel::toggleModCollapse(int visibleRow) {
     int raw = rawIndexForRow(visibleRow);
     if (raw < 0 || !m_profile) return;
@@ -489,7 +541,7 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
         QList<QIcon> icons;
         if (m_overwritingMods.contains(entry.id)) icons << solero::greenUpTriangleIcon();
         if (m_overwrittenMods.contains(entry.id)) icons << solero::redDownTriangleIcon();
-        if (m_depWarnings.contains(entry.id))      icons << solero::redBangIcon(solero::kFlagIconPx);
+        if (m_depWarnings.contains(entry.id))      icons << solero::errorSignIcon(solero::kFlagIconPx);
         // The "update available" indicator lives in the Version column only (the
         // yellow up-arrow + "installed -> latest" text), not here in Flags.
         if (!entry.note.isEmpty())                 icons << solero::noteIcon();

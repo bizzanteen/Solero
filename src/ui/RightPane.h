@@ -33,6 +33,8 @@ public:
     // Switch to the Plugins tab and select + scroll to the named plugin (jump-to
     // from the Problems panel).
     void selectPlugin(const QString& filename);
+    // Switch to the Plugins tab and focus + select its search box (Ctrl+Shift+F).
+    void focusPluginSearch();
     void showPluginNotice(const QString& text);
     void hidePluginNotice();
     // Enable/disable the Plugins-tab "Sort Now" (LOOT) button. An empty tooltip

@@ -9,7 +9,8 @@
 #include <QStackedWidget>
 #include <QLabel>
 #include <QLineEdit>
-#include <QPushButton>
+#include <QToolButton>
+#include <QIcon>
 #include <QSplitter>
 #include <QPalette>
 #include <QFile>
@@ -29,17 +30,32 @@ DataTab::DataTab(QWidget* parent) : QWidget(parent) {
     // Top bar: search + Show-mod/all toggle + Collapse/Expand toggle
     auto* topBar = new QHBoxLayout;
     m_search = new QLineEdit(this);
-    m_search->setPlaceholderText(QStringLiteral("Search files…"));
+    m_search->setPlaceholderText(QStringLiteral("Search files") + QChar(0x2026));
+
+    // Two checkable icon toggles (were label-flipping text buttons). The checked
+    // state is the visual cue; the tooltip states the ACTION. Fall back to a short
+    // glyph label only when the icon theme lacks the icon (never a byte escape).
+    auto makeToggle = [this](const QString& themeIcon, const QString& altTheme,
+                             QChar fallback, bool checked) {
+        auto* b = new QToolButton(this);
+        b->setCheckable(true);
+        b->setChecked(checked);
+        b->setAutoRaise(true);
+        const QIcon ic = QIcon::fromTheme(themeIcon, QIcon::fromTheme(altTheme));
+        if (ic.isNull()) b->setText(QString(fallback));
+        else             b->setIcon(ic);
+        return b;
+    };
 
     m_showAllFiles = AppConfig::instance().dataShowAllFiles();
-    m_showAllBtn = new QPushButton(this);
-    m_showAllBtn->setCheckable(true);
-    m_showAllBtn->setChecked(m_showAllFiles);
+    m_showAllBtn = makeToggle(QStringLiteral("view-visible"),
+                              QStringLiteral("view-list-details"),
+                              QChar(0x2261), m_showAllFiles); // triple-bar = list
     updateShowAllText();
 
-    m_collapseBtn = new QPushButton(this);
-    m_collapseBtn->setCheckable(true);
-    m_collapseBtn->setChecked(m_collapsed);
+    m_collapseBtn = makeToggle(QStringLiteral("view-list-tree"),
+                               QStringLiteral("format-indent-less"),
+                               QChar(0x25B8), m_collapsed); // right-pointing triangle
     updateCollapseText();
 
     topBar->addWidget(m_search, 1);
@@ -57,12 +73,12 @@ DataTab::DataTab(QWidget* parent) : QWidget(parent) {
         m_filter = text;
         m_filterDebounce->start();
     });
-    connect(m_showAllBtn, &QPushButton::toggled, this, [this](bool on) {
+    connect(m_showAllBtn, &QToolButton::toggled, this, [this](bool on) {
         m_showAllFiles = on;
         updateShowAllText();
         scheduleRefresh();
     });
-    connect(m_collapseBtn, &QPushButton::toggled, this, [this](bool on) {
+    connect(m_collapseBtn, &QToolButton::toggled, this, [this](bool on) {
         m_collapsed = on;
         updateCollapseText();
         applyFolderState();
@@ -182,13 +198,16 @@ void DataTab::applyFolderState() {
 }
 
 void DataTab::updateShowAllText() {
-    m_showAllBtn->setText(m_showAllFiles ? QStringLiteral("Showing all files")
-                                         : QStringLiteral("Showing mod files"));
+    // Tooltip states the action; the checked state shows what's currently active.
+    m_showAllBtn->setToolTip(m_showAllFiles
+        ? QStringLiteral("Showing all files - click to show only this mod's files")
+        : QStringLiteral("Show all files (including base game files)"));
 }
 
 void DataTab::updateCollapseText() {
-    m_collapseBtn->setText(m_collapsed ? QStringLiteral("Expand folders")
-                                       : QStringLiteral("Collapse folders"));
+    m_collapseBtn->setToolTip(m_collapsed
+        ? QStringLiteral("Folders collapsed - click to expand all folders")
+        : QStringLiteral("Collapse all folders"));
 }
 
 void DataTab::refresh() {
@@ -209,7 +228,7 @@ void DataTab::refresh() {
     // empty - still falls through to the all-files view below.)
     if (onlySeparators) {
         m_showAllBtn->setEnabled(false);
-        m_showAllBtn->setText("Showing all files");
+        updateShowAllText();
         m_placeholder->setText("Separators have no files to show.");
         m_stack->setCurrentWidget(m_placeholder);
         return;
@@ -218,8 +237,7 @@ void DataTab::refresh() {
     // With no mod selected there's nothing to show but the live game dir, so lock
     // the toggle to "Showing all files" (disabled) until a mod is selected.
     m_showAllBtn->setEnabled(hasMods);
-    if (!hasMods) m_showAllBtn->setText("Showing all files");
-    else          updateShowAllText();
+    updateShowAllText();
 
     if (!hasMods) {
         showGameDirectory(); // all files (game dir), regardless of the toggle

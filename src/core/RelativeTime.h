@@ -5,20 +5,23 @@
 
 namespace solero {
 
-// Pure relative-time bucket for the Downloads "Downloaded" column.
-//
-// fileEpoch and nowEpoch are both seconds since the Unix epoch. "now" is passed
-// in explicitly (never read from the system clock here) so the result is fully
-// deterministic and unit-testable. The display buckets are:
-//   < 60s              -> "just now"
-//   < 60m              -> "N min ago" / "N mins ago"
-//   < 24h              -> "N hr ago"  / "N hrs ago"
-//   1 day              -> "yesterday"
-//   2..6 days          -> "N days ago"
-//   >= 7 days          -> "dd/MM" (UTC, so the date is stable regardless of TZ)
-//
-// Day boundaries use elapsed seconds (not calendar dates) so the function stays
-// pure and timezone-independent for every relative bucket.
+// Pure relative-time formatting for the Downloads "Downloaded" column (just now / N
+// min ago / N hr ago / yesterday / N days ago / "6th Apr" past a week). Both epochs
+// are Unix seconds; "now" is passed in (never read from the clock) and day boundaries
+// use elapsed seconds, so the result is deterministic and timezone-independent.
+
+// English ordinal suffix for a day-of-month (1..31): 1st, 2nd, 3rd, 4th … but
+// 11th/12th/13th are all "th" (the teens exception).
+inline QString ordinalSuffix(int day) {
+    if (day >= 11 && day <= 13) return QStringLiteral("th");
+    switch (day % 10) {
+        case 1:  return QStringLiteral("st");
+        case 2:  return QStringLiteral("nd");
+        case 3:  return QStringLiteral("rd");
+        default: return QStringLiteral("th");
+    }
+}
+
 inline QString relativeDownloadTime(qint64 fileEpoch, qint64 nowEpoch) {
     const qint64 d = nowEpoch - fileEpoch;
     if (d < 60)    return QStringLiteral("just now"); // also covers future/clock-skew
@@ -27,7 +30,13 @@ inline QString relativeDownloadTime(qint64 fileEpoch, qint64 nowEpoch) {
     const qint64 days = d / 86400;
     if (days == 1) return QStringLiteral("yesterday");
     if (days < 7)  return QStringLiteral("%1 days ago").arg(days);
-    return QDateTime::fromSecsSinceEpoch(fileEpoch, QTimeZone::UTC).toString(QStringLiteral("dd/MM"));
+    // Oldest bucket: "6th Apr" - ordinal day (no leading zero) + abbreviated
+    // month name, in UTC so the date is stable regardless of the viewer's TZ.
+    const QDate date = QDateTime::fromSecsSinceEpoch(fileEpoch, QTimeZone::UTC).date();
+    return QStringLiteral("%1%2 %3")
+        .arg(date.day())
+        .arg(ordinalSuffix(date.day()))
+        .arg(date.toString(QStringLiteral("MMM")));
 }
 
 } // namespace solero

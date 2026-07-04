@@ -1,4 +1,5 @@
 #include "ConflictsTab.h"
+#include "ElideDelegate.h"
 #include <QVBoxLayout>
 #include <QLineEdit>
 #include <QTreeWidget>
@@ -20,7 +21,7 @@ ConflictsTab::ConflictsTab(QWidget* parent) : QWidget(parent) {
     layout->setSpacing(2);
 
     m_filter = new QLineEdit(this);
-    m_filter->setPlaceholderText("Filter conflicts\xe2\x80\xa6");
+    m_filter->setPlaceholderText(QStringLiteral("Search conflicts") + QChar(0x2026));
     m_filter->setClearButtonEnabled(true);
     connect(m_filter, &QLineEdit::textChanged, this, [this](const QString& t){
         m_filterText = t.trimmed();
@@ -33,6 +34,10 @@ ConflictsTab::ConflictsTab(QWidget* parent) : QWidget(parent) {
     m_tree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     m_tree->header()->resizeSection(1, 200);
     m_tree->setRootIsDecorated(true);
+    // Char-level elision for long file paths / conflict details ("path/to/fi…").
+    m_tree->setItemDelegate(new ElideRightDelegate(m_tree));
+    m_tree->setTextElideMode(Qt::ElideRight);
+    m_tree->setWordWrap(false);
     connect(m_tree, &QTreeWidget::itemDoubleClicked, this,
             [this](QTreeWidgetItem* item, int) {
         QString modId = item->data(0, kRoleModId).toString();

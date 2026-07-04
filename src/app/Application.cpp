@@ -5,6 +5,7 @@
 Application::Application(int& argc, char** argv) : QApplication(argc, argv) {
     setApplicationName("Solero");
     setOrganizationName("Solero");
+    setApplicationVersion("0.1.0"); // keep in step with the CMake project() version
     loadZoom();
 }
 

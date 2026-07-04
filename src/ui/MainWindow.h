@@ -29,6 +29,8 @@ class QTabWidget;
 class QMenu;
 class QPushButton;
 class QStackedWidget;
+class QActionGroup;
+class QLineEdit;
 
 namespace solero {
 struct ModEntry;
@@ -70,7 +72,9 @@ private:
     void detachProfileFromViews();
 
 private:
+    void setupMenuBar();
     void setupToolbar();
+    void setupStatusBar();
     void setupCentralWidget();
     void switchProfile(const QString& name);
     // After a profile is newly created (manual, Wabbajack, or MO2 import), ask
@@ -174,7 +178,6 @@ private:
     // FOMOD (fomod/ModuleConfig.xml), set sourceArchive + isFomod, and back-fill
     // fomod-choices.json where the selection is reconstructable. Runs synchronously
     // behind a cancellable ProgressModal (it extracts ~dozens of archives).
-    void onScanFomod();
     // Launch the async (off-UI-thread) Nexus update check. silentIfNone=true is
     // used by the auto-check-on-profile-load path: it no-ops quietly when there's
     // no API key, no mods with Nexus metadata, or a check is already running.
@@ -233,6 +236,12 @@ private:
     void onZoomIn();
     void onZoomOut();
     void onZoomReset();
+    // Sync the View ▸ Zoom submenu to the live Application zoom factor: check the
+    // matching preset (or none, between presets) and refresh the "Current: N%"
+    // label. Wired to the submenu's aboutToShow.
+    void updateZoomMenu();
+    void onShowShortcuts(); // Help ▸ Keyboard Shortcuts (F1)
+    void onAboutSolero();   // Help ▸ About Solero
     void onRunTool(const solero::Executable& exe);
     // After a successful deploy, run each tool flagged "Run on deployment"
     // (runThroughDeployer) in listed order via ToolRunner, honoring the UI lock.
@@ -293,6 +302,7 @@ private:
     QToolButton* m_problemsBtn = nullptr;          // toolbar health indicator
     solero::ProblemsDialog* m_problemsDialog = nullptr;
     QString m_lastDeployWarning;                   // last DeployResult::warning
+    bool m_lastDeployHadFailures = false;          // true when last deploy had file-link failures
     solero::ConflictIndex m_lastConflicts;         // last deployed/loaded conflict index
     QComboBox* m_profileCombo = nullptr;
     QSplitter* m_splitter = nullptr;
@@ -300,7 +310,6 @@ private:
     solero::RightPane*      m_rightPane = nullptr;
     solero::BottomPanel*    m_bottomPanel = nullptr;
     solero::BethiniWindow*  m_bethiniWindow = nullptr;
-    QToolButton* m_toolsBtn = nullptr;
     QMenu* m_toolsMenu = nullptr;
     solero::ToolStore* m_toolStore = nullptr;
     solero::DownloadManager* m_downloads = nullptr;
@@ -309,6 +318,15 @@ private:
     QWidget* m_modManagerPage = nullptr;
     QAction* m_browseAction = nullptr;
     QAction* m_checkUpdatesAction = nullptr;
+    // View ▸ Zoom: preset actions (exclusive) + a disabled "Current: N%" label.
+    QActionGroup* m_zoomGroup = nullptr;
+    QAction* m_zoomCurrentAction = nullptr;
+    // Left-pane mod filter box, targeted by the Ctrl+F focus shortcut.
+    QLineEdit* m_modFilter = nullptr;
+    // Mod-list reorder undo/redo buttons, mirrored by Ctrl+Z / Ctrl+Shift+Z
+    // (which act only when the respective button is enabled).
+    QToolButton* m_undoBtn = nullptr;
+    QToolButton* m_redoBtn = nullptr;
     // Receives the result of the off-thread update check (local id -> {installed, latest}).
     // Result of an accurate (file-id based) update scan: mods with a real newer
     // main file on Nexus, plus any fileIds back-filled via MD5 this run (applied +

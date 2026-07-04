@@ -41,7 +41,7 @@ QList<HealthIssue> dependencyIssues(
         if (warns.isEmpty()) continue;
         const QString name = modNames.value(id, id);
         HealthIssue i;
-        i.severity    = HealthSeverity::Warning;
+        i.severity    = HealthSeverity::Error;
         i.category    = HealthCategory::MissingDependency;
         i.targetModId = id;
         i.title       = QStringLiteral("%1 has an unmet dependency").arg(name);
@@ -81,13 +81,18 @@ QList<HealthIssue> conflictIssues(int conflictedPathCount,
     return out;
 }
 
-QList<HealthIssue> deployWarningIssues(const QString& warning) {
+QList<HealthIssue> deployWarningIssues(const QString& warning, bool hadFailures) {
     QList<HealthIssue> out;
-    if (warning.trimmed().isEmpty()) return out;
+    if (warning.trimmed().isEmpty() && !hadFailures) return out;
     HealthIssue i;
-    i.severity = HealthSeverity::Warning;
+    // Hard failures (files that couldn't be linked) -> Error so they aren't
+    // drowned out. Advisory warnings (cross-filesystem copy, LOOT-sort-skip)
+    // stay Warning - the deploy itself succeeded.
+    i.severity = hadFailures ? HealthSeverity::Error : HealthSeverity::Warning;
     i.category = HealthCategory::DeployWarning;
-    i.title    = QStringLiteral("Last deploy reported a warning");
+    i.title    = hadFailures
+        ? QStringLiteral("Last deploy had file failures")
+        : QStringLiteral("Last deploy reported a warning");
     i.detail   = warning;
     out.append(i);
     return out;
@@ -97,6 +102,9 @@ QList<HealthIssue> deployStateIssues(bool deployed, bool dirty) {
     QList<HealthIssue> out;
     if (!deployed) {
         HealthIssue i;
+        // Intentionally Info, not Warning: the Deploy button already signals
+        // the dirty/not-deployed state visually - raising this to Warning would
+        // double-signal and create noise when the user hasn't launched yet.
         i.severity = HealthSeverity::Info;
         i.category = HealthCategory::DeployState;
         i.title    = QStringLiteral("Profile is not deployed");
@@ -107,6 +115,7 @@ QList<HealthIssue> deployStateIssues(bool deployed, bool dirty) {
         out.append(i);
     } else if (dirty) {
         HealthIssue i;
+        // Intentionally Info - see above; the Deploy button already shows "Redeploy".
         i.severity = HealthSeverity::Info;
         i.category = HealthCategory::DeployState;
         i.title    = QStringLiteral("Changes pending redeploy");
@@ -121,25 +130,29 @@ QList<HealthIssue> deployStateIssues(bool deployed, bool dirty) {
 
 QList<HealthIssue> pluginLimitIssues(int regularCount, int lightCount) {
     QList<HealthIssue> out;
-    constexpr int kCap = 255; // load-order slots 00..FE; FF is reserved
-    if (regularCount > kCap) {
+    // 254 full (non-ESL) plugins is the practical ceiling: load-order slots run
+    // 00..FD once the game's own masters are counted. Warn once within striking
+    // distance so users can flag plugins as light before they hit the wall.
+    constexpr int kCap  = 254;
+    constexpr int kWarn = 240;
+    if (regularCount >= kCap) {
         HealthIssue i;
         i.severity = HealthSeverity::Error;
         i.category = HealthCategory::PluginLimit;
-        i.title    = QStringLiteral("Over the plugin limit (%1 / %2)")
-                         .arg(regularCount).arg(kCap);
+        i.title    = QStringLiteral("Over the %1 plugin limit (%2 of %1 full plugins active)")
+                         .arg(kCap).arg(regularCount);
         i.detail   = QStringLiteral(
             "%1 full plugins are enabled but only %2 fit. Disable or merge some, "
             "or flag suitable plugins as light (ESL). %3 light plugin(s) don't "
             "count against the cap.")
                          .arg(regularCount).arg(kCap).arg(lightCount);
         out.append(i);
-    } else if (regularCount >= kCap - 5) {
+    } else if (regularCount >= kWarn) {
         HealthIssue i;
         i.severity = HealthSeverity::Warning;
         i.category = HealthCategory::PluginLimit;
-        i.title    = QStringLiteral("Approaching the plugin limit (%1 / %2)")
-                         .arg(regularCount).arg(kCap);
+        i.title    = QStringLiteral("Nearing the %1 plugin limit (%2 of %1 full plugins active)")
+                         .arg(kCap).arg(regularCount);
         i.detail   = QStringLiteral(
             "Close to the %1 full-plugin cap. Consider flagging plugins as light "
             "(ESL). %2 light plugin(s) already don't count against the cap.")
@@ -194,7 +207,7 @@ QList<HealthIssue> collect(const Profile& profile, const ConflictIndex& conflict
     all += health::dependencyIssues(inputs.dependencyWarnings, modNames, modNexusIds);
 
     // Deploy warning + state
-    all += health::deployWarningIssues(inputs.lastDeployWarning);
+    all += health::deployWarningIssues(inputs.lastDeployWarning, inputs.lastDeployHadFailures);
     all += health::deployStateIssues(inputs.deployed, inputs.deployDirty);
 
     // Plugin limit

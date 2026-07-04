@@ -12,6 +12,8 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
+#include <QToolButton>
+#include <QMenu>
 #include <QSignalBlocker>
 #include <QWidget>
 
@@ -37,21 +39,28 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     auto* sortRow = new QHBoxLayout();
     sortRow->setContentsMargins(4, 4, 4, 4);
     m_pluginSearch = new QLineEdit(pluginsContainer);
-    m_pluginSearch->setPlaceholderText(QStringLiteral("Search plugins…"));
+    m_pluginSearch->setPlaceholderText(QStringLiteral("Search plugins") + QChar(0x2026));
     m_pluginSearch->setClearButtonEnabled(true);
     sortRow->addWidget(m_pluginSearch, 1); // grows to fill, pushing the buttons right
-    auto* backupBtn = new QPushButton("Backup Load Order", pluginsContainer);
-    backupBtn->setToolTip("Snapshot the current load order + active state");
-    connect(backupBtn, &QPushButton::clicked, this, &RightPane::backupLoRequested);
-    sortRow->addWidget(backupBtn);
-    auto* restoreBtn = new QPushButton("Restore Load Order\xe2\x80\xa6", pluginsContainer);
-    restoreBtn->setToolTip("Restore a previously saved load-order snapshot");
-    connect(restoreBtn, &QPushButton::clicked, this, &RightPane::restoreLoRequested);
-    sortRow->addWidget(restoreBtn);
-    auto* lootRulesBtn = new QPushButton("LOOT Rules", pluginsContainer);
-    lootRulesBtn->setToolTip("Edit custom LOOT sorting rules");
-    connect(lootRulesBtn, &QPushButton::clicked, this, &RightPane::lootRulesRequested);
-    sortRow->addWidget(lootRulesBtn);
+
+    // The three rare load-order actions collapse into one "Load Order" dropdown;
+    // only the per-session "Lock Order" + "Sort Now" stay as visible buttons.
+    auto* loMenuBtn = new QToolButton(pluginsContainer);
+    loMenuBtn->setText("Load Order");
+    loMenuBtn->setPopupMode(QToolButton::InstantPopup);
+    loMenuBtn->setToolTip("Backup, restore, and LOOT-rule actions for the load order");
+    auto* loMenu = new QMenu(loMenuBtn);
+    loMenu->addAction("Backup Load Order", this, &RightPane::backupLoRequested)
+        ->setToolTip("Snapshot the current load order + active state");
+    loMenu->addAction(QStringLiteral("Restore Load Order") + QChar(0x2026),
+                      this, &RightPane::restoreLoRequested)
+        ->setToolTip("Restore a previously saved load-order snapshot");
+    loMenu->addAction(QStringLiteral("LOOT Rules") + QChar(0x2026),
+                      this, &RightPane::lootRulesRequested)
+        ->setToolTip("Edit custom LOOT sorting rules");
+    loMenuBtn->setMenu(loMenu);
+    sortRow->addWidget(loMenuBtn);
+
     m_lockBtn = new QPushButton("Lock Order", pluginsContainer);
     m_lockBtn->setCheckable(true);
     m_lockBtn->setToolTip("Lock the load order: skip LOOT auto-sort and keep the current manual order");
@@ -107,6 +116,13 @@ void RightPane::selectPlugin(const QString& filename) {
     if (auto* container = m_pluginsTab->parentWidget())
         setCurrentWidget(container);
     m_pluginsTab->selectPlugin(filename);
+}
+
+void RightPane::focusPluginSearch() {
+    if (auto* container = m_pluginsTab->parentWidget())
+        setCurrentWidget(container);
+    m_pluginSearch->setFocus(Qt::ShortcutFocusReason);
+    m_pluginSearch->selectAll();
 }
 
 void RightPane::showPluginNotice(const QString& text) {

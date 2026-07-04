@@ -15,18 +15,18 @@
 namespace solero {
 
 namespace {
-// Severity badge for the panel rows. Error reuses the shared red "!" circle;
-// warning is an amber "!" circle; info is a slate "i" circle.
+// Severity badge for the panel rows. Error and warning share the road-sign
+// triangle (red / warm yellow) used across every health surface; info keeps a
+// quiet slate "i" circle since it isn't a warning.
 QIcon severityIcon(HealthSeverity sev) {
-    if (sev == HealthSeverity::Error) return redBangIcon(18);
-    const int px = 18;
+    if (sev == HealthSeverity::Error)   return errorSignIcon(16);
+    if (sev == HealthSeverity::Warning) return warnSignIcon(16);
+    const int px = 16;
     QPixmap pm(px, px); pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing, true);
-    const QColor fill = sev == HealthSeverity::Warning ? QColor("#e67e22")
-                                                       : QColor("#2980b9");
     p.setPen(Qt::NoPen);
-    p.setBrush(fill);
+    p.setBrush(QColor("#2980b9"));
     const double m = px * 0.10;
     p.drawEllipse(QRectF(m, m, px - 2 * m, px - 2 * m));
     QFont f;
@@ -34,9 +34,7 @@ QIcon severityIcon(HealthSeverity sev) {
     f.setBold(true);
     p.setFont(f);
     p.setPen(Qt::white);
-    p.drawText(QRectF(0, 0, px, px), Qt::AlignCenter,
-               sev == HealthSeverity::Warning ? QStringLiteral("!")
-                                              : QStringLiteral("i"));
+    p.drawText(QRectF(0, 0, px, px), Qt::AlignCenter, QStringLiteral("i"));
     return QIcon(pm);
 }
 
@@ -125,6 +123,7 @@ void ProblemsDialog::setIssues(const QList<HealthIssue>& issues) {
             if (!g.node) {
                 g.node = new QTreeWidgetItem(m_tree);
                 g.node->setText(0, g.title);
+                g.node->setIcon(0, severityIcon(sev));
                 QFont f = g.node->font(0); f.setBold(true); g.node->setFont(0, f);
                 g.node->setFirstColumnSpanned(true);
                 g.node->setFlags(Qt::ItemIsEnabled); // not selectable

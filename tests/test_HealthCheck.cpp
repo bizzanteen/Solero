@@ -21,13 +21,14 @@ private slots:
         QVERIFY(out[0].detail.contains("Missing.esm"));
     }
 
-    void dependencyIssues_warningWithModTarget() {
+    void dependencyIssues_errorWithModTarget() {
         QHash<QString, QStringList> warns{ {"modA", {"Requires SKSE64"}} };
         QHash<QString, QString> names{ {"modA", "Cool Mod"} };
         QHash<QString, QString> nexus{ {"modA", "12345"} };
         auto out = health::dependencyIssues(warns, names, nexus);
         QCOMPARE(out.size(), 1);
-        QCOMPARE(out[0].severity, HealthSeverity::Warning);
+        // Missing SKSE / Address Library is a hard runtime failure -> Error.
+        QCOMPARE(out[0].severity, HealthSeverity::Error);
         QCOMPARE(out[0].category, HealthCategory::MissingDependency);
         QCOMPARE(out[0].targetModId, QString("modA"));
         QVERIFY(out[0].title.contains("Cool Mod"));
@@ -46,13 +47,27 @@ private slots:
     }
 
     void deployWarning_onlyWhenNonEmpty() {
-        QVERIFY(health::deployWarningIssues("").isEmpty());
-        QVERIFY(health::deployWarningIssues("   ").isEmpty());
-        auto out = health::deployWarningIssues("cross-filesystem hardlink fell back to copy");
+        // No warning, no failures -> silent.
+        QVERIFY(health::deployWarningIssues("", false).isEmpty());
+        QVERIFY(health::deployWarningIssues("   ", false).isEmpty());
+        // Advisory warning (cross-filesystem, LOOT-skip) -> Warning severity.
+        auto out = health::deployWarningIssues("cross-filesystem hardlink fell back to copy", false);
         QCOMPARE(out.size(), 1);
         QCOMPARE(out[0].severity, HealthSeverity::Warning);
         QCOMPARE(out[0].category, HealthCategory::DeployWarning);
         QVERIFY(out[0].detail.contains("cross-filesystem"));
+    }
+
+    void deployWarning_hardFailureIsError() {
+        // Hard file-link failures -> Error severity regardless of warning string.
+        auto out = health::deployWarningIssues("3 file(s) failed to deploy", true);
+        QCOMPARE(out.size(), 1);
+        QCOMPARE(out[0].severity, HealthSeverity::Error);
+        QCOMPARE(out[0].category, HealthCategory::DeployWarning);
+        // hadFailures with empty warning string still surfaces as an Error.
+        auto silent = health::deployWarningIssues("", true);
+        QCOMPARE(silent.size(), 1);
+        QCOMPARE(silent[0].severity, HealthSeverity::Error);
     }
 
     void deployState_notDeployedVsDirtyVsClean() {
@@ -65,6 +80,28 @@ private slots:
         QVERIFY(health::pluginLimitIssues(100, 0).isEmpty());
         QCOMPARE(health::pluginLimitIssues(252, 5).first().severity, HealthSeverity::Warning);
         QCOMPARE(health::pluginLimitIssues(300, 5).first().severity, HealthSeverity::Error);
+    }
+
+    // Spec thresholds: silent < 240; Warning in [240, 254); Error at/above 254.
+    // 254 is the widely-cited full-plugin (non-ESL) limit; wording surfaces
+    // "N of 254 full plugins active".
+    void pluginLimit_spec240WarnAnd254Error() {
+        QVERIFY(health::pluginLimitIssues(239, 0).isEmpty());            // just below -> silent
+        {
+            auto out = health::pluginLimitIssues(240, 0);               // warning boundary
+            QCOMPARE(out.size(), 1);
+            QCOMPARE(out.first().severity, HealthSeverity::Warning);
+            QCOMPARE(out.first().category, HealthCategory::PluginLimit);
+            QVERIFY(out.first().title.contains("254"));
+            QVERIFY(out.first().title.contains("240"));
+        }
+        QCOMPARE(health::pluginLimitIssues(253, 0).first().severity, HealthSeverity::Warning);
+        {
+            auto out = health::pluginLimitIssues(254, 0);               // error boundary
+            QCOMPARE(out.size(), 1);
+            QCOMPARE(out.first().severity, HealthSeverity::Error);
+            QVERIFY(out.first().title.contains("254"));
+        }
     }
 
     void worstSeverity_picksHighest() {

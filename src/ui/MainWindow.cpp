@@ -38,10 +38,10 @@
 #include "tools/RadiumPrep.h"
 #include "tools/PgpatcherConfig.h"
 #include "fomod/FomodEngine.h"
-#include "fomod/FomodScanner.h"
 #include "loot/LootSorter.h"
 #include "PluginListView.h"
 #include "ui/ProblemsDialog.h"
+#include "ui/KeyboardShortcutsDialog.h"
 #include "ui/IconUtil.h"
 #include "core/HealthCheck.h"
 #include "install/DependencyChecker.h"
@@ -70,15 +70,23 @@
 #include <QThread>
 #include <QProcess>
 #include <QKeySequence>
+#include <QActionGroup>
+#include <QShortcut>
 #include <QStandardPaths>
 #include <QMessageBox>
 #include <QAbstractButton>
 #include <QPushButton>
 #include <QInputDialog>
 #include <QLineEdit>
+#include <QTextEdit>
+#include <QPlainTextEdit>
 #include <QListWidget>
 #include <QPair>
 #include <QMenu>
+#include <QMenuBar>
+#include <QFont>
+#include <QPalette>
+#include <QSizePolicy>
 #include <QIcon>
 #include <QStatusBar>
 #include <QTimer>
@@ -195,7 +203,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     m_ipcServer->setTransactionLog(m_txLog);
     m_ipcServer->start("solero-ipc");
 
+    setupMenuBar();
     setupToolbar();
+    setupStatusBar();
     setupCentralWidget();
     statusBar()->showMessage("Ready");
 
@@ -500,12 +510,124 @@ QString MainWindow::txLogPath() const {
     return solero::AppConfig::dataRoot() + "/ai-transactions.json";
 }
 
+void MainWindow::setupMenuBar() {
+    const QChar ell(0x2026);
+    auto* mb = menuBar();
+
+    // ---- File: acquire mods + move profiles between machines + app-level ----
+    QMenu* fileMenu = mb->addMenu("&File");
+    QAction* installAct = fileMenu->addAction(
+        QStringLiteral("Install Mod") + ell, this, &MainWindow::onInstallMod);
+    installAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_I));
+    fileMenu->addAction(QStringLiteral("Install Wabbajack Modlist") + ell, this, &MainWindow::onInstallWabbajack);
+    fileMenu->addSeparator();
+    fileMenu->addAction(QStringLiteral("Export Profile") + ell, this, &MainWindow::onExportProfile);
+    fileMenu->addAction(QStringLiteral("Import Profile") + ell, this, &MainWindow::onImportProfile);
+    fileMenu->addSeparator();
+    QAction* settingsAct = fileMenu->addAction(
+        QStringLiteral("Settings") + ell, this, [this]{ openSettingsDialog(); });
+    settingsAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma));
+    fileMenu->addSeparator();
+    fileMenu->addAction("Quit", QKeySequence(QKeySequence::Quit), this, &QWidget::close);
+
+    // ---- Profile: create/rename/delete + imports + update/FOMOD scans ----
+    QMenu* profileMenu = mb->addMenu("&Profile");
+    profileMenu->addAction(QStringLiteral("New Profile") + ell, this, &MainWindow::onNewProfile);
+    profileMenu->addAction(QStringLiteral("Rename Current Profile") + ell, this, &MainWindow::onRenameProfile);
+    profileMenu->addSeparator();
+    profileMenu->addAction(QStringLiteral("Import MO2 Profile") + ell, this, &MainWindow::onImportMo2);
+    profileMenu->addSeparator();
+    // Same QAction as before: keeps the F5 shortcut + disable-while-running state.
+    m_checkUpdatesAction = profileMenu->addAction(
+        "Check for Updates", this, &MainWindow::onCheckUpdates);
+    m_checkUpdatesAction->setShortcut(QKeySequence(Qt::Key_F5));
+    m_checkUpdatesAction->setToolTip("Check installed mods for newer files on Nexus (F5)");
+    profileMenu->addSeparator();
+    // Destructive - kept last with an ellipsis (opens a confirm dialog).
+    profileMenu->addAction(QStringLiteral("Delete Current Profile") + ell, this, &MainWindow::onDeleteProfile);
+
+    // ---- Tools: DYNAMIC - repopulated from activeTools() each time it opens,
+    // mirroring the old dropdown (which rebuilt via rebuildToolsMenu()). ----
+    m_toolsMenu = mb->addMenu("&Tools");
+    connect(m_toolsMenu, &QMenu::aboutToShow, this, &MainWindow::rebuildToolsMenu);
+
+    // ---- View: the Browse Nexus page toggle (same checkable QAction) ----
+    QMenu* viewMenu = mb->addMenu("&View");
+    m_browseAction = viewMenu->addAction("Browse Nexus");
+    m_browseAction->setCheckable(true);
+    m_browseAction->setToolTip("Toggle a full nexusmods.com browser in the main view");
+    connect(m_browseAction, &QAction::toggled, this, &MainWindow::onToggleNexus);
+
+    // ---- View ▸ Zoom: presets + in/out/reset, all on the one zoom mechanism ----
+    viewMenu->addSeparator();
+    QMenu* zoomMenu = viewMenu->addMenu("&Zoom");
+    // Disabled label reads the live factor; useful when it's between presets.
+    m_zoomCurrentAction = zoomMenu->addAction("Current: 100%");
+    m_zoomCurrentAction->setEnabled(false);
+    zoomMenu->addSeparator();
+    m_zoomGroup = new QActionGroup(this);
+    m_zoomGroup->setExclusive(true);
+    const QList<int> presets{75, 90, 100, 110, 125, 150};
+    for (int pct : presets) {
+        QAction* a = zoomMenu->addAction(QString("%1%").arg(pct));
+        a->setCheckable(true);
+        a->setData(pct);
+        m_zoomGroup->addAction(a);
+        connect(a, &QAction::triggered, this, [pct] {
+            static_cast<Application*>(qApp)->setZoomFactor(pct / 100.0);
+        });
+    }
+    zoomMenu->addSeparator();
+    QAction* zoomInAct = zoomMenu->addAction("Zoom In", this, &MainWindow::onZoomIn);
+    zoomInAct->setShortcuts({QKeySequence(Qt::CTRL | Qt::Key_Plus),
+                             QKeySequence(Qt::CTRL | Qt::Key_Equal)});
+    QAction* zoomOutAct = zoomMenu->addAction("Zoom Out", this, &MainWindow::onZoomOut);
+    zoomOutAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Minus));
+    QAction* zoomResetAct = zoomMenu->addAction("Reset Zoom", this, &MainWindow::onZoomReset);
+    zoomResetAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
+    // Refresh checks + label each time the submenu opens.
+    connect(zoomMenu, &QMenu::aboutToShow, this, &MainWindow::updateZoomMenu);
+    updateZoomMenu();
+
+    // ---- Help: keyboard reference + about ----
+    QMenu* helpMenu = mb->addMenu("&Help");
+    QAction* shortcutsAct = helpMenu->addAction(
+        QStringLiteral("Keyboard Shortcuts") + ell, this, &MainWindow::onShowShortcuts);
+    shortcutsAct->setShortcut(QKeySequence(Qt::Key_F1));
+    helpMenu->addAction("About Solero", this, &MainWindow::onAboutSolero);
+
+    rebuildToolsMenu();
+}
+
+void MainWindow::onShowShortcuts() {
+    solero::KeyboardShortcutsDialog dlg(this, this);
+    dlg.exec();
+}
+
+void MainWindow::onAboutSolero() {
+    QMessageBox::about(this, "About Solero",
+        QStringLiteral("<b>Solero</b> %1<br><br>An MO2-style mod manager for "
+                       "Skyrim Special / Anniversary Edition.")
+            .arg(qApp->applicationVersion()));
+}
+
+void MainWindow::updateZoomMenu() {
+    if (!m_zoomGroup) return;
+    const double factor = static_cast<Application*>(qApp)->zoomFactor();
+    const int cur = qRound(factor * 100.0);
+    if (m_zoomCurrentAction)
+        m_zoomCurrentAction->setText(QString("Current: %1%").arg(cur));
+    // Check the matching preset; leave all unchecked when between presets.
+    for (QAction* a : m_zoomGroup->actions())
+        a->setChecked(a->data().toInt() == cur);
+}
+
 void MainWindow::setupToolbar() {
     auto* tb = addToolBar("Main");
     tb->setMovable(false);
     tb->setIconSize({24, 24});
 
-    // Profile selector
+    // Profile selector (all other actions now live in the menu bar).
     tb->addWidget(new QLabel("Profile: "));
     m_profileCombo = new QComboBox(tb);
     m_profileCombo->setMinimumWidth(150);
@@ -514,78 +636,53 @@ void MainWindow::setupToolbar() {
             this, &MainWindow::switchProfile);
     tb->addWidget(m_profileCombo);
 
-    // Profile management button
-    auto* profileMenuBtn = new QToolButton(tb);
-    profileMenuBtn->setText("\xe2\x9a\x99");
-    auto* profileMenu = new QMenu(profileMenuBtn);
-    const QChar ell(0x2026);
-    profileMenu->addAction(QStringLiteral("New Profile") + ell, this, &MainWindow::onNewProfile);
-    profileMenu->addAction(QStringLiteral("Rename Current Profile") + ell, this, &MainWindow::onRenameProfile);
-    profileMenu->addSeparator();
-    profileMenu->addAction(QStringLiteral("Export Profile") + ell, this, &MainWindow::onExportProfile);
-    profileMenu->addAction(QStringLiteral("Import Profile") + ell, this, &MainWindow::onImportProfile);
-    profileMenu->addAction(QStringLiteral("Import MO2 Profile") + ell, this, &MainWindow::onImportMo2);
-    profileMenu->addAction(QStringLiteral("Install Wabbajack Modlist") + ell, this, &MainWindow::onInstallWabbajack);
-    profileMenu->addSeparator();
-    m_checkUpdatesAction = profileMenu->addAction(
-        "Check for Updates", this, &MainWindow::onCheckUpdates);
-    m_checkUpdatesAction->setShortcut(QKeySequence(Qt::Key_F5));
-    m_checkUpdatesAction->setToolTip("Check installed mods for newer files on Nexus (F5)");
-    profileMenu->addAction(QStringLiteral("Scan for FOMOD Mods") + ell, this, &MainWindow::onScanFomod);
-    profileMenu->addSeparator();
-    // Destructive - kept last with an ellipsis (opens a confirm dialog).
-    profileMenu->addAction(QStringLiteral("Delete Current Profile") + ell, this, &MainWindow::onDeleteProfile);
-    profileMenuBtn->setMenu(profileMenu);
-    profileMenuBtn->setPopupMode(QToolButton::InstantPopup);
-    tb->addWidget(profileMenuBtn);
-    // Expose the update check as a visible toolbar button too (same QAction, so the
-    // F5 shortcut and the disable-while-running state are shared).
-    tb->addAction(m_checkUpdatesAction);
-    tb->addSeparator();
+    // Stretch pushes the primary Deploy/Play pair to the right edge.
+    auto* spacer = new QWidget(tb);
+    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    tb->addWidget(spacer);
 
-    // Install Mod action
-    tb->addAction("Install Mod...", this, &MainWindow::onInstallMod);
-    m_browseAction = tb->addAction("\xe2\x86\x92 Browse Nexus");
-    m_browseAction->setCheckable(true);
-    m_browseAction->setToolTip("Toggle a full nexusmods.com browser in the main view");
-    connect(m_browseAction, &QAction::toggled, this, &MainWindow::onToggleNexus);
-    tb->addSeparator();
+    // Problems / health indicator: a severity-coloured exclamation sitting just
+    // LEFT of the Deploy/Play pair. Grey = clean, amber = warnings, red = errors.
+    // Click opens the ProblemsDialog. refreshHealthIndicator() drives icon+tooltip.
+    m_problemsBtn = new QToolButton(tb);
+    m_problemsBtn->setAutoRaise(true);
+    m_problemsBtn->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    m_problemsBtn->setIcon(solero::neutralSignIcon(20));
+    m_problemsBtn->setToolTip("No problems");
+    connect(m_problemsBtn, &QToolButton::clicked, this, &MainWindow::onShowProblems);
+    tb->addWidget(m_problemsBtn);
 
-    // Tools dropdown
-    m_toolsBtn = new QToolButton(tb);
-    m_toolsBtn->setText("Tools");
-    m_toolsBtn->setPopupMode(QToolButton::InstantPopup);
-    m_toolsMenu = new QMenu(m_toolsBtn);
-    m_toolsBtn->setMenu(m_toolsMenu);
-    tb->addWidget(m_toolsBtn);
-
-    // BethINI (modal window)
-    tb->addAction("BethINI", this, &MainWindow::onOpenBethini);
-    tb->addSeparator();
-
-    // Deploy toggle
+    // Deploy + Play are THE primary controls - the workflow's terminus.
     m_deployAction = tb->addAction("\xe2\x9c\x97 Not Deployed", this, &MainWindow::onDeployToggle);
     m_deployAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
     m_deployAction->setToolTip("Click to deploy mods to game directory (Ctrl+D)");
-    tb->addSeparator();
+    auto* playAction = tb->addAction("\xe2\x96\xb6 Play", this, &MainWindow::onPlay);
+    playAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_P));
+    playAction->setToolTip("Launch the game via Steam (Ctrl+P)");
 
-    // Play (launch Skyrim via Steam)
-    tb->addAction("\xe2\x96\xb6 Play", this, &MainWindow::onPlay);
-    tb->addSeparator();
+    // Promote the pair so it dominates: bold both, and give Play a filled
+    // accent pill pulled from the resolved palette (Highlight role) - no
+    // hardcoded colours. The Deploy label mutates at runtime; the buttons
+    // keep this styling across setText().
+    if (auto* deployBtn = qobject_cast<QToolButton*>(tb->widgetForAction(m_deployAction))) {
+        QFont f = deployBtn->font(); f.setBold(true); deployBtn->setFont(f);
+    }
+    if (auto* playBtn = qobject_cast<QToolButton*>(tb->widgetForAction(playAction))) {
+        QFont f = playBtn->font(); f.setBold(true); playBtn->setFont(f);
+        const QColor accent = palette().color(QPalette::Highlight);
+        const QColor accentText = palette().color(QPalette::HighlightedText);
+        playBtn->setStyleSheet(QString(
+            "QToolButton { background:%1; color:%2; border-radius:3px;"
+            " padding:2px 10px; }")
+            .arg(accent.name(), accentText.name()));
+    }
+}
 
-    // Problems / health indicator: count + worst-severity icon, opens the panel.
-    m_problemsBtn = new QToolButton(tb);
-    m_problemsBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    m_problemsBtn->setText("Problems");
-    m_problemsBtn->setToolTip("Show problems (missing masters, dependencies, conflicts, FOMOD, deploy)");
-    connect(m_problemsBtn, &QToolButton::clicked, this, &MainWindow::onShowProblems);
-    tb->addWidget(m_problemsBtn);
-    tb->addSeparator();
-
-    // Game settings
-    tb->addAction("\xe2\x9a\x99 Settings", this, [this]{ openSettingsDialog(); });
-
-    rebuildToolsMenu();
+void MainWindow::setupStatusBar() {
+    // The Problems/health indicator now lives in the toolbar (see setupToolbar),
+    // next to Deploy/Play. Touch the status bar so it exists for transient
+    // messages (checkSave() warnings, etc.) but keep it otherwise empty.
+    statusBar();
 }
 
 void MainWindow::setupCentralWidget() {
@@ -601,7 +698,8 @@ void MainWindow::setupCentralWidget() {
     filterRow->setContentsMargins(0, 0, 0, 0);
     filterRow->setSpacing(4);
     auto* modFilter = new QLineEdit(leftContainer);
-    modFilter->setPlaceholderText("Filter mods\xe2\x80\xa6");
+    m_modFilter = modFilter; // targeted by the Ctrl+F focus shortcut
+    modFilter->setPlaceholderText(QStringLiteral("Search mods") + QChar(0x2026));
     modFilter->setClearButtonEnabled(true);
     auto* stateFilter = new QComboBox(leftContainer);
     stateFilter->setToolTip("Show only mods in a given state");
@@ -628,6 +726,8 @@ void MainWindow::setupCentralWidget() {
     };
     auto* undoBtn = makeReorderBtn(QStringLiteral("edit-undo"), QChar(0x21B6), tr("Undo move"));
     auto* redoBtn = makeReorderBtn(QStringLiteral("edit-redo"), QChar(0x21B7), tr("Redo move"));
+    m_undoBtn = undoBtn; // mirrored by Ctrl+Z
+    m_redoBtn = redoBtn; // mirrored by Ctrl+Shift+Z
     filterRow->addWidget(undoBtn);
     filterRow->addWidget(redoBtn);
 
@@ -638,6 +738,14 @@ void MainWindow::setupCentralWidget() {
         m_modListView->setStateFilter(
             static_cast<solero::ModListView::StateFilter>(stateFilter->currentData().toInt()));
     });
+    // Jump-to-mod (Problems panel / plugin origin) may need to drop an active filter
+    // to reveal its target. Reset the filter WIDGETS here so the box and the list
+    // stay in sync - their own signals drive setFilter("")/setStateFilter(All).
+    connect(m_modListView, &solero::ModListView::filterCleared, this,
+            [modFilter, stateFilter]{
+                modFilter->clear();              // -> setFilter("")
+                stateFilter->setCurrentIndex(0); // "All" -> setStateFilter(All)
+            });
     connect(undoBtn, &QToolButton::clicked, m_modListView, &solero::ModListView::undoMove);
     connect(redoBtn, &QToolButton::clicked, m_modListView, &solero::ModListView::redoMove);
     connect(m_modListView, &solero::ModListView::undoRedoStateChanged, this,
@@ -866,6 +974,37 @@ void MainWindow::setupCentralWidget() {
     m_centralStack->addWidget(m_nexusWeb);
     connect(m_nexusWeb, &solero::NexusWebView::nxmRequested,
             this, &MainWindow::onBrowserNxmDownload);
+
+    // Window-wide shortcuts for controls that aren't menu/toolbar actions
+    // (Menu/toolbar actions carry their own shortcuts; these cover the search
+    //  boxes and the mod-move undo/redo buttons.) NOTE: keep this list in sync
+    //  with the static entries in KeyboardShortcutsDialog and the ModListView
+    //  Del/Space handlers.
+    // Ctrl+F -> focus the mod filter box.
+    connect(new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_F), this), &QShortcut::activated,
+            this, [this]{ if (m_modFilter) { m_modFilter->setFocus(Qt::ShortcutFocusReason); m_modFilter->selectAll(); } });
+    // Ctrl+Shift+F -> focus the plugin search box (switches to the Plugins tab).
+    connect(new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F), this), &QShortcut::activated,
+            this, [this]{ if (m_rightPane) m_rightPane->focusPluginSearch(); });
+    // Ctrl+Z / Ctrl+Shift+Z -> mod-move undo/redo, only while the button is enabled.
+    // Guard: if a text widget has focus, let it handle its own undo so we don't
+    // swallow the keystroke while the user is editing a search box or note field.
+    auto textWidgetFocused = [] {
+        QWidget* w = qApp->focusWidget();
+        return w && (qobject_cast<QLineEdit*>(w)
+                     || qobject_cast<QTextEdit*>(w)
+                     || qobject_cast<QPlainTextEdit*>(w));
+    };
+    connect(new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Z), this), &QShortcut::activated,
+            this, [this, textWidgetFocused]{
+                if (!textWidgetFocused() && m_undoBtn && m_undoBtn->isEnabled())
+                    m_undoBtn->click();
+            });
+    connect(new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z), this), &QShortcut::activated,
+            this, [this, textWidgetFocused]{
+                if (!textWidgetFocused() && m_redoBtn && m_redoBtn->isEnabled())
+                    m_redoBtn->click();
+            });
 }
 
 // Find a file in dir case-insensitively (Skyrim's custom ini ships as
@@ -971,7 +1110,8 @@ void MainWindow::switchProfile(const QString& name) {
     // Show the last-known "update available" flags immediately (setProfile cleared
     // them); the auto-check at the end of this switch refreshes them.
     m_modListView->setUpdateInfo(loadUpdateFlags());
-    m_lastDeployWarning.clear(); // stale once we switch profiles
+    m_lastDeployWarning.clear();  // stale once we switch profiles
+    m_lastDeployHadFailures = false;
     setWindowTitle(QString("Solero - %1").arg(name));
 
     // Keep the toolbar selector in sync with the actually-active profile. The
@@ -998,6 +1138,7 @@ void MainWindow::switchProfile(const QString& name) {
         m_deployed = result.success;
         m_deployDirty = false;
         m_lastDeployWarning = result.warning;
+        m_lastDeployHadFailures = !result.success;
         if (result.success) {
             m_lastConflicts = result.conflicts;
             m_rightPane->setConflictIndex(result.conflicts);
@@ -1161,6 +1302,7 @@ bool MainWindow::deployCurrent() {
     if (!result.warning.isEmpty())
         QMessageBox::information(this, "Deploy Notice", result.warning);
     m_lastDeployWarning = result.warning;
+    m_lastDeployHadFailures = !result.success;
 
     m_deployed = result.success;
     m_deployDirty = false;
@@ -1308,6 +1450,7 @@ void MainWindow::onDeployToggle() {
         if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
         m_lastConflicts.clear();      // no live deployment -> no conflict winners
         m_lastDeployWarning.clear();
+        m_lastDeployHadFailures = false;
         if (undeployOk) statusBar()->showMessage("Undeployed."); // else keep the warning above
     }
 
@@ -1338,9 +1481,10 @@ void MainWindow::refreshHealthIndicator() {
         solero::HealthInputs in;
         in.dependencyWarnings = solero::DependencyChecker::check(
             profile->modList(), solero::AppConfig::instance().stagingDir());
-        in.lastDeployWarning = m_lastDeployWarning;
-        in.deployed          = m_deployed;
-        in.deployDirty       = m_deployDirty;
+        in.lastDeployWarning      = m_lastDeployWarning;
+        in.lastDeployHadFailures  = m_lastDeployHadFailures;
+        in.deployed               = m_deployed;
+        in.deployDirty            = m_deployDirty;
         issues = solero::collect(*profile, m_lastConflicts, in);
     }
 
@@ -1353,16 +1497,26 @@ void MainWindow::refreshHealthIndicator() {
             return i.severity == solero::HealthSeverity::Info;
         }), issues.end());
 
-    const int worst = solero::worstSeverity(issues);
+    // Severity-coloured exclamation: grey (clean) / amber (warnings only) / red
+    // (any error). Tooltip enumerates the counts so a hover explains the colour.
+    int errors = 0, warnings = 0;
+    for (const auto& i : issues) {
+        if (i.severity == solero::HealthSeverity::Error)   ++errors;
+        else if (i.severity == solero::HealthSeverity::Warning) ++warnings;
+    }
+    const QString dash = QStringLiteral(" ") + QChar('-') + QStringLiteral(" ");
     if (issues.isEmpty()) {
-        m_problemsBtn->setText("No Problems");
-        m_problemsBtn->setIcon(QIcon());
+        m_problemsBtn->setIcon(solero::neutralSignIcon(20));
+        m_problemsBtn->setToolTip(QStringLiteral("No problems") + dash + QStringLiteral("click for details"));
     } else {
-        m_problemsBtn->setText(QString("Problems (%1)").arg(issues.size()));
-        m_problemsBtn->setIcon(
-            worst == int(solero::HealthSeverity::Error)   ? solero::redBangIcon(18)
-          : worst == int(solero::HealthSeverity::Warning) ? solero::yellowUpArrowIcon(18)
-                                                          : QIcon());
+        const bool hasError = errors > 0;
+        m_problemsBtn->setIcon(hasError ? solero::errorSignIcon(20)
+                                        : solero::warnSignIcon(20));
+        QStringList parts;
+        if (errors)   parts << QString("%1 error%2").arg(errors).arg(errors == 1 ? "" : "s");
+        if (warnings) parts << QString("%1 warning%2").arg(warnings).arg(warnings == 1 ? "" : "s");
+        m_problemsBtn->setToolTip(parts.join(QStringLiteral(", ")) + dash
+                                  + QStringLiteral("click for details"));
     }
 
     // Push results into the detail panel whenever it exists (not only when
@@ -3249,19 +3403,6 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
     m_updateWatcher.setFuture(future);
 }
 
-void MainWindow::onScanFomod() {
-    // TODO: removed in patch-wizard-rework; menu action pruned on variant branch.
-    // FOMOD selection reconstruction now happens inside the Patch Wizard
-    // (PatchScanner::scanProfile establishes each mod's selection from its
-    // fomod-choices log, or reconstructs it for imported mods). This standalone
-    // action is a no-op stub; the "Scan for FOMOD Mods" menu item is removed on
-    // the UI-variant branch.
-    QMessageBox::information(
-        this, "Scan for FOMOD mods",
-        "FOMOD scanning is now part of the Patch Wizard "
-        "(Profile \xe2\x80\xba Patch Wizard).");
-}
-
 void MainWindow::maybeAutoCheckUpdates() {
     auto& cfg = solero::AppConfig::instance();
     if (!cfg.autoCheckUpdates()) return;
@@ -3590,12 +3731,8 @@ void MainWindow::onInstallWabbajack() {
 }
 
 void MainWindow::keyPressEvent(QKeyEvent* event) {
-    if (event->modifiers() & Qt::ControlModifier) {
-        auto* app = static_cast<Application*>(qApp);
-        if (event->key() == Qt::Key_Equal || event->key() == Qt::Key_Plus) { app->setZoomFactor(app->zoomFactor() + 0.1); return; }
-        if (event->key() == Qt::Key_Minus)  { app->setZoomFactor(app->zoomFactor() - 0.1); return; }
-        if (event->key() == Qt::Key_0)      { app->setZoomFactor(1.0); return; }
-    }
+    // Zoom (Ctrl +/-/0) is now owned by the View ▸ Zoom menu actions' shortcuts;
+    // other global shortcuts are bound as QActions / QShortcuts in setup*().
     QMainWindow::keyPressEvent(event);
 }
 
@@ -4188,9 +4325,12 @@ void MainWindow::rebuildToolsMenu() {
         }
     }
     if (!tools.isEmpty()) m_toolsMenu->addSeparator();
-    // Built-in: always available regardless of configured tools.
+    // Built-ins: always available regardless of configured tools.
     m_toolsMenu->addAction(QIcon::fromTheme("system-search", QIcon::fromTheme("edit-find")),
                            QStringLiteral("Patch Wizard") + QChar(0x2026), this, &MainWindow::onPatchWizard);
+    // BethINI (INI editor) folded into Tools per the declutter spec.
+    m_toolsMenu->addAction(QIcon::fromTheme("preferences-system"),
+                           QStringLiteral("BethINI"), this, &MainWindow::onOpenBethini);
     m_toolsMenu->addSeparator();
     // Use real icons (in the icon column) so these align with the tool entries above.
     m_toolsMenu->addAction(QIcon::fromTheme("list-add"),

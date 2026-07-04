@@ -299,6 +299,7 @@ private:
     bool m_switchingProfile = false; // guards re-entrant switchProfile (pumps re-dispatch combo changes)
     bool m_warnedMissingAppData = false; // one-time warning when AppData can't be located
     QAction* m_deployAction = nullptr;
+    QAction* m_playAction = nullptr;
     QToolButton* m_problemsBtn = nullptr;          // toolbar health indicator
     solero::ProblemsDialog* m_problemsDialog = nullptr;
     QString m_lastDeployWarning;                   // last DeployResult::warning

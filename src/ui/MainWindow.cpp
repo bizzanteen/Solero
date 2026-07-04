@@ -74,6 +74,7 @@
 #include <QShortcut>
 #include <QStandardPaths>
 #include <QMessageBox>
+#include <QScopeGuard>
 #include <QAbstractButton>
 #include <QPushButton>
 #include <QInputDialog>
@@ -656,9 +657,9 @@ void MainWindow::setupToolbar() {
     m_deployAction = tb->addAction("\xe2\x9c\x97 Not Deployed", this, &MainWindow::onDeployToggle);
     m_deployAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
     m_deployAction->setToolTip("Click to deploy mods to game directory (Ctrl+D)");
-    auto* playAction = tb->addAction("\xe2\x96\xb6 Play", this, &MainWindow::onPlay);
-    playAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_P));
-    playAction->setToolTip("Launch the game via Steam (Ctrl+P)");
+    m_playAction = tb->addAction("\xe2\x96\xb6 Play", this, &MainWindow::onPlay);
+    m_playAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_P));
+    m_playAction->setToolTip("Launch the game via Steam (Ctrl+P)");
 
     // Promote the pair so it dominates: bold both, and give Play a filled
     // accent pill pulled from the resolved palette (Highlight role) - no
@@ -667,14 +668,18 @@ void MainWindow::setupToolbar() {
     if (auto* deployBtn = qobject_cast<QToolButton*>(tb->widgetForAction(m_deployAction))) {
         QFont f = deployBtn->font(); f.setBold(true); deployBtn->setFont(f);
     }
-    if (auto* playBtn = qobject_cast<QToolButton*>(tb->widgetForAction(playAction))) {
+    if (auto* playBtn = qobject_cast<QToolButton*>(tb->widgetForAction(m_playAction))) {
         QFont f = playBtn->font(); f.setBold(true); playBtn->setFont(f);
         const QColor accent = palette().color(QPalette::Highlight);
         const QColor accentText = palette().color(QPalette::HighlightedText);
+        // Disabled = greyed pill (shown while the game is launching/running).
+        const QColor off = palette().color(QPalette::Disabled, QPalette::Button);
+        const QColor offText = palette().color(QPalette::Disabled, QPalette::ButtonText);
         playBtn->setStyleSheet(QString(
             "QToolButton { background:%1; color:%2; border-radius:3px;"
-            " padding:2px 10px; }")
-            .arg(accent.name(), accentText.name()));
+            " padding:2px 10px; }"
+            "QToolButton:disabled { background:%3; color:%4; }")
+            .arg(accent.name(), accentText.name(), off.name(), offText.name()));
     }
 }
 
@@ -4422,6 +4427,12 @@ void MainWindow::onPlay() {
         QMessageBox::warning(this, "Play", "Configure the game first (Game Settings\xe2\x80\xa6).");
         return;
     }
+    // Grey the Play button from click until the game closes; the scope guard
+    // restores it on every exit path (early returns and the normal post-run path,
+    // which returns only after the game has closed).
+    if (m_playAction) m_playAction->setEnabled(false);
+    auto restorePlay = qScopeGuard([this]{ if (m_playAction) m_playAction->setEnabled(true); });
+
     // Mods must be deployed to play with them (same as running a tool).
     if (!ensureDeployed("playing")) return;
 

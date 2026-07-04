@@ -91,6 +91,7 @@ set(SOLERO_SOURCES
   src/ui/PluginListModel.cpp
   src/ui/PluginListView.cpp
   src/ui/ProblemsDialog.cpp
+  src/ui/KeyboardShortcutsDialog.cpp
   src/ui/RequirementsDialog.cpp
   src/ui/BottomPanel.cpp
   src/ui/ModInfoWidget.cpp

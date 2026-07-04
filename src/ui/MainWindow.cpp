@@ -42,6 +42,7 @@
 #include "loot/LootSorter.h"
 #include "PluginListView.h"
 #include "ui/ProblemsDialog.h"
+#include "ui/KeyboardShortcutsDialog.h"
 #include "ui/IconUtil.h"
 #include "core/HealthCheck.h"
 #include "install/DependencyChecker.h"
@@ -588,7 +589,26 @@ void MainWindow::setupMenuBar() {
     connect(zoomMenu, &QMenu::aboutToShow, this, &MainWindow::updateZoomMenu);
     updateZoomMenu();
 
+    // ---- Help: keyboard reference + about ----
+    QMenu* helpMenu = mb->addMenu("&Help");
+    QAction* shortcutsAct = helpMenu->addAction(
+        QStringLiteral("Keyboard Shortcuts") + ell, this, &MainWindow::onShowShortcuts);
+    shortcutsAct->setShortcut(QKeySequence(Qt::Key_F1));
+    helpMenu->addAction("About Solero", this, &MainWindow::onAboutSolero);
+
     rebuildToolsMenu();
+}
+
+void MainWindow::onShowShortcuts() {
+    solero::KeyboardShortcutsDialog dlg(this, this);
+    dlg.exec();
+}
+
+void MainWindow::onAboutSolero() {
+    QMessageBox::about(this, "About Solero",
+        QStringLiteral("<b>Solero</b> %1<br><br>An MO2-style mod manager for "
+                       "Skyrim Special / Anniversary Edition.")
+            .arg(qApp->applicationVersion()));
 }
 
 void MainWindow::updateZoomMenu() {

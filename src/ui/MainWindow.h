@@ -241,6 +241,8 @@ private:
     // matching preset (or none, between presets) and refresh the "Current: N%"
     // label. Wired to the submenu's aboutToShow.
     void updateZoomMenu();
+    void onShowShortcuts(); // Help ▸ Keyboard Shortcuts (F1)
+    void onAboutSolero();   // Help ▸ About Solero
     void onRunTool(const solero::Executable& exe);
     // After a successful deploy, run each tool flagged "Run on deployment"
     // (runThroughDeployer) in listed order via ToolRunner, honoring the UI lock.

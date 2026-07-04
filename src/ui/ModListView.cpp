@@ -1105,6 +1105,19 @@ void ModListView::keyPressEvent(QKeyEvent* event) {
         deleteSelectedMods();
         return;
     }
+    // Space toggles enabled on the selection: flip based on the topmost selected
+    // mod's current state so a mixed selection converges to one state per press.
+    if (event->key() == Qt::Key_Space) {
+        const auto rows = selectionModel()->selectedRows();
+        int topRow = -1;
+        bool topEnabled = false;
+        for (const auto& idx : rows) {
+            const auto* entry = m_model->entryAt(idx.row());
+            if (!entry || entry->type != EntryType::Mod) continue;
+            if (topRow < 0 || idx.row() < topRow) { topRow = idx.row(); topEnabled = entry->enabled; }
+        }
+        if (topRow >= 0) { setSelectedModsEnabled(!topEnabled); return; }
+    }
     QTreeView::keyPressEvent(event);
 }
 

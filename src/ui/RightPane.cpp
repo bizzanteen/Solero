@@ -118,6 +118,13 @@ void RightPane::selectPlugin(const QString& filename) {
     m_pluginsTab->selectPlugin(filename);
 }
 
+void RightPane::focusPluginSearch() {
+    if (auto* container = m_pluginsTab->parentWidget())
+        setCurrentWidget(container);
+    m_pluginSearch->setFocus(Qt::ShortcutFocusReason);
+    m_pluginSearch->selectAll();
+}
+
 void RightPane::showPluginNotice(const QString& text) {
     m_pluginNotice->setText(text);
     m_pluginNotice->show();

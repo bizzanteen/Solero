@@ -71,6 +71,7 @@
 #include <QProcess>
 #include <QKeySequence>
 #include <QActionGroup>
+#include <QShortcut>
 #include <QStandardPaths>
 #include <QMessageBox>
 #include <QAbstractButton>
@@ -513,13 +514,17 @@ void MainWindow::setupMenuBar() {
 
     // ---- File: acquire mods + move profiles between machines + app-level ----
     QMenu* fileMenu = mb->addMenu("&File");
-    fileMenu->addAction(QStringLiteral("Install Mod") + ell, this, &MainWindow::onInstallMod);
+    QAction* installAct = fileMenu->addAction(
+        QStringLiteral("Install Mod") + ell, this, &MainWindow::onInstallMod);
+    installAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_I));
     fileMenu->addAction(QStringLiteral("Install Wabbajack Modlist") + ell, this, &MainWindow::onInstallWabbajack);
     fileMenu->addSeparator();
     fileMenu->addAction(QStringLiteral("Export Profile") + ell, this, &MainWindow::onExportProfile);
     fileMenu->addAction(QStringLiteral("Import Profile") + ell, this, &MainWindow::onImportProfile);
     fileMenu->addSeparator();
-    fileMenu->addAction(QStringLiteral("Settings") + ell, this, [this]{ openSettingsDialog(); });
+    QAction* settingsAct = fileMenu->addAction(
+        QStringLiteral("Settings") + ell, this, [this]{ openSettingsDialog(); });
+    settingsAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma));
     fileMenu->addSeparator();
     fileMenu->addAction("Quit", QKeySequence(QKeySequence::Quit), this, &QWidget::close);
 
@@ -632,7 +637,8 @@ void MainWindow::setupToolbar() {
     m_deployAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
     m_deployAction->setToolTip("Click to deploy mods to game directory (Ctrl+D)");
     auto* playAction = tb->addAction("\xe2\x96\xb6 Play", this, &MainWindow::onPlay);
-    playAction->setToolTip("Launch the game via Steam");
+    playAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_P));
+    playAction->setToolTip("Launch the game via Steam (Ctrl+P)");
 
     // Promote the pair so it dominates: bold both, and give Play a filled
     // accent pill pulled from the resolved palette (Highlight role) - no
@@ -672,6 +678,7 @@ void MainWindow::setupCentralWidget() {
     filterRow->setContentsMargins(0, 0, 0, 0);
     filterRow->setSpacing(4);
     auto* modFilter = new QLineEdit(leftContainer);
+    m_modFilter = modFilter; // targeted by the Ctrl+F focus shortcut
     modFilter->setPlaceholderText(QStringLiteral("Search mods") + QChar(0x2026));
     modFilter->setClearButtonEnabled(true);
     auto* stateFilter = new QComboBox(leftContainer);
@@ -699,6 +706,8 @@ void MainWindow::setupCentralWidget() {
     };
     auto* undoBtn = makeReorderBtn(QStringLiteral("edit-undo"), QChar(0x21B6), tr("Undo move"));
     auto* redoBtn = makeReorderBtn(QStringLiteral("edit-redo"), QChar(0x21B7), tr("Redo move"));
+    m_undoBtn = undoBtn; // mirrored by Ctrl+Z
+    m_redoBtn = redoBtn; // mirrored by Ctrl+Shift+Z
     filterRow->addWidget(undoBtn);
     filterRow->addWidget(redoBtn);
 
@@ -937,6 +946,23 @@ void MainWindow::setupCentralWidget() {
     m_centralStack->addWidget(m_nexusWeb);
     connect(m_nexusWeb, &solero::NexusWebView::nxmRequested,
             this, &MainWindow::onBrowserNxmDownload);
+
+    // Window-wide shortcuts for controls that aren't menu/toolbar actions
+    // (Menu/toolbar actions carry their own shortcuts; these cover the search
+    //  boxes and the mod-move undo/redo buttons.) NOTE: keep this list in sync
+    //  with the static entries in KeyboardShortcutsDialog and the ModListView
+    //  Del/Space handlers.
+    // Ctrl+F -> focus the mod filter box.
+    connect(new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_F), this), &QShortcut::activated,
+            this, [this]{ if (m_modFilter) { m_modFilter->setFocus(Qt::ShortcutFocusReason); m_modFilter->selectAll(); } });
+    // Ctrl+Shift+F -> focus the plugin search box (switches to the Plugins tab).
+    connect(new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F), this), &QShortcut::activated,
+            this, [this]{ if (m_rightPane) m_rightPane->focusPluginSearch(); });
+    // Ctrl+Z / Ctrl+Shift+Z -> mod-move undo/redo, only while the button is enabled.
+    connect(new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Z), this), &QShortcut::activated,
+            this, [this]{ if (m_undoBtn && m_undoBtn->isEnabled()) m_undoBtn->click(); });
+    connect(new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z), this), &QShortcut::activated,
+            this, [this]{ if (m_redoBtn && m_redoBtn->isEnabled()) m_redoBtn->click(); });
 }
 
 // Find a file in dir case-insensitively (Skyrim's custom ini ships as

@@ -319,6 +319,12 @@ private:
     // View ▸ Zoom: preset actions (exclusive) + a disabled "Current: N%" label.
     QActionGroup* m_zoomGroup = nullptr;
     QAction* m_zoomCurrentAction = nullptr;
+    // Left-pane mod filter box, targeted by the Ctrl+F focus shortcut.
+    QLineEdit* m_modFilter = nullptr;
+    // Mod-list reorder undo/redo buttons, mirrored by Ctrl+Z / Ctrl+Shift+Z
+    // (which act only when the respective button is enabled).
+    QToolButton* m_undoBtn = nullptr;
+    QToolButton* m_redoBtn = nullptr;
     // Receives the result of the off-thread update check (local id -> {installed, latest}).
     // Result of an accurate (file-id based) update scan: mods with a real newer
     // main file on Nexus, plus any fileIds back-filled via MD5 this run (applied +

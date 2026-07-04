@@ -34,6 +34,9 @@ private:
     Profile* m_profile = nullptr;
     bool m_hideInstalled = false;
     bool m_hideNotInstalled = false;
+    // The default (newest-first) sort is applied once on first populate; later
+    // refresh() ticks preserve whatever sort the user has chosen instead.
+    bool m_defaultSortApplied = false;
     QHash<QString,int> m_activeRows; // fileName -> table row for in-progress downloads
     QList<QPair<QString,QString>> m_failed; // {fileName, error}
 };

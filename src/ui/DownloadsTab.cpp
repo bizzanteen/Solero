@@ -161,8 +161,18 @@ void DownloadsTab::refresh() {
         m_table->setItem(row, 3, dt);
     }
 
+    // Re-enabling sorting re-sorts by the header's current indicator, so the
+    // user's chosen sort survives a refresh tick. Only force the newest-first
+    // default the first time we populate; afterwards re-assert the current
+    // indicator so a mid-download refresh never yanks the sort back to column 3.
     m_table->setSortingEnabled(true);
-    m_table->sortByColumn(3, Qt::DescendingOrder);
+    auto* hh = m_table->horizontalHeader();
+    if (!m_defaultSortApplied) {
+        m_table->sortByColumn(3, Qt::DescendingOrder);
+        m_defaultSortApplied = true;
+    } else {
+        m_table->sortByColumn(hh->sortIndicatorSection(), hh->sortIndicatorOrder());
+    }
     applyFilters();
 }
 

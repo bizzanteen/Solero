@@ -110,6 +110,7 @@ private:
     QString m_filter;
     StateFilter m_stateFilter = StateFilter::All;
     bool m_didAutoSize = false;
+    bool m_fillingName = false; // guards fillNameColumn's own sectionResized re-entry
     // True when the given mod entry passes the active state predicate.
     bool matchesState(const ModEntry* entry) const;
     // Right-click header menu: toggle which columns are shown (Name is mandatory);

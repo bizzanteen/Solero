@@ -54,6 +54,7 @@ private:
     PluginListModel* m_model;
     QSortFilterProxyModel* m_proxy;
     bool m_didAutoSize = false;
+    bool m_fillingName = false; // guards fillNameColumn's own sectionResized re-entry
     bool m_filterActive = false;
 };
 }

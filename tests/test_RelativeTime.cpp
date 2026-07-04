@@ -37,10 +37,24 @@ private slots:
         QCOMPARE(relativeDownloadTime(kNow - 6 * 86400, kNow), QStringLiteral("6 days ago"));
     }
     void olderShowsDate() {
-        // 2026-06-15 minus 10 days = 2026-06-05 -> "05/06" in UTC.
-        QCOMPARE(relativeDownloadTime(kNow - 10 * 86400, kNow), QStringLiteral("05/06"));
-        // Exactly 7 days rolls over to the date bucket.
-        QCOMPARE(relativeDownloadTime(kNow - 7 * 86400, kNow), QStringLiteral("08/06"));
+        // 2026-06-15 minus 10 days = 2026-06-05 -> "5th Jun" in UTC.
+        QCOMPARE(relativeDownloadTime(kNow - 10 * 86400, kNow), QStringLiteral("5th Jun"));
+        // Exactly 7 days rolls over to the date bucket: 2026-06-08 -> "8th Jun".
+        QCOMPARE(relativeDownloadTime(kNow - 7 * 86400, kNow), QStringLiteral("8th Jun"));
+    }
+    void ordinalSuffixes() {
+        // Teens are all "th"; other days follow 1st/2nd/3rd/…th.
+        QCOMPARE(ordinalSuffix(1),  QStringLiteral("st"));
+        QCOMPARE(ordinalSuffix(2),  QStringLiteral("nd"));
+        QCOMPARE(ordinalSuffix(3),  QStringLiteral("rd"));
+        QCOMPARE(ordinalSuffix(4),  QStringLiteral("th"));
+        QCOMPARE(ordinalSuffix(11), QStringLiteral("th"));
+        QCOMPARE(ordinalSuffix(12), QStringLiteral("th"));
+        QCOMPARE(ordinalSuffix(13), QStringLiteral("th"));
+        QCOMPARE(ordinalSuffix(21), QStringLiteral("st"));
+        QCOMPARE(ordinalSuffix(22), QStringLiteral("nd"));
+        QCOMPARE(ordinalSuffix(23), QStringLiteral("rd"));
+        QCOMPARE(ordinalSuffix(31), QStringLiteral("st"));
     }
 };
 

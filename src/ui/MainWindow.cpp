@@ -79,6 +79,8 @@
 #include <QPushButton>
 #include <QInputDialog>
 #include <QLineEdit>
+#include <QTextEdit>
+#include <QPlainTextEdit>
 #include <QListWidget>
 #include <QPair>
 #include <QMenu>
@@ -979,10 +981,24 @@ void MainWindow::setupCentralWidget() {
     connect(new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F), this), &QShortcut::activated,
             this, [this]{ if (m_rightPane) m_rightPane->focusPluginSearch(); });
     // Ctrl+Z / Ctrl+Shift+Z -> mod-move undo/redo, only while the button is enabled.
+    // Guard: if a text widget has focus, let it handle its own undo so we don't
+    // swallow the keystroke while the user is editing a search box or note field.
+    auto textWidgetFocused = [] {
+        QWidget* w = qApp->focusWidget();
+        return w && (qobject_cast<QLineEdit*>(w)
+                     || qobject_cast<QTextEdit*>(w)
+                     || qobject_cast<QPlainTextEdit*>(w));
+    };
     connect(new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_Z), this), &QShortcut::activated,
-            this, [this]{ if (m_undoBtn && m_undoBtn->isEnabled()) m_undoBtn->click(); });
+            this, [this, textWidgetFocused]{
+                if (!textWidgetFocused() && m_undoBtn && m_undoBtn->isEnabled())
+                    m_undoBtn->click();
+            });
     connect(new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Z), this), &QShortcut::activated,
-            this, [this]{ if (m_redoBtn && m_redoBtn->isEnabled()) m_redoBtn->click(); });
+            this, [this, textWidgetFocused]{
+                if (!textWidgetFocused() && m_redoBtn && m_redoBtn->isEnabled())
+                    m_redoBtn->click();
+            });
 }
 
 // Find a file in dir case-insensitively (Skyrim's custom ini ships as
@@ -1088,7 +1104,8 @@ void MainWindow::switchProfile(const QString& name) {
     // Show the last-known "update available" flags immediately (setProfile cleared
     // them); the auto-check at the end of this switch refreshes them.
     m_modListView->setUpdateInfo(loadUpdateFlags());
-    m_lastDeployWarning.clear(); // stale once we switch profiles
+    m_lastDeployWarning.clear();  // stale once we switch profiles
+    m_lastDeployHadFailures = false;
     setWindowTitle(QString("Solero - %1").arg(name));
 
     // Keep the toolbar selector in sync with the actually-active profile. The
@@ -1115,6 +1132,7 @@ void MainWindow::switchProfile(const QString& name) {
         m_deployed = result.success;
         m_deployDirty = false;
         m_lastDeployWarning = result.warning;
+        m_lastDeployHadFailures = !result.success;
         if (result.success) {
             m_lastConflicts = result.conflicts;
             m_rightPane->setConflictIndex(result.conflicts);
@@ -1278,6 +1296,7 @@ bool MainWindow::deployCurrent() {
     if (!result.warning.isEmpty())
         QMessageBox::information(this, "Deploy Notice", result.warning);
     m_lastDeployWarning = result.warning;
+    m_lastDeployHadFailures = !result.success;
 
     m_deployed = result.success;
     m_deployDirty = false;
@@ -1425,6 +1444,7 @@ void MainWindow::onDeployToggle() {
         if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
         m_lastConflicts.clear();      // no live deployment -> no conflict winners
         m_lastDeployWarning.clear();
+        m_lastDeployHadFailures = false;
         if (undeployOk) statusBar()->showMessage("Undeployed."); // else keep the warning above
     }
 
@@ -1455,9 +1475,10 @@ void MainWindow::refreshHealthIndicator() {
         solero::HealthInputs in;
         in.dependencyWarnings = solero::DependencyChecker::check(
             profile->modList(), solero::AppConfig::instance().stagingDir());
-        in.lastDeployWarning = m_lastDeployWarning;
-        in.deployed          = m_deployed;
-        in.deployDirty       = m_deployDirty;
+        in.lastDeployWarning      = m_lastDeployWarning;
+        in.lastDeployHadFailures  = m_lastDeployHadFailures;
+        in.deployed               = m_deployed;
+        in.deployDirty            = m_deployDirty;
         issues = solero::collect(*profile, m_lastConflicts, in);
     }
 

@@ -41,6 +41,7 @@ struct HealthIssue {
 struct HealthInputs {
     QHash<QString, QStringList> dependencyWarnings; // modId  -> warning strings
     QString lastDeployWarning;                      // DeployResult::warning, or empty
+    bool lastDeployHadFailures = false;             // true when failures > 0 (result.success == false)
     bool deployed = false;                          // a deployment is currently live
     bool deployDirty = false;                       // staged changes pending redeploy
 };
@@ -68,7 +69,9 @@ QList<HealthIssue> dependencyIssues(
 QList<HealthIssue> conflictIssues(int conflictedPathCount,
                                   const QStringList& involvedModNames);
 
-QList<HealthIssue> deployWarningIssues(const QString& warning);
+// hadFailures: true when DeployResult::success was false (file-link failures).
+// Advisory warnings (cross-filesystem copy, LOOT-sort-skip) pass hadFailures=false.
+QList<HealthIssue> deployWarningIssues(const QString& warning, bool hadFailures = false);
 
 QList<HealthIssue> deployStateIssues(bool deployed, bool dirty);
 

@@ -303,6 +303,7 @@ private:
     QToolButton* m_problemsBtn = nullptr;          // toolbar health indicator
     solero::ProblemsDialog* m_problemsDialog = nullptr;
     QString m_lastDeployWarning;                   // last DeployResult::warning
+    bool m_lastDeployHadFailures = false;          // true when last deploy had file-link failures
     solero::ConflictIndex m_lastConflicts;         // last deployed/loaded conflict index
     QComboBox* m_profileCombo = nullptr;
     QSplitter* m_splitter = nullptr;

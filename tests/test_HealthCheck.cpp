@@ -21,13 +21,14 @@ private slots:
         QVERIFY(out[0].detail.contains("Missing.esm"));
     }
 
-    void dependencyIssues_warningWithModTarget() {
+    void dependencyIssues_errorWithModTarget() {
         QHash<QString, QStringList> warns{ {"modA", {"Requires SKSE64"}} };
         QHash<QString, QString> names{ {"modA", "Cool Mod"} };
         QHash<QString, QString> nexus{ {"modA", "12345"} };
         auto out = health::dependencyIssues(warns, names, nexus);
         QCOMPARE(out.size(), 1);
-        QCOMPARE(out[0].severity, HealthSeverity::Warning);
+        // Missing SKSE / Address Library is a hard runtime failure -> Error.
+        QCOMPARE(out[0].severity, HealthSeverity::Error);
         QCOMPARE(out[0].category, HealthCategory::MissingDependency);
         QCOMPARE(out[0].targetModId, QString("modA"));
         QVERIFY(out[0].title.contains("Cool Mod"));
@@ -46,13 +47,27 @@ private slots:
     }
 
     void deployWarning_onlyWhenNonEmpty() {
-        QVERIFY(health::deployWarningIssues("").isEmpty());
-        QVERIFY(health::deployWarningIssues("   ").isEmpty());
-        auto out = health::deployWarningIssues("cross-filesystem hardlink fell back to copy");
+        // No warning, no failures -> silent.
+        QVERIFY(health::deployWarningIssues("", false).isEmpty());
+        QVERIFY(health::deployWarningIssues("   ", false).isEmpty());
+        // Advisory warning (cross-filesystem, LOOT-skip) -> Warning severity.
+        auto out = health::deployWarningIssues("cross-filesystem hardlink fell back to copy", false);
         QCOMPARE(out.size(), 1);
         QCOMPARE(out[0].severity, HealthSeverity::Warning);
         QCOMPARE(out[0].category, HealthCategory::DeployWarning);
         QVERIFY(out[0].detail.contains("cross-filesystem"));
+    }
+
+    void deployWarning_hardFailureIsError() {
+        // Hard file-link failures -> Error severity regardless of warning string.
+        auto out = health::deployWarningIssues("3 file(s) failed to deploy", true);
+        QCOMPARE(out.size(), 1);
+        QCOMPARE(out[0].severity, HealthSeverity::Error);
+        QCOMPARE(out[0].category, HealthCategory::DeployWarning);
+        // hadFailures with empty warning string still surfaces as an Error.
+        auto silent = health::deployWarningIssues("", true);
+        QCOMPARE(silent.size(), 1);
+        QCOMPARE(silent[0].severity, HealthSeverity::Error);
     }
 
     void deployState_notDeployedVsDirtyVsClean() {

@@ -41,7 +41,7 @@ QList<HealthIssue> dependencyIssues(
         if (warns.isEmpty()) continue;
         const QString name = modNames.value(id, id);
         HealthIssue i;
-        i.severity    = HealthSeverity::Warning;
+        i.severity    = HealthSeverity::Error;
         i.category    = HealthCategory::MissingDependency;
         i.targetModId = id;
         i.title       = QStringLiteral("%1 has an unmet dependency").arg(name);
@@ -81,13 +81,18 @@ QList<HealthIssue> conflictIssues(int conflictedPathCount,
     return out;
 }
 
-QList<HealthIssue> deployWarningIssues(const QString& warning) {
+QList<HealthIssue> deployWarningIssues(const QString& warning, bool hadFailures) {
     QList<HealthIssue> out;
-    if (warning.trimmed().isEmpty()) return out;
+    if (warning.trimmed().isEmpty() && !hadFailures) return out;
     HealthIssue i;
-    i.severity = HealthSeverity::Warning;
+    // Hard failures (files that couldn't be linked) -> Error so they aren't
+    // drowned out. Advisory warnings (cross-filesystem copy, LOOT-sort-skip)
+    // stay Warning - the deploy itself succeeded.
+    i.severity = hadFailures ? HealthSeverity::Error : HealthSeverity::Warning;
     i.category = HealthCategory::DeployWarning;
-    i.title    = QStringLiteral("Last deploy reported a warning");
+    i.title    = hadFailures
+        ? QStringLiteral("Last deploy had file failures")
+        : QStringLiteral("Last deploy reported a warning");
     i.detail   = warning;
     out.append(i);
     return out;
@@ -97,6 +102,9 @@ QList<HealthIssue> deployStateIssues(bool deployed, bool dirty) {
     QList<HealthIssue> out;
     if (!deployed) {
         HealthIssue i;
+        // Intentionally Info, not Warning: the Deploy button already signals
+        // the dirty/not-deployed state visually - raising this to Warning would
+        // double-signal and create noise when the user hasn't launched yet.
         i.severity = HealthSeverity::Info;
         i.category = HealthCategory::DeployState;
         i.title    = QStringLiteral("Profile is not deployed");
@@ -107,6 +115,7 @@ QList<HealthIssue> deployStateIssues(bool deployed, bool dirty) {
         out.append(i);
     } else if (dirty) {
         HealthIssue i;
+        // Intentionally Info - see above; the Deploy button already shows "Redeploy".
         i.severity = HealthSeverity::Info;
         i.category = HealthCategory::DeployState;
         i.title    = QStringLiteral("Changes pending redeploy");
@@ -198,7 +207,7 @@ QList<HealthIssue> collect(const Profile& profile, const ConflictIndex& conflict
     all += health::dependencyIssues(inputs.dependencyWarnings, modNames, modNexusIds);
 
     // Deploy warning + state
-    all += health::deployWarningIssues(inputs.lastDeployWarning);
+    all += health::deployWarningIssues(inputs.lastDeployWarning, inputs.lastDeployHadFailures);
     all += health::deployStateIssues(inputs.deployed, inputs.deployDirty);
 
     // Plugin limit

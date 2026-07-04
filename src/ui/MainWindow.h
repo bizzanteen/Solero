@@ -178,7 +178,6 @@ private:
     // FOMOD (fomod/ModuleConfig.xml), set sourceArchive + isFomod, and back-fill
     // fomod-choices.json where the selection is reconstructable. Runs synchronously
     // behind a cancellable ProgressModal (it extracts ~dozens of archives).
-    void onScanFomod();
     // Launch the async (off-UI-thread) Nexus update check. silentIfNone=true is
     // used by the auto-check-on-profile-load path: it no-ops quietly when there's
     // no API key, no mods with Nexus metadata, or a check is already running.

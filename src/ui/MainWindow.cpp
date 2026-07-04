@@ -38,7 +38,6 @@
 #include "tools/RadiumPrep.h"
 #include "tools/PgpatcherConfig.h"
 #include "fomod/FomodEngine.h"
-#include "fomod/FomodScanner.h"
 #include "loot/LootSorter.h"
 #include "PluginListView.h"
 #include "ui/ProblemsDialog.h"
@@ -543,7 +542,6 @@ void MainWindow::setupMenuBar() {
         "Check for Updates", this, &MainWindow::onCheckUpdates);
     m_checkUpdatesAction->setShortcut(QKeySequence(Qt::Key_F5));
     m_checkUpdatesAction->setToolTip("Check installed mods for newer files on Nexus (F5)");
-    profileMenu->addAction(QStringLiteral("Scan for FOMOD Mods") + ell, this, &MainWindow::onScanFomod);
     profileMenu->addSeparator();
     // Destructive - kept last with an ellipsis (opens a confirm dialog).
     profileMenu->addAction(QStringLiteral("Delete Current Profile") + ell, this, &MainWindow::onDeleteProfile);
@@ -3403,19 +3401,6 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
         return scan;
     });
     m_updateWatcher.setFuture(future);
-}
-
-void MainWindow::onScanFomod() {
-    // TODO: removed in patch-wizard-rework; menu action pruned on variant branch.
-    // FOMOD selection reconstruction now happens inside the Patch Wizard
-    // (PatchScanner::scanProfile establishes each mod's selection from its
-    // fomod-choices log, or reconstructs it for imported mods). This standalone
-    // action is a no-op stub; the "Scan for FOMOD Mods" menu item is removed on
-    // the UI-variant branch.
-    QMessageBox::information(
-        this, "Scan for FOMOD mods",
-        "FOMOD scanning is now part of the Patch Wizard "
-        "(Profile \xe2\x80\xba Patch Wizard).");
 }
 
 void MainWindow::maybeAutoCheckUpdates() {

@@ -468,21 +468,18 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
                 if (entry.variants.size() >= 2)
                     return normalizeVersion(entry.version) + QStringLiteral(" ") + QChar(0x25BE);
                 return normalizeVersion(entry.version);
-            case ColFlags: {
-                if (isSep) return QString();
-                // Status icons (conflicts / note / missing-dep / update) render via
-                // DecorationRole; this textual part keeps the mod-kind labels.
-                QStringList parts;
-                if (entry.isOutputMod) parts << "Output";
-                // FOMOD mods are shown by the green "F" icon (DecorationRole) alone -
-                // no redundant "FOMOD" text label.
-                return parts.join(" ");
-            }
+            case ColFlags:
+                // All flags render as icons via DecorationRole (output mod, FOMOD,
+                // conflicts, note, missing-dep). No text label in this cell - it
+                // pushed the icons around and read poorly.
+                return QString();
             default: return {};
         }
     }
     if (role == Qt::ToolTipRole && !isSep) {
         QStringList tips;
+        if (entry.isOutputMod)
+            tips << QStringLiteral("Output mod (captures a tool's generated files)");
         if (m_overwritingMods.contains(entry.id))
             tips << (QChar(0x25B2) + QStringLiteral(" Overwrites other mods (wins file conflicts)"));
         if (m_overwrittenMods.contains(entry.id))
@@ -539,6 +536,7 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     if (role == Qt::DecorationRole && !isSep && idx.column() == ColFlags
             && entry.type == EntryType::Mod) {
         QList<QIcon> icons;
+        if (entry.isOutputMod)                     icons << solero::outputModIcon();
         if (m_overwritingMods.contains(entry.id)) icons << solero::greenUpTriangleIcon();
         if (m_overwrittenMods.contains(entry.id)) icons << solero::redDownTriangleIcon();
         if (m_depWarnings.contains(entry.id))      icons << solero::errorSignIcon(solero::kFlagIconPx);

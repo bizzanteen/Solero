@@ -276,6 +276,29 @@ inline QIcon fomodIcon(const QString& status, int px = kFlagIconPx) {
     p.drawText(QRectF(0, 0, px, px), Qt::AlignCenter, "F");
     return QIcon(pm);
 }
+// Output-mod badge: an outbox tray (a shelf/box with an up-arrow leaving it),
+// muted blue to match the output-mod text colour. Marks a tool's capture mod.
+inline QIcon outputModIcon(int px = kFlagIconPx) {
+    QPixmap pm(px, px); pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    QColor c("#7f9cc4");
+    QPen stroke(c); stroke.setWidthF(px * 0.09);
+    stroke.setJoinStyle(Qt::RoundJoin); stroke.setCapStyle(Qt::RoundCap);
+    p.setPen(stroke);
+    p.setBrush(Qt::NoBrush);
+    // Tray: an open-topped box in the lower half.
+    const double left = px * 0.20, right = px * 0.80, top = px * 0.56, bot = px * 0.82;
+    p.drawLine(QPointF(left, top), QPointF(left, bot));
+    p.drawLine(QPointF(right, top), QPointF(right, bot));
+    p.drawLine(QPointF(left, bot), QPointF(right, bot));
+    // Up-arrow rising out of the tray.
+    const double cx = px * 0.50;
+    p.drawLine(QPointF(cx, px * 0.14), QPointF(cx, px * 0.50));
+    p.drawLine(QPointF(cx, px * 0.14), QPointF(px * 0.34, px * 0.30));
+    p.drawLine(QPointF(cx, px * 0.14), QPointF(px * 0.66, px * 0.30));
+    return QIcon(pm);
+}
 // Lay several small icons out horizontally into a single icon (for the Flags
 // column, which can only carry one DecorationRole image per cell).
 inline QIcon composeIcons(const QList<QIcon>& icons, int px = kFlagIconPx) {

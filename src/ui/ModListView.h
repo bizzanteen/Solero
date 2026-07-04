@@ -84,6 +84,12 @@ signals:
     // A profile save (after a list edit) failed to write to disk; MainWindow shows
     // a status-bar warning so the change loss isn't silent.
     void saveFailed();
+    // Emitted by selectModById when it must drop an active name/state filter to
+    // reveal a jump-to target. The filter widgets live in MainWindow's left pane,
+    // so MainWindow clears its search box + resets the state combo in response;
+    // those widgets' own signals then drive setFilter("")/setStateFilter(All),
+    // keeping the visible filter box and the list in sync.
+    void filterCleared();
 
 protected:
     void contextMenuEvent(QContextMenuEvent* event) override;

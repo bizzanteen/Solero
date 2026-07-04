@@ -740,6 +740,14 @@ void MainWindow::setupCentralWidget() {
         m_modListView->setStateFilter(
             static_cast<solero::ModListView::StateFilter>(stateFilter->currentData().toInt()));
     });
+    // Jump-to-mod (Problems panel / plugin origin) may need to drop an active filter
+    // to reveal its target. Reset the filter WIDGETS here so the box and the list
+    // stay in sync - their own signals drive setFilter("")/setStateFilter(All).
+    connect(m_modListView, &solero::ModListView::filterCleared, this,
+            [modFilter, stateFilter]{
+                modFilter->clear();              // -> setFilter("")
+                stateFilter->setCurrentIndex(0); // "All" -> setStateFilter(All)
+            });
     connect(undoBtn, &QToolButton::clicked, m_modListView, &solero::ModListView::undoMove);
     connect(redoBtn, &QToolButton::clicked, m_modListView, &solero::ModListView::redoMove);
     connect(m_modListView, &solero::ModListView::undoRedoStateChanged, this,

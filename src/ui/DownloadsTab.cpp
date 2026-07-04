@@ -1,6 +1,7 @@
 #include "DownloadsTab.h"
 #include "core/AppConfig.h"
 #include "core/Profile.h"
+#include "core/RelativeTime.h"
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QHeaderView>
@@ -42,17 +43,6 @@ QString humanSize(qint64 b) {
     if (v < kb) return QString::number(v, 'f', 1) + " MB";
     v /= kb;
     return QString::number(v, 'f', 1) + " GB";
-}
-
-// Compact download time: relative ("17 hours ago") under a day, else "hh.mm dd.mm.yy".
-QString humanTime(const QDateTime& dt) {
-    const qint64 secs = dt.secsTo(QDateTime::currentDateTime()); // >0 when in the past
-    if (secs >= 0 && secs < 86400) {
-        if (secs < 60)   return "just now";
-        if (secs < 3600) { int m = int(secs / 60);   return QString("%1 minute%2 ago").arg(m).arg(m == 1 ? "" : "s"); }
-        int h = int(secs / 3600);                     return QString("%1 hour%2 ago").arg(h).arg(h == 1 ? "" : "s");
-    }
-    return dt.toString("hh.mm dd.MM.yy");
 }
 
 } // namespace
@@ -139,8 +129,12 @@ void DownloadsTab::refresh() {
             sizeItem->setData(Qt::UserRole, fi.size());
             m_table->setItem(row, 2, sizeItem);
 
-            auto* dateItem = new NumItem(humanTime(fi.lastModified()));
-            dateItem->setData(Qt::UserRole, fi.lastModified().toSecsSinceEpoch());
+            // Display a relative bucket ("2 hrs ago") but sort on the raw epoch
+            // stored in Qt::UserRole (NumItem::operator<), never on the text.
+            const qint64 epoch = fi.lastModified().toSecsSinceEpoch();
+            auto* dateItem = new NumItem(
+                relativeDownloadTime(epoch, QDateTime::currentSecsSinceEpoch()));
+            dateItem->setData(Qt::UserRole, epoch);
             m_table->setItem(row, 3, dateItem);
         }
     }

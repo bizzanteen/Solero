@@ -53,6 +53,12 @@ target_include_directories(test_CurlError PRIVATE ../src ${CMAKE_BINARY_DIR}/inc
 target_link_libraries(test_CurlError PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_CurlError COMMAND test_CurlError)
 
+# relativeDownloadTime is header-only (core/RelativeTime.h), so no extra sources.
+add_executable(test_RelativeTime test_RelativeTime.cpp)
+target_include_directories(test_RelativeTime PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_RelativeTime PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_RelativeTime COMMAND test_RelativeTime)
+
 # HealthCheck aggregates Profile + ConflictIndex data, so link the core profile
 # set plus ConflictIndex and HealthCheck itself.
 add_executable(test_HealthCheck test_HealthCheck.cpp

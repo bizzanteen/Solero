@@ -649,7 +649,7 @@ void MainWindow::setupToolbar() {
     m_problemsBtn = new QToolButton(tb);
     m_problemsBtn->setAutoRaise(true);
     m_problemsBtn->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    m_problemsBtn->setIcon(solero::greyBangIcon(20));
+    m_problemsBtn->setIcon(solero::neutralSignIcon(20));
     m_problemsBtn->setToolTip("No problems");
     connect(m_problemsBtn, &QToolButton::clicked, this, &MainWindow::onShowProblems);
     tb->addWidget(m_problemsBtn);
@@ -1500,12 +1500,12 @@ void MainWindow::refreshHealthIndicator() {
     }
     const QString dash = QStringLiteral(" ") + QChar('-') + QStringLiteral(" ");
     if (issues.isEmpty()) {
-        m_problemsBtn->setIcon(solero::greyBangIcon(20));
+        m_problemsBtn->setIcon(solero::neutralSignIcon(20));
         m_problemsBtn->setToolTip(QStringLiteral("No problems") + dash + QStringLiteral("click for details"));
     } else {
         const bool hasError = errors > 0;
-        m_problemsBtn->setIcon(hasError ? solero::redBangIcon(20)
-                                        : solero::yellowBangIcon(20));
+        m_problemsBtn->setIcon(hasError ? solero::errorSignIcon(20)
+                                        : solero::warnSignIcon(20));
         QStringList parts;
         if (errors)   parts << QString("%1 error%2").arg(errors).arg(errors == 1 ? "" : "s");
         if (warnings) parts << QString("%1 warning%2").arg(warnings).arg(warnings == 1 ? "" : "s");

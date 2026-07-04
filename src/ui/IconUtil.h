@@ -9,6 +9,7 @@
 #include <QRectF>
 #include <QColor>
 #include <QFont>
+#include <QGuiApplication>
 #include <QSvgRenderer>
 namespace solero {
 // Canonical square pixel size for every Flags-column status icon. Keeping it in
@@ -28,28 +29,70 @@ inline QIcon redCrossIcon(int px = 26) {
     p.drawLine(QPointF(px - m, m), QPointF(m, px - m));
     return QIcon(pm);
 }
-// A filled circle carrying a white "!" - the shared exclamation glyph. Colour
-// signals severity: red = error, amber = warning, grey = neutral/no problems.
-inline QIcon bangIcon(const QColor& colour, int px = 26) {
-    QPixmap pm(px, px); pm.fill(Qt::transparent);
+// Shared "road-sign" severity glyph: an equilateral, point-up triangle with
+// softly rounded corners and a bold exclamation mark painted (not a font glyph,
+// which would misalign against the sloped sides). Colour signals severity -
+// warm yellow = warning, red = error, dim grey = neutral/no problems. Every
+// health surface (toolbar indicator, Problems panel, Flags column) shares this
+// one shape so a warning always reads as a warning.
+inline QIcon signTriangleIcon(int size, const QColor& fill,
+                              const QColor& border, const QColor& mark) {
+    const qreal dpr = qApp ? qApp->devicePixelRatio() : 1.0;
+    QPixmap pm(qRound(size * dpr), qRound(size * dpr));
+    pm.setDevicePixelRatio(dpr);
+    pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing, true);
+
+    const qreal px     = size;
+    const qreal margin = px * 0.10;
+    const qreal side   = px - 2 * margin;
+    const qreal height = side * 0.86602540;      // equilateral: √3/2 · side
+    const qreal topY   = (px - height) / 2.0;    // vertically centred
+    const qreal cx     = px / 2.0;
+
+    // Triangle body. A RoundJoin pen rounds the three corners; the same pen
+    // draws the 1px darker border in a single stroke+fill pass.
+    QPainterPath tri;
+    tri.moveTo(cx, topY);
+    tri.lineTo(px - margin, topY + height);
+    tri.lineTo(margin,      topY + height);
+    tri.closeSubpath();
+    QPen edge(border);
+    edge.setWidthF(qMax<qreal>(1.0, px * 0.075));
+    edge.setJoinStyle(Qt::RoundJoin);
+    p.setPen(edge);
+    p.setBrush(fill);
+    p.drawPath(tri);
+
+    // Exclamation mark: a rounded-cap vertical bar plus a dot, together spanning
+    // ~55% of the triangle height and centred on the lower (wider) body.
+    const qreal markH      = height * 0.55;
+    const qreal markCenter = topY + height * 0.66;   // near the centroid
+    const qreal markTop    = markCenter - markH / 2.0;
+    const qreal barLen     = markH * 0.62;
+    const qreal dotR       = px * 0.055;
+    QPen bar(mark);
+    bar.setWidthF(px * 0.105);
+    bar.setCapStyle(Qt::RoundCap);
+    p.setPen(bar);
+    p.drawLine(QPointF(cx, markTop), QPointF(cx, markTop + barLen));
     p.setPen(Qt::NoPen);
-    p.setBrush(colour);
-    double m = px * 0.10;
-    p.drawEllipse(QRectF(m, m, px - 2 * m, px - 2 * m));
-    QPen pen(Qt::white); pen.setWidthF(px * 0.13); pen.setCapStyle(Qt::RoundCap);
-    p.setPen(pen);
-    double cx = px / 2.0;
-    p.drawLine(QPointF(cx, px * 0.28), QPointF(cx, px * 0.62));
-    p.setBrush(Qt::white);
-    p.setPen(Qt::NoPen);
-    p.drawEllipse(QPointF(cx, px * 0.76), px * 0.07, px * 0.07);
+    p.setBrush(mark);
+    p.drawEllipse(QPointF(cx, markTop + markH - dotR), dotR, dotR);
+
+    p.end();
     return QIcon(pm);
 }
-inline QIcon redBangIcon(int px = 26)    { return bangIcon(QColor("#e74c3c"), px); }
-inline QIcon yellowBangIcon(int px = 26) { return bangIcon(QColor("#f1c40f"), px); }
-inline QIcon greyBangIcon(int px = 26)   { return bangIcon(QColor("#95a5a6"), px); }
+inline QIcon warnSignIcon(int size = 20) {
+    return signTriangleIcon(size, QColor("#F2C230"), QColor("#B8901F"), QColor(Qt::black));
+}
+inline QIcon errorSignIcon(int size = 20) {
+    return signTriangleIcon(size, QColor("#D64550"), QColor("#A33038"), QColor(Qt::white));
+}
+inline QIcon neutralSignIcon(int size = 20) {
+    return signTriangleIcon(size, QColor("#5a5f66"), QColor("#42464c"), QColor("#3a3d42"));
+}
 inline QIcon yellowUpArrowIcon(int px = kFlagIconPx) {
     QPixmap pm(px, px); pm.fill(Qt::transparent);
     QPainter p(&pm);

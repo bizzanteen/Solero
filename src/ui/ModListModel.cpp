@@ -489,7 +489,7 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
         QList<QIcon> icons;
         if (m_overwritingMods.contains(entry.id)) icons << solero::greenUpTriangleIcon();
         if (m_overwrittenMods.contains(entry.id)) icons << solero::redDownTriangleIcon();
-        if (m_depWarnings.contains(entry.id))      icons << solero::redBangIcon(solero::kFlagIconPx);
+        if (m_depWarnings.contains(entry.id))      icons << solero::errorSignIcon(solero::kFlagIconPx);
         // The "update available" indicator lives in the Version column only (the
         // yellow up-arrow + "installed -> latest" text), not here in Flags.
         if (!entry.note.isEmpty())                 icons << solero::noteIcon();

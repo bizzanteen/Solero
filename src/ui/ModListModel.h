@@ -60,6 +60,13 @@ public:
     // Toggle the collapsed state of a group-PARENT mod (mirrors toggleCollapse,
     // which is for separators). No-op if the entry isn't a group parent.
     void toggleModCollapse(int visibleRow);
+    // Make the entry at raw index `rawIndex` a visible row by clearing the
+    // collapsed flag on every ancestor that hides it: the governing separator(s)
+    // (walking the nested-separator ancestry, mirroring rebuildVisibleRows) and a
+    // collapsed group-parent mod when the target is one of its children. Persists +
+    // rebuilds. Returns true iff any collapsed flag was cleared (nothing else moves,
+    // so unrelated collapsed sections stay collapsed). Used by the jump-to-mod flow.
+    bool expandToReveal(int rawIndex);
 
     // Multi-file group helpers (operate on raw ModList indices).
     // A parent is a Mod immediately followed by ≥1 Mod whose parentId == its id.

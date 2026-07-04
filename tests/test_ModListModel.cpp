@@ -615,6 +615,86 @@ private slots:
         QCOMPARE(model.rowCount(), 6);
     }
 
+    // --- expandToReveal: un-hide a target row for jump-to-mod navigation ------
+    void expandToReveal_clearsGoverningSeparatorKeepsOthersCollapsed() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        // [sepA(L0, collapsed), m0, sepB(L0, collapsed), m1]. sepB (collapsed)
+        // hides m1; sepA (collapsed) independently hides m0.
+        ModEntry sepA; sepA.type = EntryType::Separator; sepA.id = "sepA";
+        sepA.name = "A"; sepA.separatorLevel = 0; sepA.collapsed = true;
+        ModEntry m0; m0.type = EntryType::Mod; m0.id = "m0"; m0.name = "Mod0"; m0.enabled = true;
+        ModEntry sepB; sepB.type = EntryType::Separator; sepB.id = "sepB";
+        sepB.name = "B"; sepB.separatorLevel = 0; sepB.collapsed = true;
+        ModEntry m1; m1.type = EntryType::Mod; m1.id = "m1"; m1.name = "Mod1"; m1.enabled = true;
+        prof.modList().append(sepA);
+        prof.modList().append(m0);
+        prof.modList().append(sepB);
+        prof.modList().append(m1);
+        ModListModel model;
+        model.setProfile(&prof);
+
+        const int rawM1 = 3;
+        QCOMPARE(model.rawToVisible(rawM1), -1);       // hidden under collapsed sepB
+        QVERIFY(model.expandToReveal(rawM1));           // something changed
+        QVERIFY(model.rawToVisible(rawM1) >= 0);        // now a visible row
+        QVERIFY(!prof.modList().findById("sepB")->collapsed); // its section opened
+        QVERIFY(prof.modList().findById("sepA")->collapsed);  // unrelated: still collapsed
+        // Re-revealing an already-visible target is a no-op (nothing to clear).
+        QVERIFY(!model.expandToReveal(rawM1));
+    }
+
+    void expandToReveal_clearsNestedSeparatorAncestry() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        // [sepA(L0, collapsed), sepB(L1, collapsed), m0, sepC(L0)]. sepA's collapse
+        // hides sepB and m0 (the level-1 sub-separator's own flag is never even read
+        // while its parent is collapsed), so both must be cleared to reveal m0.
+        ModEntry sepA; sepA.type = EntryType::Separator; sepA.id = "sepA";
+        sepA.name = "A"; sepA.separatorLevel = 0; sepA.collapsed = true;
+        ModEntry sepB; sepB.type = EntryType::Separator; sepB.id = "sepB";
+        sepB.name = "B"; sepB.separatorLevel = 1; sepB.collapsed = true;
+        ModEntry m0; m0.type = EntryType::Mod; m0.id = "m0"; m0.name = "Mod0"; m0.enabled = true;
+        ModEntry sepC; sepC.type = EntryType::Separator; sepC.id = "sepC";
+        sepC.name = "C"; sepC.separatorLevel = 0;
+        prof.modList().append(sepA);
+        prof.modList().append(sepB);
+        prof.modList().append(m0);
+        prof.modList().append(sepC);
+        ModListModel model;
+        model.setProfile(&prof);
+
+        const int rawM0 = 2;
+        QCOMPARE(model.rawToVisible(rawM0), -1);
+        QVERIFY(model.expandToReveal(rawM0));
+        QVERIFY(model.rawToVisible(rawM0) >= 0);
+        QVERIFY(!prof.modList().findById("sepA")->collapsed);
+        QVERIFY(!prof.modList().findById("sepB")->collapsed);
+    }
+
+    void expandToReveal_clearsCollapsedGroupParent() {
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        // [P0(collapsed group parent), c0, c1, other]. Collapsed parent hides c0,c1.
+        ModEntry parent; parent.type = EntryType::Mod; parent.id = "P0";
+        parent.name = "Parent"; parent.collapsed = true;
+        ModEntry c0; c0.type = EntryType::Mod; c0.id = "c0"; c0.name = "Child0"; c0.parentId = "P0";
+        ModEntry c1; c1.type = EntryType::Mod; c1.id = "c1"; c1.name = "Child1"; c1.parentId = "P0";
+        ModEntry other; other.type = EntryType::Mod; other.id = "u0"; other.name = "Other";
+        prof.modList().append(parent);
+        prof.modList().append(c0);
+        prof.modList().append(c1);
+        prof.modList().append(other);
+        ModListModel model;
+        model.setProfile(&prof);
+
+        const int rawC1 = 2;
+        QCOMPARE(model.rawToVisible(rawC1), -1);        // hidden under collapsed parent
+        QVERIFY(model.expandToReveal(rawC1));
+        QVERIFY(model.rawToVisible(rawC1) >= 0);
+        QVERIFY(!prof.modList().findById("P0")->collapsed);
+    }
+
     // --- Version variants (Keep Both) exposed on the ColVersion cell ----------
     void variantRolesExposeVersions() {
         QTemporaryDir tmp;

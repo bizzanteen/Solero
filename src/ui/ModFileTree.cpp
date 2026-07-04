@@ -1,4 +1,5 @@
 #include "ModFileTree.h"
+#include "ElideDelegate.h"
 #include <QHeaderView>
 #include <QStyle>
 #include <QDir>
@@ -37,6 +38,10 @@ ModFileTree::ModFileTree(QWidget* parent) : QTreeWidget(parent) {
     setColumnWidth(0, 320);
     setColumnWidth(1, 70);
     setColumnWidth(2, 160);
+    // Char-level elision for long file/folder names ("SomeLongTextu…", not word-cut).
+    setItemDelegate(new ElideRightDelegate(this));
+    setTextElideMode(Qt::ElideRight);
+    setWordWrap(false);
     setSortingEnabled(true);
     sortByColumn(0, Qt::AscendingOrder);
     setRootIsDecorated(true);

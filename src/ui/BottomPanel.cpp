@@ -29,6 +29,14 @@ BottomPanel::BottomPanel(QWidget* parent) : QWidget(parent) {
     headerLayout->addWidget(title);
     headerLayout->addStretch();
 
+    // Right-justified, dimmed inline progress for the update check. Hidden when idle
+    // so it never competes with the "Mod Info" label. Lives here (not the status bar)
+    // so a long check reports where the user is already looking.
+    m_updateProgress = new QLabel(header);
+    m_updateProgress->setStyleSheet("color: palette(mid);");
+    m_updateProgress->hide();
+    headerLayout->addWidget(m_updateProgress);
+
     outer->addWidget(header);
 
     m_modInfo = new ModInfoWidget(this);
@@ -57,6 +65,19 @@ void BottomPanel::setExpanded(bool expanded) {
         m_collapseBtn->setText("\xe2\x96\xb2"); // ▲
         setMaximumHeight(m_headerHeight);
     }
+}
+
+void BottomPanel::setUpdateProgress(int done, int total) {
+    if (!m_updateProgress) return;
+    if (total <= 0 || done < 0 || done >= total) {
+        m_updateProgress->hide();
+        m_updateProgress->clear();
+        return;
+    }
+    m_updateProgress->setText(
+        QStringLiteral("Checking updates") + QChar(0x2026) +
+        QStringLiteral(" %1/%2").arg(done).arg(total));
+    m_updateProgress->show();
 }
 
 void BottomPanel::setProfile(Profile* profile) {

@@ -21,6 +21,12 @@ signals:
     void installRequested(const QString& archivePath);
     void cancelRequested(const QString& fileName);
     void retryRequested(const QString& fileName);
+protected:
+    // A style sheet is set on the table (item padding), which sets WA_StyleSheet
+    // and blocks Qt's automatic propagation of application-font (zoom) changes.
+    // Re-assert the app font here so the table scales with Ctrl +/- like the
+    // mod/plugin lists (which carry no direct style sheet).
+    void changeEvent(QEvent* e) override;
 private:
     void showContextMenu(const QPoint& pos);
     void applyFilters();
@@ -28,6 +34,9 @@ private:
     Profile* m_profile = nullptr;
     bool m_hideInstalled = false;
     bool m_hideNotInstalled = false;
+    // The default (newest-first) sort is applied once on first populate; later
+    // refresh() ticks preserve whatever sort the user has chosen instead.
+    bool m_defaultSortApplied = false;
     QHash<QString,int> m_activeRows; // fileName -> table row for in-progress downloads
     QList<QPair<QString,QString>> m_failed; // {fileName, error}
 };

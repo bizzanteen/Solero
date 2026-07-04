@@ -89,6 +89,10 @@
 #include <QRegularExpression>
 #include <QCoreApplication>
 #include <QApplication>
+#include <QThreadPool>
+#include <QMutex>
+#include <QPointer>
+#include <atomic>
 #include <QFile>
 #include <QCryptographicHash>
 #include <algorithm>
@@ -204,6 +208,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // When the off-thread update check finishes, apply results on the UI thread.
     connect(&m_updateWatcher, &QFutureWatcher<UpdateScan>::finished, this, [this]() {
         const UpdateScan scan = m_updateWatcher.result();
+        // Always clear the inline progress and re-arm the action, even for a
+        // stale scan - the check is over either way.
+        if (m_bottomPanel) m_bottomPanel->setUpdateProgress(-1, 0);
+        if (m_checkUpdatesAction) m_checkUpdatesAction->setEnabled(true);
+        // Discard results from a superseded generation: the profile switched (or a
+        // newer check started) while this one was in flight, so its updates and
+        // backfill belong to a profile that is no longer active.
+        if (scan.gen != m_updateGen) return;
         // Persist any fileIds resolved by MD5 this run so future checks are accurate
         // (and so Update/Redownload can act on them) - this must happen on the UI thread.
         if (!scan.backfill.isEmpty()) {
@@ -219,7 +231,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         }
         m_modListView->setUpdateInfo(scan.updates);
         saveUpdateFlags(scan.updates); // persist so the flags show at next launch
-        if (m_checkUpdatesAction) m_checkUpdatesAction->setEnabled(true);
         solero::AppConfig::instance().setLastUpdateCheckEpoch(
             QDateTime::currentSecsSinceEpoch());
         solero::AppConfig::instance().save();
@@ -965,6 +976,11 @@ void MainWindow::switchProfile(const QString& name) {
     const bool willRedeploy = wasDeployed && solero::AppConfig::instance().isConfigured();
     m_rightPane->setProfile(profile, /*reconcilePlugins=*/!willRedeploy);
     m_bottomPanel->setProfile(profile);
+    // Invalidate any in-flight update check: its results belong to the OLD profile.
+    // The finished handler sees a stale generation and discards them; the inline
+    // progress readout stops immediately.
+    ++m_updateGen;
+    m_bottomPanel->setUpdateProgress(-1, 0);
     m_bethiniWindow->setProfile(profile);
     // Self-review fix: load previously-computed ConflictIndex if it exists
     QString conflictPath = solero::DeployEngine::conflictIndexPath(profile->path());
@@ -3141,19 +3157,71 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
         return;
     }
 
-    // Disable the menu action so the check can't be double-run, and let the user
-    // know we're working - the UI stays responsive while the network calls run
-    // serially on a single background thread.
+    // Disable the menu action so the check can't be double-run. Progress reports
+    // inline on the Mod Info header row (not the status bar) while the network
+    // calls fan out on a bounded background pool.
     if (m_checkUpdatesAction) m_checkUpdatesAction->setEnabled(false);
-    statusBar()->showMessage(
-        QString("Checking %1 mods for updates\xe2\x80\xa6").arg(items.size()));
 
     // Only the EXPLICIT check (not the silent on-open one) does MD5 back-fill, so a
     // launch never spends time hashing archives.
     const bool doBackfill = !silentIfNone;
 
-    auto future = QtConcurrent::run([items, doBackfill]() -> UpdateScan {
+    // The v1 files.json endpoint is per-mod, so mods sharing a Nexus modId
+    // (variants/submods) need only one network call: dedupe up front and fetch
+    // each distinct modId once. Progress counts distinct modIds.
+    QStringList modIds;
+    {
+        QSet<QString> seen;
+        for (const auto& it : items)
+            if (!seen.contains(it.modId)) { seen.insert(it.modId); modIds.append(it.modId); }
+    }
+
+    // Generation stamp for this check. Profile switches bump m_updateGen, so a
+    // check that outlives its profile is discarded on finish and its progress
+    // callbacks go quiet - no cross-profile flag bleed, no touching stale state.
+    const quint64 gen = ++m_updateGen;
+
+    // QPointer so a queued progress callback arriving during teardown can never
+    // touch a dead widget; if the panel is gone, so is this window.
+    QPointer<solero::BottomPanel> panel(m_bottomPanel);
+    const int total = modIds.size();
+    if (panel) panel->setUpdateProgress(0, total);
+
+    auto future = QtConcurrent::run([this, items, modIds, doBackfill, gen, panel, total]() -> UpdateScan {
         UpdateScan scan;
+        scan.gen = gen;
+
+        // Bounded fan-out: each NexusApi call blocks on a curl QProcess, so run up
+        // to 6 at once on a LOCAL pool (never starve the shared global pool). With
+        // ~450 mods this turns minutes of serial round-trips into total/6 batches.
+        QHash<QString, QList<solero::NexusApi::NexusFile>> filesByMod;
+        filesByMod.reserve(total);
+        QMutex mutex;
+        std::atomic<int> done{0};
+        {
+            QThreadPool pool;
+            pool.setMaxThreadCount(6);
+            for (const QString& modId : modIds) {
+                pool.start([&, modId]() {
+                    const auto files = solero::NexusApi::files(modId);
+                    {
+                        QMutexLocker lock(&mutex);
+                        filesByMod.insert(modId, files);
+                    }
+                    const int d = ++done;
+                    // Marshal progress to the UI thread. The lambda runs there, so
+                    // the QPointer and generation checks are race-free: a stale
+                    // generation (profile switched) or dead panel goes silent.
+                    QMetaObject::invokeMethod(qApp, [this, panel, d, total, gen]() {
+                        if (!panel) return;            // window tearing down
+                        if (gen != m_updateGen) return; // superseded check
+                        panel->setUpdateProgress(d, total);
+                    }, Qt::QueuedConnection);
+                });
+            }
+            pool.waitForDone();
+        }
+
         int backfilled = 0;
         // The explicit check back-fills every identifiable mod (so one run covers the
         // whole list); the silent on-open check never hashes (cap 0) to keep launches fast.
@@ -3187,8 +3255,8 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
 
             // Accurate check: find the newest main file and flag only when it is a
             // DIFFERENT, newer-versioned file than the one installed - so having the
-            // current file never false-flags.
-            const auto files = solero::NexusApi::files(it.modId);
+            // current file never false-flags. (Files were pre-fetched above.)
+            const auto files = filesByMod.value(it.modId);
             const solero::NexusApi::NexusFile* latestMain = nullptr;
             for (const auto& f : files) {
                 if (f.category.compare("MAIN", Qt::CaseInsensitive) != 0) continue;

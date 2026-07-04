@@ -16,6 +16,7 @@
 #include <QStyle>
 #include <QPainter>
 #include <QIcon>
+#include "ElideDelegate.h"
 namespace solero {
 
 namespace {
@@ -24,16 +25,27 @@ namespace {
 // instead, suppress the leading icon and paint it immediately after the text so
 // the warning trails the plugin name. The model's tooltip (listing the missing
 // masters) is left untouched, so hovering still works.
-class NameDelegate : public QStyledItemDelegate {
+class NameDelegate : public ElideRightDelegate {
 public:
-    using QStyledItemDelegate::QStyledItemDelegate;
+    using ElideRightDelegate::ElideRightDelegate;
 protected:
     void initStyleOption(QStyleOptionViewItem* opt, const QModelIndex& idx) const override {
         QStyledItemDelegate::initStyleOption(opt, idx);
+        const bool hasWarn = !qvariant_cast<QIcon>(idx.data(Qt::DecorationRole)).isNull();
         // Drop the leading decoration so the base delegate doesn't draw it on the
         // left; we repaint it after the text in paint().
         opt->icon = QIcon();
         opt->features &= ~QStyleOptionViewItem::HasDecoration;
+        // Reserve room for the trailing warning icon (icon + gap) before eliding,
+        // so a long name shortens enough to leave the icon visible instead of
+        // being clipped off the right edge.
+        if (hasWarn) {
+            const int sz = qMin(opt->rect.height(), 16);
+            opt->rect.setRight(opt->rect.right() - (sz + 4)); // sz + gap
+        }
+        // Elide the plugin name char-level after the decoration is removed, so the
+        // text rect reflects the reserved (no leading icon) width.
+        elideRight(opt);
     }
     void paint(QPainter* painter, const QStyleOptionViewItem& option,
                const QModelIndex& idx) const override {
@@ -46,15 +58,18 @@ protected:
         initStyleOption(&opt, idx);
         const QWidget* w = opt.widget;
         QStyle* style = w ? w->style() : QApplication::style();
+        // textRect already excludes the reserved icon strip (see initStyleOption),
+        // so its right edge marks where the elided text ends at the latest.
         const QRect textRect = style->subElementRect(QStyle::SE_ItemViewItemText, &opt, w);
         const QString text = idx.data(Qt::DisplayRole).toString();
         const int textW = opt.fontMetrics.horizontalAdvance(text);
         const int sz = qMin(textRect.height(), 16);
         const int gap = 4;
-        const int x = textRect.left() + textW + gap;
+        // Hug the text for short names; for long (elided) names clamp into the
+        // reserved strip just past textRect so the icon always fits the cell.
+        const int x = qMin(textRect.left() + textW + gap, textRect.right() + gap);
         const int y = textRect.top() + (textRect.height() - sz) / 2;
-        if (x + sz <= textRect.right() + 1)
-            icon.paint(painter, QRect(x, y, sz, sz), Qt::AlignCenter);
+        icon.paint(painter, QRect(x, y, sz, sz), Qt::AlignCenter);
     }
 };
 } // namespace
@@ -74,6 +89,9 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
     horizontalHeader()->setSortIndicator(PluginListModel::ColPriority, Qt::AscendingOrder);
     // Draw the missing-master warning icon after the plugin name (see NameDelegate).
     setItemDelegateForColumn(PluginListModel::ColName, new NameDelegate(this));
+    // Char-level elision for long plugin names ("SomePlugin - Pat…", not "SomePlugin…").
+    setTextElideMode(Qt::ElideRight);
+    setWordWrap(false);
     applyHeaderLayout();
     verticalHeader()->hide();
     // Debounce column-resize saves (B-1): coalesce a resize drag into one config
@@ -84,7 +102,12 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
     m_headerSaveTimer->setInterval(300);
     connect(m_headerSaveTimer, &QTimer::timeout, this, &PluginListView::saveHeaderState);
     connect(horizontalHeader(), &QHeaderView::sectionResized, this,
-            [this](int, int, int){ m_headerSaveTimer->start(); });
+            [this](int logical, int, int){
+                m_headerSaveTimer->start();
+                // Re-flex Name when another column is dragged; skip when Name itself
+                // was resized (honour the user's width) and while mid-flex.
+                if (!m_fillingName && logical != PluginListModel::ColName) fillNameColumn();
+            });
     connect(horizontalHeader(), &QHeaderView::sortIndicatorChanged,
             this, &PluginListView::onSortChanged);
     connect(m_model, &PluginListModel::loadOrderChanged,
@@ -94,14 +117,14 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
 }
 
 void PluginListView::applyHeaderLayout() {
-    // The Plugin (Name) column STRETCHES to fill whatever the other Interactive
-    // columns leave, so the columns always span the full pane width exactly - no
-    // gap, no overflow - however the user resizes the others or the pane.
+    // Every column is Interactive so a divider always resizes the section to its
+    // LEFT, following the cursor (no inverted-drag feel). The Plugin (Name) column
+    // is the flex one: fillNameColumn soaks up the remaining width at startup and
+    // on pane/other-column resize so the row still spans the pane. Making Name a
+    // *Stretch* section was what caused the inversion - a Stretch section can't be
+    // dragged directly, so a divider next to it moved backwards.
     auto* hh = horizontalHeader();
     hh->setSectionResizeMode(QHeaderView::Interactive);
-    hh->setSectionResizeMode(PluginListModel::ColName, QHeaderView::Stretch);
-    // With Name already stretching, don't ALSO stretch the last column (Flags) -
-    // that made Flags grow whenever the viewport exceeded the summed widths (B-4).
     hh->setStretchLastSection(false);
     hh->setMinimumSectionSize(22); // guard against unusably narrow columns (B-5)
     hh->resizeSection(PluginListModel::ColEnabled, 28);
@@ -112,6 +135,10 @@ void PluginListView::applyHeaderLayout() {
     // toggle would reset the user's widths back to the defaults above.
     const QByteArray saved = AppConfig::instance().pluginListHeaderState();
     if (!saved.isEmpty()) hh->restoreState(saved);
+    // restoreState also restores resize MODES, so an older saved blob could put
+    // Name back to Stretch (the inverted-drag behaviour). Re-assert Interactive.
+    hh->setSectionResizeMode(PluginListModel::ColName, QHeaderView::Interactive);
+    fillNameColumn(); // flex Name to fill whatever the other columns leave
 }
 
 void PluginListView::saveHeaderState() {
@@ -124,10 +151,24 @@ void PluginListView::autoSizeColumns() {
     fillNameColumn();
 }
 
-// The Plugin column is now a Stretch section (see applyHeaderLayout), so Qt keeps
-// the columns spanning the full viewport automatically. Kept as a no-op so existing
-// call sites stay valid; manually resizing the stretch section would only fight it.
-void PluginListView::fillNameColumn() {}
+// Size the Plugin (Name) column to soak up whatever width the other Interactive
+// columns leave. Name is Interactive too, so this is a deliberate one-shot resize
+// (startup / pane resize / other-column resize), not a live Stretch - which keeps
+// divider drags feeling natural.
+void PluginListView::fillNameColumn() {
+    auto* hh = horizontalHeader();
+    const int cols = hh->count();
+    int used = 0;
+    for (int c = 0; c < cols; ++c) {
+        if (c == PluginListModel::ColName || hh->isSectionHidden(c)) continue;
+        used += hh->sectionSize(c);
+    }
+    const int avail = viewport()->width() - used;
+    if (avail < 60) return; // don't crush Name below a usable width
+    m_fillingName = true; // guard: our own resize re-emits sectionResized
+    hh->resizeSection(PluginListModel::ColName, avail);
+    m_fillingName = false;
+}
 
 void PluginListView::resizeEvent(QResizeEvent* event) {
     QTableView::resizeEvent(event);

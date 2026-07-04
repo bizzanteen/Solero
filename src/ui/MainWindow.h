@@ -317,8 +317,14 @@ private:
     struct UpdateScan {
         QHash<QString, QPair<QString,QString>> updates;  // local id -> {installed, latest}
         QHash<QString, QPair<QString,QString>> backfill; // local id -> {fileId, version}
+        quint64 gen = 0; // generation this scan belongs to (see m_updateGen)
     };
     QFutureWatcher<UpdateScan> m_updateWatcher;
+    // Bumped on every update-check start and on profile switch, so a check whose
+    // profile changed (or that raced a newer check) is discarded on finish and its
+    // background progress callbacks stop touching the UI. Guards against crashes on
+    // profile switch / app close mid-check.
+    quint64 m_updateGen = 0;
 
     // Per-mod "Update Mod" flow: resolve the latest Nexus file off the UI thread,
     // then download it and reinstall the existing mod in place.

@@ -1,6 +1,7 @@
 #include "DownloadsTab.h"
 #include "core/AppConfig.h"
 #include "core/Profile.h"
+#include "core/RelativeTime.h"
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QHeaderView>
@@ -18,6 +19,9 @@
 #include <QColor>
 #include <QItemSelectionModel>
 #include <QModelIndex>
+#include <QApplication>
+#include <QEvent>
+#include <QFont>
 #include <limits>
 
 namespace solero {
@@ -42,17 +46,6 @@ QString humanSize(qint64 b) {
     if (v < kb) return QString::number(v, 'f', 1) + " MB";
     v /= kb;
     return QString::number(v, 'f', 1) + " GB";
-}
-
-// Compact download time: relative ("17 hours ago") under a day, else "hh.mm dd.mm.yy".
-QString humanTime(const QDateTime& dt) {
-    const qint64 secs = dt.secsTo(QDateTime::currentDateTime()); // >0 when in the past
-    if (secs >= 0 && secs < 86400) {
-        if (secs < 60)   return "just now";
-        if (secs < 3600) { int m = int(secs / 60);   return QString("%1 minute%2 ago").arg(m).arg(m == 1 ? "" : "s"); }
-        int h = int(secs / 3600);                     return QString("%1 hour%2 ago").arg(h).arg(h == 1 ? "" : "s");
-    }
-    return dt.toString("hh.mm dd.MM.yy");
 }
 
 } // namespace
@@ -139,8 +132,12 @@ void DownloadsTab::refresh() {
             sizeItem->setData(Qt::UserRole, fi.size());
             m_table->setItem(row, 2, sizeItem);
 
-            auto* dateItem = new NumItem(humanTime(fi.lastModified()));
-            dateItem->setData(Qt::UserRole, fi.lastModified().toSecsSinceEpoch());
+            // Display a relative bucket ("2 hrs ago") but sort on the raw epoch
+            // stored in Qt::UserRole (NumItem::operator<), never on the text.
+            const qint64 epoch = fi.lastModified().toSecsSinceEpoch();
+            auto* dateItem = new NumItem(
+                relativeDownloadTime(epoch, QDateTime::currentSecsSinceEpoch()));
+            dateItem->setData(Qt::UserRole, epoch);
             m_table->setItem(row, 3, dateItem);
         }
     }
@@ -164,9 +161,32 @@ void DownloadsTab::refresh() {
         m_table->setItem(row, 3, dt);
     }
 
+    // Re-enabling sorting re-sorts by the header's current indicator, so the
+    // user's chosen sort survives a refresh tick. Only force the newest-first
+    // default the first time we populate; afterwards re-assert the current
+    // indicator so a mid-download refresh never yanks the sort back to column 3.
     m_table->setSortingEnabled(true);
-    m_table->sortByColumn(3, Qt::DescendingOrder);
+    auto* hh = m_table->horizontalHeader();
+    if (!m_defaultSortApplied) {
+        m_table->sortByColumn(3, Qt::DescendingOrder);
+        m_defaultSortApplied = true;
+    } else {
+        m_table->sortByColumn(hh->sortIndicatorSection(), hh->sortIndicatorOrder());
+    }
     applyFilters();
+}
+
+void DownloadsTab::changeEvent(QEvent* e) {
+    QWidget::changeEvent(e);
+    if (e->type() == QEvent::ApplicationFontChange && m_table) {
+        // The table carries a direct style sheet (WA_StyleSheet), so Qt won't
+        // propagate the new application font to it automatically. Push it in
+        // explicitly and re-flow row heights so headers + rows track the zoom.
+        const QFont f = QApplication::font();
+        m_table->setFont(f);
+        m_table->horizontalHeader()->setFont(f);
+        m_table->resizeRowsToContents();
+    }
 }
 
 void DownloadsTab::setDownloadProgress(const QString& fileName, qint64 received, qint64 total) {

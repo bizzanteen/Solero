@@ -9,8 +9,6 @@
 
 namespace solero {
 
-class Profile;
-
 // One archive entry + its stored CRC32 (0 = unknown). Mirrors ArchiveTool::Entry
 // but kept independent so the pure reconstruction core has no install/IO deps.
 struct FomodArchiveEntry { QString path; quint32 crc = 0; };
@@ -31,15 +29,6 @@ struct ReconstructResult {
     bool ambiguous = false; // true if any pick relied on CRC/elimination fallback
 };
 
-// Profile-wide scan summary.
-struct FomodScanSummary {
-    int scanned = 0;              // enabled mods examined
-    int fomodFound = 0;           // archives carrying fomod/ModuleConfig.xml
-    int choicesReconstructed = 0; // direct-file FOMODs whose choices were recovered
-    int needsRerun = 0;           // flag-driven FOMODs (choices not reconstructable)
-    int archiveNotFound = 0;      // mods whose source archive could not be located
-};
-
 // pure, testable core (no IO)
 
 // Classify a parsed module by its option/flag/conditional shape.
@@ -55,18 +44,5 @@ ReconstructResult reconstructSelection(
     const QList<FomodArchiveEntry>& archiveEntries,
     const QSet<QString>& installedRelPaths,
     const std::function<quint32(const QString&)>& installedCrc);
-
-// IO orchestration
-
-// Scan every enabled, non-output mod in `profile`: locate its source archive,
-// detect FOMOD, set sourceArchive + isFomod, and back-fill fomod-choices.json
-// where the selection is reconstructable. Mutates the profile's mod entries and
-// calls profile.save() once at the end. `progress(done,total,name)` is called per
-// mod; `isCancelled()` (if set) aborts between mods.
-FomodScanSummary scanProfile(Profile& profile,
-                             const QString& gameDir,
-                             const QString& stagingRoot,
-                             const std::function<void(int, int, const QString&)>& progress = {},
-                             const std::function<bool()>& isCancelled = {});
 
 } // namespace solero

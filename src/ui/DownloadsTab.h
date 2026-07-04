@@ -21,6 +21,12 @@ signals:
     void installRequested(const QString& archivePath);
     void cancelRequested(const QString& fileName);
     void retryRequested(const QString& fileName);
+protected:
+    // A style sheet is set on the table (item padding), which sets WA_StyleSheet
+    // and blocks Qt's automatic propagation of application-font (zoom) changes.
+    // Re-assert the app font here so the table scales with Ctrl +/- like the
+    // mod/plugin lists (which carry no direct style sheet).
+    void changeEvent(QEvent* e) override;
 private:
     void showContextMenu(const QPoint& pos);
     void applyFilters();

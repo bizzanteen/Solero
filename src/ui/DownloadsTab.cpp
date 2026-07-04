@@ -19,6 +19,9 @@
 #include <QColor>
 #include <QItemSelectionModel>
 #include <QModelIndex>
+#include <QApplication>
+#include <QEvent>
+#include <QFont>
 #include <limits>
 
 namespace solero {
@@ -161,6 +164,19 @@ void DownloadsTab::refresh() {
     m_table->setSortingEnabled(true);
     m_table->sortByColumn(3, Qt::DescendingOrder);
     applyFilters();
+}
+
+void DownloadsTab::changeEvent(QEvent* e) {
+    QWidget::changeEvent(e);
+    if (e->type() == QEvent::ApplicationFontChange && m_table) {
+        // The table carries a direct style sheet (WA_StyleSheet), so Qt won't
+        // propagate the new application font to it automatically. Push it in
+        // explicitly and re-flow row heights so headers + rows track the zoom.
+        const QFont f = QApplication::font();
+        m_table->setFont(f);
+        m_table->horizontalHeader()->setFont(f);
+        m_table->resizeRowsToContents();
+    }
 }
 
 void DownloadsTab::setDownloadProgress(const QString& fileName, qint64 received, qint64 total) {

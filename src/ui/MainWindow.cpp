@@ -569,20 +569,21 @@ void MainWindow::setupToolbar() {
     auto* playAction = tb->addAction("\xe2\x96\xb6 Play", this, &MainWindow::onPlay);
     playAction->setToolTip("Launch the game via Steam");
 
-    // Promote the pair so it dominates: bold text + accent (highlight) colour,
-    // taken from the palette (no hardcoded colours - same source as
-    // DataTab::accentColor() / ThemeAdapter). The Deploy label mutates at
-    // runtime; the button keeps this styling across setText().
-    for (QAction* a : {m_deployAction, playAction}) {
-        if (auto* btn = qobject_cast<QToolButton*>(tb->widgetForAction(a))) {
-            btn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-            QFont f = btn->font();
-            f.setBold(true);
-            btn->setFont(f);
-            QPalette pal = btn->palette();
-            pal.setColor(QPalette::ButtonText, pal.color(QPalette::Highlight));
-            btn->setPalette(pal);
-        }
+    // Promote the pair so it dominates: bold both, and give Play a filled
+    // accent pill pulled from the resolved palette (Highlight role) - no
+    // hardcoded colours. The Deploy label mutates at runtime; the buttons
+    // keep this styling across setText().
+    if (auto* deployBtn = qobject_cast<QToolButton*>(tb->widgetForAction(m_deployAction))) {
+        QFont f = deployBtn->font(); f.setBold(true); deployBtn->setFont(f);
+    }
+    if (auto* playBtn = qobject_cast<QToolButton*>(tb->widgetForAction(playAction))) {
+        QFont f = playBtn->font(); f.setBold(true); playBtn->setFont(f);
+        const QColor accent = palette().color(QPalette::Highlight);
+        const QColor accentText = palette().color(QPalette::HighlightedText);
+        playBtn->setStyleSheet(QString(
+            "QToolButton { background:%1; color:%2; border-radius:3px;"
+            " padding:2px 10px; }")
+            .arg(accent.name(), accentText.name()));
     }
 }
 

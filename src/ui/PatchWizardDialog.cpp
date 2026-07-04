@@ -224,8 +224,10 @@ void PatchWizardDialog::buildTree() {
         child->setToolTip(0, tip);
 
         if (c.installable) {
+            // Nothing pre-checked: the user opts in per row (the reason text states
+            // the trigger). updateInstallEnabled keeps the button disabled until ≥1.
             child->setFlags((child->flags() | Qt::ItemIsUserCheckable) & ~Qt::ItemIsAutoTristate);
-            child->setCheckState(0, Qt::Checked);
+            child->setCheckState(0, Qt::Unchecked);
         } else {
             // Detected only: an unchecked, non-checkable, disabled row.
             child->setFlags(child->flags() & ~Qt::ItemIsUserCheckable);
@@ -359,14 +361,16 @@ void PatchWizardDialog::onInstallSelected() {
                        QStringLiteral("Installing patches") + QChar(0x2026));
     prog.show();
     prog.pump();
-    const QString staging = AppConfig::instance().stagingDir();
     for (int idx : selected) {
         if (idx < 0 || idx >= m_candidates.size()) continue;
         const PatchCandidate& c = m_candidates[idx];
-        if (!c.installable || c.sourceArchive.isEmpty()) continue;
+        if (!c.installable || c.sourceArchive.isEmpty() || c.stagingDir.isEmpty()) continue;
         prog.setMessage("Installing: " + c.optionName);
         prog.pump();
-        const QString modDir = staging + "/" + c.modId;
+        // Install into the mod's real staging folder (resolved by the scanner via
+        // stagingFolderFor), not staging+"/"+modId - the folder is named by its
+        // friendly stagingFolder, not the UUID, so the old path was a silent no-op.
+        const QString modDir = c.stagingDir;
         if (ModInstaller::installOptionFiles(c.sourceArchive, modDir, c.files)) {
             ++installed;
             if (!changed.contains(c.modId)) changed.append(c.modId);

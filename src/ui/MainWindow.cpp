@@ -3406,45 +3406,16 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
 }
 
 void MainWindow::onScanFomod() {
-    auto* profile = m_profileMgr->activeProfile();
-    if (!profile) return;
-
-    solero::ProgressModal prog(this, "Scan for FOMOD mods",
-                               "Locating source archives\xe2\x80\xa6");
-    prog.enableCancel();
-    prog.show();
-    prog.pump();
-
-    auto progressCb = [&](int done, int total, const QString& name) {
-        prog.setProgress(done, total);
-        prog.setMessage(QString("Scanning %1/%2: %3").arg(done + 1).arg(total).arg(name));
-    };
-    auto cancelCb = [&]() { return prog.wasCancelled(); };
-
-    const solero::FomodScanSummary sum = solero::scanProfile(
-        *profile,
-        solero::AppConfig::instance().gameDir(),
-        solero::AppConfig::instance().stagingDir(),
-        progressCb, cancelCb);
-
-    prog.close();
-
-    // Refresh the mod list so new FOMOD badges/tooltips show immediately.
-    m_modListView->setProfile(profile);
-    refreshHealthIndicator(); // FOMOD needs-rerun flags may have changed
-
+    // TODO: removed in patch-wizard-rework; menu action pruned on variant branch.
+    // FOMOD selection reconstruction now happens inside the Patch Wizard
+    // (PatchScanner::scanProfile establishes each mod's selection from its
+    // fomod-choices log, or reconstructs it for imported mods). This standalone
+    // action is a no-op stub; the "Scan for FOMOD Mods" menu item is removed on
+    // the UI-variant branch.
     QMessageBox::information(
         this, "Scan for FOMOD mods",
-        QString("Scanned %1 enabled mod(s).\n\n"
-                "Found %2 FOMOD mod(s):\n"
-                "  \xe2\x80\xa2 %3 with choices reconstructed\n"
-                "  \xe2\x80\xa2 %4 needing a re-run (flag-driven)\n\n"
-                "%5 mod(s) had no locatable source archive.")
-            .arg(sum.scanned)
-            .arg(sum.fomodFound)
-            .arg(sum.choicesReconstructed)
-            .arg(sum.needsRerun)
-            .arg(sum.archiveNotFound));
+        "FOMOD scanning is now part of the Patch Wizard "
+        "(Profile \xe2\x80\xba Patch Wizard).");
 }
 
 void MainWindow::maybeAutoCheckUpdates() {

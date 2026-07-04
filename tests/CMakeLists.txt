@@ -230,6 +230,7 @@ add_test(NAME test_FomodScanner COMMAND test_FomodScanner)
 # Profile), so link the same set the install test uses.
 add_executable(test_PatchScanner test_PatchScanner.cpp
   ../src/patch/PatchScanner.cpp
+  ../src/fomod/FomodScanner.cpp
   ../src/fomod/FomodCondition.cpp
   ../src/fomod/FomodEngine.cpp
   ../src/install/ArchiveTool.cpp

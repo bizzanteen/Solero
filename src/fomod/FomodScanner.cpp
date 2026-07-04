@@ -1,20 +1,5 @@
 #include "FomodScanner.h"
 #include "FomodEngine.h"
-#include "core/Profile.h"
-#include "core/AppConfig.h"
-#include "core/Types.h"
-#include "core/StagingFolder.h"
-#include "install/ArchiveLocator.h"
-#include "install/ArchiveTool.h"
-#include "install/ModInstaller.h"
-#include <QDir>
-#include <QDirIterator>
-#include <QFile>
-#include <QFileInfo>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonArray>
-#include <QDateTime>
 #include <QVector>
 
 namespace solero {
@@ -22,38 +7,6 @@ namespace solero {
 namespace {
 
 QString lowerPath(QString p) { p.replace('\\', '/'); return p.toLower(); }
-
-// Case-insensitive child lookup; returns the real-cased path.
-QString childCI(const QString& parent, const QString& name) {
-    QDir d(parent);
-    if (!d.exists()) return {};
-    for (const QString& e : d.entryList(QDir::AllEntries | QDir::NoDotAndDotDot))
-        if (e.compare(name, Qt::CaseInsensitive) == 0) return parent + "/" + e;
-    return {};
-}
-
-// CRC32 (IEEE, poly 0xEDB88320) over a file's bytes - matches zip/7z stored CRC.
-quint32 crc32File(const QString& path) {
-    static quint32 table[256];
-    static bool init = false;
-    if (!init) {
-        for (quint32 i = 0; i < 256; ++i) {
-            quint32 c = i;
-            for (int k = 0; k < 8; ++k) c = (c & 1) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
-            table[i] = c;
-        }
-        init = true;
-    }
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return 0;
-    quint32 crc = 0xFFFFFFFFu;
-    char buf[1 << 16];
-    qint64 n;
-    while ((n = f.read(buf, sizeof(buf))) > 0)
-        for (qint64 i = 0; i < n; ++i)
-            crc = table[(crc ^ static_cast<quint8>(buf[i])) & 0xFF] ^ (crc >> 8);
-    return crc ^ 0xFFFFFFFFu;
-}
 
 // A concrete destination path (Data-relative, lower-cased) + the source archive
 // entry's CRC, for one expanded option file/folder member.
@@ -221,135 +174,6 @@ ReconstructResult reconstructSelection(
         result.steps.append(rstep);
     }
     return result;
-}
-
-FomodScanSummary scanProfile(Profile& profile,
-                             const QString& gameDir,
-                             const QString& stagingRoot,
-                             const std::function<void(int, int, const QString&)>& progress,
-                             const std::function<bool()>& isCancelled) {
-    Q_UNUSED(gameDir);
-    FomodScanSummary sum;
-
-    ArchiveLocator locator(stagingRoot);
-    locator.discoverInstanceDownloadDirs(profile);
-
-    // Snapshot the ids to scan (so writes via findById don't disturb iteration).
-    QStringList ids;
-    for (const auto& m : profile.modList())
-        if (m.type == EntryType::Mod && m.enabled && !m.isOutputMod) ids << m.id;
-
-    const int total = ids.size();
-    const QString choicesDir = AppConfig::dataRoot() + "/fomod-choices";
-    bool dirty = false;
-    int done = 0;
-
-    for (const QString& id : ids) {
-        if (isCancelled && isCancelled()) break;
-        ModEntry* mod = profile.modList().findById(id);
-        if (!mod) { ++done; continue; }
-        if (progress) progress(done, total, mod->name);
-        ++done;
-        ++sum.scanned;
-
-        const QString archive = locator.locate(*mod);
-        if (archive.isEmpty()) { ++sum.archiveNotFound; continue; }
-
-        bool ok = false;
-        const QList<ArchiveTool::Entry> entries = ArchiveTool::listEntriesWithCrc(archive, &ok);
-        if (!ok || entries.isEmpty()) { ++sum.archiveNotFound; continue; }
-
-        // FOMOD signal: fomod/moduleconfig.xml at any depth, case-insensitive.
-        bool isFo = false;
-        for (const ArchiveTool::Entry& e : entries) {
-            const QString l = lowerPath(e.path);
-            if (l == "fomod/moduleconfig.xml" || l.endsWith("/fomod/moduleconfig.xml")) {
-                isFo = true; break;
-            }
-        }
-        if (!isFo) {
-            if (mod->isFomod) { mod->isFomod = false; dirty = true; }
-            continue;
-        }
-
-        ++sum.fomodFound;
-        if (!mod->isFomod) { mod->isFomod = true; dirty = true; }
-        if (mod->sourceArchive != archive) { mod->sourceArchive = archive; dirty = true; }
-
-        // Parse the FOMOD module (extracts fomod/ from the archive).
-        InstallPrep prep = ModInstaller::prepare(archive);
-        FomodEngine engine;
-        if (!prep.ok || prep.fomodConfigPath.isEmpty() || !engine.load(prep.fomodConfigPath)) {
-            mod->fomodStatus = "needs-rerun"; ++sum.needsRerun; dirty = true; continue;
-        }
-        const FomodModule& module = engine.module();
-
-        if (classifyModule(module) == FomodClass::FlagDriven) {
-            // Flag-driven: not reconstructable by file-diff. Flag, don't guess.
-            mod->fomodStatus = "needs-rerun"; ++sum.needsRerun; dirty = true; continue;
-        }
-
-        // Direct-file: build the present-file model from the staged Data tree.
-        const QString modData = childCI(stagingPathFor(stagingRoot, *mod), "Data");
-        QSet<QString> installed;
-        QHash<QString, QString> realByLower;
-        if (!modData.isEmpty()) {
-            QDir base(modData);
-            QDirIterator it(modData, QDir::Files | QDir::NoDotAndDotDot,
-                            QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
-            while (it.hasNext()) {
-                const QString full = it.next();
-                const QString rel = lowerPath(base.relativeFilePath(full));
-                installed.insert(rel);
-                realByLower.insert(rel, full);
-            }
-        }
-        QHash<QString, quint32> crcCache;
-        auto crcFn = [&](const QString& relLower) -> quint32 {
-            const auto c = crcCache.constFind(relLower);
-            if (c != crcCache.constEnd()) return c.value();
-            quint32 v = 0;
-            const auto r = realByLower.constFind(relLower);
-            if (r != realByLower.constEnd()) v = crc32File(r.value());
-            crcCache.insert(relLower, v);
-            return v;
-        };
-
-        QList<FomodArchiveEntry> fae;
-        fae.reserve(entries.size());
-        for (const ArchiveTool::Entry& e : entries) fae.append({ e.path, e.crc });
-
-        const ReconstructResult rec = reconstructSelection(module, fae, installed, crcFn);
-
-        // Persist as fomod-choices.json in the same shape onInstallMod writes.
-        QJsonArray stepsArr;
-        for (const ReconstructedStep& rs : rec.steps) {
-            QJsonObject so;
-            so["step"] = rs.step;
-            QJsonArray picks;
-            for (const QString& nm : rs.selected) picks.append(nm);
-            so["selected"] = picks;
-            stepsArr.append(so);
-        }
-        QJsonObject root;
-        root["installer_version"] = "1.0";
-        root["installed_at"] = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
-        root["reconstructed"] = true;
-        if (rec.ambiguous) root["ambiguous"] = true;
-        root["steps"] = stepsArr;
-        QDir().mkpath(choicesDir);
-        QFile f(choicesDir + "/" + id + ".json");
-        if (f.open(QIODevice::WriteOnly))
-            f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
-
-        mod->hasFomodChoices = true;
-        mod->fomodStatus = "reconstructed";
-        ++sum.choicesReconstructed;
-        dirty = true;
-    }
-
-    if (dirty) profile.save();
-    return sum;
 }
 
 } // namespace solero

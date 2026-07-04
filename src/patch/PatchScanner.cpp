@@ -1,9 +1,11 @@
 #include "PatchScanner.h"
 #include "fomod/FomodEngine.h"
+#include "fomod/FomodScanner.h"
 #include "core/Profile.h"
 #include "core/Types.h"
 #include "core/AppConfig.h"
 #include "core/StagingFolder.h"
+#include "install/ArchiveTool.h"
 #include "install/ModInstaller.h"
 #include "install/PluginScanner.h"
 #include <QDir>
@@ -148,47 +150,12 @@ QString describePatchPayload(const QList<FomodFile>& files) {
     return n > 1 ? QStringLiteral("%1 (+%2 files)").arg(sample).arg(n - 1) : sample;
 }
 
-// Map a flag-setting option onto a present installed mod. Matching is fuzzy and
-// case/punctuation-insensitive, in either direction, against the mod's display
-// name, its nexus name, and its plugin basenames. A short option-name guard
-// avoids pathological substring hits (e.g. an option literally named "All").
-//
-// LIMITATION: this relies on the option name being a recognisable token for the
-// mod (the dominant "pick which mod you have" convention). Authors who name the
-// flag/option arbitrarily will not be matched - file-driven detection is the
-// backstop for those.
-const InstalledModId* mapOptionToMod(const FomodOption& opt,
-                                     const QList<InstalledModId>& mods) {
-    const QString optNorm = normalizeName(opt.name);
-    if (optNorm.size() < 4) return nullptr; // too generic to match safely
-
-    auto relates = [&](const QString& other) {
-        const QString o = normalizeName(other);
-        if (o.size() < 4) return false;
-        return optNorm.contains(o) || o.contains(optNorm);
-    };
-
-    for (const InstalledModId& m : mods) {
-        if (relates(m.name) || (!m.nexusName.isEmpty() && relates(m.nexusName)))
-            return &m;
-        for (const QString& pb : m.pluginBasenames) {
-            // Compare against the basename sans extension.
-            QString stem = pb;
-            const int dot = stem.lastIndexOf('.');
-            if (dot > 0) stem.truncate(dot);
-            if (relates(stem)) return &m;
-        }
-    }
-    return nullptr;
-}
-
 } // namespace
 
 QList<PatchCandidate> findPatches(const FomodModule& module,
                                   const FomodEngine::Selection& original,
                                   const FilePresentFn& filePresent,
                                   const AlreadyInstalledFn& alreadyInstalled,
-                                  const QList<InstalledModId>& installedMods,
                                   const CollectFn& collect,
                                   const PatchModMeta& meta) {
     QList<PatchCandidate> out;
@@ -201,7 +168,6 @@ QList<PatchCandidate> findPatches(const FomodModule& module,
     engine.setFilePresent(filePresent);
 
     const QList<FomodFile> baseline = collect(original);
-    const QSet<QString> baselineKeys = keysOf(baseline);
 
     QSet<QString> emitted; // cross-candidate dedup by fileKey
 
@@ -216,6 +182,7 @@ QList<PatchCandidate> findPatches(const FomodModule& module,
         c.files = files;
         c.sourceArchive = meta.sourceArchive;
         c.installable = meta.installable;
+        c.stagingDir = meta.stagingDir;
         out.append(c);
         for (const FomodFile& f : files) emitted.insert(fileKey(f));
     };
@@ -231,74 +198,44 @@ QList<PatchCandidate> findPatches(const FomodModule& module,
         return keep;
     };
 
-    // Per-option passes over reachable, unselected options
+    // DIRECT-file: options carrying their own files gated by a typeDescriptor
+    // whose fileDependency is now satisfied (effective type Required/Recommended).
     for (int si = 0; si < module.steps.size(); ++si) {
         if (!engine.isStepVisible(si, original)) continue; // step gated out now
         const FomodStep& step = module.steps[si];
         const QStringList stepDeps = presentFileDeps(step.visibleConditionXml);
         for (int gi = 0; gi < step.groups.size(); ++gi) {
             const FomodGroup& grp = step.groups[gi];
-
-            // Is some option in this group already chosen originally? (cardinality)
-            bool groupHasSelection = false;
-            for (int oi = 0; oi < grp.options.size(); ++oi)
-                if (original.value(FomodEngine::selKey(si, gi, oi))) { groupHasSelection = true; break; }
-            const bool exclusive = grp.type == GroupType::ExactlyOne
-                                || grp.type == GroupType::AtMostOne;
-
             for (int oi = 0; oi < grp.options.size(); ++oi) {
                 const FomodOption& opt = grp.options[oi];
                 const QString key = FomodEngine::selKey(si, gi, oi);
                 if (original.value(key)) continue;        // already selected -> installed
                 if (engine.effectiveType(opt, original) == OptionType::NotUsable) continue;
 
-                // (A) FLAG-DRIVEN: a flag-setting option whose payload lives in
-                //     <conditionalFileInstalls>, mapped to a present installed mod.
-                if (!opt.flags.isEmpty()) {
-                    if (const InstalledModId* m = mapOptionToMod(opt, installedMods)) {
-                        FomodEngine::Selection aug = original;
-                        aug.insert(key, true);
-                        // delta = files unlocked by adding this flag, minus baseline.
-                        QList<FomodFile> delta;
-                        for (const FomodFile& f : collect(aug))
-                            if (!baselineKeys.contains(fileKey(f))) delta.append(f);
-                        const QList<FomodFile> keep = pruned(delta);
-                        if (!keep.isEmpty()) {
-                            QString reason = QStringLiteral("%1 is installed").arg(m->name);
-                            if (exclusive && groupHasSelection)
-                                reason += QStringLiteral(" (alternative to your current choice)");
-                            makeCandidate(opt.name, opt.description, reason, keep);
-                        }
-                    }
-                }
+                if (opt.files.isEmpty() || opt.conditionTypeXml.isEmpty()) continue;
+                const OptionType et = engine.effectiveType(opt, original);
+                if (et != OptionType::Required && et != OptionType::Recommended) continue;
 
-                // (B) DIRECT-file: an option that carries its own files and whose
-                //     typeDescriptor (or step gate) is satisfied by a now-present
-                //     file (effective type became Required/Recommended).
-                if (!opt.files.isEmpty() && !opt.conditionTypeXml.isEmpty()) {
-                    const OptionType et = engine.effectiveType(opt, original);
-                    if (et == OptionType::Required || et == OptionType::Recommended) {
-                        QStringList deps = stepDeps;
-                        deps += presentFileDeps(opt.conditionTypeXml);
-                        QString trigger;
-                        for (const QString& d : deps)
-                            if (!d.isEmpty() && filePresent(d)) { trigger = d; break; }
-                        if (!trigger.isEmpty()) {
-                            const QList<FomodFile> keep = pruned(opt.files);
-                            if (!keep.isEmpty())
-                                makeCandidate(opt.name, opt.description,
-                                    QStringLiteral("Requires %1 (present)").arg(trigger), keep);
-                        }
-                    }
-                }
+                QStringList deps = stepDeps;
+                deps += presentFileDeps(opt.conditionTypeXml);
+                QString trigger;
+                for (const QString& d : deps)
+                    if (!d.isEmpty() && filePresent(d)) { trigger = d; break; }
+                if (trigger.isEmpty()) continue; // no nameable present trigger -> drop
+                const QList<FomodFile> keep = pruned(opt.files);
+                if (!keep.isEmpty())
+                    makeCandidate(opt.name, opt.description,
+                        QStringLiteral("Requires %1 (present)").arg(trigger), keep);
             }
         }
     }
 
-    // file-DRIVEN: conditional/required files now satisfied but not on disk
+    // CONDITIONAL: conditionalFileInstalls files now satisfied but not on disk
     // collect(original) already folds in conditionalFileInstalls whose
     // fileDependency the live load order now satisfies; anything in there that is
-    // missing from this mod is a newly-applicable patch.
+    // missing from this mod is a newly-applicable patch - BUT only when a concrete
+    // present trigger can be named. A payload gated solely by flags (no
+    // fileDependency) is suppressed (the Embers-XD false-positive class).
     QList<FomodFile> fileDriven;
     for (const FomodFile& f : baseline) {
         if (emitted.contains(fileKey(f))) continue;
@@ -308,19 +245,15 @@ QList<PatchCandidate> findPatches(const FomodModule& module,
     if (!fileDriven.isEmpty()) {
         const QStringList triggers = presentConditionalTriggers(
             module.conditionalInstallsXml, keysOf(fileDriven), filePresent);
-        QString reason;
         if (!triggers.isEmpty()) {
             const int shown = qMin(triggers.size(), 3);
             QString t = triggers.mid(0, shown).join(", ");
             if (triggers.size() > shown)
                 t += QStringLiteral(" +%1 more").arg(triggers.size() - shown);
-            reason = QStringLiteral("needs %1 (present)").arg(t);
-        } else {
-            reason = QStringLiteral("applies to your current load order");
+            // Name the row by what it actually installs (the patch plugin/file).
+            makeCandidate(describePatchPayload(fileDriven), QString(),
+                          QStringLiteral("needs %1 (present)").arg(t), fileDriven);
         }
-        // Name the row by what it actually installs (the patch plugin/file),
-        // not a generic label.
-        makeCandidate(describePatchPayload(fileDriven), QString(), reason, fileDriven);
     }
 
     return out;
@@ -351,11 +284,28 @@ QSet<QString> recursiveRelSet(const QString& dir) {
     return out;
 }
 
-QStringList topLevelPlugins(const QString& dataDir) {
-    QDir d(dataDir);
-    if (!d.exists()) return {};
-    return d.entryList({"*.esp", "*.esm", "*.esl", "*.ESP", "*.ESM", "*.ESL"},
-                       QDir::Files, QDir::Name);
+// CRC32 (IEEE, poly 0xEDB88320) over a file's bytes - matches zip/7z stored CRC.
+// Used to disambiguate same-path FOMOD option variants during reconstruction.
+quint32 crc32File(const QString& path) {
+    static quint32 table[256];
+    static bool init = false;
+    if (!init) {
+        for (quint32 i = 0; i < 256; ++i) {
+            quint32 c = i;
+            for (int k = 0; k < 8; ++k) c = (c & 1) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
+            table[i] = c;
+        }
+        init = true;
+    }
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return 0;
+    quint32 crc = 0xFFFFFFFFu;
+    char buf[1 << 16];
+    qint64 n;
+    while ((n = f.read(buf, sizeof(buf))) > 0)
+        for (qint64 i = 0; i < n; ++i)
+            crc = table[(crc ^ static_cast<quint8>(buf[i])) & 0xFF] ^ (crc >> 8);
+    return crc ^ 0xFFFFFFFFu;
 }
 
 // Locate a staged FOMOD config (imports / Wabbajack) case-insensitively.
@@ -365,27 +315,13 @@ QString stagedModuleConfig(const QString& modDir) {
     return childCI(fomod, "ModuleConfig.xml");
 }
 
-// Reconstruct the original Selection from the fomod-choices log by matching stored
-// per-step option NAMES back to the module. Name-based matching is the only signal
-// the log stores (selKey indices are not persisted), so an authoring change to an
-// option name between install and scan would silently drop that pick.
-FomodEngine::Selection reconstructSelection(const FomodModule& module,
-                                            const QString& choicesPath) {
+// Map per-step selected option NAMES (lowercased step name -> names) back to a
+// module Selection. Name-based matching is the only signal both the fomod-choices
+// log and the file-diff reconstruction store (selKey indices are not persisted),
+// so an authoring change to an option name would silently drop that pick.
+FomodEngine::Selection selectionFromStepNames(
+    const FomodModule& module, const QHash<QString, QSet<QString>>& byStep) {
     FomodEngine::Selection sel;
-    QFile f(choicesPath);
-    if (!f.open(QIODevice::ReadOnly)) return sel;
-    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
-    const QJsonArray steps = root.value("steps").toArray();
-
-    QHash<QString, QSet<QString>> byStep; // lowercased step name -> selected option names
-    for (const QJsonValue& sv : steps) {
-        const QJsonObject so = sv.toObject();
-        const QString sname = so.value("step").toString().toLower();
-        QSet<QString>& names = byStep[sname];
-        for (const QJsonValue& nv : so.value("selected").toArray())
-            names.insert(nv.toString());
-    }
-
     for (int si = 0; si < module.steps.size(); ++si) {
         const auto it = byStep.constFind(module.steps[si].name.toLower());
         if (it == byStep.constEnd()) continue;
@@ -398,7 +334,103 @@ FomodEngine::Selection reconstructSelection(const FomodModule& module,
     return sel;
 }
 
+// Reconstruct the original Selection from a Solero fomod-choices log.
+FomodEngine::Selection selectionFromLog(const FomodModule& module,
+                                        const QString& choicesPath) {
+    QFile f(choicesPath);
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    QHash<QString, QSet<QString>> byStep; // lowercased step name -> selected option names
+    for (const QJsonValue& sv : root.value("steps").toArray()) {
+        const QJsonObject so = sv.toObject();
+        QSet<QString>& names = byStep[so.value("step").toString().toLower()];
+        for (const QJsonValue& nv : so.value("selected").toArray())
+            names.insert(nv.toString());
+    }
+    return selectionFromStepNames(module, byStep);
+}
+
+// Reconstruct an IMPORTED mod's selection by diffing its staged Data tree against
+// the FOMOD option file-sets (via FomodScanner's file-diff core). `status`, if
+// non-null, receives the reconstruction annotation ("reconstructed"/"needs-rerun").
+FomodEngine::Selection reconstructImportedSelection(const FomodModule& module,
+                                                    const QString& sourceArchive,
+                                                    const QString& modData,
+                                                    QString* status) {
+    if (status) status->clear();
+    if (sourceArchive.isEmpty() || !QFileInfo::exists(sourceArchive)) return {};
+
+    // Flag-driven installers cannot be reconstructed by file-diff (same files
+    // install regardless of which flag) - annotate and give up.
+    if (classifyModule(module) == FomodClass::FlagDriven) {
+        if (status) *status = QStringLiteral("needs-rerun");
+        return {};
+    }
+
+    bool ok = false;
+    const QList<ArchiveTool::Entry> entries =
+        ArchiveTool::listEntriesWithCrc(sourceArchive, &ok);
+    if (!ok || entries.isEmpty()) {
+        if (status) *status = QStringLiteral("needs-rerun");
+        return {};
+    }
+
+    // Present-file model + CRC lookup over the mod's staged Data tree.
+    QSet<QString> installed;
+    QHash<QString, QString> realByLower;
+    if (!modData.isEmpty()) {
+        QDir base(modData);
+        QDirIterator it(modData, QDir::Files | QDir::NoDotAndDotDot,
+                        QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
+        while (it.hasNext()) {
+            const QString full = it.next();
+            const QString rel = normalizePath(base.relativeFilePath(full));
+            installed.insert(rel);
+            realByLower.insert(rel, full);
+        }
+    }
+    QHash<QString, quint32> crcCache;
+    auto crcFn = [&](const QString& relLower) -> quint32 {
+        const auto c = crcCache.constFind(relLower);
+        if (c != crcCache.constEnd()) return c.value();
+        quint32 v = 0;
+        const auto r = realByLower.constFind(relLower);
+        if (r != realByLower.constEnd()) v = crc32File(r.value());
+        crcCache.insert(relLower, v);
+        return v;
+    };
+
+    QList<FomodArchiveEntry> fae;
+    fae.reserve(entries.size());
+    for (const ArchiveTool::Entry& e : entries) fae.append({ e.path, e.crc });
+
+    const ReconstructResult rec = reconstructSelection(module, fae, installed, crcFn);
+    if (status) *status = QStringLiteral("reconstructed");
+
+    QHash<QString, QSet<QString>> byStep;
+    for (const ReconstructedStep& rs : rec.steps) {
+        QSet<QString>& names = byStep[rs.step.toLower()];
+        for (const QString& nm : rs.selected) names.insert(nm);
+    }
+    return selectionFromStepNames(module, byStep);
+}
+
 } // namespace
+
+FomodEngine::Selection establishSelection(
+    const FomodModule& module,
+    const QString& choicesLogPath,
+    const std::function<FomodEngine::Selection()>& reconstruct,
+    bool& reconstructed) {
+    // Solero-installed mods have a fomod-choices log -> trust it verbatim; never
+    // reconstruct. Imported mods (no log) fall back to file-diff reconstruction.
+    if (QFileInfo::exists(choicesLogPath)) {
+        reconstructed = false;
+        return selectionFromLog(module, choicesLogPath);
+    }
+    reconstructed = true;
+    return reconstruct ? reconstruct() : FomodEngine::Selection{};
+}
 
 QList<PatchCandidate> scanProfile(const Profile& profile,
                                   const QString& gameDir,
@@ -431,19 +463,6 @@ QList<PatchCandidate> scanProfile(const Profile& profile,
         return false;
     };
 
-    // Installed-mod identities for flag-option ↔ mod mapping.
-    QList<InstalledModId> installedMods;
-    for (const auto& m : profile.modList()) {
-        if (m.type != EntryType::Mod || !m.enabled || m.isOutputMod) continue;
-        InstalledModId id;
-        id.modId = m.id;
-        id.name = m.name;
-        id.nexusName = m.name; // we only persist a numeric nexus id; reuse display name
-        id.pluginBasenames = topLevelPlugins(childCI(stagingPathFor(stagingRoot, m), "Data"));
-        id.normalizedName = normalizeName(m.name);
-        installedMods.append(id);
-    }
-
     const QString choicesDir = AppConfig::dataRoot() + "/fomod-choices";
 
     for (const auto& m : profile.modList()) {
@@ -475,35 +494,52 @@ QList<PatchCandidate> scanProfile(const Profile& profile,
         if (!engine.load(configPath)) continue;
         engine.setFilePresent(filePresent);
 
-        const FomodEngine::Selection original =
-            reconstructSelection(engine.module(), choicesDir + "/" + m.id + ".json");
+        // Establish the original selection: Solero-installed mods carry a
+        // fomod-choices log (trusted verbatim); imported mods have none, so
+        // reconstruct via file-diff (FomodScanner core) - only then.
+        const QString modData = childCI(modDir, "Data");
+        bool reconstructed = false;
+        const QString archiveForRec = installable ? m.sourceArchive : QString();
+        const FomodEngine::Selection original = establishSelection(
+            engine.module(), choicesDir + "/" + m.id + ".json",
+            [&]() {
+                return reconstructImportedSelection(engine.module(), archiveForRec,
+                                                    modData, nullptr);
+            },
+            reconstructed);
 
         CollectFn collect = [&engine](const FomodEngine::Selection& sel) {
             return engine.collectFiles(sel);
         };
 
-        // Per-mod "already installed?" predicate over the mod's staged Data tree.
-        const QString modData = childCI(modDir, "Data");
+        // "Already installed?" - check the DESTINATION against the whole live load
+        // order (deployed game Data + every enabled mod's staged Data), not just
+        // this mod's source tree. An already-applied patch must not re-surface.
         const QSet<QString> modFiles = recursiveRelSet(modData);
-        AlreadyInstalledFn alreadyInstalled = [&modFiles](const FomodFile& f) -> bool {
+        AlreadyInstalledFn alreadyInstalled = [&](const FomodFile& f) -> bool {
             if (f.isFolder) {
-                // A folder installs its CONTENTS under Data/<destination>. With an
-                // empty destination it lands at the Data root and we cannot tell
-                // which files it carries (would need to list the archive), so we
-                // treat it as not installed (idempotent re-copy if surfaced).
+                // A folder installs its CONTENTS under Data/<destination>. An empty
+                // destination lands at the Data root and we cannot enumerate its
+                // members, so treat it as not installed (idempotent re-copy).
                 if (f.destination.isEmpty()) return false;
                 const QString d = normalizePath(f.destination);
+                if (looseFiles.contains(d)) return true;
+                for (const QString& rel : looseFiles)
+                    if (rel.startsWith(d + "/")) return true;
                 for (const QString& rel : modFiles)
                     if (rel == d || rel.startsWith(d + "/")) return true;
                 return false;
             }
-            return modFiles.contains(
-                normalizePath(f.destination.isEmpty() ? f.source : f.destination));
+            const QString dest = f.destination.isEmpty() ? f.source : f.destination;
+            return filePresent(dest)
+                || modFiles.contains(normalizePath(dest));
         };
 
-        PatchModMeta meta{ m.id, m.name, installable ? m.sourceArchive : QString(), installable };
+        PatchModMeta meta{ m.id, m.name, installable ? m.sourceArchive : QString(),
+                           installable, QDir(modDir).exists() ? modDir : QString() };
+        if (meta.stagingDir.isEmpty()) meta.installable = false;
         out += findPatches(engine.module(), original, filePresent, alreadyInstalled,
-                           installedMods, collect, meta);
+                           collect, meta);
         // prep (shared_ptr<QTemporaryDir>) auto-removes when it goes out of scope.
     }
     return out;

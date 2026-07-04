@@ -4304,7 +4304,12 @@ void MainWindow::migrateToolsToActiveProfileOnce() {
 void MainWindow::rebuildToolsMenu() {
     if (!m_toolsMenu) return;
     m_toolsMenu->clear();
-    const auto& tools = activeTools();
+    // Display a name-sorted COPY (case-insensitive); the underlying store order is
+    // left untouched because post-deploy auto-run order depends on it.
+    auto tools = activeTools();
+    std::sort(tools.begin(), tools.end(), [](const solero::Executable& a, const solero::Executable& b){
+        return a.name.compare(b.name, Qt::CaseInsensitive) < 0;
+    });
     for (const auto& exe : tools) {
         if (exe.extraActions.isEmpty()) {
             // Click the tool name to run it.
@@ -4332,11 +4337,9 @@ void MainWindow::rebuildToolsMenu() {
     m_toolsMenu->addAction(QIcon::fromTheme("preferences-system"),
                            QStringLiteral("BethINI"), this, &MainWindow::onOpenBethini);
     m_toolsMenu->addSeparator();
-    // Use real icons (in the icon column) so these align with the tool entries above.
-    m_toolsMenu->addAction(QIcon::fromTheme("list-add"),
-                           QStringLiteral("Add Tool") + QChar(0x2026), this, &MainWindow::onAddTool2);
-    m_toolsMenu->addAction(QIcon::fromTheme("configure", QIcon::fromTheme("settings-configure")),
-                           QStringLiteral("Manage Tools") + QChar(0x2026), this, &MainWindow::onManageTools);
+    // Add and Manage are one entry: the manager dialog hosts add / edit / remove.
+    m_toolsMenu->addAction(QIcon::fromTheme("configure", QIcon::fromTheme("applications-utilities")),
+                           QStringLiteral("Add or Manage Tools") + QChar(0x2026), this, &MainWindow::onManageTools);
 }
 
 QList<QPair<QString,QString>> MainWindow::modChoices() const {

@@ -1,4 +1,5 @@
 #include "ToolsManagerDialog.h"
+#include <algorithm>
 #include "core/Types.h"
 #include <QListWidget>
 #include <QVBoxLayout>
@@ -47,7 +48,12 @@ ToolsManagerDialog::ToolsManagerDialog(const QList<Executable>* tools, QWidget* 
 void ToolsManagerDialog::refresh() {
     m_list->clear();
     if (!m_tools) return;
-    for (const auto& exe : *m_tools) {
+    // Show tools name-sorted (case-insensitive); the store order is unchanged.
+    auto sorted = *m_tools;
+    std::sort(sorted.begin(), sorted.end(), [](const Executable& a, const Executable& b){
+        return a.name.compare(b.name, Qt::CaseInsensitive) < 0;
+    });
+    for (const auto& exe : sorted) {
         auto* item = new QListWidgetItem(QIcon(exe.iconPath), exe.name, m_list);
         item->setData(Qt::UserRole, exe.id);
     }

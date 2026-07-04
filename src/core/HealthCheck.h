@@ -20,7 +20,7 @@ enum class HealthCategory {
     Conflict,           // informational: N files won/lost between mods
     DeployWarning,      // the last deploy reported a non-fatal warning
     DeployState,        // not deployed / pending redeploy
-    PluginLimit,        // approaching / over the 255-plugin hard cap
+    PluginLimit,        // approaching / over the 254 full-plugin cap
 };
 
 // A single aggregated problem. targetModId / targetPlugin are optional jump-to
@@ -72,8 +72,8 @@ QList<HealthIssue> deployWarningIssues(const QString& warning);
 
 QList<HealthIssue> deployStateIssues(bool deployed, bool dirty);
 
-// regularCount = enabled non-ESL plugins (those that consume a 00..FE slot).
-// Error at/over the 255 cap, Warning when within 5 of it. lightCount is reported
+// regularCount = enabled non-ESL plugins (those that consume a 00..FD slot).
+// Error at/over the 254 cap, Warning from 240 up to it. lightCount is reported
 // for context only.
 QList<HealthIssue> pluginLimitIssues(int regularCount, int lightCount);
 

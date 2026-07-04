@@ -121,25 +121,29 @@ QList<HealthIssue> deployStateIssues(bool deployed, bool dirty) {
 
 QList<HealthIssue> pluginLimitIssues(int regularCount, int lightCount) {
     QList<HealthIssue> out;
-    constexpr int kCap = 255; // load-order slots 00..FE; FF is reserved
-    if (regularCount > kCap) {
+    // 254 full (non-ESL) plugins is the practical ceiling: load-order slots run
+    // 00..FD once the game's own masters are counted. Warn once within striking
+    // distance so users can flag plugins as light before they hit the wall.
+    constexpr int kCap  = 254;
+    constexpr int kWarn = 240;
+    if (regularCount >= kCap) {
         HealthIssue i;
         i.severity = HealthSeverity::Error;
         i.category = HealthCategory::PluginLimit;
-        i.title    = QStringLiteral("Over the plugin limit (%1 / %2)")
-                         .arg(regularCount).arg(kCap);
+        i.title    = QStringLiteral("Over the %1 plugin limit (%2 of %1 full plugins active)")
+                         .arg(kCap).arg(regularCount);
         i.detail   = QStringLiteral(
             "%1 full plugins are enabled but only %2 fit. Disable or merge some, "
             "or flag suitable plugins as light (ESL). %3 light plugin(s) don't "
             "count against the cap.")
                          .arg(regularCount).arg(kCap).arg(lightCount);
         out.append(i);
-    } else if (regularCount >= kCap - 5) {
+    } else if (regularCount >= kWarn) {
         HealthIssue i;
         i.severity = HealthSeverity::Warning;
         i.category = HealthCategory::PluginLimit;
-        i.title    = QStringLiteral("Approaching the plugin limit (%1 / %2)")
-                         .arg(regularCount).arg(kCap);
+        i.title    = QStringLiteral("Nearing the %1 plugin limit (%2 of %1 full plugins active)")
+                         .arg(kCap).arg(regularCount);
         i.detail   = QStringLiteral(
             "Close to the %1 full-plugin cap. Consider flagging plugins as light "
             "(ESL). %2 light plugin(s) already don't count against the cap.")

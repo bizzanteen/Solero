@@ -67,6 +67,28 @@ private slots:
         QCOMPARE(health::pluginLimitIssues(300, 5).first().severity, HealthSeverity::Error);
     }
 
+    // Spec thresholds: silent < 240; Warning in [240, 254); Error at/above 254.
+    // 254 is the widely-cited full-plugin (non-ESL) limit; wording surfaces
+    // "N of 254 full plugins active".
+    void pluginLimit_spec240WarnAnd254Error() {
+        QVERIFY(health::pluginLimitIssues(239, 0).isEmpty());            // just below -> silent
+        {
+            auto out = health::pluginLimitIssues(240, 0);               // warning boundary
+            QCOMPARE(out.size(), 1);
+            QCOMPARE(out.first().severity, HealthSeverity::Warning);
+            QCOMPARE(out.first().category, HealthCategory::PluginLimit);
+            QVERIFY(out.first().title.contains("254"));
+            QVERIFY(out.first().title.contains("240"));
+        }
+        QCOMPARE(health::pluginLimitIssues(253, 0).first().severity, HealthSeverity::Warning);
+        {
+            auto out = health::pluginLimitIssues(254, 0);               // error boundary
+            QCOMPARE(out.size(), 1);
+            QCOMPARE(out.first().severity, HealthSeverity::Error);
+            QVERIFY(out.first().title.contains("254"));
+        }
+    }
+
     void worstSeverity_picksHighest() {
         QCOMPARE(worstSeverity({}), -1);
         QList<HealthIssue> mixed;

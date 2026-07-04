@@ -28,14 +28,14 @@ inline QIcon redCrossIcon(int px = 26) {
     p.drawLine(QPointF(px - m, m), QPointF(m, px - m));
     return QIcon(pm);
 }
-inline QIcon redBangIcon(int px = 26) {
+// A filled circle carrying a white "!" - the shared exclamation glyph. Colour
+// signals severity: red = error, amber = warning, grey = neutral/no problems.
+inline QIcon bangIcon(const QColor& colour, int px = 26) {
     QPixmap pm(px, px); pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing, true);
-    // Red filled circle with a white "!" in the middle.
-    const QColor red("#e74c3c");
     p.setPen(Qt::NoPen);
-    p.setBrush(red);
+    p.setBrush(colour);
     double m = px * 0.10;
     p.drawEllipse(QRectF(m, m, px - 2 * m, px - 2 * m));
     QPen pen(Qt::white); pen.setWidthF(px * 0.13); pen.setCapStyle(Qt::RoundCap);
@@ -47,6 +47,9 @@ inline QIcon redBangIcon(int px = 26) {
     p.drawEllipse(QPointF(cx, px * 0.76), px * 0.07, px * 0.07);
     return QIcon(pm);
 }
+inline QIcon redBangIcon(int px = 26)    { return bangIcon(QColor("#e74c3c"), px); }
+inline QIcon yellowBangIcon(int px = 26) { return bangIcon(QColor("#f1c40f"), px); }
+inline QIcon greyBangIcon(int px = 26)   { return bangIcon(QColor("#95a5a6"), px); }
 inline QIcon yellowUpArrowIcon(int px = kFlagIconPx) {
     QPixmap pm(px, px); pm.fill(Qt::transparent);
     QPainter p(&pm);

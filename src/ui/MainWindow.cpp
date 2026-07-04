@@ -573,6 +573,17 @@ void MainWindow::setupToolbar() {
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     tb->addWidget(spacer);
 
+    // Problems / health indicator: a severity-coloured exclamation sitting just
+    // LEFT of the Deploy/Play pair. Grey = clean, amber = warnings, red = errors.
+    // Click opens the ProblemsDialog. refreshHealthIndicator() drives icon+tooltip.
+    m_problemsBtn = new QToolButton(tb);
+    m_problemsBtn->setAutoRaise(true);
+    m_problemsBtn->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    m_problemsBtn->setIcon(solero::greyBangIcon(20));
+    m_problemsBtn->setToolTip("No problems");
+    connect(m_problemsBtn, &QToolButton::clicked, this, &MainWindow::onShowProblems);
+    tb->addWidget(m_problemsBtn);
+
     // Deploy + Play are THE primary controls - the workflow's terminus.
     m_deployAction = tb->addAction("\xe2\x9c\x97 Not Deployed", this, &MainWindow::onDeployToggle);
     m_deployAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
@@ -599,17 +610,10 @@ void MainWindow::setupToolbar() {
 }
 
 void MainWindow::setupStatusBar() {
-    // Problems / health indicator relocates here as a permanent widget on the
-    // right. Flat (autoRaise) so it reads as status text rather than a button;
-    // click opens the ProblemsDialog. refreshHealthIndicator() drives the
-    // text/icon and shows plain "No problems" when the profile is clean.
-    m_problemsBtn = new QToolButton(this);
-    m_problemsBtn->setAutoRaise(true);
-    m_problemsBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    m_problemsBtn->setText("No problems");
-    m_problemsBtn->setToolTip("Show problems (missing masters, dependencies, conflicts, FOMOD, deploy)");
-    connect(m_problemsBtn, &QToolButton::clicked, this, &MainWindow::onShowProblems);
-    statusBar()->addPermanentWidget(m_problemsBtn);
+    // The Problems/health indicator now lives in the toolbar (see setupToolbar),
+    // next to Deploy/Play. Touch the status bar so it exists for transient
+    // messages (checkSave() warnings, etc.) but keep it otherwise empty.
+    statusBar();
 }
 
 void MainWindow::setupCentralWidget() {
@@ -1377,16 +1381,26 @@ void MainWindow::refreshHealthIndicator() {
             return i.severity == solero::HealthSeverity::Info;
         }), issues.end());
 
-    const int worst = solero::worstSeverity(issues);
+    // Severity-coloured exclamation: grey (clean) / amber (warnings only) / red
+    // (any error). Tooltip enumerates the counts so a hover explains the colour.
+    int errors = 0, warnings = 0;
+    for (const auto& i : issues) {
+        if (i.severity == solero::HealthSeverity::Error)   ++errors;
+        else if (i.severity == solero::HealthSeverity::Warning) ++warnings;
+    }
+    const QString dash = QStringLiteral(" ") + QChar('-') + QStringLiteral(" ");
     if (issues.isEmpty()) {
-        m_problemsBtn->setText("No problems");
-        m_problemsBtn->setIcon(QIcon());
+        m_problemsBtn->setIcon(solero::greyBangIcon(20));
+        m_problemsBtn->setToolTip(QStringLiteral("No problems") + dash + QStringLiteral("click for details"));
     } else {
-        m_problemsBtn->setText(QString("Problems (%1)").arg(issues.size()));
-        m_problemsBtn->setIcon(
-            worst == int(solero::HealthSeverity::Error)   ? solero::redBangIcon(18)
-          : worst == int(solero::HealthSeverity::Warning) ? solero::yellowUpArrowIcon(18)
-                                                          : QIcon());
+        const bool hasError = errors > 0;
+        m_problemsBtn->setIcon(hasError ? solero::redBangIcon(20)
+                                        : solero::yellowBangIcon(20));
+        QStringList parts;
+        if (errors)   parts << QString("%1 error%2").arg(errors).arg(errors == 1 ? "" : "s");
+        if (warnings) parts << QString("%1 warning%2").arg(warnings).arg(warnings == 1 ? "" : "s");
+        m_problemsBtn->setToolTip(parts.join(QStringLiteral(", ")) + dash
+                                  + QStringLiteral("click for details"));
     }
 
     // Push results into the detail panel whenever it exists (not only when

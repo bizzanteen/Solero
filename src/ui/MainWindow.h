@@ -29,6 +29,8 @@ class QTabWidget;
 class QMenu;
 class QPushButton;
 class QStackedWidget;
+class QActionGroup;
+class QLineEdit;
 
 namespace solero {
 struct ModEntry;
@@ -235,6 +237,10 @@ private:
     void onZoomIn();
     void onZoomOut();
     void onZoomReset();
+    // Sync the View ▸ Zoom submenu to the live Application zoom factor: check the
+    // matching preset (or none, between presets) and refresh the "Current: N%"
+    // label. Wired to the submenu's aboutToShow.
+    void updateZoomMenu();
     void onRunTool(const solero::Executable& exe);
     // After a successful deploy, run each tool flagged "Run on deployment"
     // (runThroughDeployer) in listed order via ToolRunner, honoring the UI lock.
@@ -310,6 +316,9 @@ private:
     QWidget* m_modManagerPage = nullptr;
     QAction* m_browseAction = nullptr;
     QAction* m_checkUpdatesAction = nullptr;
+    // View ▸ Zoom: preset actions (exclusive) + a disabled "Current: N%" label.
+    QActionGroup* m_zoomGroup = nullptr;
+    QAction* m_zoomCurrentAction = nullptr;
     // Receives the result of the off-thread update check (local id -> {installed, latest}).
     // Result of an accurate (file-id based) update scan: mods with a real newer
     // main file on Nexus, plus any fileIds back-filled via MD5 this run (applied +

@@ -70,6 +70,7 @@
 #include <QThread>
 #include <QProcess>
 #include <QKeySequence>
+#include <QActionGroup>
 #include <QStandardPaths>
 #include <QMessageBox>
 #include <QAbstractButton>
@@ -551,7 +552,49 @@ void MainWindow::setupMenuBar() {
     m_browseAction->setToolTip("Toggle a full nexusmods.com browser in the main view");
     connect(m_browseAction, &QAction::toggled, this, &MainWindow::onToggleNexus);
 
+    // ---- View ▸ Zoom: presets + in/out/reset, all on the one zoom mechanism ----
+    viewMenu->addSeparator();
+    QMenu* zoomMenu = viewMenu->addMenu("&Zoom");
+    // Disabled label reads the live factor; useful when it's between presets.
+    m_zoomCurrentAction = zoomMenu->addAction("Current: 100%");
+    m_zoomCurrentAction->setEnabled(false);
+    zoomMenu->addSeparator();
+    m_zoomGroup = new QActionGroup(this);
+    m_zoomGroup->setExclusive(true);
+    const QList<int> presets{75, 90, 100, 110, 125, 150};
+    for (int pct : presets) {
+        QAction* a = zoomMenu->addAction(QString("%1%").arg(pct));
+        a->setCheckable(true);
+        a->setData(pct);
+        m_zoomGroup->addAction(a);
+        connect(a, &QAction::triggered, this, [pct] {
+            static_cast<Application*>(qApp)->setZoomFactor(pct / 100.0);
+        });
+    }
+    zoomMenu->addSeparator();
+    QAction* zoomInAct = zoomMenu->addAction("Zoom In", this, &MainWindow::onZoomIn);
+    zoomInAct->setShortcuts({QKeySequence(Qt::CTRL | Qt::Key_Plus),
+                             QKeySequence(Qt::CTRL | Qt::Key_Equal)});
+    QAction* zoomOutAct = zoomMenu->addAction("Zoom Out", this, &MainWindow::onZoomOut);
+    zoomOutAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Minus));
+    QAction* zoomResetAct = zoomMenu->addAction("Reset Zoom", this, &MainWindow::onZoomReset);
+    zoomResetAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
+    // Refresh checks + label each time the submenu opens.
+    connect(zoomMenu, &QMenu::aboutToShow, this, &MainWindow::updateZoomMenu);
+    updateZoomMenu();
+
     rebuildToolsMenu();
+}
+
+void MainWindow::updateZoomMenu() {
+    if (!m_zoomGroup) return;
+    const double factor = static_cast<Application*>(qApp)->zoomFactor();
+    const int cur = qRound(factor * 100.0);
+    if (m_zoomCurrentAction)
+        m_zoomCurrentAction->setText(QString("Current: %1%").arg(cur));
+    // Check the matching preset; leave all unchecked when between presets.
+    for (QAction* a : m_zoomGroup->actions())
+        a->setChecked(a->data().toInt() == cur);
 }
 
 void MainWindow::setupToolbar() {
@@ -3657,12 +3700,8 @@ void MainWindow::onInstallWabbajack() {
 }
 
 void MainWindow::keyPressEvent(QKeyEvent* event) {
-    if (event->modifiers() & Qt::ControlModifier) {
-        auto* app = static_cast<Application*>(qApp);
-        if (event->key() == Qt::Key_Equal || event->key() == Qt::Key_Plus) { app->setZoomFactor(app->zoomFactor() + 0.1); return; }
-        if (event->key() == Qt::Key_Minus)  { app->setZoomFactor(app->zoomFactor() - 0.1); return; }
-        if (event->key() == Qt::Key_0)      { app->setZoomFactor(1.0); return; }
-    }
+    // Zoom (Ctrl +/-/0) is now owned by the View ▸ Zoom menu actions' shortcuts;
+    // other global shortcuts are bound as QActions / QShortcuts in setup*().
     QMainWindow::keyPressEvent(event);
 }
 

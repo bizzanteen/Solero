@@ -31,12 +31,20 @@ public:
 protected:
     void initStyleOption(QStyleOptionViewItem* opt, const QModelIndex& idx) const override {
         QStyledItemDelegate::initStyleOption(opt, idx);
+        const bool hasWarn = !qvariant_cast<QIcon>(idx.data(Qt::DecorationRole)).isNull();
         // Drop the leading decoration so the base delegate doesn't draw it on the
         // left; we repaint it after the text in paint().
         opt->icon = QIcon();
         opt->features &= ~QStyleOptionViewItem::HasDecoration;
+        // Reserve room for the trailing warning icon (icon + gap) before eliding,
+        // so a long name shortens enough to leave the icon visible instead of
+        // being clipped off the right edge.
+        if (hasWarn) {
+            const int sz = qMin(opt->rect.height(), 16);
+            opt->rect.setRight(opt->rect.right() - (sz + 4)); // sz + gap
+        }
         // Elide the plugin name char-level after the decoration is removed, so the
-        // text rect reflects the full (no leading icon) width.
+        // text rect reflects the reserved (no leading icon) width.
         elideRight(opt);
     }
     void paint(QPainter* painter, const QStyleOptionViewItem& option,
@@ -50,15 +58,18 @@ protected:
         initStyleOption(&opt, idx);
         const QWidget* w = opt.widget;
         QStyle* style = w ? w->style() : QApplication::style();
+        // textRect already excludes the reserved icon strip (see initStyleOption),
+        // so its right edge marks where the elided text ends at the latest.
         const QRect textRect = style->subElementRect(QStyle::SE_ItemViewItemText, &opt, w);
         const QString text = idx.data(Qt::DisplayRole).toString();
         const int textW = opt.fontMetrics.horizontalAdvance(text);
         const int sz = qMin(textRect.height(), 16);
         const int gap = 4;
-        const int x = textRect.left() + textW + gap;
+        // Hug the text for short names; for long (elided) names clamp into the
+        // reserved strip just past textRect so the icon always fits the cell.
+        const int x = qMin(textRect.left() + textW + gap, textRect.right() + gap);
         const int y = textRect.top() + (textRect.height() - sz) / 2;
-        if (x + sz <= textRect.right() + 1)
-            icon.paint(painter, QRect(x, y, sz, sz), Qt::AlignCenter);
+        icon.paint(painter, QRect(x, y, sz, sz), Qt::AlignCenter);
     }
 };
 } // namespace

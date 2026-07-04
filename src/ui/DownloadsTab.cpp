@@ -2,6 +2,8 @@
 #include "core/AppConfig.h"
 #include "core/Profile.h"
 #include "core/RelativeTime.h"
+#include "IconUtil.h"
+#include "ElideDelegate.h"
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QHeaderView>
@@ -22,6 +24,8 @@
 #include <QApplication>
 #include <QEvent>
 #include <QFont>
+#include <QFontMetrics>
+#include <QResizeEvent>
 #include <limits>
 
 namespace solero {
@@ -36,6 +40,42 @@ public:
         return data(Qt::UserRole).toLongLong() < o.data(Qt::UserRole).toLongLong();
     }
 };
+
+// The Status column now shows an ICON (+ tooltip) instead of text, so it can no
+// longer sort by display text. It stores a rank in Qt::UserRole and sorts on
+// that, keeping the underlying-state order the user expects. The status KIND
+// string lives in RoleStatusKind and drives filtering + the context menu.
+constexpr int RoleStatusKind = Qt::UserRole + 1;
+
+class StatusItem : public QTableWidgetItem {
+public:
+    bool operator<(const QTableWidgetItem& o) const override {
+        return data(Qt::UserRole).toInt() < o.data(Qt::UserRole).toInt();
+    }
+};
+
+// Build the Status cell for a given kind. `fullText` is the former status string,
+// moved to the tooltip; `sideText` is optional short text painted beside the icon
+// (only "N%"/size for Downloading). The icon + sort rank are picked per kind. The
+// ranks group attention-worthy states first when the user sorts by Status.
+QTableWidgetItem* makeStatusItem(const QString& kind, const QString& fullText,
+                                 const QString& sideText = QString()) {
+    auto* it = new StatusItem();
+    it->setText(sideText);
+    it->setToolTip(fullText);
+    it->setTextAlignment(Qt::AlignCenter);
+    it->setData(RoleStatusKind, kind);
+    int rank = 4;
+    QIcon icon;
+    if (kind == QLatin1String("downloading"))       { rank = 0; icon = downloadingStatusIcon(14); }
+    else if (kind == QLatin1String("failed"))       { rank = 1; icon = errorSignIcon(14); }
+    else if (kind == QLatin1String("not-installed")){ rank = 2; icon = notInstalledStatusIcon(14); }
+    else if (kind == QLatin1String("installed"))    { rank = 3; icon = installedStatusIcon(14); }
+    else /* cancelled / other terminal-neutral */   { rank = 4; icon = neutralStatusIcon(14); }
+    it->setData(Qt::UserRole, rank);
+    it->setIcon(icon);
+    return it;
+}
 
 QString humanSize(qint64 b) {
     const double kb = 1024.0;
@@ -60,18 +100,35 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->verticalHeader()->hide();
+    // Char-level elision for overlong cell text ("Some Mod Na…", not "Some…") on
+    // every column - the shared ElideRightDelegate pre-elides with QFontMetrics.
+    m_table->setItemDelegate(new ElideRightDelegate(m_table));
+    m_table->setTextElideMode(Qt::ElideRight);
+    m_table->setWordWrap(false);
     // Breathing room between columns so adjacent cells aren't bunched together.
     m_table->setStyleSheet("QTableWidget::item { padding: 2px 8px; }");
     auto* hh = m_table->horizontalHeader();
     hh->setStretchLastSection(false);
-    hh->setSectionResizeMode(0, QHeaderView::Stretch);          // Name absorbs slack
-    // Status/Size/Downloaded are Interactive with fixed defaults, not
-    // ResizeToContents: refresh() runs on every progress tick and the status text
-    // width changes ("Downloading 0%" -> "Installed"), so ResizeToContents made the
-    // columns visibly jump each tick (B-3). Interactive keeps them steady.
-    hh->setSectionResizeMode(1, QHeaderView::Interactive); hh->resizeSection(1, 100); // Status
-    hh->setSectionResizeMode(2, QHeaderView::Interactive); hh->resizeSection(2,  70); // Size
-    hh->setSectionResizeMode(3, QHeaderView::Interactive); hh->resizeSection(3, 115); // Downloaded
+    hh->setMinimumSectionSize(24);
+    // Every column is Interactive so a divider always resizes the section to its
+    // LEFT, following the cursor. Name is the "flex" column: fillNameColumn soaks
+    // up the width the others leave (see below). Making Name a *Stretch* section
+    // (the previous approach) is what caused the inverted-drag feel - a Stretch
+    // section can't be dragged directly, so the divider next to it moved backwards.
+    hh->setSectionResizeMode(0, QHeaderView::Interactive); // Name (flex)
+    // Status/Size/Downloaded are Interactive, not ResizeToContents: refresh() runs
+    // on every progress tick, so ResizeToContents made the columns visibly jump
+    // (B-3). Their default widths are derived from the font (applyColumnWidths) so
+    // they scale with Ctrl +/- zoom.
+    hh->setSectionResizeMode(1, QHeaderView::Interactive); // Status (icons)
+    hh->setSectionResizeMode(2, QHeaderView::Interactive); // Size
+    hh->setSectionResizeMode(3, QHeaderView::Interactive); // Downloaded
+    applyColumnWidths();
+    // Re-flex Name when the user drags another column; skip when Name itself was
+    // dragged (honour their width) and while we're mid-flex (guard re-entry).
+    connect(hh, &QHeaderView::sectionResized, this, [this](int logical, int, int){
+        if (!m_fillingName && logical != 0) fillNameColumn();
+    });
     m_table->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_table, &QWidget::customContextMenuRequested, this, &DownloadsTab::showContextMenu);
     v->addWidget(m_table, 1);
@@ -124,12 +181,13 @@ void DownloadsTab::refresh() {
             m_table->setItem(row, 0, nameItem);
 
             const bool installed = installedSet.contains(fi.absoluteFilePath());
-            auto* statusItem = new QTableWidgetItem(installed ? "Installed" : "Not installed");
-            if (installed) statusItem->setForeground(QColor(0x4c, 0xaf, 0x50));
-            m_table->setItem(row, 1, statusItem);
+            m_table->setItem(row, 1, makeStatusItem(
+                installed ? QStringLiteral("installed") : QStringLiteral("not-installed"),
+                installed ? QStringLiteral("Installed") : QStringLiteral("Not installed")));
 
             auto* sizeItem = new NumItem(humanSize(fi.size()));
             sizeItem->setData(Qt::UserRole, fi.size());
+            sizeItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
             m_table->setItem(row, 2, sizeItem);
 
             // Display a relative bucket ("2 hrs ago") but sort on the raw epoch
@@ -138,6 +196,7 @@ void DownloadsTab::refresh() {
             auto* dateItem = new NumItem(
                 relativeDownloadTime(epoch, QDateTime::currentSecsSinceEpoch()));
             dateItem->setData(Qt::UserRole, epoch);
+            dateItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
             m_table->setItem(row, 3, dateItem);
         }
     }
@@ -150,14 +209,14 @@ void DownloadsTab::refresh() {
         nameItem->setData(Qt::UserRole + 1, QStringLiteral("failed")); // row-kind marker
         nameItem->setToolTip(f.first);
         m_table->setItem(row, 0, nameItem);
-        auto* statusItem = new QTableWidgetItem("Failed: " + f.second);
-        statusItem->setForeground(QColor(0xe5, 0x39, 0x35));   // red
-        m_table->setItem(row, 1, statusItem);
+        m_table->setItem(row, 1, makeStatusItem(QStringLiteral("failed"), "Failed: " + f.second));
         auto* sz = new NumItem(QString()); sz->setData(Qt::UserRole, qint64(0));
+        sz->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
         m_table->setItem(row, 2, sz);
         // Sentinel just below in-progress so failed rows pin above completed files.
         auto* dt = new NumItem(QString());
         dt->setData(Qt::UserRole, std::numeric_limits<qint64>::max() - 1);
+        dt->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
         m_table->setItem(row, 3, dt);
     }
 
@@ -186,18 +245,65 @@ void DownloadsTab::changeEvent(QEvent* e) {
         m_table->setFont(f);
         m_table->horizontalHeader()->setFont(f);
         m_table->resizeRowsToContents();
+        // Column WIDTHS must track the zoom too: the earlier zoom fix only
+        // re-asserted the font + row heights, so at higher zoom the text grew but
+        // the fixed-pixel columns stayed narrow (worsening elision). Recompute the
+        // data columns from the new font's metrics and re-flex Name.
+        applyColumnWidths();
     }
 }
 
+void DownloadsTab::resizeEvent(QResizeEvent* e) {
+    QWidget::resizeEvent(e);
+    fillNameColumn();
+}
+
+void DownloadsTab::fillNameColumn() {
+    if (!m_table) return;
+    auto* hh = m_table->horizontalHeader();
+    int used = 0;
+    for (int c = 1; c < m_table->columnCount(); ++c)
+        if (!hh->isSectionHidden(c)) used += hh->sectionSize(c);
+    const int avail = m_table->viewport()->width() - used;
+    if (avail < 80) return; // don't crush Name below a usable width
+    m_fillingName = true; // guard: our own resize re-emits sectionResized
+    hh->resizeSection(0, avail);
+    m_fillingName = false;
+}
+
+void DownloadsTab::applyColumnWidths() {
+    if (!m_table) return;
+    // Derive the data columns from the current font's metrics (not fixed pixels)
+    // so they scale ~proportionally with Ctrl +/- zoom. DownloadsTab doesn't
+    // persist header widths, so recomputing here never fights a user-set width.
+    const QFontMetrics fm(m_table->font());
+    auto* hh = m_table->horizontalHeader();
+    // ~16px item padding (style sheet) + icon/margins folded into each headroom.
+    const int status = qMax(56, fm.horizontalAdvance(QStringLiteral("100%")) + 44); // icon + %
+    const int size   = qMax(56, fm.horizontalAdvance(QStringLiteral("999.9 MB")) + 20);
+    const int dated  = qMax(84, fm.horizontalAdvance(QStringLiteral("00th Sep, 00:00")) + 16);
+    m_fillingName = true; // these resizes re-emit sectionResized
+    hh->resizeSection(1, status);
+    hh->resizeSection(2, size);
+    hh->resizeSection(3, dated);
+    m_fillingName = false;
+    fillNameColumn();
+}
+
 void DownloadsTab::setDownloadProgress(const QString& fileName, qint64 received, qint64 total) {
-    const QString status = (total > 0)
-        ? QString("Downloading %1%").arg(int(received * 100 / total))
-        : QString("Downloading %1").arg(humanSize(received));
+    // `side` is the short text painted beside the download icon ("50%" / "12.3 MB");
+    // `full` is the full status string, which lives in the cell's tooltip.
+    const QString side = (total > 0)
+        ? QString("%1%").arg(int(received * 100 / total))
+        : humanSize(received);
+    const QString full = QStringLiteral("Downloading ") + side;
 
     auto it = m_activeRows.find(fileName);
     if (it != m_activeRows.end()) {
-        if (auto* statusItem = m_table->item(it.value(), 1))
-            statusItem->setText(status);
+        if (auto* statusItem = m_table->item(it.value(), 1)) {
+            statusItem->setText(side);      // icon already set; just refresh the %
+            statusItem->setToolTip(full);
+        }
         return;
     }
 
@@ -212,12 +318,14 @@ void DownloadsTab::setDownloadProgress(const QString& fileName, qint64 received,
     nameItem->setData(Qt::UserRole, QString()); // no path yet
     nameItem->setToolTip(fileName);
     m_table->setItem(0, 0, nameItem);
-    m_table->setItem(0, 1, new QTableWidgetItem(status));
+    m_table->setItem(0, 1, makeStatusItem(QStringLiteral("downloading"), full, side));
     auto* szItem = new NumItem(QString()); szItem->setData(Qt::UserRole, qint64(0));
+    szItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
     m_table->setItem(0, 2, szItem);
     // Max sentinel pins live downloads at the very top of the mtime-descending sort.
     auto* dtItem = new NumItem(QString());
     dtItem->setData(Qt::UserRole, std::numeric_limits<qint64>::max());
+    dtItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
     m_table->setItem(0, 3, dtItem);
 
     m_activeRows.insert(fileName, 0);
@@ -269,7 +377,8 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
             auto* nameItem = m_table->item(row, 0);
             auto* statusItem = m_table->item(row, 1);
             const bool noPath = nameItem && nameItem->data(Qt::UserRole).toString().isEmpty();
-            const bool downloading = statusItem && statusItem->text().startsWith("Downloading");
+            const bool downloading = statusItem
+                && statusItem->data(RoleStatusKind).toString() == QLatin1String("downloading");
             if (nameItem && noPath && downloading) activeFileName = nameItem->text();
         }
         auto* cancelAction = menu.addAction("Cancel Download");
@@ -341,9 +450,9 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
 void DownloadsTab::applyFilters() {
     for (int row = 0; row < m_table->rowCount(); ++row) {
         auto* statusItem = m_table->item(row, 1);
-        const QString status = statusItem ? statusItem->text() : QString();
-        const bool hide = (m_hideInstalled && status == "Installed")
-                       || (m_hideNotInstalled && status == "Not installed");
+        const QString kind = statusItem ? statusItem->data(RoleStatusKind).toString() : QString();
+        const bool hide = (m_hideInstalled && kind == QLatin1String("installed"))
+                       || (m_hideNotInstalled && kind == QLatin1String("not-installed"));
         m_table->setRowHidden(row, hide);
     }
 }

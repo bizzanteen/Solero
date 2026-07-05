@@ -1,5 +1,4 @@
 #include "core/Log.h"
-#include "core/AppConfig.h"
 
 #include <QByteArray>
 #include <QDir>
@@ -44,7 +43,9 @@ QtMessageHandler g_prevHandler = nullptr;
 QString g_logPath;
 bool g_installed = false;
 
-QString logDir()  { return solero::AppConfig::dataRoot() + "/logs"; }
+// Kept in step with AppConfig::dataRoot() (~/.local/share/solero) but computed
+// directly so this foundational TU has no dependency beyond QtCore.
+QString logDir()  { return QDir::homePath() + "/.local/share/solero/logs"; }
 QString logPath() { return logDir() + "/solero.log"; }
 
 // Keep at most a few generations. Called once at startup, before the file is opened,

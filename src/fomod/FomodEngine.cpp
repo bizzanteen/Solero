@@ -1,4 +1,5 @@
 #include "FomodEngine.h"
+#include "core/Log.h"
 #include <QFile>
 #include <QDomDocument>
 #include <QTextStream>
@@ -48,12 +49,13 @@ QString FomodEngine::selKey(int step, int group, int opt) {
 }
 
 bool FomodEngine::load(const QString& path) {
+    qCInfo(lcFomod) << "load ModuleConfig:" << path;
     QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return false;
+    if (!f.open(QIODevice::ReadOnly)) { qCWarning(lcFomod) << "load: cannot open" << path << f.errorString(); return false; }
     QDomDocument doc;
-    if (!doc.setContent(&f)) return false;
+    if (!doc.setContent(&f)) { qCWarning(lcFomod) << "load: XML parse failed" << path; return false; }
     QDomElement config = doc.documentElement();
-    if (config.tagName().toLower() != "config") return false;
+    if (config.tagName().toLower() != "config") { qCWarning(lcFomod) << "load: root element is not <config> -" << config.tagName(); return false; }
 
     m_module = FomodModule{};
     m_module.moduleName = config.firstChildElement("moduleName").text();
@@ -110,6 +112,8 @@ bool FomodEngine::load(const QString& path) {
     if (!cond.isNull()) { QString x; QTextStream ts(&x); cond.save(ts, 0); m_module.conditionalInstallsXml = x; }
 
     m_module.valid = true;
+    qCInfo(lcFomod) << "load ok:" << m_module.moduleName << "-" << m_module.steps.size() << "steps,"
+                    << m_module.requiredFiles.size() << "required files";
     return true;
 }
 
@@ -190,6 +194,7 @@ QList<FomodFile> FomodEngine::collectFiles(const Selection& sel) const {
                 out.append(parseFiles(pat.firstChildElement("files")));
         }
     }
+    qCInfo(lcFomod) << "collectFiles: collected" << out.size() << "file entries for current selection";
     return out;
 }
 

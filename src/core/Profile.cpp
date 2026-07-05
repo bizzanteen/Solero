@@ -3,6 +3,7 @@
 #include "FileUtil.h"
 #include "StagingFolder.h"
 #include "AppConfig.h"
+#include "core/Log.h"
 #include <QDir>
 #include <QFile>
 #include <QSet>
@@ -29,12 +30,32 @@ QString Profile::shaderCachePath()    const { return m_path + "/shadercache.json
 
 bool Profile::save() const {
     QDir().mkpath(m_path);
-    if (!m_modList.saveToFile(modlistPath())) return false;
-    if (!m_pluginList.saveToFile(pluginsPath())) return false;
-    if (!saveExecutables()) return false;
-    if (!saveFileRules()) return false;
-    if (!saveShaderCache()) return false;
-    return saveLoadOrderState();
+    if (!m_modList.saveToFile(modlistPath())) {
+        qCWarning(lcProfile) << "save:" << m_name << "modlist write failed" << modlistPath();
+        return false;
+    }
+    if (!m_pluginList.saveToFile(pluginsPath())) {
+        qCWarning(lcProfile) << "save:" << m_name << "plugins write failed" << pluginsPath();
+        return false;
+    }
+    if (!saveExecutables()) {
+        qCWarning(lcProfile) << "save:" << m_name << "executables write failed" << executablesPath();
+        return false;
+    }
+    if (!saveFileRules()) {
+        qCWarning(lcProfile) << "save:" << m_name << "file rules write failed" << fileRulesPath();
+        return false;
+    }
+    if (!saveShaderCache()) {
+        qCWarning(lcProfile) << "save:" << m_name << "shader cache write failed" << shaderCachePath();
+        return false;
+    }
+    const bool ok = saveLoadOrderState();
+    if (!ok)
+        qCWarning(lcProfile) << "save:" << m_name << "load-order state write failed" << loadOrderStatePath();
+    else
+        qCInfo(lcProfile) << "saved profile" << m_name << "->" << m_path;
+    return ok;
 }
 
 bool Profile::saveModListOnly() const {
@@ -112,6 +133,8 @@ bool Profile::load() {
     // Backfill staging-folder names and rename UUID folders on disk.
     dirty = migrateStagingFolders() || dirty;
     if (dirty) save(); // persist migrations (new shadercache.json + cleaned modlist)
+    qCInfo(lcProfile) << "loaded profile" << m_name << "from" << m_path
+                      << (dirty ? "(migrations persisted)" : "");
     return true;
 }
 

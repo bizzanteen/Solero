@@ -1,6 +1,7 @@
 #include "ShaderCache.h"
 #include "ModList.h"
 #include "VersionUtil.h"
+#include "core/Log.h"
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -40,6 +41,8 @@ ShaderCacheClearResult clearShaderCache(const QString& gameDir,
     removeIfPresent(overwriteDir + "/ShaderCache", result);
     if (!cacheStagingDir.isEmpty())
         removeIfPresent(cacheStagingDir + "/Data/ShaderCache", result);
+    qCInfo(lcShader) << "clearShaderCache: removed" << result.removedPaths.size()
+                     << "location(s)," << result.bytesRemoved << "bytes";
     return result;
 }
 
@@ -94,8 +97,11 @@ int captureShaderCache(const QString& gameDir, const QString& cacheStagingDir,
             // caller can re-link the captured file back into the live game dir.
             if (movedRelPaths)
                 movedRelPaths->append(QStringLiteral("Data/") + rel);
+        } else {
+            qCWarning(lcShader) << "captureShaderCache: failed to move" << srcPath << "->" << dstPath;
         }
     }
+    qCInfo(lcShader) << "captureShaderCache: staged" << moved << "file(s) to" << stagingData;
     return moved;
 }
 
@@ -148,19 +154,32 @@ int assertShaderCacheDeployed(const QString& gameDir, const QString& cacheStagin
             ++placed;
             if (relinked)
                 relinked->append(QStringLiteral("Data/") + rel);
-        } else if (outFailed) {
-            ++(*outFailed);
+        } else {
+            qCWarning(lcShader) << "assertShaderCacheDeployed:"
+                                << (hardlink ? "hardlink+copy" : "copy") << "fallback failed for"
+                                << srcPath << "->" << dstPath;
+            if (outFailed)
+                ++(*outFailed);
         }
     }
+    qCInfo(lcShader) << "assertShaderCacheDeployed: re-placed" << placed << "file(s) into" << gameData
+                     << "mode" << (hardlink ? "hardlink" : "copy")
+                     << "failed" << (outFailed ? *outFailed : 0);
     return placed;
 }
 
 QString activeCacheKey(const ModList& ml) {
     const ModEntry* cs = ml.findCommunityShaders();
     if (!cs) return QStringLiteral("default");
-    if (!cs->nexusFileId.isEmpty()) return cs->nexusFileId;
+    if (!cs->nexusFileId.isEmpty()) {
+        qCDebug(lcShader) << "activeCacheKey: nexusFileId" << cs->nexusFileId;
+        return cs->nexusFileId;
+    }
     const QString nv = normalizeVersion(cs->version);
-    if (!nv.isEmpty()) return nv;
+    if (!nv.isEmpty()) {
+        qCDebug(lcShader) << "activeCacheKey: version" << nv;
+        return nv;
+    }
     return QStringLiteral("default");
 }
 

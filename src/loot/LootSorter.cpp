@@ -1,5 +1,6 @@
 #include "LootSorter.h"
 #include "core/AppConfig.h"
+#include "core/Log.h"
 #include "install/PluginScanner.h"
 #include <QDir>
 #include <QFile>
@@ -25,6 +26,7 @@ LootSorter::SortResult LootSorter::sort(PluginList& pluginList,
                                         const QString& gameDir,
                                         const QString& userlistPath) {
     SortResult result;
+    qCInfo(lcLoot) << "LOOT sort start:" << pluginList.count() << "plugins";
     try {
         // libloot needs the game's local appdata folder (Plugins.txt / loadorder.txt)
         // which on a Proton install lives inside the Wine prefix.
@@ -61,6 +63,7 @@ LootSorter::SortResult LootSorter::sort(PluginList& pluginList,
 
         if (pluginNames.empty()) {
             result.success = true; // nothing to sort
+            qCInfo(lcLoot) << "LOOT sort done: nothing to sort (no plugins on disk)";
             return result;
         }
 
@@ -105,12 +108,15 @@ LootSorter::SortResult LootSorter::sort(PluginList& pluginList,
         newList.copyOrderState(pluginList);
         pluginList = newList;
         result.success = true;
+        qCInfo(lcLoot) << "LOOT sort done:" << int(sorted.size()) << "plugins sorted";
     } catch (const std::exception& e) {
         result.success = false;
         result.errorMessage = QString::fromStdString(e.what());
+        qCWarning(lcLoot) << "LOOT sort failed:" << result.errorMessage;
     } catch (...) {
         result.success = false;
         result.errorMessage = "An unexpected LOOT error occurred. Try deploying first, then sort again.";
+        qCWarning(lcLoot) << "LOOT sort failed: unknown (non-std::exception) error";
     }
     return result;
 }
@@ -123,7 +129,10 @@ bool LootSorter::updateMasterlist(const QString& mlPath) {
         "curl -fsSL -o '%1' "
         "https://raw.githubusercontent.com/loot/skyrimse/v0.26/masterlist.yaml")
         .arg(mlPath);
-    return system(cmd.toLocal8Bit().constData()) == 0;
+    int rc = system(cmd.toLocal8Bit().constData());
+    if (rc != 0)
+        qCWarning(lcLoot) << "masterlist update failed: curl exited" << rc;
+    return rc == 0;
 }
 
 } // namespace solero

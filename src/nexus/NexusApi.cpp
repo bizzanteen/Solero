@@ -1,5 +1,6 @@
 #include "NexusApi.h"
 #include "MirrorPick.h"
+#include "core/Log.h"
 #include "core/AppConfig.h"
 #include "tools/ToolDownloader.h"
 #include "tools/CurlError.h"
@@ -29,6 +30,8 @@ static QByteArray curlRun(const QStringList& extraArgs, QString* err = nullptr) 
     p.start("curl", args);
     p.waitForFinished(60000);
     if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
+        // NB: never log `args` - it carries the apikey header.
+        qCWarning(lcNexus) << "curl request failed, exit code" << p.exitCode();
         if (err) {
             const QString hint = curlStderrHint(
                 QString::fromUtf8(p.readAllStandardError()).trimmed());
@@ -65,9 +68,10 @@ bool NexusApi::keyAvailable() { return !ToolDownloader::nexusApiKey().isEmpty();
 NexusApi::ModInfo NexusApi::modInfo(const QString& modId, const QString& game) {
     ModInfo r;
     if (modId.isEmpty()) return r;
+    qCInfo(lcNexus) << "modInfo" << game << "mod" << modId;
     QString url = kBase + game + "/mods/" + modId + ".json";
     QByteArray body = curlGet(url);
-    if (body.isEmpty()) return r;
+    if (body.isEmpty()) { qCWarning(lcNexus) << "modInfo: empty response for mod" << modId; return r; }
     auto doc = QJsonDocument::fromJson(body);
     if (!doc.isObject()) return r;
     auto o = doc.object();
@@ -86,6 +90,7 @@ NexusApi::EndorseResult NexusApi::endorse(const QString& modId, const QString& v
                                           const QString& game) {
     EndorseResult r;
     if (modId.isEmpty()) { r.message = "No Nexus mod id."; return r; }
+    qCInfo(lcNexus) << (abstain ? "abstain" : "endorse") << game << "mod" << modId << "version" << version;
     QString url = kBase + game + "/mods/" + modId + "/" + (abstain ? "abstain" : "endorse") + ".json";
     // Send version both as a query parameter and a form body for robustness.
     if (!version.isEmpty()) {
@@ -98,7 +103,7 @@ NexusApi::EndorseResult NexusApi::endorse(const QString& modId, const QString& v
     args << url;
     QString err;
     QByteArray body = curlRun(args, &err);
-    if (body.isEmpty()) { r.message = err.isEmpty() ? "No response from Nexus." : err; return r; }
+    if (body.isEmpty()) { qCWarning(lcNexus) << "endorse: empty response for mod" << modId; r.message = err.isEmpty() ? "No response from Nexus." : err; return r; }
     auto doc = QJsonDocument::fromJson(body);
     if (!doc.isObject()) { r.message = QString::fromUtf8(body.left(200)).trimmed(); return r; }
     auto o = doc.object();
@@ -126,9 +131,10 @@ NexusApi::EndorseResult NexusApi::endorse(const QString& modId, const QString& v
 NexusApi::Md5Match NexusApi::md5Search(const QString& md5, const QString& game) {
     Md5Match r;
     if (md5.isEmpty()) return r;
+    qCInfo(lcNexus) << "md5_search" << game << "md5" << md5;
     QString url = kBase + game + "/mods/md5_search/" + md5 + ".json";
     QByteArray body = curlGet(url);
-    if (body.isEmpty()) return r;
+    if (body.isEmpty()) { qCWarning(lcNexus) << "md5_search: empty response for md5" << md5; return r; }
     auto doc = QJsonDocument::fromJson(body);
     if (!doc.isArray()) return r;
     auto arr = doc.array();
@@ -149,9 +155,10 @@ NexusApi::Md5Match NexusApi::md5Search(const QString& md5, const QString& game) 
 
 QString NexusApi::fileVersion(const QString& modId, const QString& fileId, const QString& game) {
     if (modId.isEmpty() || fileId.isEmpty()) return {};
+    qCInfo(lcNexus) << "fileVersion" << game << "mod" << modId << "file" << fileId;
     QString url = kBase + game + "/mods/" + modId + "/files/" + fileId + ".json";
     QByteArray body = curlGet(url);
-    if (body.isEmpty()) return {};
+    if (body.isEmpty()) { qCWarning(lcNexus) << "fileVersion: empty response for mod" << modId << "file" << fileId; return {}; }
     auto doc = QJsonDocument::fromJson(body);
     if (!doc.isObject()) return {};
     return doc.object()["version"].toString();
@@ -176,8 +183,9 @@ static NexusApi::ModSummary summaryFromV1(const QJsonObject& o) {
 // Shared GET -> array -> ModSummary list for the v1 curated lists.
 static QList<NexusApi::ModSummary> v1List(const QString& list, const QString& game) {
     QList<NexusApi::ModSummary> out;
+    qCInfo(lcNexus) << "list" << list << game;
     QByteArray body = curlGet(kBase + game + "/mods/" + list + ".json");
-    if (body.isEmpty()) return out;
+    if (body.isEmpty()) { qCWarning(lcNexus) << "list: empty response for" << list; return out; }
     auto doc = QJsonDocument::fromJson(body);
     if (!doc.isArray()) return out;
     for (const auto& v : doc.array()) {
@@ -203,8 +211,9 @@ QList<NexusApi::ModSummary> NexusApi::search(const QString& query, int count, co
         "endorsements adultContent}}}").arg(text, gameId).arg(n);
     QJsonObject reqObj; reqObj["query"] = q;
     QByteArray reqBody = QJsonDocument(reqObj).toJson(QJsonDocument::Compact);
+    qCInfo(lcNexus) << "graphql search" << "gameId" << gameId << "count" << n;
     QByteArray body = curlPostJson("https://api.nexusmods.com/v2/graphql", reqBody);
-    if (body.isEmpty()) return out;
+    if (body.isEmpty()) { qCWarning(lcNexus) << "search: empty response"; return out; }
     auto doc = QJsonDocument::fromJson(body);
     if (!doc.isObject()) return out;
     auto nodes = doc.object()["data"].toObject()["mods"].toObject()["nodes"].toArray();
@@ -232,8 +241,9 @@ QList<NexusApi::ModSummary> NexusApi::latestUpdated(const QString& game){ return
 NexusApi::ModDetails NexusApi::modDetails(const QString& modId, const QString& game) {
     ModDetails r;
     if (modId.isEmpty()) return r;
+    qCInfo(lcNexus) << "modDetails" << game << "mod" << modId;
     QByteArray body = curlGet(kBase + game + "/mods/" + modId + ".json");
-    if (body.isEmpty()) return r;
+    if (body.isEmpty()) { qCWarning(lcNexus) << "modDetails: empty response for mod" << modId; return r; }
     auto doc = QJsonDocument::fromJson(body);
     if (!doc.isObject()) return r;
     auto o = doc.object();
@@ -256,8 +266,9 @@ NexusApi::ModDetails NexusApi::modDetails(const QString& modId, const QString& g
 QList<NexusApi::NexusFile> NexusApi::files(const QString& modId, const QString& game) {
     QList<NexusFile> out;
     if (modId.isEmpty()) return out;
+    qCInfo(lcNexus) << "files" << game << "mod" << modId;
     QByteArray body = curlGet(kBase + game + "/mods/" + modId + "/files.json");
-    if (body.isEmpty()) return out;
+    if (body.isEmpty()) { qCWarning(lcNexus) << "files: empty response for mod" << modId; return out; }
     auto doc = QJsonDocument::fromJson(body);
     if (!doc.isObject()) return out;
     for (const auto& v : doc.object()["files"].toArray()) {
@@ -286,8 +297,9 @@ QList<NexusApi::ModRequirement> NexusApi::modRequirements(const QString& modId, 
         .arg(modId, gameId);
     QJsonObject reqObj; reqObj["query"] = q;
     QByteArray reqBody = QJsonDocument(reqObj).toJson(QJsonDocument::Compact);
+    qCInfo(lcNexus) << "graphql modRequirements" << game << "mod" << modId;
     QByteArray body = curlPostJson("https://api.nexusmods.com/v2/graphql", reqBody);
-    if (body.isEmpty()) return out;
+    if (body.isEmpty()) { qCWarning(lcNexus) << "modRequirements: empty response for mod" << modId; return out; }
     auto doc = QJsonDocument::fromJson(body);
     if (!doc.isObject()) return out;
     auto root = doc.object();
@@ -325,10 +337,11 @@ QList<NexusApi::ModRequirement> NexusApi::modRequirements(const QString& modId, 
 
 QString NexusApi::downloadUrl(const QString& modId, const QString& fileId, const QString& game) {
     if (modId.isEmpty() || fileId.isEmpty()) return {};
+    qCInfo(lcNexus) << "downloadUrl" << game << "mod" << modId << "file" << fileId;
     QByteArray body = curlGet(kBase + game + "/mods/" + modId + "/files/" + fileId + "/download_link.json");
-    if (body.isEmpty()) return {};
+    if (body.isEmpty()) { qCWarning(lcNexus) << "downloadUrl: empty response for mod" << modId << "file" << fileId; return {}; }
     auto doc = QJsonDocument::fromJson(body);
-    if (!doc.isArray()) return {};   // non-premium returns an error object
+    if (!doc.isArray()) { qCWarning(lcNexus) << "downloadUrl: non-array response (non-premium?) for mod" << modId << "file" << fileId; return {}; }   // non-premium returns an error object
     const QJsonArray arr = doc.array();
     if (arr.isEmpty()) return {};
     AppConfig::instance().setCachedDownloadServers(mirrorServerNames(arr));
@@ -350,9 +363,13 @@ NexusApi::UserInfo NexusApi::validateUser(const QString& key) {
     args << "-s" << "--max-time" << "10"
          << "-H" << ("apikey: " + useKey)
          << "https://api.nexusmods.com/v1/users/validate.json";
+    qCInfo(lcNexus) << "validateUser";
     p.start("curl", args);
     p.waitForFinished(15000);
-    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) return r;
+    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
+        qCWarning(lcNexus) << "validateUser: curl failed, exit code" << p.exitCode();
+        return r;
+    }
     QByteArray body = p.readAllStandardOutput();
     auto doc = QJsonDocument::fromJson(body);
     if (!doc.isObject()) return r;

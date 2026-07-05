@@ -1,5 +1,6 @@
 #include "DownloadManager.h"
 #include "DownloadWorker.h"
+#include "core/Log.h"
 #include <QThread>
 #include <QUrl>
 #include <QFileInfo>
@@ -30,10 +31,12 @@ void DownloadManager::enqueue(const QString& url, const QString& fileNameIn, con
     QString fileName = QFileInfo(fileNameIn).fileName();
     if (fileName.isEmpty()) fileName = QUrl(url).fileName();
     if (fileName.isEmpty()) fileName = "download.bin";
+    qCInfo(lcDownload) << "enqueue" << fileName << "from" << QUrl(url).host() << "to" << destDir;
     emit requestEnqueue(url, fileName, destDir);
 }
 
 void DownloadManager::cancel(const QString& fileName) {
+    qCInfo(lcDownload) << "cancel" << fileName;
     emit requestCancel(fileName);
 }
 

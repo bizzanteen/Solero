@@ -6,6 +6,7 @@
 #include "core/AppConfig.h"
 #include "core/StagingFolder.h"
 #include "core/FileUtil.h"
+#include "core/Log.h"
 #include <QDirIterator>
 #include <QFile>
 #include <QDir>
@@ -69,6 +70,8 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     int total = 0;
     for (const auto& entry : profile.modList())
         if (entry.type == EntryType::Mod && entry.enabled) ++total;
+    qCInfo(lcDeploy) << "deploy start:" << total << "enabled mods, mode" << int(mode)
+                     << ", staging" << m_stagingRoot;
     // Counts one step only when a cache folder for the active CS version will
     // actually deploy (below) - mirrors that guard so progress isn't off by one.
     if (profile.shaderCache().managed
@@ -124,8 +127,8 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
             m_gameDir,
             m_userlistPath.isEmpty() ? profile.lootUserlistPath() : m_userlistPath);
         if (!sortResult.success) {
-            qWarning() << "LOOT sort failed (deploying with current order):"
-                       << sortResult.errorMessage;
+            qCWarning(lcDeploy) << "LOOT sort failed (deploying with current order):"
+                                << sortResult.errorMessage;
             lootSortError = sortResult.errorMessage;
         }
         profile.pluginList().applyPins(); // restore pinned plugins after the sort
@@ -221,8 +224,11 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
                       "as it was. Your mods still deployed. Check your LOOT rules, "
                       "then use Sort Now to try again.\n\nDetails: " + lootSortError);
 
+    const int conflictCount = conflicts.conflictedPaths().size();
     result.conflicts = std::move(conflicts);
     result.filesDeployed = record.count();
+    qCInfo(lcDeploy) << "deploy done:" << result.filesDeployed << "files linked,"
+                     << conflictCount << "conflicts," << failures << "failures";
     return result;
 }
 
@@ -305,6 +311,9 @@ int DeployEngine::deployMod(const ModEntry& mod,
                     // Cross-fs rename can fail; fall back to copy + remove.
                     if (QFile::copy(dstPath, backupPath))
                         QFile::remove(dstPath);
+                    else
+                        qCWarning(lcDeploy) << "backup-move failed for" << destRel
+                                            << "(mod" << modId << ")";
                 }
             }
         }
@@ -316,7 +325,7 @@ int DeployEngine::deployMod(const ModEntry& mod,
         QString realSrc = QFileInfo(srcPath).canonicalFilePath();
         if (realSrc.isEmpty()) realSrc = srcPath;
         if (!linker.deploy(realSrc, dstPath)) {
-            qWarning() << "Deploy failed for" << relPath << "(mod" << modId << ")";
+            qCWarning(lcDeploy) << "Deploy failed for" << relPath << "(mod" << modId << ")";
             ++failures;
             continue; // do not record a failed link as deployed
         }
@@ -328,6 +337,7 @@ int DeployEngine::deployMod(const ModEntry& mod,
         }
         record.add(destRel, modId);
         ciOwners.insert(ciKey, destRel);
+        qCDebug(lcDeploy) << "linked" << destRel << "(mod" << modId << ")";
     }
     return failures;
 }
@@ -347,8 +357,8 @@ int DeployEngine::applyWinnerOverrides(Profile& profile,
         // The forced winner must be an enabled mod in the current load order.
         const ModEntry* entry = profile.modList().findById(modId);
         if (!entry || entry->type != EntryType::Mod || !entry->enabled) {
-            qWarning() << "Winner override skipped: mod" << modId
-                       << "is missing/disabled for" << relPath;
+            qCWarning(lcDeploy) << "Winner override skipped: mod" << modId
+                                << "is missing/disabled for" << relPath;
             continue;
         }
         // A hidden file isn't provided by the mod - never override to it.
@@ -360,8 +370,8 @@ int DeployEngine::applyWinnerOverrides(Profile& profile,
         // Validate the mod actually stages this path.
         const QString srcPath = stagingPathFor(m_stagingRoot, *entry) + "/" + relPath;
         if (!QFile::exists(srcPath)) {
-            qWarning() << "Winner override skipped: mod" << modId
-                       << "does not provide" << relPath;
+            qCWarning(lcDeploy) << "Winner override skipped: mod" << modId
+                                << "does not provide" << relPath;
             continue;
         }
 
@@ -392,6 +402,9 @@ int DeployEngine::applyWinnerOverrides(Profile& profile,
                 if (!QFile::rename(dstPath, backupPath)) {
                     if (QFile::copy(dstPath, backupPath))
                         QFile::remove(dstPath);
+                    else
+                        qCWarning(lcDeploy) << "backup-move failed for" << destRel
+                                            << "(mod" << modId << ")";
                 }
             }
         }
@@ -399,7 +412,7 @@ int DeployEngine::applyWinnerOverrides(Profile& profile,
         QString realSrc = QFileInfo(srcPath).canonicalFilePath();
         if (realSrc.isEmpty()) realSrc = srcPath;
         if (!linker.deploy(realSrc, dstPath)) {
-            qWarning() << "Winner override failed to link" << relPath << "(mod" << modId << ")";
+            qCWarning(lcDeploy) << "Winner override failed to link" << relPath << "(mod" << modId << ")";
             ++failures;
             continue;
         }
@@ -412,6 +425,7 @@ int DeployEngine::applyWinnerOverrides(Profile& profile,
             conflicts.setWinner(ciKey, modId);
         record.add(destRel, modId);
         ciOwners.insert(ciKey, destRel);
+        qCDebug(lcDeploy) << "winner-override" << destRel << "-> mod" << modId;
     }
     return failures;
 }
@@ -426,6 +440,7 @@ bool DeployEngine::undeploy(const QString& gameDir, const std::function<void(int
     auto paths = record.allPaths();
     int total = paths.size();
     int done = 0;
+    qCInfo(lcDeploy) << "undeploy start:" << total << "recorded files, gameDir" << normGameDir;
     for (const auto& relPath : paths) {
         QString fullPath = normGameDir + "/" + relPath;
         QFile::remove(fullPath);
@@ -463,12 +478,15 @@ bool DeployEngine::undeploy(const QString& gameDir, const std::function<void(int
                 // Cross-fs fallback.
                 if (QFile::copy(backupPath, dstPath))
                     QFile::remove(backupPath);
+                else
+                    qCWarning(lcDeploy) << "backup-restore failed for" << relPath;
             }
         }
         QDir(backupRoot).removeRecursively();
     }
 
     QFile::remove(recPath);
+    qCInfo(lcDeploy) << "undeploy done:" << done << "of" << total << "recorded files removed";
     return true;
 }
 

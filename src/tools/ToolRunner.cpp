@@ -1,5 +1,6 @@
 #include "ToolRunner.h"
 #include "core/AppConfig.h"
+#include "core/Log.h"
 #include "deploy/DeployEngine.h"
 #include "deploy/DeployRecord.h"
 #include <QProcess>
@@ -84,9 +85,11 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
     QObject::connect(&proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
                      &loop, &QEventLoop::quit);
 
+    const QString exeName = QFileInfo(exe.binaryPath).fileName();
     if (exe.runtime == RuntimeType::Native) {
         if (exe.binaryPath.isEmpty() || !QFile::exists(exe.binaryPath)) {
             r.error = "Native binary not found: " + exe.binaryPath;
+            qCWarning(lcTools) << "run:" << exeName << r.error;
             return r;
         }
         QFile(exe.binaryPath).setPermissions(QFile(exe.binaryPath).permissions()
@@ -96,16 +99,20 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
                 preSnapshots.insert(base, snapshotMtimes(base));
             runStart = QDateTime::currentDateTime();
         }
+        qCInfo(lcTools) << "launch native" << exeName << "cwd" << proc.workingDirectory()
+                        << (capture ? "(capturing output)" : "");
         proc.start(exe.binaryPath, args);
     } else {
         // Windows tool via umu-run, reusing the Skyrim Proton prefix.
         if (QStandardPaths::findExecutable("umu-run").isEmpty()) {
             r.error = "umu-run not found - install umu-launcher to run Windows tools.";
+            qCWarning(lcTools) << "run:" << exeName << r.error;
             return r;
         }
         QString protonDir = AppConfig::instance().detectProtonDir();
         if (protonDir.isEmpty()) {
             r.error = "Could not find a Proton install to run this tool.";
+            qCWarning(lcTools) << "run:" << exeName << r.error;
             return r;
         }
         QString prefix = exe.winePrefix; // <steamapps>/compatdata/489830
@@ -128,15 +135,27 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
                 preSnapshots.insert(base, snapshotMtimes(base));
             runStart = QDateTime::currentDateTime();
         }
+        qCInfo(lcTools) << "launch proton" << exeName << "prefix" << prefix
+                        << "cwd" << proc.workingDirectory() << (capture ? "(capturing output)" : "");
         proc.start("umu-run", pargs);
     }
-    if (!proc.waitForStarted(15000)) { r.error = "Failed to start: " + exe.binaryPath; return r; }
+    if (!proc.waitForStarted(15000)) {
+        r.error = "Failed to start: " + exe.binaryPath;
+        qCWarning(lcTools) << "run:" << exeName << "failed to start within 15s";
+        return r;
+    }
     r.launched = true;
     loop.exec();
 
     r.output = QString::fromUtf8(proc.readAll());
-    if (proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0)
+    if (proc.exitStatus() != QProcess::NormalExit || proc.exitCode() != 0) {
         r.output += QString("\n[exit code %1]").arg(proc.exitCode());
+        qCWarning(lcTools) << "run:" << exeName
+                           << (proc.exitStatus() == QProcess::CrashExit ? "crashed" : "exited non-zero")
+                           << "exitCode" << proc.exitCode();
+    } else {
+        qCInfo(lcTools) << "finished" << exeName << "exitCode" << proc.exitCode();
+    }
 
     if (capture) {
         // Resolve the output mod's on-disk staging folder: the caller-provided
@@ -215,6 +234,9 @@ int ToolRunner::captureNewFiles(const QString& captureBase, const QString& destB
     if (failures > 0 && warning)
         *warning += QString("\n[warning: %1 captured file(s) could not be moved to the output mod]")
                         .arg(failures);
+    if (failures > 0)
+        qCWarning(lcTools) << "captureNewFiles:" << failures << "file(s) could not be moved to" << destBase;
+    qCDebug(lcTools) << "captureNewFiles: moved" << moved << "file(s) from" << captureBase << "to" << destBase;
     return moved;
 }
 

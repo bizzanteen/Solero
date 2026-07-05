@@ -1,4 +1,5 @@
 #include "DownloadWorker.h"
+#include "core/Log.h"
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>
@@ -30,8 +31,11 @@ void DownloadWorker::startNext() {
     const QString dest = m_active.destDir + "/" + m_active.fileName;
     m_partPath = dest + ".part";
 
+    qCInfo(lcDownload) << "download start" << m_active.fileName << "from" << QUrl(m_active.url).host();
+
     m_file = new QFile(m_partPath);
     if (!m_file->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        qCWarning(lcDownload) << "could not open output file" << m_partPath;
         const QString fn = m_active.fileName;
         delete m_file; m_file = nullptr;
         m_busy = false;
@@ -55,16 +59,21 @@ void DownloadWorker::startNext() {
     const QString destDir = m_active.destDir;
 
     connect(reply, &QNetworkReply::downloadProgress, this, [this, fileName](qint64 r, qint64 t) {
+        qCDebug(lcDownload) << "progress" << fileName << r << "/" << t;
         emit progress(fileName, r, t);
     });
     connect(reply, &QNetworkReply::readyRead, this, [this, reply] {
-        if (m_file && m_reply == reply) m_file->write(reply->readAll());
+        if (m_file && m_reply == reply) {
+            if (m_file->write(reply->readAll()) < 0)
+                qCWarning(lcDownload) << "write failed:" << m_file->errorString();
+        }
     });
     connect(reply, &QNetworkReply::finished, this, [this, reply, fileName, destDir] {
         if (m_reply != reply) { reply->deleteLater(); return; }
 
         if (reply->error() != QNetworkReply::NoError) {
             const QString err = reply->errorString();
+            qCWarning(lcDownload) << "download failed" << fileName << ":" << err;
             cleanupActive();
             m_busy = false;
             emit finished(fileName, "", false, err);
@@ -73,7 +82,8 @@ void DownloadWorker::startNext() {
         }
 
         if (m_file) {
-            m_file->write(reply->readAll());
+            if (m_file->write(reply->readAll()) < 0)
+                qCWarning(lcDownload) << "final write failed:" << m_file->errorString();
             m_file->close();
             delete m_file; m_file = nullptr;
         }
@@ -86,8 +96,10 @@ void DownloadWorker::startNext() {
         m_partPath.clear();
         m_busy = false;
         if (QFile::rename(partPath, dest)) {
+            qCInfo(lcDownload) << "download finished" << fileName << "ok" << QFileInfo(dest).size() << "bytes";
             emit finished(fileName, dest, true, "");
         } else {
+            qCWarning(lcDownload) << "rename to final failed" << partPath << "->" << dest;
             QFile::remove(partPath);
             emit finished(fileName, "", false, "The download finished but could not be saved to disk. "
                                                "Check that the downloads folder is writable and has enough free space.");
@@ -116,6 +128,7 @@ void DownloadWorker::shutdown() {
 }
 
 void DownloadWorker::cancel(const QString& fileName) {
+    qCInfo(lcDownload) << "cancel requested" << fileName;
     if (m_busy && m_active.fileName == fileName) {
         if (m_reply) {
             QNetworkReply* r = m_reply;

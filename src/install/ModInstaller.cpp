@@ -2,6 +2,7 @@
 #include "ArchiveTool.h"
 #include "DataDirDetector.h"
 #include "core/AppConfig.h"
+#include "core/Log.h"
 #include "fomod/FomodTypes.h"
 #include <QUuid>
 #include <QDir>
@@ -67,8 +68,9 @@ bool ModInstaller::moveNormalized(const QString& extractDir,
         QString dst = modDir + "/" + target;
         QDir().mkpath(QFileInfo(dst).path());
         QFile::remove(dst);
+        qCDebug(lcInstall) << "normalize:" << full << "->" << dst;
         if (!QFile::rename(full, dst)) {
-            if (!QFile::copy(full, dst)) return false;
+            if (!QFile::copy(full, dst)) { qCWarning(lcInstall) << "moveNormalized: copy failed" << full << "->" << dst; return false; }
         }
     }
     return true;
@@ -77,18 +79,21 @@ bool ModInstaller::moveNormalized(const QString& extractDir,
 InstallResult ModInstaller::installArchive(const QString& archivePath,
                                            const QString& stagingRoot) {
     InstallResult r;
-    if (!ArchiveTool::sevenZipAvailable()) { r.errorMessage = "7z is not installed."; return r; }
+    qCInfo(lcInstall) << "installArchive start:" << archivePath << "-> staging" << stagingRoot;
+    if (!ArchiveTool::sevenZipAvailable()) { r.errorMessage = "7z is not installed."; qCWarning(lcInstall) << "installArchive: 7z not installed"; return r; }
 
     bool listed = false;
     QStringList entries = ArchiveTool::listEntries(archivePath, &listed);
-    if (!listed || entries.isEmpty()) { r.errorMessage = "Could not read the archive (is it valid?)."; return r; }
+    if (!listed || entries.isEmpty()) { r.errorMessage = "Could not read the archive (is it valid?)."; qCWarning(lcInstall) << "installArchive: could not read archive" << archivePath; return r; }
 
     InstallLayout layout = DataDirDetector::detect(entries);
     r.isFomod = layout.isFomod;
+    qCInfo(lcInstall) << "layout: isFomod" << layout.isFomod << "wrapInData" << layout.wrapInData
+                      << "stripComponents" << layout.stripComponents << "(" << entries.size() << "entries )";
 
     QTemporaryDir extractTmp(extractTmpTemplate());
-    if (!extractTmp.isValid()) { r.errorMessage = "Could not create a temporary extraction folder. Make sure the staging directory exists and the disk has enough free space."; return r; }
-    if (!ArchiveTool::extract(archivePath, extractTmp.path())) { r.errorMessage = "Could not extract the archive - it may be corrupt, an unsupported format, or too large for the available space. Try re-downloading the mod."; return r; }
+    if (!extractTmp.isValid()) { r.errorMessage = "Could not create a temporary extraction folder. Make sure the staging directory exists and the disk has enough free space."; qCWarning(lcInstall) << "installArchive: could not create temp extract dir"; return r; }
+    if (!ArchiveTool::extract(archivePath, extractTmp.path())) { r.errorMessage = "Could not extract the archive - it may be corrupt, an unsupported format, or too large for the available space. Try re-downloading the mod."; qCWarning(lcInstall) << "installArchive: extract failed" << archivePath; return r; }
 
     r.modId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     r.modName = baseName(archivePath);
@@ -97,32 +102,37 @@ InstallResult ModInstaller::installArchive(const QString& archivePath,
 
     if (!moveNormalized(extractTmp.path(), modDir, layout)) {
         r.errorMessage = "The archive extracted but files could not be moved into the staging folder. Check that the staging directory is writable and has enough free space.";
+        qCWarning(lcInstall) << "installArchive: moveNormalized failed for" << r.modName;
         QDir(modDir).removeRecursively();
         return r;
     }
     r.success = true;
+    qCInfo(lcInstall) << "installArchive done: mod" << r.modName << "-> " << modDir << "isFomod" << r.isFomod;
     return r;
 }
 
 InstallPrep ModInstaller::prepare(const QString& archivePath,
                                   const std::function<void(int)>& onProgress) {
     InstallPrep prep;
-    if (!ArchiveTool::sevenZipAvailable()) { prep.errorMessage = "7z is not installed."; return prep; }
+    qCInfo(lcInstall) << "prepare start:" << archivePath;
+    if (!ArchiveTool::sevenZipAvailable()) { prep.errorMessage = "7z is not installed."; qCWarning(lcInstall) << "prepare: 7z not installed"; return prep; }
     bool listed = false;
     QStringList entries = ArchiveTool::listEntries(archivePath, &listed);
-    if (!listed || entries.isEmpty()) { prep.errorMessage = "Could not read the archive."; return prep; }
+    if (!listed || entries.isEmpty()) { prep.errorMessage = "Could not read the archive."; qCWarning(lcInstall) << "prepare: could not read archive" << archivePath; return prep; }
 
     prep.layout = DataDirDetector::detect(entries);
+    qCInfo(lcInstall) << "prepare layout: isFomod" << prep.layout.isFomod << "wrapInData" << prep.layout.wrapInData
+                      << "stripComponents" << prep.layout.stripComponents << "(" << entries.size() << "entries )";
     prep.modName = baseName(archivePath);
     prep.archivePath = archivePath;
     prep.tempDir = std::make_shared<QTemporaryDir>(extractTmpTemplate());
-    if (!prep.tempDir->isValid()) { prep.errorMessage = "Could not create a temporary extraction folder. Make sure the staging directory exists and the disk has enough free space."; return prep; }
+    if (!prep.tempDir->isValid()) { prep.errorMessage = "Could not create a temporary extraction folder. Make sure the staging directory exists and the disk has enough free space."; qCWarning(lcInstall) << "prepare: could not create temp extract dir"; return prep; }
     prep.extractDir = prep.tempDir->path();
     if (prep.layout.isFomod) {
         if (ArchiveTool::isSolid(archivePath)) {
             // Solid archive: partial extract is no cheaper than full - extract once.
             if (!ArchiveTool::extract(archivePath, prep.extractDir, onProgress)) {
-                prep.errorMessage = "Could not extract the archive - it may be corrupt, an unsupported format, or too large for the available space. Try re-downloading the mod."; return prep;
+                prep.errorMessage = "Could not extract the archive - it may be corrupt, an unsupported format, or too large for the available space. Try re-downloading the mod."; qCWarning(lcInstall) << "prepare: solid FOMOD extract failed" << archivePath; return prep;
             }
             prep.fullyExtracted = true;
         } else {
@@ -130,7 +140,7 @@ InstallPrep ModInstaller::prepare(const QString& archivePath,
             ArchiveTool::extractPaths(archivePath, prep.extractDir, {"fomod"}, true, onProgress);
         }
     } else {
-        if (!ArchiveTool::extract(archivePath, prep.extractDir, onProgress)) { prep.errorMessage = "Could not extract the archive - it may be corrupt, an unsupported format, or too large for the available space. Try re-downloading the mod."; return prep; }
+        if (!ArchiveTool::extract(archivePath, prep.extractDir, onProgress)) { prep.errorMessage = "Could not extract the archive - it may be corrupt, an unsupported format, or too large for the available space. Try re-downloading the mod."; qCWarning(lcInstall) << "prepare: extract failed" << archivePath; return prep; }
         prep.fullyExtracted = true;
     }
 
@@ -149,7 +159,8 @@ InstallPrep ModInstaller::prepare(const QString& archivePath,
         locate();
         if (prep.fomodConfigPath.isEmpty()) {
             // Fast path missed it; fall back to a full extraction.
-            if (!ArchiveTool::extract(archivePath, prep.extractDir)) { prep.errorMessage = "Could not extract the archive - it may be corrupt, an unsupported format, or too large for the available space. Try re-downloading the mod."; return prep; }
+            qCWarning(lcInstall) << "prepare: ModuleConfig.xml not found in partial extract, full-extracting" << archivePath;
+            if (!ArchiveTool::extract(archivePath, prep.extractDir)) { prep.errorMessage = "Could not extract the archive - it may be corrupt, an unsupported format, or too large for the available space. Try re-downloading the mod."; qCWarning(lcInstall) << "prepare: fallback full extract failed" << archivePath; return prep; }
             prep.fullyExtracted = true;
             locate();
         }
@@ -166,6 +177,8 @@ InstallPrep ModInstaller::prepare(const QString& archivePath,
     }
     if (prep.fomodBase.isEmpty()) prep.fomodBase = prep.extractDir;
     prep.ok = true;
+    qCInfo(lcInstall) << "prepare done:" << prep.modName << "isFomod" << prep.layout.isFomod
+                      << "fomodConfig" << (prep.fomodConfigPath.isEmpty() ? QStringLiteral("(none)") : prep.fomodConfigPath);
     return prep;
 }
 
@@ -186,7 +199,8 @@ InstallResult ModInstaller::stageSimple(InstallPrep& prep, const QString& stagin
                                         const std::function<void(int)>& onProgress,
                                         const QString& stagingFolderOverride) {
     InstallResult r;
-    if (!prep.ok) { r.errorMessage = prep.errorMessage; return r; }
+    qCInfo(lcInstall) << "stageSimple start:" << prep.modName << "-> staging" << stagingRoot;
+    if (!prep.ok) { r.errorMessage = prep.errorMessage; qCWarning(lcInstall) << "stageSimple: prep not ok -" << prep.errorMessage; return r; }
     if (prep.layout.isFomod && !prep.fullyExtracted) extractFull(prep, onProgress); // wizard only extracted fomod/; rare parse-fail fallback needs all files
     r.modId = existingModId.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : existingModId;
     r.modName = prep.modName;
@@ -206,9 +220,10 @@ InstallResult ModInstaller::stageSimple(InstallPrep& prep, const QString& stagin
     }
     QDir().mkpath(modDir);
     if (!moveNormalized(prep.extractDir, modDir, prep.layout)) {
-        r.errorMessage = "The archive extracted but files could not be moved into the staging folder. Check that the staging directory is writable and has enough free space."; QDir(modDir).removeRecursively(); return r;
+        r.errorMessage = "The archive extracted but files could not be moved into the staging folder. Check that the staging directory is writable and has enough free space."; qCWarning(lcInstall) << "stageSimple: moveNormalized failed for" << r.modName; QDir(modDir).removeRecursively(); return r;
     }
     r.success = true;
+    qCInfo(lcInstall) << "stageSimple done:" << r.modName << "->" << modDir;
     return r;
 }
 
@@ -218,7 +233,8 @@ InstallResult ModInstaller::stageFomod(InstallPrep& prep, const QString& staging
                                        const std::function<void(int)>& onProgress,
                                        const QString& stagingFolderOverride) {
     InstallResult r;
-    if (!prep.ok) { r.errorMessage = prep.errorMessage; return r; }
+    qCInfo(lcInstall) << "stageFomod start:" << prep.modName << "with" << files.size() << "selected files -> staging" << stagingRoot;
+    if (!prep.ok) { r.errorMessage = prep.errorMessage; qCWarning(lcInstall) << "stageFomod: prep not ok -" << prep.errorMessage; return r; }
     if (!prep.fullyExtracted) extractFull(prep, onProgress); // wizard only extracted fomod/; now get the rest
     r.modId = existingModId.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : existingModId;
     r.modName = prep.modName;
@@ -240,7 +256,8 @@ InstallResult ModInstaller::stageFomod(InstallPrep& prep, const QString& staging
     QString fomodDir = QFileInfo(prep.fomodConfigPath).dir().path(); // .../fomod
     QString fomodBase = QFileInfo(fomodDir).dir().path();            // parent of fomod
     copyFomodFiles(fomodBase, files, modDir);
-    r.success = true;
+    r.success = true; // note: copyFomodFiles swallows per-file failures; success is unconditional
+    qCInfo(lcInstall) << "stageFomod done:" << r.modName << "->" << modDir << "(" << files.size() << "file entries )";
     return r;
 }
 
@@ -259,18 +276,21 @@ void ModInstaller::copyFomodFiles(const QString& fomodBase, const QList<FomodFil
             QString found = resolveCaseInsensitive(fomodBase, f.source);
             if (!found.isEmpty()) src = found;
         }
+        if (!QFileInfo::exists(src)) qCWarning(lcInstall) << "copyFomodFiles: source missing" << src;
         bool isDir = f.isFolder || QFileInfo(src).isDir();
         if (isDir) {
             // Folder: copy CONTENTS into Data/<destination> (empty destination => Data root).
             QString dst = modDir + "/Data" + (f.destination.isEmpty() ? QString() : ("/" + f.destination));
-            copyDirInto(src, dst);
+            qCDebug(lcInstall) << "copyFomodFiles dir:" << src << "->" << dst;
+            if (!copyDirInto(src, dst)) qCWarning(lcInstall) << "copyFomodFiles: copyDirInto failed" << src << "->" << dst;
         } else {
             // File: destination defaults to source path (relative to Data).
             QString destRel = f.destination.isEmpty() ? f.source : f.destination;
             QString dst = modDir + "/Data/" + destRel;
             QDir().mkpath(QFileInfo(dst).path());
             QFile::remove(dst);
-            QFile::copy(src, dst);
+            qCDebug(lcInstall) << "copyFomodFiles file:" << src << "->" << dst;
+            if (!QFile::copy(src, dst)) qCWarning(lcInstall) << "copyFomodFiles: copy failed" << src << "->" << dst;
         }
     }
 }
@@ -292,12 +312,13 @@ bool ModInstaller::installOptionFiles(const QString& archivePath, const QString&
                                       const QList<FomodFile>& files,
                                       const std::function<void(int)>& onProgress) {
     if (files.isEmpty()) return true;
-    if (!ArchiveTool::sevenZipAvailable()) return false;
+    qCInfo(lcInstall) << "installOptionFiles:" << files.size() << "files from" << archivePath << "->" << modDir;
+    if (!ArchiveTool::sevenZipAvailable()) { qCWarning(lcInstall) << "installOptionFiles: 7z unavailable"; return false; }
     QTemporaryDir tmp(extractTmpTemplate());
-    if (!tmp.isValid()) return false;
+    if (!tmp.isValid()) { qCWarning(lcInstall) << "installOptionFiles: could not create temp extract dir"; return false; }
     // Extract the whole archive so all candidate source files are available
     // (option sources may be solid/scattered); the temp dir auto-cleans.
-    if (!ArchiveTool::extract(archivePath, tmp.path(), onProgress)) return false;
+    if (!ArchiveTool::extract(archivePath, tmp.path(), onProgress)) { qCWarning(lcInstall) << "installOptionFiles: extract failed" << archivePath; return false; }
     QString fomodBase = fomodBaseFor(tmp.path());
     copyFomodFiles(fomodBase, files, modDir);
     return true;
@@ -326,7 +347,8 @@ bool ModInstaller::copyDirInto(const QString& srcDir, const QString& dstDir) {
         QString dst = dstDir + "/" + rel;
         QDir().mkpath(QFileInfo(dst).path());
         QFile::remove(dst);
-        if (!QFile::copy(f, dst)) return false;
+        qCDebug(lcInstall) << "copyDirInto:" << f << "->" << dst;
+        if (!QFile::copy(f, dst)) { qCWarning(lcInstall) << "copyDirInto: copy failed" << f << "->" << dst; return false; }
     }
     return true;
 }

@@ -98,7 +98,6 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
-    void resizeEvent(QResizeEvent* event) override;
     // Capture the dragged mods' ids before the drop, then re-select them at their
     // new rows afterwards so a multi-mod drag keeps its selection (the base impl
     // clears it on the model reset). Current index lands on the first moved mod.
@@ -116,7 +115,6 @@ private:
     QString m_filter;
     StateFilter m_stateFilter = StateFilter::All;
     bool m_didAutoSize = false;
-    bool m_fillingName = false; // guards fillNameColumn's own sectionResized re-entry
     // True when the given mod entry passes the active state predicate.
     bool matchesState(const ModEntry* entry) const;
     // Right-click header menu: toggle which columns are shown (Name is mandatory);
@@ -133,7 +131,6 @@ private:
     // Recompute the green/red conflict highlight for the current single selection.
     void updateConflictHighlights();
     void autoSizeColumns();
-    void fillNameColumn();
     void applyFilter();
     // Span separator rows across the full width (content in column 0) and reset
     // spans on non-separator rows. Must be re-run after every model reset.

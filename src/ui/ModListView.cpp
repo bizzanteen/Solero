@@ -155,27 +155,31 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     setItemDelegateForColumn(ModListModel::ColName, new RenameDelegate(this));
     setItemDelegateForColumn(ModListModel::ColFlags, new FlagsDelegate(this));
     setItemDelegateForColumn(ModListModel::ColVersion, new VersionDelegate(this));
-    // Every column is Interactive so a divider always resizes the section to its
-    // LEFT, following the cursor. The Name column is the "flex" one: it soaks up
-    // the remaining width (see fillNameColumn) at startup and on pane/other-column
-    // resize, so the columns still span the full pane. Making Name a *Stretch*
-    // section (the previous approach) is what caused the inverted-drag feel - a
-    // Stretch section can't be resized directly, so dragging the divider next to
-    // it made Name absorb the delta and the grabbed column appeared to move
-    // backwards. With Name Interactive that inversion is gone.
+    // Column-resize model (proven correct via a headless drag harness): every
+    // column is Interactive and the last section stretches to absorb slack
+    // (setStretchLastSection). Because the absorbing column is the rightmost one,
+    // it sits to the right of every divider, so:
+    //   • dragging any divider - including Name's - follows the cursor exactly;
+    //   • the Name column is directly resizable (it is not the flex column);
+    //   • the columns always span the full pane (total == viewport, no dead space).
+    // The old approach flexed the *middle* Name column (Stretch, or a manual
+    // fillNameColumn); a non-last flex column absorbs the drag delta, which
+    // geometrically inverts every divider to its right and makes Name unresizable.
+    // Flags (the last column) is a natural tail - narrow icons, nobody resizes it.
     auto* hdr = header();
-    hdr->setSectionResizeMode(ModListModel::ColEnabled,  QHeaderView::Interactive);
-    hdr->setSectionResizeMode(ModListModel::ColPriority, QHeaderView::Interactive);
-    hdr->setSectionResizeMode(ModListModel::ColName,     QHeaderView::Interactive);
-    hdr->setSectionResizeMode(ModListModel::ColVersion,  QHeaderView::Interactive);
-    hdr->setSectionResizeMode(ModListModel::ColFlags,    QHeaderView::Interactive);
-    hdr->setStretchLastSection(false);
+    hdr->setSectionResizeMode(QHeaderView::Interactive);
+    hdr->setStretchLastSection(true);
     // Char-level elision for long mod names ("Some Mod Na…", not "Some…").
     setTextElideMode(Qt::ElideRight);
     setWordWrap(false);
     hdr->resizeSection(ModListModel::ColEnabled,  28);
     hdr->resizeSection(ModListModel::ColPriority, 40);
+    hdr->resizeSection(ModListModel::ColName,     280);
     hdr->resizeSection(ModListModel::ColVersion,  80);
+    // Give the stretch tail (Flags) an explicit width too: stretchLastSection grows
+    // it to fill any slack, and this explicit floor lets it shrink smoothly when the
+    // user widens Name (without it, Qt keeps the tail pinned and Name-grow jumps
+    // straight to a horizontal scrollbar).
     hdr->resizeSection(ModListModel::ColFlags,    60);
     // Never let a column be dragged so narrow its content vanishes with no easy
     // way back (B-5). Keeps the checkbox/number/flags at least tap-visible.
@@ -186,9 +190,11 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     {
         const QByteArray saved = AppConfig::instance().modListHeaderState();
         if (!saved.isEmpty()) hdr->restoreState(saved);
-        // restoreState also restores resize MODES, so an older saved blob could put
-        // Name back to Stretch (the inverted-drag behaviour). Re-assert Interactive.
-        hdr->setSectionResizeMode(ModListModel::ColName, QHeaderView::Interactive);
+        // restoreState also restores resize MODES / stretch flag, so an older blob
+        // could reinstate the inverted-drag behaviour (a Stretch column, or
+        // stretchLast=false). Re-assert the proven layout.
+        hdr->setSectionResizeMode(QHeaderView::Interactive);
+        hdr->setStretchLastSection(true);
     }
     // Debounce column-resize saves: a drag emits sectionResized rapidly, so coalesce
     // into one AppConfig write 300ms after the user stops.
@@ -197,13 +203,7 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     m_headerSaveTimer->setInterval(300);
     connect(m_headerSaveTimer, &QTimer::timeout, this, &ModListView::saveHeaderState);
     connect(hdr, &QHeaderView::sectionResized, this,
-            [this](int logical, int, int){
-                m_headerSaveTimer->start();
-                // When the user resizes any OTHER column, re-flex Name to keep the
-                // row spanning the pane. Skip when Name itself was the one dragged
-                // (respect the user's explicit width) and while we're mid-flex.
-                if (!m_fillingName && logical != ModListModel::ColName) fillNameColumn();
-            });
+            [this](int, int, int){ m_headerSaveTimer->start(); });
     // The list is manually ordered (drag-reorder); there's no real sort(), so
     // clickable headers would only flip a lying sort indicator. Disable sorting.
     setSortingEnabled(false);
@@ -323,34 +323,10 @@ void ModListView::selectModById(const QString& id) {
 }
 
 void ModListView::autoSizeColumns() {
-    // Fit every column to header + cell contents (leaves sections Interactive),
-    // then let the Name column consume the remaining width.
+    // Fit the fixed columns to header + cell contents; the last section stretches
+    // (stretchLastSection) so the row still spans the full pane afterwards.
     header()->resizeSections(QHeaderView::ResizeToContents);
-    fillNameColumn();
-}
-
-// Size the Name column to soak up whatever width the other (Interactive) columns
-// leave, so the row spans the full viewport. Name is Interactive too, so this is
-// a deliberate one-shot resize (on startup / pane resize / other-column resize),
-// not a live Stretch - that keeps divider drags feeling natural (no inversion).
-void ModListView::fillNameColumn() {
-    auto* hdr = header();
-    const int cols = m_model->columnCount();
-    int used = 0;
-    for (int c = 0; c < cols; ++c) {
-        if (c == ModListModel::ColName || hdr->isSectionHidden(c)) continue;
-        used += hdr->sectionSize(c);
-    }
-    const int avail = viewport()->width() - used;
-    if (avail < 60) return; // don't crush Name below a usable width
-    m_fillingName = true; // guard: our own resize re-emits sectionResized
-    hdr->resizeSection(ModListModel::ColName, avail);
-    m_fillingName = false;
-}
-
-void ModListView::resizeEvent(QResizeEvent* event) {
-    QTreeView::resizeEvent(event);
-    fillNameColumn(); // refill on pane resize so columns never under-fill the width
+    header()->setStretchLastSection(true); // resizeSections can clear it
 }
 
 void ModListView::applyRowSpans() {
@@ -979,7 +955,8 @@ void ModListView::showHeaderMenu(const QPoint& pos) {
                 if (c != ModListModel::ColName && isColumnHidden(c)) hidden << c;
             AppConfig::instance().setHiddenColumns(hidden);
             AppConfig::instance().save();
-            fillNameColumn(); // Name absorbs the freed/used width
+            // stretchLastSection re-fills the tail automatically when a column is
+            // shown/hidden; nothing to do here.
         });
     }
     menu.exec(header()->mapToGlobal(pos));

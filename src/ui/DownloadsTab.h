@@ -27,23 +27,14 @@ protected:
     // Re-assert the app font here so the table scales with Ctrl +/- like the
     // mod/plugin lists (which carry no direct style sheet).
     void changeEvent(QEvent* e) override;
-    // Re-flex the Name column so the row always spans the viewport when the pane
-    // is resized.
-    void resizeEvent(QResizeEvent* e) override;
 private:
     void showContextMenu(const QPoint& pos);
     void applyFilters();
-    // Size the Name column to soak up whatever width the other (Interactive)
-    // columns leave, so the row spans the full viewport. Name is Interactive too,
-    // so this is a deliberate one-shot resize (startup / pane / other-column
-    // resize), not a Stretch section - which keeps divider drags feeling natural
-    // (no inverted-drag, same fix as the mod/plugin lists).
-    void fillNameColumn();
-    // Recompute the data columns' widths from the current font's metrics (so they
-    // scale with Ctrl +/- zoom, not stay a fixed pixel constant), then re-fill Name.
+    // Recompute every column's width from the current font's metrics (so they scale
+    // with Ctrl +/- zoom, not stay a fixed pixel constant). The last column
+    // (Downloaded) then stretches to fill via stretchLastSection.
     void applyColumnWidths();
     QTableWidget* m_table;
-    bool m_fillingName = false; // guards fillNameColumn's own sectionResized re-entry
     Profile* m_profile = nullptr;
     bool m_hideInstalled = false;
     bool m_hideNotInstalled = false;

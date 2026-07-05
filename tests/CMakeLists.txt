@@ -480,3 +480,12 @@ if(NOT EXISTS "${_qt_plugins}/platforms")
 endif()
 set_tests_properties(test_ModListModel PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${_qt_plugins}")
+
+# Locks in the column-resize model (stretch the LAST column, never a middle flex).
+# Self-contained: needs only Qt Widgets, reuses the headless plugin path above.
+add_executable(test_ColumnResize test_ColumnResize.cpp)
+target_include_directories(test_ColumnResize PRIVATE ../src)
+target_link_libraries(test_ColumnResize PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
+add_test(NAME test_ColumnResize COMMAND test_ColumnResize)
+set_tests_properties(test_ColumnResize PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${_qt_plugins}")

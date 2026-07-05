@@ -102,12 +102,7 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
     m_headerSaveTimer->setInterval(300);
     connect(m_headerSaveTimer, &QTimer::timeout, this, &PluginListView::saveHeaderState);
     connect(horizontalHeader(), &QHeaderView::sectionResized, this,
-            [this](int logical, int, int){
-                m_headerSaveTimer->start();
-                // Re-flex Name when another column is dragged; skip when Name itself
-                // was resized (honour the user's width) and while mid-flex.
-                if (!m_fillingName && logical != PluginListModel::ColName) fillNameColumn();
-            });
+            [this](int, int, int){ m_headerSaveTimer->start(); });
     connect(horizontalHeader(), &QHeaderView::sortIndicatorChanged,
             this, &PluginListView::onSortChanged);
     connect(m_model, &PluginListModel::loadOrderChanged,
@@ -117,28 +112,30 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
 }
 
 void PluginListView::applyHeaderLayout() {
-    // Every column is Interactive so a divider always resizes the section to its
-    // LEFT, following the cursor (no inverted-drag feel). The Plugin (Name) column
-    // is the flex one: fillNameColumn soaks up the remaining width at startup and
-    // on pane/other-column resize so the row still spans the pane. Making Name a
-    // *Stretch* section was what caused the inversion - a Stretch section can't be
-    // dragged directly, so a divider next to it moved backwards.
+    // Column-resize model (see ModListView for the proven rationale): every column
+    // Interactive + the last section stretches (Flags is the tail). The absorbing
+    // column is rightmost, so every divider drag follows the cursor, Name is
+    // directly resizable, and the columns always span the full pane.
     auto* hh = horizontalHeader();
     hh->setSectionResizeMode(QHeaderView::Interactive);
-    hh->setStretchLastSection(false);
+    hh->setStretchLastSection(true);
     hh->setMinimumSectionSize(22); // guard against unusably narrow columns (B-5)
     hh->resizeSection(PluginListModel::ColEnabled, 28);
     hh->resizeSection(PluginListModel::ColPriority, 40);
+    hh->resizeSection(PluginListModel::ColName, 260);
+    // Explicit width on the stretch tail (Flags) so it shrinks smoothly when the
+    // user widens Name, rather than pinning and jumping to a scrollbar. Stretch
+    // still grows it to fill any slack.
     hh->resizeSection(PluginListModel::ColFlags, 50);
     // Restore persisted column widths (B-1). applyHeaderLayout re-runs on every
     // model swap (filter on/off), so re-apply the saved blob each time or a filter
     // toggle would reset the user's widths back to the defaults above.
     const QByteArray saved = AppConfig::instance().pluginListHeaderState();
     if (!saved.isEmpty()) hh->restoreState(saved);
-    // restoreState also restores resize MODES, so an older saved blob could put
-    // Name back to Stretch (the inverted-drag behaviour). Re-assert Interactive.
-    hh->setSectionResizeMode(PluginListModel::ColName, QHeaderView::Interactive);
-    fillNameColumn(); // flex Name to fill whatever the other columns leave
+    // restoreState also restores resize MODES / stretch flag; re-assert the proven
+    // layout so an older blob can't reinstate the inverted-drag behaviour.
+    hh->setSectionResizeMode(QHeaderView::Interactive);
+    hh->setStretchLastSection(true);
 }
 
 void PluginListView::saveHeaderState() {
@@ -148,31 +145,7 @@ void PluginListView::saveHeaderState() {
 
 void PluginListView::autoSizeColumns() {
     horizontalHeader()->resizeSections(QHeaderView::ResizeToContents);
-    fillNameColumn();
-}
-
-// Size the Plugin (Name) column to soak up whatever width the other Interactive
-// columns leave. Name is Interactive too, so this is a deliberate one-shot resize
-// (startup / pane resize / other-column resize), not a live Stretch - which keeps
-// divider drags feeling natural.
-void PluginListView::fillNameColumn() {
-    auto* hh = horizontalHeader();
-    const int cols = hh->count();
-    int used = 0;
-    for (int c = 0; c < cols; ++c) {
-        if (c == PluginListModel::ColName || hh->isSectionHidden(c)) continue;
-        used += hh->sectionSize(c);
-    }
-    const int avail = viewport()->width() - used;
-    if (avail < 60) return; // don't crush Name below a usable width
-    m_fillingName = true; // guard: our own resize re-emits sectionResized
-    hh->resizeSection(PluginListModel::ColName, avail);
-    m_fillingName = false;
-}
-
-void PluginListView::resizeEvent(QResizeEvent* event) {
-    QTableView::resizeEvent(event);
-    fillNameColumn();
+    horizontalHeader()->setStretchLastSection(true); // resizeSections can clear it
 }
 
 void PluginListView::showEvent(QShowEvent* event) {
@@ -214,7 +187,6 @@ void PluginListView::setFilter(const QString& text) {
         setDefaultDropAction(Qt::MoveAction);
         horizontalHeader()->setSortIndicator(PluginListModel::ColPriority, Qt::AscendingOrder);
     }
-    fillNameColumn();
 }
 
 void PluginListView::onSortChanged(int col, Qt::SortOrder order) {

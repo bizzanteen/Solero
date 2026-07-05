@@ -35,7 +35,6 @@ private slots:
 protected:
     void contextMenuEvent(QContextMenuEvent* event) override;
     void showEvent(QShowEvent* event) override;
-    void resizeEvent(QResizeEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;
     void selectionChanged(const QItemSelection& selected,
                           const QItemSelection& deselected) override;
@@ -46,7 +45,6 @@ private:
     void saveHeaderState();
     QTimer* m_headerSaveTimer = nullptr;
     void autoSizeColumns();
-    void fillNameColumn();
     void setAllEnabled(bool enabled);
     // Filename of the row at the given view index (proxy-aware, pin-glyph-free),
     // or the current row when `idx` is invalid. Empty if not a real plugin row.
@@ -54,7 +52,6 @@ private:
     PluginListModel* m_model;
     QSortFilterProxyModel* m_proxy;
     bool m_didAutoSize = false;
-    bool m_fillingName = false; // guards fillNameColumn's own sectionResized re-entry
     bool m_filterActive = false;
 };
 }

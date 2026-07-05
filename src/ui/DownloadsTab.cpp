@@ -108,27 +108,18 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     // Breathing room between columns so adjacent cells aren't bunched together.
     m_table->setStyleSheet("QTableWidget::item { padding: 2px 8px; }");
     auto* hh = m_table->horizontalHeader();
-    hh->setStretchLastSection(false);
     hh->setMinimumSectionSize(24);
-    // Every column is Interactive so a divider always resizes the section to its
-    // LEFT, following the cursor. Name is the "flex" column: fillNameColumn soaks
-    // up the width the others leave (see below). Making Name a *Stretch* section
-    // (the previous approach) is what caused the inverted-drag feel - a Stretch
-    // section can't be dragged directly, so the divider next to it moved backwards.
-    hh->setSectionResizeMode(0, QHeaderView::Interactive); // Name (flex)
-    // Status/Size/Downloaded are Interactive, not ResizeToContents: refresh() runs
-    // on every progress tick, so ResizeToContents made the columns visibly jump
-    // (B-3). Their default widths are derived from the font (applyColumnWidths) so
-    // they scale with Ctrl +/- zoom.
-    hh->setSectionResizeMode(1, QHeaderView::Interactive); // Status (icons)
-    hh->setSectionResizeMode(2, QHeaderView::Interactive); // Size
-    hh->setSectionResizeMode(3, QHeaderView::Interactive); // Downloaded
+    // Column-resize model (see ModListView for the proven rationale): every column
+    // Interactive + the last section stretches (Downloaded, a right-aligned date, is
+    // the tail). The absorbing column is rightmost, so every divider drag follows
+    // the cursor, Name is directly resizable, and the columns span the full pane.
+    // Status/Size/Downloaded/Name defaults derive from the font (applyColumnWidths)
+    // so they scale with Ctrl +/- zoom. They're Interactive (not ResizeToContents)
+    // because refresh() runs on every progress tick and ResizeToContents made the
+    // columns visibly jump (B-3).
+    hh->setSectionResizeMode(QHeaderView::Interactive);
+    hh->setStretchLastSection(true);
     applyColumnWidths();
-    // Re-flex Name when the user drags another column; skip when Name itself was
-    // dragged (honour their width) and while we're mid-flex (guard re-entry).
-    connect(hh, &QHeaderView::sectionResized, this, [this](int logical, int, int){
-        if (!m_fillingName && logical != 0) fillNameColumn();
-    });
     m_table->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_table, &QWidget::customContextMenuRequested, this, &DownloadsTab::showContextMenu);
     v->addWidget(m_table, 1);
@@ -253,41 +244,26 @@ void DownloadsTab::changeEvent(QEvent* e) {
     }
 }
 
-void DownloadsTab::resizeEvent(QResizeEvent* e) {
-    QWidget::resizeEvent(e);
-    fillNameColumn();
-}
-
-void DownloadsTab::fillNameColumn() {
-    if (!m_table) return;
-    auto* hh = m_table->horizontalHeader();
-    int used = 0;
-    for (int c = 1; c < m_table->columnCount(); ++c)
-        if (!hh->isSectionHidden(c)) used += hh->sectionSize(c);
-    const int avail = m_table->viewport()->width() - used;
-    if (avail < 80) return; // don't crush Name below a usable width
-    m_fillingName = true; // guard: our own resize re-emits sectionResized
-    hh->resizeSection(0, avail);
-    m_fillingName = false;
-}
-
 void DownloadsTab::applyColumnWidths() {
     if (!m_table) return;
-    // Derive the data columns from the current font's metrics (not fixed pixels)
-    // so they scale ~proportionally with Ctrl +/- zoom. DownloadsTab doesn't
-    // persist header widths, so recomputing here never fights a user-set width.
+    // Derive every column from the current font's metrics (not fixed pixels) so they
+    // scale ~proportionally with Ctrl +/- zoom. The last column (Downloaded)
+    // stretches to fill, so its width here is just a floor for the overflow case.
+    // DownloadsTab doesn't persist header widths; this recomputes on construction
+    // and on each zoom step (refresh() never touches widths), so between zooms a
+    // user's manual Name resize sticks.
     const QFontMetrics fm(m_table->font());
     auto* hh = m_table->horizontalHeader();
     // ~16px item padding (style sheet) + icon/margins folded into each headroom.
+    const int name   = qMax(220, fm.horizontalAdvance(QStringLiteral("A reasonably long example mod file name")) + 20);
     const int status = qMax(56, fm.horizontalAdvance(QStringLiteral("100%")) + 44); // icon + %
     const int size   = qMax(56, fm.horizontalAdvance(QStringLiteral("999.9 MB")) + 20);
     const int dated  = qMax(84, fm.horizontalAdvance(QStringLiteral("00th Sep, 00:00")) + 16);
-    m_fillingName = true; // these resizes re-emit sectionResized
+    hh->resizeSection(0, name);
     hh->resizeSection(1, status);
     hh->resizeSection(2, size);
     hh->resizeSection(3, dated);
-    m_fillingName = false;
-    fillNameColumn();
+    hh->setStretchLastSection(true); // keep the tail filling after the resizes above
 }
 
 void DownloadsTab::setDownloadProgress(const QString& fileName, qint64 received, qint64 total) {

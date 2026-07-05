@@ -127,8 +127,8 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     setModel(m_model);
     connect(m_model, &ModListModel::modsChanged, this, &ModListView::modsChanged);
     connect(m_model, &ModListModel::modsReordered, this, &ModListView::modsReordered);
-    // Re-expose the model's reorder undo/redo state so the LeftPane toolbar can
-    // enable/disable its buttons without reaching into the model.
+    // Re-expose the model's reorder undo/redo state so the left-pane toolbar (built
+    // in MainWindow) can enable/disable its buttons without reaching into the model.
     connect(m_model, &ModListModel::undoRedoStateChanged,
             this, &ModListView::undoRedoStateChanged);
     // Re-expose the model's version-switch signal so MainWindow can rescan + redeploy.

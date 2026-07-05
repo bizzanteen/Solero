@@ -176,7 +176,6 @@ set(SOLERO_SOURCES
   src/nexus/DownloadManager.cpp
   src/nexus/DownloadWorker.cpp
   src/ui/NexusWebView.cpp
-  src/ui/ToolPanel.cpp
   src/ui/ToolSetupWizard.cpp
   src/ui/ToolsManagerDialog.cpp
   src/ui/ThemeAdapter.cpp

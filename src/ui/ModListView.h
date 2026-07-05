@@ -60,8 +60,8 @@ public:
 
 public slots:
     // Undo / redo the most recent mod-list reorder for the active profile. Wired
-    // to the LeftPane's Undo/Redo toolbar buttons. After the order is restored,
-    // selection is preserved where still valid.
+    // to the left pane's Undo/Redo toolbar buttons (built in MainWindow). After the
+    // order is restored, selection is preserved where still valid.
     void undoMove();
     void redoMove();
 
@@ -89,7 +89,7 @@ signals:
     // compiled shader cache (CS recompiles it on next launch).
     void clearShaderCacheRequested(const QString& modId);
     // Re-emitted from the model whenever the reorder undo/redo stack state changes,
-    // so the LeftPane can enable/disable its Undo/Redo buttons.
+    // so the left pane (built in MainWindow) can enable/disable its Undo/Redo buttons.
     void undoRedoStateChanged(bool canUndo, bool canRedo);
     // Re-emitted from the model when a mod's active version variant is switched via
     // the Version-column dropdown; MainWindow rescans plugins and auto-redeploys.

@@ -90,6 +90,7 @@ QTableWidgetItem* makeStatusItem(const QString& kind, const QString& fullText,
     int rank = 4;
     QIcon icon;
     if (kind == QLatin1String("downloading"))       { rank = 0; icon = downloadingStatusIcon(14); }
+    else if (kind == QLatin1String("paused"))       { rank = 0; icon = neutralStatusIcon(14); }
     else if (kind == QLatin1String("failed"))       { rank = 1; icon = errorSignIcon(14); }
     else if (kind == QLatin1String("not-installed")){ rank = 2; icon = notInstalledStatusIcon(14); }
     else if (kind == QLatin1String("installed"))    { rank = 3; icon = installedStatusIcon(14); }
@@ -110,19 +111,26 @@ QString humanSize(qint64 b) {
     return QString::number(v, 'f', 1) + " GB";
 }
 
-// {sideText, fullText} for a Downloading status cell: "50%"/"12.3 MB" beside the
-// icon, and the "Downloading …" tooltip. Shared by the row-insert and the
-// throttled cell-update paths so both format progress identically.
-QPair<QString,QString> formatProgress(qint64 received, qint64 total) {
-    const QString side = (total > 0)
-        ? QString("%1%").arg(int(received * 100 / total))
-        : humanSize(received);
-    return {side, QStringLiteral("Downloading ") + side};
+// "3.2 MB/s" from a bytes-per-second rate.
+QString formatRate(double bytesPerSec) {
+    return humanSize(qint64(bytesPerSec)) + "/s";
+}
+
+// Seconds to "M:SS" (or "H:MM:SS" past an hour); empty for a nonsensical value.
+QString formatEta(qint64 seconds) {
+    if (seconds < 0) return QString();
+    const qint64 h = seconds / 3600;
+    const qint64 m = (seconds % 3600) / 60;
+    const qint64 s = seconds % 60;
+    if (h > 0)
+        return QString("%1:%2:%3").arg(h).arg(m, 2, 10, QChar('0')).arg(s, 2, 10, QChar('0'));
+    return QString("%1:%2").arg(m).arg(s, 2, 10, QChar('0'));
 }
 
 } // namespace
 
 DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
+    m_clock.start(); // monotonic reference for rate/ETA sampling
     auto* v = new QVBoxLayout(this);
 
     m_table = new DownloadsTable(this);
@@ -188,6 +196,9 @@ void DownloadsTab::refresh() {
     // A full rebuild replaces every in-progress row with its on-disk equivalent, so
     // any queued progress ticks are moot - drop them (flush would no-op anyway).
     m_pendingProgress.clear();
+    // Rate samples are tied to transient rows; drop them so a rebuilt row's average
+    // starts fresh (it re-accumulates within a few ticks).
+    m_rateSamples.clear();
     m_table->setSortingEnabled(false);
     m_table->setRowCount(0);
 
@@ -253,6 +264,30 @@ void DownloadsTab::refresh() {
         m_table->setItem(row, 3, dt);
     }
 
+    // Paused downloads: persistent rows (the worker emits no ticks while paused, so
+    // unlike live downloads they can't rebuild themselves from setDownloadProgress).
+    for (auto it = m_pausedDownloads.constBegin(); it != m_pausedDownloads.constEnd(); ++it) {
+        int row = m_table->rowCount();
+        m_table->insertRow(row);
+        auto* nameItem = new QTableWidgetItem(it.key());
+        nameItem->setData(Qt::UserRole, QString());                     // no archive path yet
+        nameItem->setData(Qt::UserRole + 1, QStringLiteral("paused"));  // row-kind marker (menu)
+        nameItem->setToolTip(it.key());
+        m_table->setItem(row, 0, nameItem);
+        const qint64 rec = it.value().first, tot = it.value().second;
+        const QString pct = (tot > 0) ? QString("%1%").arg(int(rec * 100 / tot)) : humanSize(rec);
+        m_table->setItem(row, 1, makeStatusItem(QStringLiteral("paused"),
+            QStringLiteral("Paused at ") + pct, QStringLiteral("Paused ") + pct));
+        auto* sz = new NumItem(QString()); sz->setData(Qt::UserRole, qint64(0));
+        sz->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        m_table->setItem(row, 2, sz);
+        // Pin at the top alongside live downloads so a paused item stays visible.
+        auto* dt = new NumItem(QString());
+        dt->setData(Qt::UserRole, std::numeric_limits<qint64>::max());
+        dt->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        m_table->setItem(row, 3, dt);
+    }
+
     // Re-enabling sorting re-sorts by the header's current indicator, so the
     // user's chosen sort survives a refresh tick. Only force the newest-first
     // default the first time we populate; afterwards re-assert the current
@@ -298,7 +333,10 @@ void DownloadsTab::applyColumnWidths() {
     auto* hh = m_table->horizontalHeader();
     // ~16px item padding (style sheet) + icon/margins folded into each headroom.
     const int name   = qMax(220, fm.horizontalAdvance(QStringLiteral("A reasonably long example mod file name")) + 20);
-    const int status = qMax(56, fm.horizontalAdvance(QStringLiteral("100%")) + 44); // icon + %
+    // Wide enough for the live "rate <dot> ETA" text (e.g. "88.8 MB/s <dot> 0:00")
+    // beside the icon, not just "100%".
+    const QString statusSample = QStringLiteral("88.8 MB/s ") + QChar(0x00B7) + QStringLiteral(" 0:00");
+    const int status = qMax(56, fm.horizontalAdvance(statusSample) + 28); // icon + text
     const int size   = qMax(56, fm.horizontalAdvance(QStringLiteral("999.9 MB")) + 20);
     const int dated  = qMax(84, fm.horizontalAdvance(QStringLiteral("00th Sep, 00:00")) + 16);
     hh->resizeSection(0, name);
@@ -309,6 +347,20 @@ void DownloadsTab::applyColumnWidths() {
 }
 
 void DownloadsTab::setDownloadProgress(const QString& fileName, qint64 received, qint64 total) {
+    // Paused: ignore any in-flight ticks still crossing the thread boundary, so a
+    // late tick can't resurrect a live "downloading" row beside the paused one.
+    if (m_pausedDownloads.contains(fileName)) return;
+
+    // Record a rate sample and the latest bytes (the latter is the snapshot used if
+    // this download is paused). Trim the window to ~3s of history for the average.
+    const qint64 nowMs = m_clock.elapsed();
+    auto& samples = m_rateSamples[fileName];
+    samples.append({nowMs, received});
+    constexpr qint64 kRateWindowMs = 3000;
+    while (samples.size() > 2 && (nowMs - samples.first().first) > kRateWindowMs)
+        samples.removeFirst();
+    m_latestProgress.insert(fileName, {received, total});
+
     // Fast path: the row already exists, so just stash the latest bytes and let the
     // timer coalesce the (frequent) mid-download ticks into a single repaint.
     auto it = m_activeRows.find(fileName);
@@ -319,9 +371,9 @@ void DownloadsTab::setDownloadProgress(const QString& fileName, qint64 received,
     }
 
     // First tick for this file: build its transient row immediately (structural change).
-    // `side` is the short text painted beside the download icon ("50%" / "12.3 MB");
-    // `full` is the full status string, which lives in the cell's tooltip.
-    const auto [side, full] = formatProgress(received, total);
+    // `side` is the short text painted beside the download icon ("3.2 MB/s <dot> 0:45"
+    // once a rate is known, else "50%"); `full` is the full status tooltip.
+    const auto [side, full] = formatActiveProgress(fileName, received, total);
 
     // Insert a new transient row at the top.
     m_table->setSortingEnabled(false);
@@ -348,11 +400,48 @@ void DownloadsTab::setDownloadProgress(const QString& fileName, qint64 received,
     m_table->setSortingEnabled(true);
 }
 
+double DownloadsTab::currentRate(const QString& fileName) const {
+    auto it = m_rateSamples.constFind(fileName);
+    if (it == m_rateSamples.constEnd() || it->size() < 2) return 0.0;
+    const QPair<qint64,qint64>& first = it->first();
+    const QPair<qint64,qint64>& last  = it->last();
+    const qint64 dtMs = last.first - first.first;   // elapsed ms across the window
+    const qint64 dBytes = last.second - first.second;
+    if (dtMs <= 0 || dBytes <= 0) return 0.0;
+    return double(dBytes) * 1000.0 / double(dtMs);  // bytes/sec
+}
+
+QPair<QString,QString> DownloadsTab::formatActiveProgress(const QString& fileName,
+                                                          qint64 received, qint64 total) const {
+    const QString pct = (total > 0)
+        ? QString("%1%").arg(int(received * 100 / total))
+        : humanSize(received);
+    const double rate = currentRate(fileName);
+    if (rate <= 0.0)
+        return {pct, QStringLiteral("Downloading ") + pct};
+
+    const QString rateStr = formatRate(rate);
+    QString etaStr;
+    if (total > 0 && received <= total)
+        etaStr = formatEta(qint64(double(total - received) / rate));
+
+    // Beside the icon: "3.2 MB/s <middle-dot> 0:45" (drop the ETA if unknown).
+    QString side = rateStr;
+    if (!etaStr.isEmpty())
+        side += QStringLiteral(" ") + QChar(0x00B7) + QStringLiteral(" ") + etaStr;
+    // Tooltip carries the percentage too, which the narrow cell can't always show.
+    QString full = QStringLiteral("Downloading ") + pct + QStringLiteral(" ")
+                 + QChar('-') + QStringLiteral(" ") + rateStr;
+    if (!etaStr.isEmpty())
+        full += QStringLiteral(", ") + etaStr + QStringLiteral(" left");
+    return {side, full};
+}
+
 void DownloadsTab::flushDownloadProgress() {
     for (auto it = m_pendingProgress.constBegin(); it != m_pendingProgress.constEnd(); ++it) {
         auto rowIt = m_activeRows.constFind(it.key());
         if (rowIt == m_activeRows.constEnd()) continue; // row rebuilt away meanwhile
-        const auto [side, full] = formatProgress(it.value().first, it.value().second);
+        const auto [side, full] = formatActiveProgress(it.key(), it.value().first, it.value().second);
         if (auto* statusItem = m_table->item(rowIt.value(), 1)) {
             statusItem->setText(side);      // icon already set; just refresh the %
             statusItem->setToolTip(full);
@@ -397,23 +486,49 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
 
     menu.addSeparator();
 
-    // Cancel: enabled only when the selected row is an active download
-    // (empty path + status starts with "Downloading"). fileName is col-0 text.
+    // Pause/Resume/Cancel: classify the selected row. A live download has an empty
+    // path + "downloading" status; a held one has "paused" status. fileName is col-0.
     {
         const int row = m_table->currentRow();
-        QString activeFileName;
+        QString activeFileName, pausedFileName;
         if (row >= 0) {
             auto* nameItem = m_table->item(row, 0);
             auto* statusItem = m_table->item(row, 1);
+            const QString kind = statusItem ? statusItem->data(RoleStatusKind).toString() : QString();
             const bool noPath = nameItem && nameItem->data(Qt::UserRole).toString().isEmpty();
-            const bool downloading = statusItem
-                && statusItem->data(RoleStatusKind).toString() == QLatin1String("downloading");
-            if (nameItem && noPath && downloading) activeFileName = nameItem->text();
+            if (nameItem && noPath && kind == QLatin1String("downloading"))
+                activeFileName = nameItem->text();
+            if (nameItem && kind == QLatin1String("paused"))
+                pausedFileName = nameItem->text();
         }
+
+        auto* pauseAction = menu.addAction("Pause Download");
+        pauseAction->setEnabled(!activeFileName.isEmpty());
+        connect(pauseAction, &QAction::triggered, this, [this, activeFileName]{
+            // Snapshot the latest bytes so the persistent paused row shows progress.
+            m_pausedDownloads.insert(activeFileName,
+                                     m_latestProgress.value(activeFileName, {0, 0}));
+            m_rateSamples.remove(activeFileName);
+            emit pauseRequested(activeFileName);
+            refresh(); // swap the live row for the persistent "Paused" row
+        });
+
+        auto* resumeAction = menu.addAction("Resume Download");
+        resumeAction->setEnabled(!pausedFileName.isEmpty());
+        connect(resumeAction, &QAction::triggered, this, [this, pausedFileName]{
+            m_pausedDownloads.remove(pausedFileName);
+            emit resumeRequested(pausedFileName);
+            refresh(); // row reappears as "Downloading" on the next progress tick
+        });
+
+        // Cancel works for either a live or a paused download.
+        const QString cancelTarget = !activeFileName.isEmpty() ? activeFileName : pausedFileName;
         auto* cancelAction = menu.addAction("Cancel Download");
-        cancelAction->setEnabled(!activeFileName.isEmpty());
-        connect(cancelAction, &QAction::triggered, this, [this, activeFileName]{
-            emit cancelRequested(activeFileName);
+        cancelAction->setEnabled(!cancelTarget.isEmpty());
+        connect(cancelAction, &QAction::triggered, this, [this, cancelTarget]{
+            m_pausedDownloads.remove(cancelTarget); // no-op if it was live
+            m_rateSamples.remove(cancelTarget);
+            emit cancelRequested(cancelTarget);
         });
     }
 

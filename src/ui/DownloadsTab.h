@@ -3,6 +3,7 @@
 #include <QHash>
 #include <QPair>
 #include <QList>
+#include <QElapsedTimer>
 class QTableWidget;
 class QTableWidgetItem;
 class QTimer;
@@ -22,6 +23,10 @@ signals:
     void installRequested(const QString& archivePath);
     void cancelRequested(const QString& fileName);
     void retryRequested(const QString& fileName);
+    // Pause/resume an in-progress download (wired to DownloadManager in MainWindow,
+    // mirroring cancelRequested).
+    void pauseRequested(const QString& fileName);
+    void resumeRequested(const QString& fileName);
 protected:
     // A style sheet is set on the table (item padding), which sets WA_StyleSheet
     // and blocks Qt's automatic propagation of application-font (zoom) changes.
@@ -39,6 +44,12 @@ private:
     // with Ctrl +/- zoom, not stay a fixed pixel constant). The last column
     // (Downloaded) then stretches to fill via stretchLastSection.
     void applyColumnWidths();
+    // Bytes/sec from a short moving average of received-byte samples (0 if unknown).
+    double currentRate(const QString& fileName) const;
+    // Build the Status cell {sideText, tooltip} for an in-progress file, including a
+    // live rate + ETA beside the icon ("3.2 MB/s <dot> 0:45") once a rate is known.
+    QPair<QString,QString> formatActiveProgress(const QString& fileName,
+                                                qint64 received, qint64 total) const;
     QTableWidget* m_table;
     Profile* m_profile = nullptr;
     bool m_hideInstalled = false;
@@ -51,5 +62,15 @@ private:
     QHash<QString,QPair<qint64,qint64>> m_pendingProgress;
     QTimer* m_progressTimer = nullptr; // ~120ms flush of m_pendingProgress
     QList<QPair<QString,QString>> m_failed; // {fileName, error}
+    // Rate/ETA: a monotonic clock plus a short window of (elapsedMs, receivedBytes)
+    // samples per active file, and the last {received,total} seen (used to snapshot
+    // a download's progress at the moment it is paused).
+    QElapsedTimer m_clock;
+    QHash<QString,QList<QPair<qint64,qint64>>> m_rateSamples;
+    QHash<QString,QPair<qint64,qint64>> m_latestProgress;
+    // Paused downloads shown as persistent "Paused" rows (fileName -> {received,total}).
+    // Held here so a refresh() rebuild keeps the row (the worker gets no progress
+    // ticks while paused, so it can't self-heal like a live download row does).
+    QHash<QString,QPair<qint64,qint64>> m_pausedDownloads;
 };
 }

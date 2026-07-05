@@ -14,6 +14,8 @@ DownloadManager::DownloadManager(QObject* parent) : QObject(parent) {
     connect(m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
     connect(this, &DownloadManager::requestEnqueue, m_worker, &DownloadWorker::enqueue);
     connect(this, &DownloadManager::requestCancel,  m_worker, &DownloadWorker::cancel);
+    connect(this, &DownloadManager::requestPause,   m_worker, &DownloadWorker::pause);
+    connect(this, &DownloadManager::requestResume,  m_worker, &DownloadWorker::resume);
     connect(m_worker, &DownloadWorker::progress, this, &DownloadManager::progress);
     connect(m_worker, &DownloadWorker::finished, this, &DownloadManager::finished);
     m_thread->start();
@@ -38,6 +40,16 @@ void DownloadManager::enqueue(const QString& url, const QString& fileNameIn, con
 void DownloadManager::cancel(const QString& fileName) {
     qCInfo(lcDownload) << "cancel" << fileName;
     emit requestCancel(fileName);
+}
+
+void DownloadManager::pause(const QString& fileName) {
+    qCInfo(lcDownload) << "pause" << fileName;
+    emit requestPause(fileName);
+}
+
+void DownloadManager::resume(const QString& fileName) {
+    qCInfo(lcDownload) << "resume" << fileName;
+    emit requestResume(fileName);
 }
 
 } // namespace solero

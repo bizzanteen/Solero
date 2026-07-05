@@ -17,12 +17,17 @@ public:
     ~DownloadManager() override;
     void enqueue(const QString& url, const QString& fileName, const QString& destDir);
     void cancel(const QString& fileName);
+    // Pause/resume an in-progress download (HTTP Range resume; see DownloadWorker).
+    void pause(const QString& fileName);
+    void resume(const QString& fileName);
 signals:
     void progress(const QString& fileName, qint64 received, qint64 total);
     void finished(const QString& fileName, const QString& destPath, bool ok, const QString& error);
     // Internal: forwarded to the worker thread (queued connections).
     void requestEnqueue(const QString& url, const QString& fileName, const QString& destDir);
     void requestCancel(const QString& fileName);
+    void requestPause(const QString& fileName);
+    void requestResume(const QString& fileName);
 private:
     QThread* m_thread = nullptr;
     DownloadWorker* m_worker = nullptr;

@@ -7,6 +7,7 @@
 #include <QItemSelectionModel>
 #include <QSet>
 #include <QMenu>
+#include <QMessageBox>
 #include <QContextMenuEvent>
 #include <QMouseEvent>
 #include <QShowEvent>
@@ -268,6 +269,20 @@ void PluginListView::contextMenuEvent(QContextMenuEvent* event) {
             menu.addAction("Go to Origin Mod", [this, fn]{ emit pluginActivated(fn); });
             menu.addSeparator();
         }
+        // Mirror the mod list: if the right-clicked row isn't in the selection,
+        // make it the sole selection so per-selection actions act on it.
+        if (!selectionModel()->isRowSelected(idx.row(), idx.parent()))
+            selectionModel()->select(
+                idx, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    }
+    // Per-selection enable/disable (skips locked/official plugins in the model).
+    const QList<int> selRows = selectedSourceRows();
+    if (!selRows.isEmpty()) {
+        menu.addAction("Enable Selected",
+                       [this, selRows]{ m_model->setEnabledForRows(selRows, true); });
+        menu.addAction("Disable Selected",
+                       [this, selRows]{ m_model->setEnabledForRows(selRows, false); });
+        menu.addSeparator();
     }
     menu.addAction("Enable All",  [this]{ setAllEnabled(true); });
     menu.addAction("Disable All", [this]{ setAllEnabled(false); });
@@ -282,7 +297,31 @@ void PluginListView::contextMenuEvent(QContextMenuEvent* event) {
 }
 
 void PluginListView::setAllEnabled(bool enabled) {
+    // Whole-list toggles have no undo, so confirm on large lists before wiping
+    // every plugin's enabled state.
+    const int n = m_model->rowCount();
+    if (n > 20) {
+        const auto btn = QMessageBox::question(
+            this,
+            enabled ? "Enable All Plugins" : "Disable All Plugins",
+            QStringLiteral("%1 all %2 plugins?")
+                .arg(enabled ? "Enable" : "Disable").arg(n),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (btn != QMessageBox::Yes) return;
+    }
     m_model->setAllEnabled(enabled);
+}
+
+QList<int> PluginListView::selectedSourceRows() const {
+    QList<int> rows;
+    const auto sel = selectionModel() ? selectionModel()->selectedRows()
+                                      : QModelIndexList{};
+    for (const QModelIndex& idx : sel) {
+        const int r = (model() == m_proxy) ? m_proxy->mapToSource(idx).row()
+                                           : idx.row();
+        if (r >= 0) rows << r;
+    }
+    return rows;
 }
 
 void PluginListView::selectPlugin(const QString& filename) {

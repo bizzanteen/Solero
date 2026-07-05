@@ -46,6 +46,8 @@ private:
     QTimer* m_headerSaveTimer = nullptr;
     void autoSizeColumns();
     void setAllEnabled(bool enabled);
+    // Source-model rows of the current selection (proxy-mapped when sorted).
+    QList<int> selectedSourceRows() const;
     // Filename of the row at the given view index (proxy-aware, pin-glyph-free),
     // or the current row when `idx` is invalid. Empty if not a real plugin row.
     QString pluginFilenameAt(const QModelIndex& idx) const;

@@ -118,10 +118,28 @@ void PluginListModel::setAllEnabled(bool enabled) {
     if (!m_profile) return;
     PluginList& pl = m_profile->pluginList();
     if (pl.count() == 0) return;
-    for (int i = 0; i < pl.count(); ++i)
+    for (int i = 0; i < pl.count(); ++i) {
+        if (pl.at(i).isOfficial) continue; // official plugins can't be disabled
         pl.setEnabled(pl.at(i).filename, enabled);
+    }
     m_profile->save();
     emit dataChanged(index(0, 0), index(pl.count() - 1, ColCount - 1));
+}
+
+void PluginListModel::setEnabledForRows(const QList<int>& rows, bool enabled) {
+    if (!m_profile || rows.isEmpty()) return;
+    PluginList& pl = m_profile->pluginList();
+    int lo = pl.count(), hi = -1;
+    for (int r : rows) {
+        if (r < 0 || r >= pl.count()) continue;
+        if (pl.at(r).isOfficial) continue; // official plugins can't be disabled
+        pl.setEnabled(pl.at(r).filename, enabled);
+        lo = std::min(lo, r);
+        hi = std::max(hi, r);
+    }
+    if (hi < 0) return; // nothing toggled (empty/out-of-range/all official)
+    m_profile->save();
+    emit dataChanged(index(lo, 0), index(hi, ColCount - 1));
 }
 
 void PluginListModel::togglePin(int row) {

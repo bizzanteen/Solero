@@ -15,8 +15,12 @@ public:
     Profile* profile() const { return m_profile; }
     void reconcile(const QStringList& available);
     void setHighlighted(const QSet<QString>& lowerFilenames);
-    // Enable or disable every plugin at once (save + refresh).
+    // Enable or disable every plugin at once (save + refresh). Official plugins
+    // are skipped (they can't be disabled).
     void setAllEnabled(bool enabled);
+    // Enable or disable the plugins at the given source rows (save + refresh).
+    // Official plugins in the set are skipped (they can't be disabled).
+    void setEnabledForRows(const QList<int>& rows, bool enabled);
 
     // Toggle the pin on the plugin at `row` (records its current index when
     // pinning), persist, and refresh that row's pin indicator.

@@ -15,6 +15,8 @@
 #include "ui/IconUtil.h"
 #include <QSet>
 #include <QDebug>
+#include <QMessageBox>
+#include <QWidget>
 #include <climits>
 
 namespace solero {
@@ -677,6 +679,18 @@ bool ModListModel::setData(const QModelIndex& idx, const QVariant& value, int ro
                                    << e.id << oldPath << "->" << newPath
                                    << "; keeping old folder";
                         e.stagingFolder = oldFolder;
+                        // the move failed, so only the display name changes -
+                        // the files stayed in the old staging folder. Surface that so
+                        // the new name in the list doesn't mislead the user into
+                        // thinking their files moved.
+                        QMessageBox::warning(
+                            qobject_cast<QWidget*>(QObject::parent()),
+                            QStringLiteral("Rename Incomplete"),
+                            QStringLiteral(
+                                "The mod is now shown as \"%1\", but its files on disk "
+                                "could not be moved and stayed in the folder \"%2\".\n\n"
+                                "Only the display name changed; the staging folder did "
+                                "not.").arg(nn, oldFolder));
                     }
                 } else {
                     // Nothing staged yet - just record the name-based folder.

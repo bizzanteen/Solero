@@ -330,6 +330,15 @@ target_include_directories(test_PluginScanner PRIVATE ../src ${CMAKE_BINARY_DIR}
 target_link_libraries(test_PluginScanner PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_PluginScanner COMMAND test_PluginScanner)
 
+# PluginFlagEditor rewrites a plugin's TES4 header flags in place; the test builds
+# synthetic TES4 files (with GRUP/record walks) to guard against corruption.
+add_executable(test_PluginFlagEditor test_PluginFlagEditor.cpp
+  ../src/install/PluginFlagEditor.cpp
+  ../src/core/Log.cpp)
+target_include_directories(test_PluginFlagEditor PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_PluginFlagEditor PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_PluginFlagEditor COMMAND test_PluginFlagEditor)
+
 add_executable(test_ToolCatalog test_ToolCatalog.cpp ../src/tools/ToolCatalog.cpp)
 target_include_directories(test_ToolCatalog PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_ToolCatalog PRIVATE Qt6::Core Qt6::Test)

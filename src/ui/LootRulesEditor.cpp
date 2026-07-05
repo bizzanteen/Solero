@@ -113,6 +113,186 @@ void LootRulesEditor::onSave() {
     m_dirty = false;
 }
 
+namespace {
+
+// Tiny, line-based YAML helpers for the additive per-plugin rule editor
+// A full YAML parser is overkill (and we must not clobber the user's hand edits),
+// so we splice into a canonical, indentation-stable shape:
+//   plugins:
+//     - name: "Plugin.esp"
+//       after:
+//         - "Other.esp"
+//       group: "GroupName"
+
+const QString kEntryIndent = QStringLiteral("  ");     // "  - name:"
+const QString kKeyIndent   = QStringLiteral("    ");   // "    after:"
+const QString kItemIndent  = QStringLiteral("      "); // "      - \"x\""
+
+QString ruleKey(LootRulesEditor::LootRule k) {
+    switch (k) {
+        case LootRulesEditor::LootRule::LoadAfter:     return QStringLiteral("after");
+        case LootRulesEditor::LootRule::Requires:      return QStringLiteral("req");
+        case LootRulesEditor::LootRule::Incompatible:  return QStringLiteral("inc");
+        case LootRulesEditor::LootRule::SetGroup:      return QStringLiteral("group");
+    }
+    return QStringLiteral("after");
+}
+
+QString yamlQuote(const QString& s) {
+    QString e = s;
+    e.replace('\\', QStringLiteral("\\\\"));
+    e.replace('"', QStringLiteral("\\\""));
+    return '"' + e + '"';
+}
+
+// Strip surrounding single/double quotes (and any "\\\"" escaping) from a scalar.
+QString yamlUnquote(const QString& raw) {
+    QString s = raw.trimmed();
+    if (s.size() >= 2 && (s.front() == '"' || s.front() == '\'') && s.back() == s.front()) {
+        s = s.mid(1, s.size() - 2);
+        s.replace(QStringLiteral("\\\""), QStringLiteral("\""));
+        s.replace(QStringLiteral("\\\\"), QStringLiteral("\\"));
+    }
+    return s;
+}
+
+int leadingSpaces(const QString& l) {
+    int i = 0;
+    while (i < l.size() && l[i] == ' ') ++i;
+    return i;
+}
+
+// True if `line` is an entry line "- name: <plugin>" (any indent/quote style).
+bool isNameLine(const QString& line, const QString& plugin) {
+    const QString s = line.trimmed();
+    if (!s.startsWith(QStringLiteral("- name:"))) return false;
+    const QString val = s.mid(QStringLiteral("- name:").size());
+    return yamlUnquote(val).compare(plugin, Qt::CaseInsensitive) == 0;
+}
+
+QStringList freshKeyBlock(LootRulesEditor::LootRule kind, const QString& target) {
+    if (kind == LootRulesEditor::LootRule::SetGroup)
+        return { kKeyIndent + QStringLiteral("group: ") + yamlQuote(target) };
+    return { kKeyIndent + ruleKey(kind) + QStringLiteral(":"),
+             kItemIndent + QStringLiteral("- ") + yamlQuote(target) };
+}
+
+QStringList freshEntry(const QString& plugin, LootRulesEditor::LootRule kind,
+                       const QString& target) {
+    QStringList out;
+    out << kEntryIndent + QStringLiteral("- name: ") + yamlQuote(plugin);
+    out += freshKeyBlock(kind, target);
+    return out;
+}
+
+} // namespace
+
+QString LootRulesEditor::appendPluginRule(const QString& yaml, const QString& plugin,
+                                          LootRule kind, const QString& target) {
+    QStringList lines = yaml.isEmpty() ? QStringList() : yaml.split('\n');
+
+    // Locate (or create) the top-level `plugins:` block.
+    int hdr = -1;
+    for (int i = 0; i < lines.size(); ++i)
+        if (lines[i].startsWith(QStringLiteral("plugins:"))) { hdr = i; break; }
+
+    if (hdr < 0) {
+        if (!lines.isEmpty() && !lines.last().trimmed().isEmpty()) lines << QString();
+        lines << QStringLiteral("plugins:");
+        lines += freshEntry(plugin, kind, target);
+        return lines.join('\n');
+    }
+
+    // Extent of the plugins block: until the next column-0 (top-level) key or EOF.
+    int blockEnd = lines.size();
+    for (int i = hdr + 1; i < lines.size(); ++i) {
+        const QString& l = lines[i];
+        if (!l.isEmpty() && !l[0].isSpace()) { blockEnd = i; break; }
+    }
+
+    // Find this plugin's entry within the block.
+    int entryLine = -1;
+    for (int i = hdr + 1; i < blockEnd; ++i)
+        if (isNameLine(lines[i], plugin)) { entryLine = i; break; }
+
+    if (entryLine < 0) {
+        const QStringList entry = freshEntry(plugin, kind, target);
+        for (int j = 0; j < entry.size(); ++j) lines.insert(blockEnd + j, entry[j]);
+        return lines.join('\n');
+    }
+
+    // Entry's own line range: from entryLine to the next same-indent "- " or blockEnd.
+    const int entryIndent = leadingSpaces(lines[entryLine]);
+    int entryEnd = blockEnd;
+    for (int i = entryLine + 1; i < blockEnd; ++i) {
+        const QString& l = lines[i];
+        if (l.trimmed().startsWith(QStringLiteral("- ")) && leadingSpaces(l) <= entryIndent) {
+            entryEnd = i; break;
+        }
+    }
+
+    if (kind == LootRule::SetGroup) {
+        // Replace an existing scalar group, else insert one right after the name.
+        for (int i = entryLine + 1; i < entryEnd; ++i) {
+            if (lines[i].trimmed().startsWith(QStringLiteral("group:"))) {
+                lines[i] = kKeyIndent + QStringLiteral("group: ") + yamlQuote(target);
+                return lines.join('\n');
+            }
+        }
+        lines.insert(entryLine + 1, kKeyIndent + QStringLiteral("group: ") + yamlQuote(target));
+        return lines.join('\n');
+    }
+
+    // List key (after / req / inc): find the key line within the entry.
+    const QString key = ruleKey(kind);
+    int keyLine = -1;
+    for (int i = entryLine + 1; i < entryEnd; ++i)
+        if (lines[i].trimmed() == key + QStringLiteral(":")
+            || lines[i].trimmed().startsWith(key + QStringLiteral(":"))) {
+            // Guard against a false match on a longer key sharing the prefix.
+            const QString t = lines[i].trimmed();
+            if (t == key + QStringLiteral(":")) { keyLine = i; break; }
+        }
+
+    if (keyLine < 0) {
+        // No such key yet - add the key + first item after the name line.
+        const QStringList block = freshKeyBlock(kind, target);
+        for (int j = 0; j < block.size(); ++j) lines.insert(entryLine + 1 + j, block[j]);
+        return lines.join('\n');
+    }
+
+    // Append to the existing list; skip if the target is already present.
+    int listEnd = entryEnd;
+    const int keyIndent = leadingSpaces(lines[keyLine]);
+    for (int i = keyLine + 1; i < entryEnd; ++i) {
+        const QString s = lines[i].trimmed();
+        if (s.startsWith(QStringLiteral("- "))) {
+            if (yamlUnquote(s.mid(2)).compare(target, Qt::CaseInsensitive) == 0)
+                return yaml; // already listed - no-op
+            continue;
+        }
+        // A line that isn't a list item and is indented no deeper than the key ends it.
+        if (!s.isEmpty() && leadingSpaces(lines[i]) <= keyIndent) { listEnd = i; break; }
+    }
+    lines.insert(listEnd, kItemIndent + QStringLiteral("- ") + yamlQuote(target));
+    return lines.join('\n');
+}
+
+bool LootRulesEditor::addPluginRule(Profile* profile, const QString& plugin,
+                                    LootRule kind, const QString& target, QString* err) {
+    if (!profile) { if (err) *err = QStringLiteral("No active profile."); return false; }
+    const QString path = profile->lootUserlistPath();
+    QString existing;
+    QFile f(path);
+    if (f.open(QIODevice::ReadOnly)) { existing = QString::fromUtf8(f.readAll()); f.close(); }
+    const QString updated = appendPluginRule(existing, plugin, kind, target);
+    if (!atomicWrite(path, updated.toUtf8())) {
+        if (err) *err = QStringLiteral("Could not write the LOOT userlist file.");
+        return false;
+    }
+    return true;
+}
+
 void LootRulesEditor::insertSnippet(const QString& snippet) {
     // Each snippet is a full top-level block (e.g. starts with "plugins:" or
     // "groups:"). If the document already has that top-level key, splice only

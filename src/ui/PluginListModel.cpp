@@ -188,6 +188,22 @@ bool PluginListModel::isRowOfficial(int row) const {
     return m_profile->pluginList().at(row).isOfficial;
 }
 
+void PluginListModel::setPluginLight(const QString& filename, bool light) {
+    if (!m_profile) return;
+    PluginList& pl = m_profile->pluginList();
+    int row = -1;
+    for (int i = 0; i < pl.count(); ++i)
+        if (pl.at(i).filename.compare(filename, Qt::CaseInsensitive) == 0) { row = i; break; }
+    if (row < 0) return;
+    if (PluginEntry* pe = pl.findByFilename(pl.at(row).filename)) pe->isLight = light;
+    // Drop the mtime-keyed cache entry for the live file so a later reconcile
+    // re-reads the (now edited) header instead of returning the stale flags.
+    const QString dataDir = AppConfig::instance().gameDir() + "/Data";
+    m_metaCache.remove(dataDir + "/" + pl.at(row).filename);
+    // Type text + row font both derive from isLight - repaint the whole row.
+    emit dataChanged(index(row, 0), index(row, ColCount - 1));
+}
+
 void PluginListModel::setHighlighted(const QSet<QString>& lowerFilenames) {
     m_highlight = lowerFilenames;
     if (rowCount() > 0) emit dataChanged(index(0, 0), index(rowCount() - 1, ColCount - 1));

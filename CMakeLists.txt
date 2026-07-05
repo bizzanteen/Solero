@@ -155,6 +155,7 @@ set(SOLERO_SOURCES
   src/ui/ThemeAdapter.h
   src/install/DependencyChecker.cpp
   src/install/PluginScanner.cpp
+  src/install/PluginFlagEditor.cpp
   src/import/Mo2Importer.cpp
   src/io/ProfileManifest.cpp
   src/wabbajack/WabbajackEngine.cpp

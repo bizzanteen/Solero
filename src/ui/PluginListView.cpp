@@ -1,8 +1,15 @@
 #include "PluginListView.h"
 #include "PluginListModel.h"
+#include "LootRulesEditor.h"
 #include "install/PluginScanner.h"
+#include "install/PluginFlagEditor.h"
 #include "core/AppConfig.h"
+#include "core/ModList.h"
+#include "core/StagingFolder.h"
+#include "core/Log.h"
 #include <QHeaderView>
+#include <QDir>
+#include <QInputDialog>
 #include <QSortFilterProxyModel>
 #include <QItemSelectionModel>
 #include <QSet>
@@ -316,6 +323,51 @@ void PluginListView::contextMenuEvent(QContextMenuEvent* event) {
     }
     menu.addAction("Enable All",  [this]{ setAllEnabled(true); });
     menu.addAction("Disable All", [this]{ setAllEnabled(false); });
+
+    // (ESL flag) + (LOOT rules): per-plugin actions on the row under
+    // the cursor. Both operate on staged, non-official plugins.
+    if (srcRow >= 0 && !m_model->isRowOfficial(srcRow)) {
+        const QString fn = pluginFilenameAt(idx);
+        if (!fn.isEmpty()) {
+            menu.setToolTipsVisible(true); // so a disabled action can explain itself
+
+            // : ESL / light-master flag
+            const QString staged = stagedPluginPath(fn);
+            if (!staged.isEmpty() && PluginFlagEditor::isTes4(staged)) {
+                bool ok = false;
+                const bool light = PluginFlagEditor::isLight(staged, &ok);
+                if (ok) {
+                    menu.addSeparator();
+                    if (light) {
+                        menu.addAction("Remove ESL Flag",
+                                       [this, fn]{ applyEslFlag(fn, false); });
+                    } else {
+                        const EslEligibility elig = PluginFlagEditor::checkEslEligible(staged);
+                        QAction* a = menu.addAction("Add ESL Flag",
+                                       [this, fn]{ applyEslFlag(fn, true); });
+                        if (!elig.eligible) {
+                            a->setEnabled(false);
+                            a->setToolTip(elig.reason);
+                        }
+                    }
+                }
+            }
+
+            // : per-plugin LOOT rules
+            menu.addSeparator();
+            QMenu* loot = menu.addMenu("LOOT Rule");
+            using LR = LootRulesEditor::LootRule;
+            loot->addAction("Load After" + QString(QChar(0x2026)),
+                            [this, fn]{ addLootRuleFor(fn, int(LR::LoadAfter)); });
+            loot->addAction("Requires" + QString(QChar(0x2026)),
+                            [this, fn]{ addLootRuleFor(fn, int(LR::Requires)); });
+            loot->addAction("Incompatible With" + QString(QChar(0x2026)),
+                            [this, fn]{ addLootRuleFor(fn, int(LR::Incompatible)); });
+            loot->addAction("Set LOOT Group" + QString(QChar(0x2026)),
+                            [this, fn]{ addLootRuleFor(fn, int(LR::SetGroup)); });
+        }
+    }
+
     // Pin/unpin only makes sense for movable (non-official) plugins.
     if (srcRow >= 0 && !m_model->isRowOfficial(srcRow)) {
         const bool pinned = m_model->isRowPinned(srcRow);
@@ -340,6 +392,96 @@ void PluginListView::setAllEnabled(bool enabled) {
         if (btn != QMessageBox::Yes) return;
     }
     m_model->setAllEnabled(enabled);
+}
+
+QString PluginListView::stagedPluginPath(const QString& filename) const {
+    Profile* profile = m_model->profile();
+    if (!profile || filename.isEmpty()) return {};
+    const QString staging = AppConfig::instance().stagingDir();
+    // Mod-list order is low->high priority, so the last enabled provider wins the
+    // deploy conflict - that's the file the user sees, and the one we must edit.
+    QString winner;
+    for (const auto& e : profile->modList()) {
+        if (e.type != EntryType::Mod || !e.enabled) continue;
+        const QString data = stagingPathFor(staging, e) + "/Data";
+        QDir d(data);
+        if (!d.exists()) continue;
+        const auto plugins = d.entryList({"*.esp","*.esm","*.esl","*.ESP","*.ESM","*.ESL"},
+                                         QDir::Files);
+        for (const QString& f : plugins)
+            if (f.compare(filename, Qt::CaseInsensitive) == 0) { winner = data + "/" + f; break; }
+    }
+    return winner;
+}
+
+void PluginListView::applyEslFlag(const QString& filename, bool set) {
+    const QString staged = stagedPluginPath(filename);
+    if (staged.isEmpty()) {
+        QMessageBox::warning(this, "ESL Flag",
+            "Could not locate the staged plugin file to edit.");
+        return;
+    }
+    QString err;
+    if (!PluginFlagEditor::setLightFlag(staged, set, &err)) {
+        QMessageBox::warning(this, "ESL Flag",
+            err.isEmpty() ? QStringLiteral("Failed to update the ESL flag.") : err);
+        return;
+    }
+    qCInfo(lcInstall) << "PluginListView:" << (set ? "added" : "removed")
+                      << "ESL flag on" << filename;
+    m_model->setPluginLight(filename, set); // refresh the row's Type/flags immediately
+}
+
+QStringList PluginListView::otherPluginNames(const QString& self) const {
+    QStringList out;
+    Profile* profile = m_model->profile();
+    if (!profile) return out;
+    const PluginList& pl = profile->pluginList();
+    for (int i = 0; i < pl.count(); ++i) {
+        const QString& fn = pl.at(i).filename;
+        if (fn.compare(self, Qt::CaseInsensitive) != 0) out << fn;
+    }
+    return out;
+}
+
+void PluginListView::addLootRuleFor(const QString& filename, int rule) {
+    Profile* profile = m_model->profile();
+    if (!profile) return;
+    using LR = LootRulesEditor::LootRule;
+    const LR kind = static_cast<LR>(rule);
+
+    QString target;
+    bool okDlg = false;
+    if (kind == LR::SetGroup) {
+        target = QInputDialog::getText(this, "Set LOOT Group",
+            QStringLiteral("Group name for %1:").arg(filename),
+            QLineEdit::Normal, QString(), &okDlg).trimmed();
+    } else {
+        const QStringList others = otherPluginNames(filename);
+        if (others.isEmpty()) {
+            QMessageBox::information(this, "LOOT Rule",
+                "There are no other plugins to reference.");
+            return;
+        }
+        const QString title = kind == LR::LoadAfter ? "Load After"
+                            : kind == LR::Requires  ? "Requires"
+                            :                         "Incompatible With";
+        target = QInputDialog::getItem(this, title,
+            QStringLiteral("%1 %2:").arg(filename,
+                kind == LR::LoadAfter ? "loads after"
+              : kind == LR::Requires  ? "requires"
+              :                         "is incompatible with"),
+            others, 0, false, &okDlg).trimmed();
+    }
+    if (!okDlg || target.isEmpty()) return;
+
+    QString err;
+    if (!LootRulesEditor::addPluginRule(profile, filename, kind, target, &err)) {
+        QMessageBox::warning(this, "LOOT Rule",
+            err.isEmpty() ? QStringLiteral("Could not save the LOOT rule.") : err);
+        return;
+    }
+    qCInfo(lcLoot) << "PluginListView: added LOOT rule for" << filename << "->" << target;
 }
 
 QList<int> PluginListView::selectedSourceRows() const {

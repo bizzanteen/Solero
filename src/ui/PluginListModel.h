@@ -30,6 +30,12 @@ public:
     bool isRowPinned(int row) const;
     bool isRowOfficial(int row) const;
 
+    // after the staged plugin header was edited, update the cached ESL/light
+    // state of the matching row so the Type column + font refresh immediately,
+    // without waiting for a full reconcile. Invalidates the meta cache for that file
+    // too. No-op if the filename isn't in the list.
+    void setPluginLight(const QString& filename, bool light);
+
     int rowCount(const QModelIndex& = {}) const override;
     int columnCount(const QModelIndex& = {}) const override { return ColCount; }
     QVariant data(const QModelIndex&, int role = Qt::DisplayRole) const override;

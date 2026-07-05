@@ -47,6 +47,17 @@ private:
     QTimer* m_headerSaveTimer = nullptr;
     void autoSizeColumns();
     void setAllEnabled(bool enabled);
+    // resolve the on-disk STAGED path of the winning provider of `filename`
+    // (highest-priority enabled mod shipping it). Empty if not staged (e.g. a
+    // base-game plugin that only lives in the game Data folder).
+    QString stagedPluginPath(const QString& filename) const;
+    // set/clear the ESL flag on the staged plugin, then refresh the row.
+    void applyEslFlag(const QString& filename, bool set);
+    // append a LOOT rule for `filename` to the profile's userlist, prompting
+    // for the target plugin/group via a simple input dialog.
+    void addLootRuleFor(const QString& filename, int rule);
+    // Other plugin filenames (for the rule-target picker), excluding `self`.
+    QStringList otherPluginNames(const QString& self) const;
     // Source-model rows of the current selection (proxy-mapped when sorted).
     QList<int> selectedSourceRows() const;
     // Filename of the row at the given view index (proxy-aware, pin-glyph-free),

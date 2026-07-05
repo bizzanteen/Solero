@@ -31,6 +31,7 @@ class QPushButton;
 class QStackedWidget;
 class QActionGroup;
 class QLineEdit;
+class QTimer;
 
 namespace solero {
 struct ModEntry;
@@ -99,11 +100,13 @@ private:
     void hideRunLock();
     void refreshDeployState();   // detect an existing deployment on startup
     void updateDeployButton();   // sync the toggle's text/tooltip to m_deployed
-    // Recompute the aggregated health issues for the active profile and refresh
-    // the toolbar Problems indicator (count + worst-severity icon). Cheap enough
-    // to call from the existing post-deploy / profile-switch / scan refresh points
-    // (a shallow dependency scan, no recursion); not wired to per-keystroke events.
+    // Request a health-indicator refresh (debounced): a burst of toggles/renames
+    // collapses into one recompute instead of one shallow dependency scan per event.
     void refreshHealthIndicator();
+    // Recompute the aggregated health issues for the active profile and refresh the
+    // toolbar Problems indicator (count + worst-severity icon) synchronously. Callers
+    // needing the result immediately (Problems panel open/rescan) use this directly.
+    void recomputeHealthIndicator();
     void onShowProblems();       // open (or refresh) the non-modal Problems panel
     // Data-tab rename/delete of a staged file or folder, applied to the mod's
     // staging dir (stagingDir/<modId>/<relPath>).
@@ -302,6 +305,7 @@ private:
     QAction* m_playAction = nullptr;
     QToolButton* m_problemsBtn = nullptr;          // toolbar health indicator
     solero::ProblemsDialog* m_problemsDialog = nullptr;
+    QTimer* m_healthDebounce = nullptr;            // collapses a burst of refreshHealthIndicator() calls
     QString m_lastDeployWarning;                   // last DeployResult::warning
     bool m_lastDeployHadFailures = false;          // true when last deploy had file-link failures
     solero::ConflictIndex m_lastConflicts;         // last deployed/loaded conflict index

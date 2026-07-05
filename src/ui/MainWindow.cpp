@@ -1488,6 +1488,20 @@ void MainWindow::updateDeployButton() {
 }
 
 void MainWindow::refreshHealthIndicator() {
+    // Debounce: enable/disable, rename and variant-switch each poke this; a burst of
+    // them collapses into a single recompute rather than one shallow staging scan of
+    // every enabled mod per event.
+    if (!m_healthDebounce) {
+        m_healthDebounce = new QTimer(this);
+        m_healthDebounce->setSingleShot(true);
+        m_healthDebounce->setInterval(150);
+        connect(m_healthDebounce, &QTimer::timeout,
+                this, &MainWindow::recomputeHealthIndicator);
+    }
+    m_healthDebounce->start();
+}
+
+void MainWindow::recomputeHealthIndicator() {
     if (!m_problemsBtn) return;
     QList<solero::HealthIssue> issues;
     if (auto* profile = m_profileMgr->activeProfile()) {
@@ -1544,7 +1558,7 @@ void MainWindow::onShowProblems() {
     if (!m_problemsDialog) {
         m_problemsDialog = new solero::ProblemsDialog(this);
         connect(m_problemsDialog, &solero::ProblemsDialog::rescanRequested,
-                this, &MainWindow::refreshHealthIndicator);
+                this, &MainWindow::recomputeHealthIndicator);
         connect(m_problemsDialog, &solero::ProblemsDialog::goToMod, this,
                 [this](const QString& id) {
                     if (m_browseAction && m_browseAction->isChecked())
@@ -1556,7 +1570,7 @@ void MainWindow::onShowProblems() {
                     m_rightPane->selectPlugin(filename);
                 });
     }
-    refreshHealthIndicator(); // populate with the current state before showing
+    recomputeHealthIndicator(); // populate synchronously before showing
     m_problemsDialog->show();
     m_problemsDialog->raise();
     m_problemsDialog->activateWindow();
@@ -1581,6 +1595,7 @@ void MainWindow::onDataRename(const QString& modId, const QString& relPath,
     // Staged files for this mod changed - drop its cached scans and mark dirty.
     m_modListView->invalidateModCache(modId);
     m_rightPane->invalidateModPluginCache(modId);
+    solero::DependencyChecker::invalidate(modId);
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     updatePluginNotice();
     refreshHealthIndicator();
@@ -1591,6 +1606,7 @@ void MainWindow::onVariantSwitched(const QString& modId) {
     // scans and rescan plugins for it (mirrors the install tail).
     m_modListView->invalidateModCache(modId);
     m_rightPane->invalidateModPluginCache(modId);
+    solero::DependencyChecker::invalidate(modId);
     if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
     updatePluginNotice();
     refreshHealthIndicator();
@@ -1634,6 +1650,7 @@ void MainWindow::onDataDelete(const QString& modId, const QString& relPath,
     }
     m_modListView->invalidateModCache(modId);
     m_rightPane->invalidateModPluginCache(modId);
+    solero::DependencyChecker::invalidate(modId);
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     updatePluginNotice();
     refreshHealthIndicator();
@@ -2276,6 +2293,7 @@ void MainWindow::installFromArchive(const QString& archive) {
         variantTargetId.isEmpty() ? result.modId : variantTargetId;
     m_modListView->invalidateModCache(refreshId);
     m_rightPane->invalidateModPluginCache(refreshId);
+    solero::DependencyChecker::invalidate(refreshId);
 
     m_modListView->setProfile(profile);
     if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
@@ -2527,6 +2545,7 @@ void MainWindow::onReinstallMod(const QString& modId) {
     // Restaged files for this mod - drop its cached empty/plugin scans.
     m_modListView->invalidateModCache(modId);
     m_rightPane->invalidateModPluginCache(modId);
+    solero::DependencyChecker::invalidate(modId);
 
     m_modListView->setProfile(profile);
     if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
@@ -2714,6 +2733,7 @@ void MainWindow::onCreateModFromOverwrite() {
     m_modListView->invalidateModCache(mod.id); // newly staged files for this mod
     m_modListView->invalidateModCache();        // Overwrite contents changed (now empty)
     m_rightPane->invalidateModPluginCache(mod.id);
+    solero::DependencyChecker::invalidate(mod.id);
     m_modListView->setProfile(profile);
     if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
@@ -4411,6 +4431,7 @@ void MainWindow::onPatchWizard() {
         for (const QString& id : modIds) {
             m_modListView->invalidateModCache(id);
             m_rightPane->invalidateModPluginCache(id);
+            solero::DependencyChecker::invalidate(id);
         }
         if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
         if (m_deployed) { m_deployDirty = true; updateDeployButton(); }

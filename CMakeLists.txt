@@ -48,6 +48,31 @@ endforeach()
 
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network Xml Svg Test Concurrent WebEngineWidgets)
 
+# Optional decompressors for the READ-ONLY savegame (.ess) parser: zlib for
+# compressionType 1, LZ4 for compressionType 2 (Skyrim SE's default). Both are
+# lightweight system libs - NOT a hard dependency. When one is missing, compressed
+# saves degrade to header + screenshot only (pluginsReadable=false), never a crash.
+# The variables propagate to the tests/ subdirectory (added below) so its
+# test_SaveFile target compiles SaveFile.cpp with the same feature macros.
+find_package(ZLIB)
+# LZ4 may live in the Homebrew cellar (not on the default search path); hint at it.
+find_library(LZ4_LIBRARY NAMES lz4 liblz4
+  HINTS /home/linuxbrew/.linuxbrew/lib /usr/lib64 /usr/lib)
+find_path(LZ4_INCLUDE_DIR NAMES lz4.h
+  HINTS /home/linuxbrew/.linuxbrew/include /usr/include)
+set(SOLERO_SAVE_DEFS "")
+set(SOLERO_SAVE_LIBS "")
+set(SOLERO_SAVE_INCLUDES "")
+if(ZLIB_FOUND)
+  list(APPEND SOLERO_SAVE_DEFS SOLERO_HAVE_ZLIB)
+  list(APPEND SOLERO_SAVE_LIBS ZLIB::ZLIB)
+endif()
+if(LZ4_LIBRARY AND LZ4_INCLUDE_DIR)
+  list(APPEND SOLERO_SAVE_DEFS SOLERO_HAVE_LZ4)
+  list(APPEND SOLERO_SAVE_LIBS ${LZ4_LIBRARY})
+  list(APPEND SOLERO_SAVE_INCLUDES ${LZ4_INCLUDE_DIR})
+endif()
+
 # nlohmann/json header-only
 include(FetchContent)
 FetchContent_Declare(json
@@ -76,6 +101,8 @@ set(SOLERO_SOURCES
   src/core/OutputModMigration.cpp
   src/core/ShaderCache.cpp
   src/core/PluginList.cpp
+  src/saves/SaveFile.cpp
+  src/ui/SavesTab.cpp
   src/core/HealthCheck.cpp
   src/core/FileMove.cpp
   src/core/LoadOrderBackup.cpp
@@ -163,8 +190,9 @@ set(SOLERO_SOURCES
 )
 
 add_executable(solero ${SOLERO_SOURCES})
-target_include_directories(solero PRIVATE src ${CMAKE_BINARY_DIR}/include)
-target_link_libraries(solero PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::Xml Qt6::Svg Qt6::Concurrent Qt6::WebEngineWidgets libloot::libloot)
+target_include_directories(solero PRIVATE src ${CMAKE_BINARY_DIR}/include ${SOLERO_SAVE_INCLUDES})
+target_compile_definitions(solero PRIVATE ${SOLERO_SAVE_DEFS})
+target_link_libraries(solero PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::Xml Qt6::Svg Qt6::Concurrent Qt6::WebEngineWidgets libloot::libloot ${SOLERO_SAVE_LIBS})
 
 enable_testing()
 add_subdirectory(tests)

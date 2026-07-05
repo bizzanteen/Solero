@@ -15,6 +15,7 @@ class PluginListView;
 class DataTab;
 class ConflictsTab;
 class DownloadsTab;
+class SavesTab;
 }
 
 namespace solero {
@@ -103,6 +104,7 @@ private:
     DataTab*        m_dataTab;
     ConflictsTab*   m_conflictsTab;
     DownloadsTab*   m_downloadsTab;
+    SavesTab*       m_savesTab = nullptr;
     ConflictIndex   m_conflictIndex;
     Profile* m_currentProfile = nullptr;
     // Cache of each mod's staged Data plugin filenames (*.esp/*.esm/*.esl),

@@ -22,6 +22,12 @@ public:
     // localAppData holds Plugins.txt / loadorder.txt; documents holds the INIs.
     const QString& localAppDataDir() const { return m_localAppData; }
     const QString& documentsDir() const    { return m_documents; }
+    // Skyrim's Saves directory, derived read-only from documentsDir (the "Saves"
+    // subfolder of the game's My Games documents dir). Empty when the documents
+    // dir is unknown. Solero only ever READS this - it never touches save files.
+    QString savesDir() const {
+        return m_documents.isEmpty() ? QString() : m_documents + "/Saves";
+    }
     const QString& downloadsDir() const    { return m_downloads; }
     void setDownloadsDir(const QString& p) { m_downloads = p; }
     QString toolsDir() const;

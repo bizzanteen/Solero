@@ -356,6 +356,18 @@ target_include_directories(test_ToolNameMap PRIVATE ../src ${CMAKE_BINARY_DIR}/i
 target_link_libraries(test_ToolNameMap PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_ToolNameMap COMMAND test_ToolNameMap)
 
+# SaveFile is the READ-ONLY .ess header parser (saves/SaveFile.cpp) + Log. It
+# compiles with the same optional zlib/LZ4 feature macros as the main target (set
+# in the top-level CMakeLists and inherited here) so the compressed-save path is
+# exercised when a decompressor is available.
+add_executable(test_SaveFile test_SaveFile.cpp
+  ../src/saves/SaveFile.cpp
+  ../src/core/Log.cpp)
+target_include_directories(test_SaveFile PRIVATE ../src ${CMAKE_BINARY_DIR}/include ${SOLERO_SAVE_INCLUDES})
+target_compile_definitions(test_SaveFile PRIVATE ${SOLERO_SAVE_DEFS})
+target_link_libraries(test_SaveFile PRIVATE Qt6::Core Qt6::Test ${SOLERO_SAVE_LIBS})
+add_test(NAME test_SaveFile COMMAND test_SaveFile)
+
 # PluginOrigin is a header-only reverse-index helper; no extra sources to compile.
 add_executable(test_PluginOrigin test_PluginOrigin.cpp)
 target_include_directories(test_PluginOrigin PRIVATE ../src ${CMAKE_BINARY_DIR}/include)

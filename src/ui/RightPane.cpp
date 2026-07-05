@@ -3,6 +3,7 @@
 #include "DataTab.h"
 #include "ConflictsTab.h"
 #include "DownloadsTab.h"
+#include "SavesTab.h"
 #include "core/AppConfig.h"
 #include "core/PluginOrigin.h"
 #include <QDir>
@@ -90,6 +91,8 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     addTab(m_conflictsTab, "Conflicts");
     m_downloadsTab = new DownloadsTab(this);
     addTab(m_downloadsTab, "Downloads");
+    m_savesTab = new SavesTab(this);
+    addTab(m_savesTab, "Saves");
 
     // Double-clicking a conflict row jumps to that mod's Data view.
     connect(m_conflictsTab, &ConflictsTab::fileActivated, this,
@@ -166,6 +169,7 @@ void RightPane::setProfile(Profile* profile, bool reconcilePlugins) {
     m_dataTab->setProfile(profile);
     m_conflictsTab->setProfile(profile); // for mod-id -> name resolution
     m_downloadsTab->setProfile(profile);
+    if (m_savesTab) m_savesTab->setProfile(profile); // read-only saves + missing-plugin flag
 }
 
 void RightPane::refreshPlugins(Profile* profile) {

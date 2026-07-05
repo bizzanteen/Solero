@@ -26,6 +26,32 @@ private slots:
         list.move(0, 2);
         QCOMPARE(list.at(2).id, "0");
     }
+    void findById_correctAfterMoveAndRemove() {
+        // The id index must not return stale rows after structural edits.
+        ModList list;
+        for (int i = 0; i < 5; ++i) {
+            ModEntry m; m.type = EntryType::Mod; m.id = QString::number(i);
+            m.name = QString("Mod%1").arg(i); m.enabled = true;
+            list.append(m);
+        }
+        // Sanity: every id resolves to the entry with that id.
+        for (int i = 0; i < 5; ++i)
+            QCOMPARE(list.findById(QString::number(i))->id, QString::number(i));
+
+        // After a move the mapping must still point at the right entries.
+        list.move(0, 4); // [1,2,3,4,0]
+        QCOMPARE(list.at(4).id, QString("0"));
+        for (int i = 0; i < 5; ++i)
+            QCOMPARE(list.findById(QString::number(i))->id, QString::number(i));
+
+        // After removing a middle entry the rest still resolve; the gone id is null.
+        list.remove("2");
+        QCOMPARE(list.findById("2"), nullptr);
+        for (const QString id : {QStringLiteral("0"), QStringLiteral("1"),
+                                 QStringLiteral("3"), QStringLiteral("4")})
+            QCOMPARE(list.findById(id)->id, id);
+    }
+
     void disableParentNexusGroup_disablesChildren() {
         ModList list;
         ModEntry parent; parent.type = EntryType::Mod; parent.id = "p"; parent.nexusModId = "12345"; parent.parentId = ""; parent.enabled = true;

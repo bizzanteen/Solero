@@ -8,16 +8,31 @@
 
 namespace solero {
 
+void ModList::rebuildIndex() {
+    m_idIndex.clear();
+    m_idIndex.reserve(m_entries.size());
+    // Guard so the first occurrence of a (defensively) duplicated id wins, matching
+    // the linear scan's "return the first match" behaviour.
+    for (int i = 0; i < m_entries.size(); ++i)
+        if (!m_idIndex.contains(m_entries.at(i).id))
+            m_idIndex.insert(m_entries.at(i).id, i);
+}
+
 void ModList::append(const ModEntry& entry) {
+    // Patch incrementally so bulk loads (fromJson: one append per entry) stay O(n).
+    // Keep first-match semantics: only index the first occurrence of a duplicate id.
+    if (!m_idIndex.contains(entry.id)) m_idIndex.insert(entry.id, m_entries.size());
     m_entries.append(entry);
 }
 
 void ModList::remove(const QString& id) {
     m_entries.removeIf([&](const ModEntry& e){ return e.id == id; });
+    rebuildIndex();
 }
 
 void ModList::move(int from, int to) {
     m_entries.move(from, to);
+    rebuildIndex();
 }
 
 void ModList::moveSection(int from, int count, int to) {
@@ -31,6 +46,7 @@ void ModList::moveSection(int from, int count, int to) {
     if (to < 0) to = 0;
     if (to > m_entries.size()) to = m_entries.size();
     for (int i = 0; i < count; ++i) m_entries.insert(to + i, block.at(i));
+    rebuildIndex();
 }
 
 bool ModList::reorder(QList<int> srcRaws, int dstRaw) {
@@ -70,6 +86,7 @@ bool ModList::reorder(QList<int> srcRaws, int dstRaw) {
             if (m_entries.at(i).id == anchorId) { insertAt = i; break; }
     }
     for (int i = 0; i < block.size(); ++i) m_entries.insert(insertAt + i, block.at(i));
+    rebuildIndex();
 
     // 6. Did the order actually change?
     if (m_entries.size() != before.size()) return true;
@@ -105,6 +122,7 @@ bool ModList::setOrder(const QStringList& ids) {
     for (const auto& e : remaining) rebuilt.append(e);
 
     m_entries = std::move(rebuilt);
+    rebuildIndex();
 
     if (m_entries.size() != before.size()) return true;
     for (int i = 0; i < m_entries.size(); ++i)
@@ -113,7 +131,8 @@ bool ModList::setOrder(const QStringList& ids) {
 }
 
 void ModList::update(const QString& id, const ModEntry& updated) {
-    for (auto& e : m_entries) if (e.id == id) { e = updated; return; }
+    // Position is unchanged, but the replacement entry's id could differ, so rebuild.
+    for (auto& e : m_entries) if (e.id == id) { e = updated; rebuildIndex(); return; }
 }
 
 void ModList::setEnabled(const QString& id, bool enabled) {
@@ -168,6 +187,7 @@ void ModList::groupUnder(const QString& childId, const QString& parentId) {
     int dest = runEnd;
     if (childRaw < dest) dest -= 1;
     if (dest != childRaw) m_entries.move(childRaw, dest);
+    rebuildIndex();
 }
 
 void ModList::ungroup(const QString& childId) {
@@ -202,6 +222,7 @@ void ModList::ungroup(const QString& childId) {
     int dest = blockEnd;
     if (childRaw < dest) dest -= 1;
     if (dest != childRaw) m_entries.move(childRaw, dest);
+    rebuildIndex();
 }
 
 void ModList::normalizeGroups() {
@@ -215,18 +236,31 @@ void ModList::normalizeGroups() {
             e.parentId = parent->parentId;   // flatten 2-level nesting
         }
     }
-    // 2. Rebuild contiguous: emit each top-level entry, then its children in
-    //    their existing relative order. Children are never emitted at top level.
+    // 2. Rebuild contiguous in a single O(n) pass: bucket child indices
+    //    by parentId (preserving their existing relative order) and record the
+    //    top-level order, then emit each top-level entry followed by its children.
+    //    Children are never emitted at top level.
+    QHash<QString, QList<int>> childrenOf;
+    QList<int> topLevel;
+    topLevel.reserve(m_entries.size());
+    for (int i = 0; i < m_entries.size(); ++i) {
+        const auto& e = m_entries.at(i);
+        if (e.parentId.isEmpty()) topLevel.append(i);
+        else childrenOf[e.parentId].append(i);
+    }
     QList<ModEntry> out;
     out.reserve(m_entries.size());
-    for (const auto& e : m_entries) {
-        if (!e.parentId.isEmpty()) continue; // placed under its parent below
+    for (int ti : topLevel) {
+        const ModEntry& e = m_entries.at(ti);
         out.append(e);
-        if (e.type == EntryType::Mod)
-            for (const auto& c : m_entries)
-                if (c.parentId == e.id) out.append(c);
+        if (e.type == EntryType::Mod) {
+            auto it = childrenOf.constFind(e.id);
+            if (it != childrenOf.constEnd())
+                for (int ci : it.value()) out.append(m_entries.at(ci));
+        }
     }
-    m_entries = out;
+    m_entries = std::move(out);
+    rebuildIndex();
 }
 
 void ModList::propagateEnabled(const QString& parentId, bool enabled) {
@@ -238,13 +272,13 @@ void ModList::propagateEnabled(const QString& parentId, bool enabled) {
 }
 
 ModEntry* ModList::findById(const QString& id) {
-    for (auto& e : m_entries) if (e.id == id) return &e;
-    return nullptr;
+    auto it = m_idIndex.constFind(id); // O(1) via m_idIndex
+    return it == m_idIndex.constEnd() ? nullptr : &m_entries[it.value()];
 }
 
 const ModEntry* ModList::findById(const QString& id) const {
-    for (const auto& e : m_entries) if (e.id == id) return &e;
-    return nullptr;
+    auto it = m_idIndex.constFind(id); // O(1) via m_idIndex
+    return it == m_idIndex.constEnd() ? nullptr : &m_entries.at(it.value());
 }
 
 ModEntry* ModList::findByNexusId(const QString& nexusModId, const QString& skipId) {

@@ -1,6 +1,7 @@
 #pragma once
 #include "Types.h"
 #include <QJsonDocument>
+#include <QHash>
 
 namespace solero {
 
@@ -113,6 +114,11 @@ public:
 
 private:
     QList<ModEntry> m_entries;
+    // id -> raw index into m_entries, backing findById. Rebuilt after any
+    // structural mutation that reorders/removes entries; patched incrementally on
+    // append. Keeps first-match semantics for (defensive) duplicate ids.
+    QHash<QString, int> m_idIndex;
+    void rebuildIndex();
     void propagateEnabled(const QString& parentId, bool enabled);
 };
 

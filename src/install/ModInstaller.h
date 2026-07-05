@@ -75,12 +75,18 @@ private:
                                const QString& modDir,
                                const InstallLayout& layout);
     static QString resolveCaseInsensitive(const QString& base, const QString& rel);
+    // Reject FOMOD source/destination paths that would escape their base dir
+    // (zip-slip / path traversal): an absolute path or any ".." component.
+    // An empty path is safe (folder destination => Data root).
+    static bool isSafeRelPath(const QString& rel);
     static bool copyDirInto(const QString& srcDir, const QString& dstDir);
     static bool extractFull(InstallPrep& prep, const std::function<void(int)>& onProgress = {});
     // Copy FOMOD source->destination entries (priority-ordered, last-writer-wins)
     // into modDir/Data. fomodBase is the archive root that the FOMOD `source`
     // paths are relative to (the parent of the `fomod` folder).
-    static void copyFomodFiles(const QString& fomodBase, const QList<FomodFile>& files,
+    // Returns false if any entry was rejected (unsafe path), had a missing
+    // source, or failed to copy - so callers can propagate install failure.
+    static bool copyFomodFiles(const QString& fomodBase, const QList<FomodFile>& files,
                                const QString& modDir);
     // Locate the FOMOD config inside an extracted tree and return the archive root
     // (parent of the `fomod` folder). Falls back to extractDir if not found.

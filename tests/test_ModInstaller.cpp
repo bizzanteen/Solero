@@ -7,6 +7,7 @@
 #include "install/ArchiveTool.h"
 #include "core/StagingFolder.h"
 #include "core/Types.h"
+#include "fomod/FomodTypes.h"
 using namespace solero;
 
 static void writeFile(const QString& path, const QByteArray& c = "x") {
@@ -116,6 +117,52 @@ private slots:
         QVERIFY(QFile::exists(resolved + "/Data/textures/new.dds"));
         // …and not in the UUID dir (the old, orphaning bug).
         QVERIFY(!QDir(staging + "/" + existing.id).exists());
+    }
+
+    // Helper: build a one-file archive and return its path.
+    static QString makeArchive(QTemporaryDir& tmp, const QString& relFile) {
+        QString src = tmp.path() + "/srcmod";
+        writeFile(src + "/" + relFile, "a");
+        QString archive = tmp.path() + "/M.zip";
+        QProcess z; z.setWorkingDirectory(src);
+        z.start("7z", {"a", archive, "."});
+        z.waitForFinished(60000);
+        return archive;
+    }
+
+    // a FOMOD `source` with a ".." traversal must be rejected - no read
+    // outside fomodBase, and the install reports failure.
+    void installOptionFiles_rejectsSourceTraversal() {
+        QTemporaryDir tmp;
+        QString archive = makeArchive(tmp, "real/a.txt");
+        QString modDir = tmp.path() + "/mod"; QDir().mkpath(modDir);
+        FomodFile f; f.source = "../../../etc/passwd"; f.destination = "passwd";
+        QVERIFY(!ModInstaller::installOptionFiles(archive, modDir, {f}));
+        QVERIFY(!QFile::exists(modDir + "/Data/passwd"));
+    }
+
+    // a FOMOD `destination` with a ".." traversal must be rejected - no
+    // write outside the mod dir, and the install reports failure.
+    void installOptionFiles_rejectsDestTraversal() {
+        QTemporaryDir tmp;
+        QString archive = makeArchive(tmp, "real/a.txt");
+        QString modDir = tmp.path() + "/mod"; QDir().mkpath(modDir);
+        FomodFile f; f.source = "real/a.txt"; f.destination = "../../escape.txt";
+        QVERIFY(!ModInstaller::installOptionFiles(archive, modDir, {f}));
+        QVERIFY(!QFile::exists(tmp.path() + "/escape.txt"));
+    }
+
+    // a missing/failed source must propagate as failure (not silent
+    // success), while a valid sibling entry still installs.
+    void installOptionFiles_missingSourcePropagatesFailure() {
+        QTemporaryDir tmp;
+        QString archive = makeArchive(tmp, "real/a.txt");
+        QString modDir = tmp.path() + "/mod"; QDir().mkpath(modDir);
+        FomodFile good;    good.source = "real/a.txt";    good.destination = "a.txt";
+        FomodFile missing; missing.source = "real/nope.txt"; missing.destination = "nope.txt";
+        QVERIFY(!ModInstaller::installOptionFiles(archive, modDir, {good, missing}));
+        QVERIFY(QFile::exists(modDir + "/Data/a.txt"));   // successful path preserved
+        QVERIFY(!QFile::exists(modDir + "/Data/nope.txt"));
     }
 };
 QTEST_MAIN(TestModInstaller)

@@ -255,13 +255,16 @@ InstallResult ModInstaller::stageFomod(InstallPrep& prep, const QString& staging
 
     QString fomodDir = QFileInfo(prep.fomodConfigPath).dir().path(); // .../fomod
     QString fomodBase = QFileInfo(fomodDir).dir().path();            // parent of fomod
-    copyFomodFiles(fomodBase, files, modDir);
-    r.success = true; // note: copyFomodFiles swallows per-file failures; success is unconditional
-    qCInfo(lcInstall) << "stageFomod done:" << r.modName << "->" << modDir << "(" << files.size() << "file entries )";
+    r.success = copyFomodFiles(fomodBase, files, modDir);
+    if (!r.success) {
+        r.errorMessage = "Some FOMOD files could not be installed - the mod may be incomplete. Check that the disk has enough free space and the archive is not corrupt.";
+        qCWarning(lcInstall) << "stageFomod: copyFomodFiles reported failure for" << r.modName;
+    }
+    qCInfo(lcInstall) << "stageFomod done:" << r.modName << "->" << modDir << "(" << files.size() << "file entries )" << "success" << r.success;
     return r;
 }
 
-void ModInstaller::copyFomodFiles(const QString& fomodBase, const QList<FomodFile>& files,
+bool ModInstaller::copyFomodFiles(const QString& fomodBase, const QList<FomodFile>& files,
                                   const QString& modDir) {
     // FOMOD spec: when two sources write the same destination, the one with the
     // higher priority wins. We copy last-writer-wins, so stable-sort ASCENDING
@@ -270,29 +273,61 @@ void ModInstaller::copyFomodFiles(const QString& fomodBase, const QList<FomodFil
     std::stable_sort(ordered.begin(), ordered.end(),
                      [](const FomodFile& a, const FomodFile& b){ return a.priority < b.priority; });
 
+    const QString cleanMod = QDir::cleanPath(modDir);
+    bool allOk = true;
     for (const FomodFile& f : ordered) {
+        // reject source paths that escape the FOMOD base (path traversal).
+        if (!isSafeRelPath(f.source)) {
+            qCWarning(lcInstall) << "copyFomodFiles: rejected unsafe source path" << f.source;
+            allOk = false; continue;
+        }
+        // reject destination paths that escape the mod staging dir (zip-slip).
+        if (!isSafeRelPath(f.destination)) {
+            qCWarning(lcInstall) << "copyFomodFiles: rejected unsafe destination path" << f.destination;
+            allOk = false; continue;
+        }
         QString src = fomodBase + "/" + f.source;
         if (!QFileInfo::exists(src)) {
             QString found = resolveCaseInsensitive(fomodBase, f.source);
             if (!found.isEmpty()) src = found;
         }
-        if (!QFileInfo::exists(src)) qCWarning(lcInstall) << "copyFomodFiles: source missing" << src;
+        if (!QFileInfo::exists(src)) { qCWarning(lcInstall) << "copyFomodFiles: source missing" << src; allOk = false; continue; }
         bool isDir = f.isFolder || QFileInfo(src).isDir();
         if (isDir) {
             // Folder: copy CONTENTS into Data/<destination> (empty destination => Data root).
             QString dst = modDir + "/Data" + (f.destination.isEmpty() ? QString() : ("/" + f.destination));
+            // extra guard: the resolved path must stay under the mod dir.
+            if (!QDir::cleanPath(dst).startsWith(cleanMod + "/")) {
+                qCWarning(lcInstall) << "copyFomodFiles: destination escapes mod dir, skipping" << dst;
+                allOk = false; continue;
+            }
             qCDebug(lcInstall) << "copyFomodFiles dir:" << src << "->" << dst;
-            if (!copyDirInto(src, dst)) qCWarning(lcInstall) << "copyFomodFiles: copyDirInto failed" << src << "->" << dst;
+            if (!copyDirInto(src, dst)) { qCWarning(lcInstall) << "copyFomodFiles: copyDirInto failed" << src << "->" << dst; allOk = false; }
         } else {
             // File: destination defaults to source path (relative to Data).
             QString destRel = f.destination.isEmpty() ? f.source : f.destination;
             QString dst = modDir + "/Data/" + destRel;
+            // extra guard: the resolved path must stay under the mod dir.
+            if (!QDir::cleanPath(dst).startsWith(cleanMod + "/")) {
+                qCWarning(lcInstall) << "copyFomodFiles: destination escapes mod dir, skipping" << dst;
+                allOk = false; continue;
+            }
             QDir().mkpath(QFileInfo(dst).path());
             QFile::remove(dst);
             qCDebug(lcInstall) << "copyFomodFiles file:" << src << "->" << dst;
-            if (!QFile::copy(src, dst)) qCWarning(lcInstall) << "copyFomodFiles: copy failed" << src << "->" << dst;
+            if (!QFile::copy(src, dst)) { qCWarning(lcInstall) << "copyFomodFiles: copy failed" << src << "->" << dst; allOk = false; }
         }
     }
+    return allOk;
+}
+
+bool ModInstaller::isSafeRelPath(const QString& rel) {
+    if (rel.isEmpty()) return true;              // empty destination => Data root
+    if (rel.startsWith('/')) return false;       // absolute path escapes the base
+    const QStringList parts = rel.split('/', Qt::SkipEmptyParts);
+    for (const QString& p : parts)
+        if (p == "..") return false;             // ".." component escapes the base
+    return true;
 }
 
 QString ModInstaller::fomodBaseFor(const QString& extractDir) {
@@ -320,8 +355,7 @@ bool ModInstaller::installOptionFiles(const QString& archivePath, const QString&
     // (option sources may be solid/scattered); the temp dir auto-cleans.
     if (!ArchiveTool::extract(archivePath, tmp.path(), onProgress)) { qCWarning(lcInstall) << "installOptionFiles: extract failed" << archivePath; return false; }
     QString fomodBase = fomodBaseFor(tmp.path());
-    copyFomodFiles(fomodBase, files, modDir);
-    return true;
+    return copyFomodFiles(fomodBase, files, modDir);
 }
 
 QString ModInstaller::resolveCaseInsensitive(const QString& base, const QString& rel) {

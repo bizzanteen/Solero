@@ -102,6 +102,7 @@ set(SOLERO_SOURCES
   src/ui/SettingsDialog.cpp
   src/ui/WabbajackDialog.cpp
   src/core/AppConfig.cpp
+  src/core/Log.cpp
   src/deploy/Linker.cpp
   src/deploy/DeployRecord.cpp
   src/deploy/ConflictIndex.cpp

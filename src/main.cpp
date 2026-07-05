@@ -1,15 +1,22 @@
 #include "app/Application.h"
 #include "app/SingleInstance.h"
+#include "core/AppConfig.h"
+#include "core/Log.h"
 #include "ui/MainWindow.h"
 #include "ui/ThemeAdapter.h"
 #include <QTimer>
 #include <QCoreApplication>
 
 int main(int argc, char* argv[]) {
+    // Install the file sink + crash handler first, so even the app ctor's messages
+    // (and an early crash) are captured to ~/.local/share/solero/logs/solero.log.
+    solero::installLogging();
     // QtWebEngine widgets require shared OpenGL contexts set before QApplication.
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
     Application app(argc, argv);
     solero::ThemeAdapter::apply(app);
+    qCInfo(lcApp) << "Solero" << QCoreApplication::applicationVersion()
+                  << "starting; data dir" << solero::AppConfig::dataRoot();
 
     // An nxm:// URL may be passed by the browser (the .desktop Exec gets %u).
     QString nxmArg;

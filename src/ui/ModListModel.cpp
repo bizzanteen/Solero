@@ -524,6 +524,21 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     }
     if (role == Qt::ToolTipRole && !isSep) {
         QStringList tips;
+        // Selection-driven conflict highlight: the green/red row tint is
+        // color-only, so spell out the winner/loser relationship in words with a
+        // directional glyph as a non-hue cue.
+        if (entry.type == EntryType::Mod) {
+            auto ci = m_conflictHi.constFind(entry.id);
+            if (ci != m_conflictHi.constEnd())
+                tips << (ci.value() == 1
+                             ? (QChar(0x25B2) + QStringLiteral(" Overwrites the selected mod"))
+                             : (QChar(0x25BC) + QStringLiteral(" Overwritten by the selected mod")));
+            auto oi = m_pluginOriginHi.constFind(entry.id);
+            if (oi != m_pluginOriginHi.constEnd())
+                tips << (oi.value() == 1
+                             ? QStringLiteral("Provides the selected plugin (winning source)")
+                             : QStringLiteral("Also provides the selected plugin (overridden source)"));
+        }
         if (entry.isOutputMod)
             tips << QStringLiteral("Output mod (captures a tool's generated files)");
         if (m_overwritingMods.contains(entry.id))
@@ -753,6 +768,17 @@ bool ModListModel::setData(const QModelIndex& idx, const QVariant& value, int ro
 }
 
 QVariant ModListModel::headerData(int section, Qt::Orientation, int role) const {
+    if (role == Qt::ToolTipRole) {
+        switch (section) {
+            case ColEnabled:  return QStringLiteral("Enabled - tick to activate the mod");
+            case ColPriority: return QStringLiteral("Load order / priority - higher numbers win file conflicts");
+            case ColName:     return QStringLiteral("Mod name");
+            case ColVersion:  return QStringLiteral("Installed version (yellow arrow = update available)");
+            case ColFlags:    return QStringLiteral("Status icons: conflict winner/loser, note, FOMOD, "
+                                                    "missing dependency, output mod");
+            default: return {};
+        }
+    }
     if (role != Qt::DisplayRole) return {};
     switch (section) {
         case ColEnabled:  return "";

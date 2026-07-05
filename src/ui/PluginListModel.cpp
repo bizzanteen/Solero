@@ -228,6 +228,11 @@ QVariant PluginListModel::data(const QModelIndex& idx, int role) const {
     if (role == Qt::ToolTipRole) {
         QStringList parts;
         const PluginList& pl = m_profile->pluginList();
+        // the always-checked, disabled checkbox on official plugins is a
+        // silent no-op - explain why it can't be unticked.
+        if (p.isOfficial)
+            parts << QStringLiteral("Locked base-game plugin ") + QChar('-')
+                     + QStringLiteral(" always active");
         if (pl.isPinned(p.filename))
             parts << (pinGlyph() + (QStringLiteral(" Pinned ") + QChar('-')
                                     + QStringLiteral(" restored to index %1 after sorts"))
@@ -302,6 +307,15 @@ bool PluginListModel::setData(const QModelIndex& idx, const QVariant& value, int
 }
 
 QVariant PluginListModel::headerData(int s, Qt::Orientation, int role) const {
+    if (role == Qt::ToolTipRole) {
+        switch (s) {
+            case ColEnabled:  return QStringLiteral("Active - tick to load the plugin (base-game plugins are locked on)");
+            case ColPriority: return QStringLiteral("Load order - the index each plugin loads at");
+            case ColName:     return QStringLiteral("Plugin file name");
+            case ColFlags:    return QStringLiteral("Plugin type: ESM (master), ESL (light), or ESP (regular)");
+            default: return {};
+        }
+    }
     if (role != Qt::DisplayRole) return {};
     switch (s) {
         case ColEnabled:  return "";

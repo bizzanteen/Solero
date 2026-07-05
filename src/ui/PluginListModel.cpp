@@ -8,6 +8,7 @@
 #include <QByteArray>
 #include <QStringList>
 #include <QSet>
+#include <QFileInfo>
 #include <algorithm>
 
 namespace solero {
@@ -33,6 +34,25 @@ void PluginListModel::setProfile(Profile* profile) {
 
 // pluginBand() now lives in core/PluginList (shared with the DnD rule logic).
 
+// Masters + flags for a plugin file, parsed from its TES4 header at most once per
+// (path, mtime). Re-reading every plugin's header on every reconcile dominated
+// profile switches; an unchanged file now costs a single stat().
+const PluginListModel::CachedMeta& PluginListModel::cachedMeta(const QString& path) {
+    const qint64 mtime = QFileInfo(path).lastModified().toMSecsSinceEpoch();
+    auto it = m_metaCache.find(path);
+    if (it != m_metaCache.end() && it->mtime == mtime) return *it;
+
+    CachedMeta m;
+    m.mtime   = mtime;
+    m.masters = PluginScanner::readMasters(path);
+    const PluginFlags pf = PluginScanner::readFlags(path);
+    m.flagsOk  = pf.ok;
+    m.isMaster = pf.isMaster;
+    m.isLight  = pf.isLight;
+    it = m_metaCache.insert(path, m);
+    return *it;
+}
+
 void PluginListModel::reconcile(const QStringList& available) {
     if (!m_profile) return;
     beginResetModel();
@@ -47,36 +67,39 @@ void PluginListModel::reconcile(const QStringList& available) {
             if (fn.compare(official[i], Qt::CaseInsensitive) == 0) return i;
         return -1;
     };
-    // Refresh masters + isOfficial on an entry from disk + the official set.
+    // Refresh masters + isOfficial on an entry from the (mtime-keyed) cache.
     auto refreshMeta = [&](PluginEntry& pe) {
-        pe.masters    = PluginScanner::readMasters(dataDir + "/" + pe.filename);
+        pe.masters    = cachedMeta(dataDir + "/" + pe.filename).masters;
         pe.isOfficial = officialRank(pe.filename) >= 0;
     };
 
+    // Lowercased membership sets for O(1) presence tests.
+    QSet<QString> availableLower;
+    for (const QString& fn : available) availableLower.insert(fn.toLower());
+
     // Build the rebuilt list as a vector so we can insert in the correct band.
     QList<PluginEntry> entries;
+    QSet<QString> presentLower; // filenames already in `entries`
     // Keep current order (and enabled state) for plugins still available.
     for (int i = 0; i < pl.count(); ++i) {
         auto p = pl.at(i);
-        if (available.contains(p.filename, Qt::CaseInsensitive)) {
+        if (availableLower.contains(p.filename.toLower())) {
             refreshMeta(p); // cheap refresh of masters/isOfficial for kept entries
             entries.append(p);
+            presentLower.insert(p.filename.toLower());
         }
     }
     // Insert newly-available plugins not already present, each into its band.
     for (const QString& fn : available) {
-        bool present = false;
-        for (const auto& e : entries)
-            if (e.filename.compare(fn, Qt::CaseInsensitive) == 0) { present = true; break; }
-        if (present) continue;
+        if (presentLower.contains(fn.toLower())) continue;
 
         PluginEntry pe;
         pe.filename = fn;
         pe.enabled  = true; // freshly installed mods default to active
-        PluginFlags pf = PluginScanner::readFlags(dataDir + "/" + fn);
-        if (pf.ok) {
-            pe.isMaster = pf.isMaster;
-            pe.isLight  = pf.isLight;
+        const CachedMeta& cm = cachedMeta(dataDir + "/" + fn);
+        if (cm.flagsOk) {
+            pe.isMaster = cm.isMaster;
+            pe.isLight  = cm.isLight;
         } else {
             pe.isMaster = fn.endsWith(".esm", Qt::CaseInsensitive);
             pe.isLight  = fn.endsWith(".esl", Qt::CaseInsensitive);
@@ -91,6 +114,7 @@ void PluginListModel::reconcile(const QStringList& available) {
             if (pluginBand(entries[i]) > band) { insertAt = i; break; }
         }
         entries.insert(insertAt, pe);
+        presentLower.insert(fn.toLower());
     }
 
     // Force official plugins to the top block, in official-list order; the rest

@@ -234,8 +234,13 @@ void PluginListView::reconcileWith(Profile* profile, const QString& stagingRoot)
         // would write a vanilla-only Plugins.txt and the game would load no mods.
         auto available = PluginScanner::scanGameData(AppConfig::instance().gameDir());
         const QStringList staged = PluginScanner::scan(profile->modList(), stagingRoot);
+        QSet<QString> availableLower; // O(1) case-insensitive presence test
+        for (const QString& p : available) availableLower.insert(p.toLower());
         for (const QString& p : staged)
-            if (!available.contains(p, Qt::CaseInsensitive)) available << p;
+            if (!availableLower.contains(p.toLower())) {
+                available << p;
+                availableLower.insert(p.toLower());
+            }
         // Snapshot the plugin list (filename + enabled + order) before reconcile so
         // we only pay for a profile save when the list actually changed.
         const auto snapshot = [&] {

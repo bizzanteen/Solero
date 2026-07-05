@@ -1,6 +1,8 @@
 #pragma once
 #include <QAbstractTableModel>
 #include <QSet>
+#include <QHash>
+#include <QStringList>
 #include <QColor>
 #include "core/Profile.h"
 
@@ -52,8 +54,21 @@ private:
     // Master files declared by `p` that are absent from the current plugin list.
     QStringList missingMasters(const PluginEntry& p) const;
 
+    // Cached TES4 masters + flags for a plugin file, keyed by absolute path and
+    // validated against the file's mtime - reconcile parses each header from disk
+    // only when the file actually changed.
+    struct CachedMeta {
+        qint64 mtime = -1;
+        QStringList masters;
+        bool flagsOk = false;
+        bool isMaster = false;
+        bool isLight  = false;
+    };
+    const CachedMeta& cachedMeta(const QString& path);
+
     Profile* m_profile = nullptr;
     QSet<QString> m_highlight;
+    QHash<QString, CachedMeta> m_metaCache;
 };
 
 } // namespace solero

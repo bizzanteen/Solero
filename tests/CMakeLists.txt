@@ -36,6 +36,13 @@ target_include_directories(test_ExeResolve PRIVATE ../src ${CMAKE_BINARY_DIR}/in
 target_link_libraries(test_ExeResolve PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_ExeResolve COMMAND test_ExeResolve)
 
+# UnmanagedScanner (core): pure; links DeployRecord + UnmanagedScanner only.
+add_executable(test_UnmanagedScanner test_UnmanagedScanner.cpp
+  ../src/deploy/UnmanagedScanner.cpp ../src/deploy/DeployRecord.cpp)
+target_include_directories(test_UnmanagedScanner PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_UnmanagedScanner PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_UnmanagedScanner COMMAND test_UnmanagedScanner)
+
 # Redactor is a small pure function (report/Redactor.cpp), no other deps.
 add_executable(test_Redactor test_Redactor.cpp ../src/report/Redactor.cpp)
 target_include_directories(test_Redactor PRIVATE ../src ${CMAKE_BINARY_DIR}/include)

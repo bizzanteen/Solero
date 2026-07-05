@@ -44,6 +44,7 @@
 #include "ui/KeyboardShortcutsDialog.h"
 #include "ui/IconUtil.h"
 #include "core/HealthCheck.h"
+#include "core/Log.h"
 #include "install/DependencyChecker.h"
 #include "nexus/NexusApi.h"
 #include <QJsonDocument>
@@ -351,6 +352,13 @@ void MainWindow::detachProfileFromViews() {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+    // Safety net: flush the active profile so any mutation path that forgot to
+    // save() doesn't lose the change on exit. Never block quit on a failed save.
+    if (auto* active = m_profileMgr->activeProfile()) {
+        if (!active->save())
+            qCWarning(lcProfile) << "closeEvent: safety-net save failed for profile"
+                                 << active->name();
+    }
     // Drop model->Profile references while the event loop is still alive, so a
     // queued paint after the window starts closing can't deref a freed Profile.
     detachProfileFromViews();
@@ -1598,10 +1606,27 @@ void MainWindow::onDataDelete(const QString& modId, const QString& relPath,
     const QString root = stagingRootForId(modId);
     const QString path = root + "/" + relPath;
 
+    // Confirm before touching staged files - a folder delete can remove many
+    // files at once. Default to Cancel so Enter can't delete by accident.
+    const QString what = isFolder ? QString("the folder \"%1\" and everything in it").arg(relPath)
+                                  : QString("\"%1\"").arg(relPath);
+    QMessageBox confirm(QMessageBox::Question, "Delete Staged Files",
+        QString("Delete %1 from this mod's staging?\nSolero will move it to the "
+                "Trash if possible.").arg(what),
+        QMessageBox::Cancel, this);
+    auto* delBtn = confirm.addButton("Delete", QMessageBox::DestructiveRole);
+    confirm.setDefaultButton(QMessageBox::Cancel);
+    confirm.exec();
+    if (confirm.clickedButton() != delBtn) return;
+
     // Staged files may be symlinks (Fluorine/Wabbajack): removing the link/dir
     // removes it from the mod without touching the source target.
-    const bool ok = isFolder ? QDir(path).removeRecursively()
-                             : QFile::remove(path);
+    // Prefer the Trash so the delete is recoverable; fall back to a permanent
+    // delete only if trashing isn't available (e.g. no trash on that mount).
+    bool ok = QFile::moveToTrash(path);
+    if (!ok)
+        ok = isFolder ? QDir(path).removeRecursively()
+                      : QFile::remove(path);
     if (!ok) {
         QMessageBox::warning(this, "Delete Failed",
                              QString("Could not delete '%1'. The file may be in use or the staging folder may not be writable.").arg(relPath));
@@ -1768,9 +1793,13 @@ void MainWindow::onRestoreLo() {
         auto* item = listw->currentItem();
         if (!item) return;
         const QString path = item->data(Qt::UserRole).toString();
-        if (QMessageBox::question(&dlg, "Delete backup",
-                "Delete \"" + item->text() + "\"?") != QMessageBox::Yes)
-            return;
+        QMessageBox confirm(QMessageBox::Question, "Delete backup",
+                            "Delete \"" + item->text() + "\"?",
+                            QMessageBox::Cancel, &dlg);
+        auto* delBtn = confirm.addButton("Delete", QMessageBox::DestructiveRole);
+        confirm.setDefaultButton(QMessageBox::Cancel); // Enter must not delete
+        confirm.exec();
+        if (confirm.clickedButton() != delBtn) return;
         QFile::remove(path);
         backups = solero::LoadOrderBackup::list(*profile);
         populate();
@@ -3547,10 +3576,13 @@ void MainWindow::onDeleteProfile() {
         QMessageBox::warning(this, "Delete Profile", "You can't delete the only profile. Create another profile first.");
         return;
     }
-    auto ret = QMessageBox::question(this, "Delete Profile",
+    QMessageBox confirm(QMessageBox::Question, "Delete Profile",
         QString("Delete profile '%1'? This cannot be undone.").arg(current),
-        QMessageBox::Yes | QMessageBox::No);
-    if (ret != QMessageBox::Yes) return;
+        QMessageBox::Cancel, this);
+    auto* deleteBtn = confirm.addButton("Delete", QMessageBox::DestructiveRole);
+    confirm.setDefaultButton(QMessageBox::Cancel); // Enter must not delete
+    confirm.exec();
+    if (confirm.clickedButton() != deleteBtn) return;
     m_profileMgr->deleteProfile(current);
     refreshProfileCombo();
     switchProfile(m_profileMgr->profileNames().first());
@@ -4688,19 +4720,33 @@ void MainWindow::removeModEverywhere(const QString& id) {
         add(e->stagingFolder);
         for (const auto& v : e->variants) add(v.stagingFolder);
     };
+    // If any holding profile fails to persist its modlist after dropping the mod,
+    // we must not delete the staging - the on-disk profile still references it, and
+    // wiping the files would leave that profile pointing at missing files.
+    bool allSaved = true;
     auto* active = m_profileMgr->activeProfile();
     for (const QString& name : m_profileMgr->profileNames()) {
         if (active && name == active->name()) {
             captureFolders(active->modList().findById(id));
             active->modList().remove(id);
-            checkSave(active->save());
+            if (!checkSave(active->save())) allSaved = false;
         } else {
             QString path = profilesRoot() + "/" + name + "/modlist.json";
             solero::ModList ml = solero::ModList::loadFromFile(path);
             captureFolders(ml.findById(id));
             ml.remove(id);
-            ml.saveToFile(path);
+            if (!ml.saveToFile(path)) {
+                allSaved = false;
+                qCWarning(lcProfile) << "removeModEverywhere: failed to save modlist for profile"
+                                     << name << "-- keeping staging for" << id;
+            }
         }
+    }
+    if (!allSaved) {
+        statusBar()->showMessage(
+            "Couldn't fully remove the mod from every profile - its staged files were "
+            "kept so no profile is left pointing at missing files. Try again.", 8000);
+        return;
     }
     if (folders.isEmpty()) folders << id; // pre-migration mods (or unknown) used the id
     const QString stagingDir = solero::AppConfig::instance().stagingDir();

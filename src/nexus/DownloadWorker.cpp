@@ -26,6 +26,7 @@ void DownloadWorker::startNext() {
     ensureNam();
     m_active = m_queue.dequeue();
     m_busy = true;
+    m_writeFailed = false;
 
     QDir().mkpath(m_active.destDir);
     const QString dest = m_active.destDir + "/" + m_active.fileName;
@@ -63,13 +64,33 @@ void DownloadWorker::startNext() {
         emit progress(fileName, r, t);
     });
     connect(reply, &QNetworkReply::readyRead, this, [this, reply] {
-        if (m_file && m_reply == reply) {
-            if (m_file->write(reply->readAll()) < 0)
+        // Check every write: a short write means the disk is full or the
+        // file went away. Stop the transfer and let finished() delete the .part.
+        if (m_file && m_reply == reply && !m_writeFailed) {
+            const QByteArray chunk = reply->readAll();
+            if (m_file->write(chunk) != chunk.size()) {
+                m_writeFailed = true;
                 qCWarning(lcDownload) << "write failed:" << m_file->errorString();
+                reply->abort();
+            }
         }
     });
     connect(reply, &QNetworkReply::finished, this, [this, reply, fileName, destDir] {
         if (m_reply != reply) { reply->deleteLater(); return; }
+
+        // Disk-write failure detected mid-transfer. The .part is truncated,
+        // so fail rather than promote it. Checked before error() so the abort we
+        // issued from readyRead isn't misreported as a network cancellation.
+        if (m_writeFailed) {
+            qCWarning(lcDownload) << "download failed" << fileName << ": could not write to disk";
+            cleanupActive();
+            m_busy = false;
+            emit finished(fileName, "", false,
+                          "The download could not be saved - writing to disk failed. "
+                          "Check that the downloads folder has enough free space.");
+            startNext();
+            return;
+        }
 
         if (reply->error() != QNetworkReply::NoError) {
             const QString err = reply->errorString();
@@ -81,22 +102,59 @@ void DownloadWorker::startNext() {
             return;
         }
 
+        // Server-authoritative expected size; 0 when the server sends no
+        // Content-Length (e.g. chunked), in which case the size check is skipped.
+        const qint64 expected = reply->header(QNetworkRequest::ContentLengthHeader).toLongLong();
+
+        // Flush the tail and close, checking every write/close.
+        bool diskOk = true;
         if (m_file) {
-            if (m_file->write(reply->readAll()) < 0)
+            const QByteArray tail = reply->readAll();
+            if (m_file->write(tail) != tail.size() || !m_file->flush()) {
+                diskOk = false;
                 qCWarning(lcDownload) << "final write failed:" << m_file->errorString();
+            }
             m_file->close();
+            if (m_file->error() != QFileDevice::NoError) {
+                diskOk = false;
+                qCWarning(lcDownload) << "close failed:" << m_file->errorString();
+            }
             delete m_file; m_file = nullptr;
         }
         reply->deleteLater();
         m_reply = nullptr;
 
-        const QString dest = destDir + "/" + fileName;
-        QFile::remove(dest);
         const QString partPath = m_partPath;
         m_partPath.clear();
         m_busy = false;
+
+        if (!diskOk) {
+            QFile::remove(partPath);
+            emit finished(fileName, "", false,
+                          "The download could not be saved to disk. "
+                          "Check that the downloads folder is writable and has enough free space.");
+            startNext();
+            return;
+        }
+
+        // Verify completeness against Content-Length: a truncated transfer
+        // (dropped mirror, short body) must not be promoted to a file the installer
+        // would treat as valid.
+        const qint64 got = QFileInfo(partPath).size();
+        if (expected > 0 && got != expected) {
+            qCWarning(lcDownload) << "size mismatch" << fileName << "expected" << expected << "got" << got;
+            QFile::remove(partPath);
+            emit finished(fileName, "", false,
+                          "The download was incomplete - the saved file is a different size than "
+                          "the server reported. Please try downloading it again.");
+            startNext();
+            return;
+        }
+
+        const QString dest = destDir + "/" + fileName;
+        QFile::remove(dest);
         if (QFile::rename(partPath, dest)) {
-            qCInfo(lcDownload) << "download finished" << fileName << "ok" << QFileInfo(dest).size() << "bytes";
+            qCInfo(lcDownload) << "download finished" << fileName << "ok" << got << "bytes";
             emit finished(fileName, dest, true, "");
         } else {
             qCWarning(lcDownload) << "rename to final failed" << partPath << "->" << dest;

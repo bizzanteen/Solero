@@ -21,23 +21,62 @@ QString NexusApi::modPageUrl(const QString& modId, const QString& game) {
     return "https://www.nexusmods.com/" + game + "/mods/" + modId;
 }
 
-// Runs `curl -s [args...]` with the apikey header. On curl failure sets *err and
-// returns empty. The body is not validated as JSON; callers parse it.
+// Splits the HTTP status code that `-w %{stderr}%{http_code}` appends to stderr
+// off from any curl diagnostic text. Returns the code (0 if none) and trims the
+// trailing digits from *stderrText so the remainder is a clean error hint.
+static int takeHttpCode(QString& stderrText) {
+    int i = stderrText.size();
+    while (i > 0 && stderrText.at(i - 1).isDigit()) --i;
+    const QString digits = stderrText.mid(i);
+    if (digits.isEmpty()) return 0;
+    stderrText.truncate(i);
+    return digits.right(3).toInt(); // http_code is always 3 digits
+}
+
+// Maps a mapped HTTP status to a user-facing message, or "" for a status we let
+// callers handle as an ordinary (possibly empty) body..
+static QString httpStatusMessage(int code) {
+    if (code == 401) return "Nexus rejected your API key (401) - it may be expired or invalid. "
+                            "Re-enter it in Settings.";
+    if (code == 403) return "Nexus refused the request (403) - your account may lack access, "
+                            "or the download requires Nexus Premium.";
+    if (code == 429) return "Nexus is rate-limiting requests (429). Wait a minute and try again.";
+    if (code >= 500) return "Nexus is having server problems (" + QString::number(code) + "). "
+                            "Try again later.";
+    return {};
+}
+
+// Runs `curl [args...]` with the apikey header supplied via a stdin config file
+// (never argv). On curl/HTTP failure sets *err and returns empty. The
+// body is not validated as JSON; callers parse it.
 static QByteArray curlRun(const QStringList& extraArgs, QString* err = nullptr) {
     const QString key = ToolDownloader::nexusApiKey();
     QProcess p;
-    QStringList args; args << "-sS" << "-H" << ("apikey: " + key) << extraArgs;
+    // -K - reads further options from stdin; %{stderr} routes the status code to
+    // stderr so it never contaminates the JSON body on stdout.
+    QStringList args; args << "-sS" << "-w" << "%{stderr}%{http_code}" << "-K" << "-" << extraArgs;
     p.start("curl", args);
+    // Feed the apikey header through the config channel, out of argv/ps/proc.
+    p.write(QByteArray("header = \"apikey: ") + key.toUtf8() + "\"\n");
+    p.closeWriteChannel();
     p.waitForFinished(60000);
+    QString stderrText = QString::fromUtf8(p.readAllStandardError());
+    const int httpCode = takeHttpCode(stderrText);
+    stderrText = stderrText.trimmed();
     if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
-        // NB: never log `args` - it carries the apikey header.
+        // NB: never log `args` - the config channel carries the apikey header.
         qCWarning(lcNexus) << "curl request failed, exit code" << p.exitCode();
         if (err) {
-            const QString hint = curlStderrHint(
-                QString::fromUtf8(p.readAllStandardError()).trimmed());
+            const QString hint = curlStderrHint(stderrText);
             *err = "No response from Nexus - check your internet connection."
                  + (hint.isEmpty() ? QString() : " (" + hint + ")");
         }
+        return {};
+    }
+    const QString statusMsg = httpStatusMessage(httpCode);
+    if (!statusMsg.isEmpty()) {
+        qCWarning(lcNexus) << "Nexus HTTP status" << httpCode;
+        if (err) *err = statusMsg;
         return {};
     }
     return p.readAllStandardOutput();
@@ -360,11 +399,13 @@ NexusApi::UserInfo NexusApi::validateUser(const QString& key) {
     // timeout so the Settings dialog can't hang on open.
     QProcess p;
     QStringList args;
-    args << "-s" << "--max-time" << "10"
-         << "-H" << ("apikey: " + useKey)
+    args << "-s" << "--max-time" << "10" << "-K" << "-"
          << "https://api.nexusmods.com/v1/users/validate.json";
     qCInfo(lcNexus) << "validateUser";
     p.start("curl", args);
+    // Supply the apikey header via stdin config, never argv.
+    p.write(QByteArray("header = \"apikey: ") + useKey.toUtf8() + "\"\n");
+    p.closeWriteChannel();
     p.waitForFinished(15000);
     if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
         qCWarning(lcNexus) << "validateUser: curl failed, exit code" << p.exitCode();
@@ -381,7 +422,11 @@ NexusApi::UserInfo NexusApi::validateUser(const QString& key) {
 }
 
 bool NexusApi::setApiKey(const QString& key) {
-    return atomicWrite(apiKeyPath(), key.trimmed().toUtf8());
+    const QString path = apiKeyPath();
+    if (!atomicWrite(path, key.trimmed().toUtf8())) return false;
+    // The key is a secret: keep it owner-only (0600), not the default 0644.
+    QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    return true;
 }
 
 void NexusApi::clearApiKey() {

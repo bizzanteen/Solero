@@ -41,6 +41,7 @@ private:
     QNetworkReply* m_reply = nullptr;
     QFile* m_file = nullptr;
     QString m_partPath;
+    bool m_writeFailed = false; // a write()/flush() failed mid-transfer: don't promote the .part
 };
 
 } // namespace solero

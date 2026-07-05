@@ -62,6 +62,11 @@ public:
     void setInfoPanelVisible(bool v)          { m_infoPanelVisible = v; }
     bool autoCheckUpdates() const             { return m_autoCheckUpdates; }
     void setAutoCheckUpdates(bool v)          { m_autoCheckUpdates = v; }
+    // One-shot "enable detailed logging on the next launch only" flag, set by the
+    // crash-report dialog. main() reads it after installLogging(), turns verbose
+    // logging on for this run, then clears + saves it (so it lasts exactly one run).
+    bool verboseNextLaunch() const            { return m_verboseNextLaunch; }
+    void setVerboseNextLaunch(bool v)         { m_verboseNextLaunch = v; }
     qint64 lastUpdateCheckEpoch() const       { return m_lastUpdateCheckEpoch; }
     void setLastUpdateCheckEpoch(qint64 v)    { m_lastUpdateCheckEpoch = v; }
     QString jackifyEnginePath() const         { return m_jackifyEnginePath; }
@@ -128,6 +133,7 @@ private:
     bool m_autoDeployBeforeLaunch = false;
     bool m_infoPanelVisible = true;
     bool m_autoCheckUpdates = true;
+    bool m_verboseNextLaunch = false;
     qint64 m_lastUpdateCheckEpoch = 0;
     QString m_lastSeparatorColor;
     QString m_jackifyEnginePath;

@@ -255,6 +255,10 @@ private:
     void updateZoomMenu();
     void onShowShortcuts(); // Help ▸ Keyboard Shortcuts (F1)
     void onAboutSolero();   // Help ▸ About Solero
+    void onReportIssue();   // Help ▸ Report Issue… -> the bug report dialog
+    // Deferred one-shot: if the previous run crashed, open the crash-report dialog
+    // prefilled with the crashed run's log tail. Called via QTimer::singleShot(0).
+    void maybePromptCrashReport();
     void onRunTool(const solero::Executable& exe);
     // After a successful deploy, run each tool flagged "Run on deployment"
     // (runThroughDeployer) in listed order via ToolRunner, honoring the UI lock.

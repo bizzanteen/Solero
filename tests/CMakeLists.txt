@@ -36,6 +36,24 @@ target_include_directories(test_ExeResolve PRIVATE ../src ${CMAKE_BINARY_DIR}/in
 target_link_libraries(test_ExeResolve PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_ExeResolve COMMAND test_ExeResolve)
 
+# Redactor is a small pure function (report/Redactor.cpp), no other deps.
+add_executable(test_Redactor test_Redactor.cpp ../src/report/Redactor.cpp)
+target_include_directories(test_Redactor PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_Redactor PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_Redactor COMMAND test_Redactor)
+
+# ReportSubmitter::buildPayload is pure/network-free; the TU still links AppConfig +
+# Log + Redactor and (for QNetworkAccessManager in submit()) Qt6::Network.
+add_executable(test_ReportPayload test_ReportPayload.cpp
+  ../src/report/ReportSubmitter.cpp
+  ../src/report/Redactor.cpp
+  ../src/core/AppConfig.cpp
+  ../src/core/StagingFolder.cpp
+  ../src/core/Log.cpp)
+target_include_directories(test_ReportPayload PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_ReportPayload PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+add_test(NAME test_ReportPayload COMMAND test_ReportPayload)
+
 # menuFilterMatch is header-only (ui/MenuFilter.h), so no extra sources to compile.
 add_executable(test_MenuFilter test_MenuFilter.cpp)
 target_include_directories(test_MenuFilter PRIVATE ../src ${CMAKE_BINARY_DIR}/include)

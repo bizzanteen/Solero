@@ -82,8 +82,11 @@ set(SOLERO_SOURCES
   src/core/Profile.cpp
   src/core/ProfileManager.cpp
   src/ai/AITransaction.cpp
+  src/report/Redactor.cpp
+  src/report/ReportSubmitter.cpp
   src/ipc/IPCServer.cpp
   src/ui/MainWindow.cpp
+  src/ui/ReportDialog.cpp
   src/ui/ModListModel.cpp
   src/ui/ModListView.cpp
   src/ui/SearchableMenu.cpp

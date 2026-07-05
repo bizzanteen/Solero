@@ -42,6 +42,7 @@
 #include "PluginListView.h"
 #include "ui/ProblemsDialog.h"
 #include "ui/KeyboardShortcutsDialog.h"
+#include "ui/ReportDialog.h"
 #include "ui/IconUtil.h"
 #include "core/HealthCheck.h"
 #include "core/Log.h"
@@ -397,6 +398,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // Shaders but no managed cache, offer to manage it (deferred so the UI is
     // ready before any modal). No-op if declined before or already managed.
     QTimer::singleShot(0, this, &MainWindow::maybeOfferShaderCacheManagement);
+
+    // If the previous run crashed (a marker was found at installLogging()), prompt the
+    // crash-report form once the UI is up. Deferred so the window is shown first.
+    QTimer::singleShot(0, this, &MainWindow::maybePromptCrashReport);
 }
 
 void MainWindow::detachProfileFromViews() {
@@ -663,6 +668,8 @@ void MainWindow::setupMenuBar() {
     // Keyboard/menu-reachable entry to the Problems dialog (otherwise only the
     // toolbar health icon opens it).
     helpMenu->addAction(QStringLiteral("Problems") + ell, this, &MainWindow::onShowProblems);
+    helpMenu->addSeparator();
+    helpMenu->addAction(QStringLiteral("Report Issue") + ell, this, &MainWindow::onReportIssue);
     helpMenu->addAction("About Solero", this, &MainWindow::onAboutSolero);
 
     rebuildToolsMenu();
@@ -670,6 +677,25 @@ void MainWindow::setupMenuBar() {
 
 void MainWindow::onShowShortcuts() {
     solero::KeyboardShortcutsDialog dlg(this, this);
+    dlg.exec();
+}
+
+void MainWindow::onReportIssue() {
+    int modCount = -1;
+    if (m_profileMgr) if (auto* p = m_profileMgr->activeProfile())
+        modCount = p->modList().count();
+    solero::ReportDialog dlg(solero::ReportDialog::Mode::Issue, this);
+    dlg.setContext(modCount, /*logOffset=*/0);
+    dlg.exec();
+}
+
+void MainWindow::maybePromptCrashReport() {
+    if (!solero::lastRunCrashed()) return;
+    int modCount = -1;
+    if (m_profileMgr) if (auto* p = m_profileMgr->activeProfile())
+        modCount = p->modList().count();
+    solero::ReportDialog dlg(solero::ReportDialog::Mode::Crash, this);
+    dlg.setContext(modCount, solero::crashLogOffset());
     dlg.exec();
 }
 

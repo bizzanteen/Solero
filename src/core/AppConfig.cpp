@@ -98,6 +98,7 @@ bool AppConfig::load() {
     m_autoDeployBeforeLaunch = obj["autoDeployBeforeLaunch"].toBool(false);
     m_infoPanelVisible     = obj["infoPanelVisible"].toBool(true);
     m_autoCheckUpdates     = obj["autoCheckUpdates"].toBool(true);
+    m_verboseNextLaunch    = obj["verboseNextLaunch"].toBool(false);
     m_lastUpdateCheckEpoch = static_cast<qint64>(obj["lastUpdateCheckEpoch"].toDouble(0));
     m_lastSeparatorColor   = obj["lastSeparatorColor"].toString();
     m_jackifyEnginePath    = obj["jackifyEnginePath"].toString();
@@ -138,6 +139,7 @@ bool AppConfig::save() const {
     obj["autoDeployBeforeLaunch"] = m_autoDeployBeforeLaunch;
     obj["infoPanelVisible"]     = m_infoPanelVisible;
     obj["autoCheckUpdates"]     = m_autoCheckUpdates;
+    obj["verboseNextLaunch"]    = m_verboseNextLaunch;
     obj["lastUpdateCheckEpoch"] = static_cast<double>(m_lastUpdateCheckEpoch);
     obj["lastSeparatorColor"]   = m_lastSeparatorColor;
     obj["jackifyEnginePath"]    = m_jackifyEnginePath;

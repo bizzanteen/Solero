@@ -16,7 +16,8 @@
 
 #if defined(__GLIBC__)
 #  include <execinfo.h> // backtrace(), backtrace_symbols_fd()
-#  include <unistd.h>   // write()
+#  include <fcntl.h>    // open(), O_* flags - for the async-signal-safe crash marker
+#  include <unistd.h>   // write(), lseek()
 #  define SOLERO_HAVE_BACKTRACE 1
 #endif
 
@@ -43,10 +44,33 @@ QtMessageHandler g_prevHandler = nullptr;
 QString g_logPath;
 bool g_installed = false;
 
+// Crash-marker state. g_markerPath is a plain C buffer (filled at install time) so the
+// async-signal crash handler can open() it without touching QString/malloc.
+char   g_markerPath[4096] = {0};
+bool   g_lastRunCrashed = false; // set at startup from a marker left by a prior crash
+qint64 g_crashLogOffset = 0;     // byte offset into solero.log where that crash begins
+
 // Kept in step with AppConfig::dataRoot() (~/.local/share/solero) but computed
 // directly so this foundational TU has no dependency beyond QtCore.
 QString logDir()  { return QDir::homePath() + "/.local/share/solero/logs"; }
 QString logPath() { return logDir() + "/solero.log"; }
+QString markerPath() { return logDir() + "/last-run-crashed"; }
+
+// Read (and consume) a crash marker left by a previous run. Runs once at startup -
+// ordinary QFile is fine here (not inside a signal handler). Sets the one-shot
+// lastRunCrashed()/crashLogOffset() state, then deletes the marker.
+void readCrashMarker() {
+    QFile f(markerPath());
+    if (!f.exists()) return;
+    g_lastRunCrashed = true;
+    if (f.open(QIODevice::ReadOnly)) {
+        bool ok = false;
+        const qint64 v = QString::fromLatin1(f.readAll().trimmed()).toLongLong(&ok);
+        if (ok) g_crashLogOffset = v;
+        f.close();
+    }
+    f.remove(); // one-shot: never re-prompt for the same crash
+}
 
 // Keep at most a few generations. Called once at startup, before the file is opened,
 // so this is a plain rename chain (no per-write stat cost).
@@ -77,6 +101,25 @@ void messageHandler(QtMsgType type, const QMessageLogContext& ctx, const QString
 }
 
 #if defined(SOLERO_HAVE_BACKTRACE)
+// Async-signal-safe: write a marker file recording where in solero.log this crash's
+// section begins, so the NEXT run can detect the crash and attach just that tail. Uses
+// only open()/write()/close() and a hand-rolled integer-to-decimal (no malloc, no
+// snprintf, no QString).
+void writeCrashMarker(long long off) {
+    if (g_markerPath[0] == '\0') return;
+    const int fd = ::open(g_markerPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) return;
+    char buf[32];
+    int i = int(sizeof(buf));
+    if (off <= 0) {
+        buf[--i] = '0';
+    } else {
+        while (off > 0 && i > 0) { buf[--i] = char('0' + (off % 10)); off /= 10; }
+    }
+    (void)!::write(fd, buf + i, size_t(int(sizeof(buf)) - i));
+    ::close(fd);
+}
+
 // Async-signal-safe as far as practical: only write()/backtrace_symbols_fd to the
 // already-open log fd, then restore the default handler and re-raise so the process
 // still dies with the right signal (and any core dump). No malloc, no mutex.
@@ -90,6 +133,8 @@ void crashHandler(int sig) {
         default:      name = "\n=== CRASH: signal ===\n";            break;
     }
     if (g_logFd >= 0) {
+        // Record the crash-section start (current append position) before writing it.
+        writeCrashMarker(static_cast<long long>(::lseek(g_logFd, 0, SEEK_END)));
         (void)!::write(g_logFd, name, std::strlen(name));
         void* frames[64];
         int n = backtrace(frames, 64);
@@ -103,6 +148,7 @@ void crashHandler(int sig) {
 void terminateHandler() {
     static const char* m = "\n=== CRASH: std::terminate (unhandled exception) ===\n";
     if (g_logFd >= 0) {
+        writeCrashMarker(static_cast<long long>(::lseek(g_logFd, 0, SEEK_END)));
         (void)!::write(g_logFd, m, std::strlen(m));
         void* frames[64];
         int n = backtrace(frames, 64);
@@ -121,7 +167,16 @@ void installLogging() {
     g_installed = true;
 
     QDir().mkpath(logDir());
-    rotateIfLarge();
+
+    // Detect a crash from the previous run before any rotation, and stash the marker
+    // path for the async-signal handler. If the last run crashed, skip rotation so the
+    // crashed log stays intact for the report dialog to read.
+    {
+        const QByteArray mp = markerPath().toLocal8Bit();
+        std::strncpy(g_markerPath, mp.constData(), sizeof(g_markerPath) - 1);
+    }
+    readCrashMarker();
+    if (!g_lastRunCrashed) rotateIfLarge();
 
     g_logPath = logPath();
     g_logFile = new QFile(g_logPath);
@@ -162,5 +217,9 @@ void setVerboseLogging(bool on) {
 }
 
 QString logFilePath() { return g_logPath; }
+
+bool lastRunCrashed() { return g_lastRunCrashed; }
+
+qint64 crashLogOffset() { return g_crashLogOffset; }
 
 } // namespace solero

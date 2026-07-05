@@ -30,4 +30,15 @@ void setVerboseLogging(bool on);
 // Absolute path of the active log file (…/.local/share/solero/logs/solero.log).
 QString logFilePath();
 
+// True if the previous run ended in a crash the handler caught (SIGSEGV/ABRT/BUS/FPE
+// or std::terminate). Determined once, at installLogging(), by the presence of a
+// marker file the crash handler writes before re-raising; the marker is deleted on
+// read, so this is one-shot per crashed run (no false positives on SIGKILL/OOM/power
+// loss, which the handler never sees).
+bool lastRunCrashed();
+
+// Byte offset into solero.log where that crash's section begins (0 if unknown), so a
+// report can attach just the crash tail. Only meaningful when lastRunCrashed() is true.
+qint64 crashLogOffset();
+
 } // namespace solero

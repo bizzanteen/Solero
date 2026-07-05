@@ -11,6 +11,19 @@ int main(int argc, char* argv[]) {
     // Install the file sink + crash handler first, so even the app ctor's messages
     // (and an early crash) are captured to ~/.local/share/solero/logs/solero.log.
     solero::installLogging();
+    // One-shot "detailed logging next launch" (armed by the crash-report dialog): turn
+    // verbose logging on for exactly this run, then clear + persist the flag so the very
+    // next launch is back to normal. Load config directly (before the app/MainWindow do).
+    {
+        auto& cfg = solero::AppConfig::instance();
+        cfg.load();
+        if (cfg.verboseNextLaunch()) {
+            solero::setVerboseLogging(true);
+            cfg.setVerboseNextLaunch(false);
+            cfg.save();
+            qCInfo(lcApp) << "verbose logging enabled for this run (one-shot, post-crash)";
+        }
+    }
     // QtWebEngine widgets require shared OpenGL contexts set before QApplication.
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
     Application app(argc, argv);

@@ -1,8 +1,36 @@
 #include "ProfileManager.h"
 #include "core/Log.h"
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
 
 namespace solero {
+
+namespace {
+// Recursively copy the CONTENTS of srcDir into dstDir (which must already exist).
+// Returns false if any file or subdirectory copy fails; a warning is logged per
+// failed file. Hidden entries (e.g. .bak files) are included so the copy is faithful.
+bool copyDirContents(const QString& srcDir, const QString& dstDir) {
+    bool ok = true;
+    const auto entries = QDir(srcDir).entryInfoList(
+        QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden);
+    for (const QFileInfo& fi : entries) {
+        const QString target = dstDir + "/" + fi.fileName();
+        if (fi.isDir()) {
+            if (!QDir().mkpath(target) || !copyDirContents(fi.absoluteFilePath(), target))
+                ok = false;
+        } else {
+            QFile::remove(target); // in case the fresh profile dir already holds it
+            if (!QFile::copy(fi.absoluteFilePath(), target)) {
+                qCWarning(lcProfile) << "createProfile: failed to copy"
+                                     << fi.absoluteFilePath() << "->" << target;
+                ok = false;
+            }
+        }
+    }
+    return ok;
+}
+} // namespace
 
 ProfileManager::ProfileManager(const QString& root) : m_root(root) {
     QDir().mkpath(root);
@@ -16,15 +44,21 @@ bool ProfileManager::createProfile(const QString& name, const QString& cloneFrom
     }
     QDir().mkpath(path);
     if (!cloneFrom.isEmpty()) {
-        qCInfo(lcProfile) << "creating profile" << name << "cloned from" << cloneFrom;
-        Profile src(cloneFrom, m_root);
-        src.load();
-        Profile dst(name, m_root);
-        dst.modList()     = src.modList();
-        dst.pluginList()  = src.pluginList();
-        dst.executables() = src.executables();
-        const bool ok = dst.save();
-        if (!ok) qCWarning(lcProfile) << "createProfile:" << name << "clone save failed";
+        const QString srcPath = m_root + "/" + cloneFrom;
+        if (!QDir(srcPath).exists()) {
+            qCWarning(lcProfile) << "createProfile:" << name << "clone source" << cloneFrom
+                                 << "does not exist at" << srcPath;
+            return false;
+        }
+        qCInfo(lcProfile) << "creating profile" << name << "cloned from" << cloneFrom
+                          << "(full directory copy)";
+        // Filesystem-copy the whole profile dir so the clone reproduces EVERYTHING:
+        // modlist, plugins, executables, file-rules (hidden files + winner overrides),
+        // load-order state (pins + lock), shader cache, and the three INIs - not just
+        // the three lists the old field-by-field copy handled. Each file is a fresh
+        // copy, so the cloned profile is fully independent of its source.
+        const bool ok = copyDirContents(srcPath, path);
+        if (!ok) qCWarning(lcProfile) << "createProfile:" << name << "clone copy had failures";
         return ok;
     }
     qCInfo(lcProfile) << "creating profile" << name;

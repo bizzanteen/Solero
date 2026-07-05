@@ -674,6 +674,12 @@ void MainWindow::setupMenuBar() {
     helpMenu->addAction(QStringLiteral("Problems") + ell, this, &MainWindow::onShowProblems);
     helpMenu->addSeparator();
     helpMenu->addAction(QStringLiteral("Report Issue") + ell, this, &MainWindow::onReportIssue);
+    // Quick access to the log folder so a user can grab solero.log for a bug report
+    // even without the report relay configured.
+    helpMenu->addAction(QStringLiteral("Open Log Folder") + ell, this, [] {
+        const QString dir = QFileInfo(solero::logFilePath()).absolutePath();
+        if (!dir.isEmpty()) QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
+    });
     helpMenu->addAction("About Solero", this, &MainWindow::onAboutSolero);
 
     rebuildToolsMenu();

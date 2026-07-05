@@ -4,6 +4,8 @@
 #include <QHBoxLayout>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QDialogButtonBox>
+#include <QCloseEvent>
 #include <QLabel>
 #include <QFile>
 #include <QFileInfo>
@@ -81,19 +83,37 @@ FileEditorDialog::FileEditorDialog(const QString& filePath, QWidget* parent)
         }
     }
 
-    // Buttons
-    auto* btnRow = new QHBoxLayout;
-    btnRow->addStretch();
+    // Buttons. Save applies in place and keeps the window open; Close (reject role)
+    // dismisses it. Roles let QDialogButtonBox order them per platform.
+    auto* buttonBox = new QDialogButtonBox(this);
     if (!m_binary) {
-        auto* saveBtn = new QPushButton("Save", this);
+        auto* saveBtn = buttonBox->addButton(QDialogButtonBox::Save);
         saveBtn->setDefault(true);
-        connect(saveBtn, &QPushButton::clicked, this, &FileEditorDialog::save);
-        btnRow->addWidget(saveBtn);
     }
-    auto* closeBtn = new QPushButton("Close", this);
-    connect(closeBtn, &QPushButton::clicked, this, &QDialog::close);
-    btnRow->addWidget(closeBtn);
-    layout->addLayout(btnRow);
+    buttonBox->addButton(QDialogButtonBox::Close);
+    connect(buttonBox, &QDialogButtonBox::accepted, this, &FileEditorDialog::save);
+    connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::close);
+    layout->addWidget(buttonBox);
+
+    // A freshly loaded document is clean; the unsaved-changes prompt only fires
+    // after the user actually edits (setPlainText already clears the modified flag).
+    m_edit->document()->setModified(false);
+}
+
+void FileEditorDialog::closeEvent(QCloseEvent* event) {
+    if (!m_binary && m_edit && m_edit->document()->isModified()) {
+        const auto ret = QMessageBox::question(this, "Unsaved Changes",
+            "Save changes to " + QFileInfo(m_filePath).fileName() + " before closing?",
+            QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+        if (ret == QMessageBox::Cancel) { event->ignore(); return; }
+        if (ret == QMessageBox::Save) {
+            save();
+            // save() clears the modified flag only on success; if it's still set the
+            // write failed, so keep the window open rather than lose the edits.
+            if (m_edit->document()->isModified()) { event->ignore(); return; }
+        }
+    }
+    QDialog::closeEvent(event);
 }
 
 bool FileEditorDialog::looksBinary(const QByteArray& data) {
@@ -146,6 +166,7 @@ void FileEditorDialog::save() {
     }
     m_statusLabel->setText(m_filePath + "  -  saved");
     m_statusLabel->setStyleSheet("color: #27ae60;");
+    m_edit->document()->setModified(false);
     emit fileSaved(m_filePath);
 }
 

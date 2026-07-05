@@ -13,6 +13,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QDialogButtonBox>
 #include <QMessageBox>
 #include <QDesktopServices>
 #include <QUrl>
@@ -212,7 +213,9 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store,
                                  const QSet<QString>& installedKeys)
     : QDialog(parent), m_installedKeys(installedKeys), m_store(store) {
     setWindowTitle("Set Up a Tool");
-    setFixedSize(720, 480);
+    // Give the wizard a comfortable resizable default rather than a fixed frame so
+    // it never opens cramped; the content needs ~680px of width.
+    resize(720, 500);
 
     auto* outer = new QVBoxLayout(this);
     auto* body = new QHBoxLayout;
@@ -273,13 +276,12 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store,
     body->addWidget(detailsW);
     outer->addLayout(body);
 
-    auto* btnRow = new QHBoxLayout;
+    auto* btnRow = new QDialogButtonBox(this);
     auto* setupBtn = new QPushButton("Set Up Tool", this);
     auto* cancelBtn = new QPushButton("Cancel", this);
-    btnRow->addStretch();
-    btnRow->addWidget(cancelBtn);
-    btnRow->addWidget(setupBtn);
-    outer->addLayout(btnRow);
+    btnRow->addButton(setupBtn, QDialogButtonBox::AcceptRole);
+    btnRow->addButton(cancelBtn, QDialogButtonBox::RejectRole);
+    outer->addWidget(btnRow);
 
     auto selectedId = [list]() -> QString {
         auto* item = list->currentItem();

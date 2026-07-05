@@ -7,6 +7,7 @@
 #include <QPushButton>
 #include <QColorDialog>
 #include <QListWidget>
+#include <QMessageBox>
 #include <QDir>
 
 namespace solero {
@@ -59,6 +60,12 @@ SeparatorDialog::SeparatorDialog(const ModEntry& sep, QWidget* parent)
 
     connect(m_colorBtn, &QPushButton::clicked, this, &SeparatorDialog::pickColor);
     connect(btns, &QDialogButtonBox::accepted, this, [this]{
+        const QString name = m_nameEdit->text().trimmed();
+        if (name.isEmpty()) {
+            QMessageBox::warning(this, "Invalid Separator",
+                "Please enter a name for this separator.");
+            return; // keep the dialog open
+        }
         m_result.name = m_nameEdit->text();
         m_result.icon = m_iconList->currentItem()
                         ? m_iconList->currentItem()->data(Qt::UserRole).toString()

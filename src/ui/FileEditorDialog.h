@@ -4,6 +4,7 @@
 
 class QPlainTextEdit;
 class QLabel;
+class QCloseEvent;
 
 namespace solero {
 
@@ -16,6 +17,9 @@ public:
 
 signals:
     void fileSaved(const QString& filePath);
+
+protected:
+    void closeEvent(QCloseEvent* event) override;
 
 private:
     void save();

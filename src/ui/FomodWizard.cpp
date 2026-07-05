@@ -7,6 +7,7 @@
 #include <QButtonGroup>
 #include <QLabel>
 #include <QPushButton>
+#include <QDialogButtonBox>
 #include <QScrollArea>
 #include <QPixmap>
 #include <QFile>
@@ -63,15 +64,14 @@ FomodWizard::FomodWizard(FomodEngine* engine, const QString& extractDir, QWidget
     mid->addLayout(right, 1);
     outer->addLayout(mid, 1);
 
-    auto* nav = new QHBoxLayout;
+    auto* buttonBox = new QDialogButtonBox(this);
     m_backBtn = new QPushButton("< Back", this);
     m_nextBtn = new QPushButton("Next >", this);
     auto* cancel = new QPushButton("Cancel", this);
-    nav->addWidget(cancel);
-    nav->addStretch();
-    nav->addWidget(m_backBtn);
-    nav->addWidget(m_nextBtn);
-    outer->addLayout(nav);
+    buttonBox->addButton(cancel, QDialogButtonBox::RejectRole);
+    buttonBox->addButton(m_backBtn, QDialogButtonBox::ActionRole);
+    buttonBox->addButton(m_nextBtn, QDialogButtonBox::AcceptRole);
+    outer->addWidget(buttonBox);
 
     connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
     connect(m_backBtn, &QPushButton::clicked, this, &FomodWizard::onBack);

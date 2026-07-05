@@ -5,6 +5,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
+#include <QDialogButtonBox>
 #include <QIcon>
 
 namespace solero {
@@ -19,17 +20,15 @@ ToolsManagerDialog::ToolsManagerDialog(const QList<Executable>* tools, QWidget* 
     m_list->setIconSize(QSize(24, 24));
     outer->addWidget(m_list);
 
-    auto* btnRow = new QHBoxLayout;
+    auto* btnRow = new QDialogButtonBox(this);
     auto* addBtn = new QPushButton("Add Tool\xe2\x80\xa6", this);
     auto* editBtn = new QPushButton("Edit\xe2\x80\xa6", this);
     auto* removeBtn = new QPushButton("Remove", this);
-    auto* closeBtn = new QPushButton("Close", this);
-    btnRow->addWidget(addBtn);
-    btnRow->addWidget(editBtn);
-    btnRow->addWidget(removeBtn);
-    btnRow->addStretch();
-    btnRow->addWidget(closeBtn);
-    outer->addLayout(btnRow);
+    btnRow->addButton(addBtn, QDialogButtonBox::ActionRole);
+    btnRow->addButton(editBtn, QDialogButtonBox::ActionRole);
+    btnRow->addButton(removeBtn, QDialogButtonBox::ActionRole);
+    btnRow->addButton(QDialogButtonBox::Close);
+    outer->addWidget(btnRow);
 
     connect(addBtn, &QPushButton::clicked, this, [this]{ emit addToolRequested(); });
     connect(editBtn, &QPushButton::clicked, this, [this]{
@@ -40,7 +39,7 @@ ToolsManagerDialog::ToolsManagerDialog(const QList<Executable>* tools, QWidget* 
         if (auto* item = m_list->currentItem())
             emit removeToolRequested(item->data(Qt::UserRole).toString());
     });
-    connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
+    connect(btnRow, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
     refresh();
 }

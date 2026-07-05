@@ -6,6 +6,7 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QPushButton>
+#include <QDialogButtonBox>
 #include <QPixmap>
 #include <QPainter>
 #include <QFont>
@@ -73,19 +74,17 @@ ProblemsDialog::ProblemsDialog(QWidget* parent) : QDialog(parent) {
         m_goToBtn->setEnabled(canGo);
     });
 
-    auto* buttons = new QHBoxLayout;
+    auto* buttons = new QDialogButtonBox(this);
     auto* rescanBtn = new QPushButton(QStringLiteral("Re-scan"), this);
     connect(rescanBtn, &QPushButton::clicked, this, &ProblemsDialog::rescanRequested);
-    m_goToBtn = new QPushButton(QStringLiteral("Go to"), this);
+    m_goToBtn = new QPushButton(QStringLiteral("Go To"), this);
     m_goToBtn->setEnabled(false);
     connect(m_goToBtn, &QPushButton::clicked, this, &ProblemsDialog::goToCurrent);
-    auto* closeBtn = new QPushButton(QStringLiteral("Close"), this);
-    connect(closeBtn, &QPushButton::clicked, this, &QDialog::close);
-    buttons->addWidget(rescanBtn);
-    buttons->addStretch(1);
-    buttons->addWidget(m_goToBtn);
-    buttons->addWidget(closeBtn);
-    layout->addLayout(buttons);
+    buttons->addButton(rescanBtn, QDialogButtonBox::ActionRole);
+    buttons->addButton(m_goToBtn, QDialogButtonBox::ActionRole);
+    buttons->addButton(QDialogButtonBox::Close);
+    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::close);
+    layout->addWidget(buttons);
     Q_UNUSED(kModRole); Q_UNUSED(kPluginRole);
 }
 

@@ -253,7 +253,9 @@ void DataTab::refresh() {
     } else if (modIds.size() == 2) {
         showSplit(modIds.at(0), modIds.at(1));
     } else {
-        m_placeholder->setText("Nothing to see here"); // 3+
+        // This tab compares at most two mods; guide the user back into range.
+        m_placeholder->setText(
+            "Select one or two mods to view or compare their files."); // 3+
         m_stack->setCurrentWidget(m_placeholder);
     }
 }

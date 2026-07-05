@@ -35,6 +35,7 @@ private slots:
 protected:
     void contextMenuEvent(QContextMenuEvent* event) override;
     void showEvent(QShowEvent* event) override;
+    void paintEvent(QPaintEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;
     void selectionChanged(const QItemSelection& selected,
                           const QItemSelection& deselected) override;

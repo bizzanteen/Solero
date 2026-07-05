@@ -16,6 +16,9 @@
 #include <QApplication>
 #include <QStyle>
 #include <QPainter>
+#include <QPaintEvent>
+#include <QToolTip>
+#include <QCursor>
 #include <QIcon>
 #include "ElideDelegate.h"
 namespace solero {
@@ -160,6 +163,20 @@ void PluginListView::showEvent(QShowEvent* event) {
     }
 }
 
+void PluginListView::paintEvent(QPaintEvent* event) {
+    QTableView::paintEvent(event);
+    // Mirror the mod list's empty-state overlay (ModListView): when no plugins are
+    // present, draw a centered hint over the viewport instead of a blank pane.
+    if (model() && model()->rowCount() == 0) {
+        QPainter painter(viewport());
+        painter.setPen(palette().color(QPalette::Disabled, QPalette::Text));
+        const QRect r = viewport()->rect().adjusted(40, 40, -40, -40);
+        painter.drawText(r, Qt::AlignCenter | Qt::TextWordWrap,
+            QStringLiteral("No plugins detected ") + QChar('-')
+                + QStringLiteral(" install mods or check your Data path."));
+    }
+}
+
 void PluginListView::setFilter(const QString& text) {
     const QString t = text.trimmed();
     m_filterActive = !t.isEmpty();
@@ -209,6 +226,14 @@ void PluginListView::onSortChanged(int col, Qt::SortOrder order) {
         m_proxy->sort(col, order);
         setDragDropMode(QAbstractItemView::NoDragDrop);
         setDragEnabled(false); setAcceptDrops(false);
+        // Sorting by a non-priority column silently disabled drag-reorder; surface a
+        // transient hint (near the header) so the lost capability isn't a mystery.
+        if (!m_filterActive)
+            QToolTip::showText(
+                horizontalHeader()->mapToGlobal(QPoint(0, horizontalHeader()->height())),
+                QStringLiteral("Reordering is only available when sorted by priority "
+                               "(#). Click the # column to restore drag-reorder."),
+                this);
     }
 }
 void PluginListView::setProfile(Profile* profile) {

@@ -8,12 +8,24 @@
 #include <QFont>
 #include <QColor>
 #include <QMenu>
+#include <QApplication>
+#include <QPalette>
 
 namespace solero {
 
 // Roles stashed on each file row so a double-click can navigate to it.
 static constexpr int kRoleModId   = Qt::UserRole + 1;
 static constexpr int kRoleRelPath = Qt::UserRole + 2;
+
+// A non-data placeholder row (e.g. "(no mod selected)"): render it disabled +
+// muted and strip selectability so it reads as guidance, not real conflict data.
+static QTreeWidgetItem* makePlaceholderItem(const QString& text) {
+    auto* it = new QTreeWidgetItem({text});
+    it->setFlags(Qt::NoItemFlags);
+    it->setForeground(0, QApplication::palette().color(
+                             QPalette::Disabled, QPalette::Text));
+    return it;
+}
 
 ConflictsTab::ConflictsTab(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
@@ -62,7 +74,7 @@ void ConflictsTab::showMod(const QString& modId) { m_currentModId = modId; refre
 void ConflictsTab::refresh() {
     m_tree->clear();
     if (m_currentModId.isEmpty()) {
-        m_tree->addTopLevelItem(new QTreeWidgetItem({"(no mod selected)"}));
+        m_tree->addTopLevelItem(makePlaceholderItem("(no mod selected)"));
         return;
     }
 
@@ -70,7 +82,7 @@ void ConflictsTab::refresh() {
     auto losing  = m_conflicts.losingFilesOf(m_currentModId);
 
     if (winning.isEmpty() && losing.isEmpty()) {
-        m_tree->addTopLevelItem(new QTreeWidgetItem({"No conflicts for this mod."}));
+        m_tree->addTopLevelItem(makePlaceholderItem("No conflicts for this mod."));
         return;
     }
 

@@ -27,11 +27,32 @@
 #include <QFontMetrics>
 #include <QResizeEvent>
 #include <QTimer>
+#include <QPainter>
+#include <QPaintEvent>
+#include <QPalette>
 #include <limits>
 
 namespace solero {
 
 namespace {
+
+// A downloads table that draws a centered hint over its viewport when empty, so a
+// fresh install doesn't present a blank grid (mirrors the mod/plugin list overlays).
+class DownloadsTable : public QTableWidget {
+public:
+    using QTableWidget::QTableWidget;
+protected:
+    void paintEvent(QPaintEvent* event) override {
+        QTableWidget::paintEvent(event);
+        if (rowCount() != 0) return;
+        QPainter painter(viewport());
+        painter.setPen(palette().color(QPalette::Disabled, QPalette::Text));
+        const QRect r = viewport()->rect().adjusted(40, 40, -40, -40);
+        painter.drawText(r, Qt::AlignCenter | Qt::TextWordWrap,
+            QStringLiteral("No downloads yet ") + QChar('-')
+                + QStringLiteral(" download from the Nexus browser."));
+    }
+};
 
 // Sorts by the numeric value stored in Qt::UserRole rather than display text.
 class NumItem : public QTableWidgetItem {
@@ -104,7 +125,7 @@ QPair<QString,QString> formatProgress(qint64 received, qint64 total) {
 DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     auto* v = new QVBoxLayout(this);
 
-    m_table = new QTableWidget(this);
+    m_table = new DownloadsTable(this);
     m_table->setColumnCount(4);
     m_table->setHorizontalHeaderLabels({"Name", "Status", "Size", "Downloaded"});
     m_table->setSortingEnabled(true);
@@ -436,13 +457,17 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
         refresh();
     });
 
+    // Enumerate the folder up-front so "Delete All" can disable itself at zero
+    // downloads (like "Delete Selected"), rather than opening an empty confirm.
+    const QString allDir = AppConfig::instance().downloadsDir();
+    const QFileInfoList allFiles = allDir.isEmpty()
+        ? QFileInfoList{}
+        : QDir(allDir).entryInfoList({"*.zip","*.7z","*.rar","*.tar","*.gz"}, QDir::Files);
+
     auto* deleteAll = menu.addAction(QStringLiteral("Delete All Downloads") + QChar(0x2026));
-    connect(deleteAll, &QAction::triggered, this, [this]{
-        const QString dir = AppConfig::instance().downloadsDir();
-        QDir d(dir);
-        const QFileInfoList files = dir.isEmpty()
-            ? QFileInfoList{}
-            : d.entryInfoList({"*.zip","*.7z","*.rar","*.tar","*.gz"}, QDir::Files);
+    deleteAll->setEnabled(!allFiles.isEmpty());
+    connect(deleteAll, &QAction::triggered, this, [this, allFiles]{
+        const QFileInfoList& files = allFiles;
         if (QMessageBox::question(this, "Delete All Downloads",
                 QString("Delete ALL %1 downloads in the folder? This removes every "
                         "archive file.").arg(files.size()))

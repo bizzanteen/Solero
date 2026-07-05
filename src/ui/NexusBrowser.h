@@ -2,6 +2,7 @@
 #include <QDialog>
 #include <QString>
 #include <QList>
+#include <QFutureWatcher>
 #include "nexus/NexusApi.h"
 
 class QLineEdit;
@@ -58,6 +59,13 @@ private:
     QNetworkAccessManager* m_nam = nullptr;
     // Generation counter: bumped on every repopulate so stale image replies are ignored.
     quint64 m_gen = 0;
+
+    // Search / curated-list fetches run off the UI thread; results populate on the
+    // UI thread when this watcher finishes. m_pendingEmptyMsg / m_pendingLabel carry
+    // the messaging for the in-flight request.
+    QFutureWatcher<QList<NexusApi::ModSummary>> m_listWatcher;
+    QString m_pendingEmptyMsg;
+    QString m_pendingLabel;
 };
 
 } // namespace solero

@@ -1,5 +1,6 @@
 #include "NexusBrowser.h"
 #include "ProgressModal.h"
+#include "core/Log.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -23,6 +24,7 @@
 #include <QNetworkReply>
 #include <QApplication>
 #include <QPointer>
+#include <QtConcurrent/QtConcurrent>
 
 using solero::NexusBrowser;
 
@@ -155,11 +157,23 @@ NexusBrowser::NexusBrowser(QWidget* parent) : QDialog(parent) {
     connect(latestBtn, &QPushButton::clicked, this, [this]{ showList("latest"); });
     connect(updatedBtn, &QPushButton::clicked, this, [this]{ showList("updated"); });
 
+    // Open on double-click / Enter only. A stray single click must not yank the
+    // user into a blocking mod-detail fetch.
     connect(m_results, &QListWidget::itemActivated, this, [this](QListWidgetItem* it){
         if (it) openMod(it->data(Qt::UserRole).toString());
     });
-    connect(m_results, &QListWidget::itemClicked, this, [this](QListWidgetItem* it){
-        if (it) openMod(it->data(Qt::UserRole).toString());
+
+    // Search / curated-list results arrive off-thread; populate on the UI thread.
+    connect(&m_listWatcher, &QFutureWatcher<QList<NexusApi::ModSummary>>::finished,
+            this, [this]{
+        if (m_listWatcher.isCanceled()) return;
+        const QList<NexusApi::ModSummary> rows = m_listWatcher.result();
+        m_results->setEnabled(true);
+        qCDebug(lcNexus) << "browser list results:" << rows.size();
+        populateResults(rows, m_pendingEmptyMsg);
+        if (!rows.isEmpty() && !m_pendingLabel.isEmpty())
+            m_status->setText("Showing " + m_pendingLabel
+                              + " (" + QString::number(rows.size()) + ")");
     });
 
     connect(backBtn, &QPushButton::clicked, this, [this]{ m_stack->setCurrentIndex(0); });
@@ -186,10 +200,11 @@ void NexusBrowser::doSearch() {
     if (q.isEmpty()) return;
     m_status->setText("Searching\xe2\x80\xa6");
     m_results->setEnabled(false);
-    qApp->processEvents();
-    auto rows = NexusApi::search(q);
-    m_results->setEnabled(true);
-    populateResults(rows, "No results for \"" + q + "\".");
+    m_pendingEmptyMsg = "No results for \"" + q + "\".";
+    m_pendingLabel.clear();
+    // Off the UI thread - the synchronous curl call would otherwise freeze the
+    // window. Results land on the UI thread via m_listWatcher::finished.
+    m_listWatcher.setFuture(QtConcurrent::run([q]{ return NexusApi::search(q); }));
 }
 
 void NexusBrowser::showList(const QString& which) {
@@ -197,15 +212,14 @@ void NexusBrowser::showList(const QString& which) {
                   : which == "latest"   ? "latest added" : "latest updated";
     m_status->setText("Loading " + label + "\xe2\x80\xa6");
     m_results->setEnabled(false);
-    qApp->processEvents();
-    QList<NexusApi::ModSummary> rows;
-    if (which == "trending")      rows = NexusApi::trending();
-    else if (which == "latest")   rows = NexusApi::latestAdded();
-    else                          rows = NexusApi::latestUpdated();
-    m_results->setEnabled(true);
-    populateResults(rows, "No " + label + " mods found.");
-    if (!rows.isEmpty())
-        m_status->setText("Showing " + label + " (" + QString::number(rows.size()) + ")");
+    m_pendingEmptyMsg = "No " + label + " mods found.";
+    m_pendingLabel = label;
+    // Off the UI thread; results populate via m_listWatcher::finished.
+    m_listWatcher.setFuture(QtConcurrent::run([which]() -> QList<NexusApi::ModSummary> {
+        if (which == "trending") return NexusApi::trending();
+        if (which == "latest")   return NexusApi::latestAdded();
+        return NexusApi::latestUpdated();
+    }));
 }
 
 void NexusBrowser::populateResults(const QList<NexusApi::ModSummary>& rows, const QString& emptyMsg) {
@@ -331,5 +345,11 @@ void NexusBrowser::onDownloadFile(int row) {
     const QString fileId = nameItem->data(Qt::UserRole).toString();
     const QString fileName = nameItem->text();
     const QString version = nameItem->data(Qt::UserRole + 1).toString();
+    // Feedback so the user doesn't re-click and queue duplicates. Fresh
+    // "Download" buttons are recreated when the detail page is repopulated.
+    if (auto* btn = qobject_cast<QPushButton*>(m_fileTable->cellWidget(row, 3))) {
+        btn->setEnabled(false);
+        btn->setText(QStringLiteral("Queued…"));
+    }
     emit downloadRequested(m_currentModId, fileId, fileName, version);
 }

@@ -10,6 +10,7 @@ class QTextBrowser;
 class QPlainTextEdit;
 class QEvent;
 class QNetworkAccessManager;
+class QTimer;
 
 namespace solero {
 class Profile;
@@ -61,6 +62,7 @@ private:
 
     Profile* m_profile = nullptr;  // profile owning the currently shown mod
     QString  m_noteModId;          // mod id whose note the editor currently holds
+    QTimer*  m_noteSaveTimer = nullptr; // debounced flush of note edits
 
     QString m_currentId;       // mod entry id currently shown (guards stale async results)
     QString m_currentNexusId;  // nexusModId of the current entry (details results key off this)

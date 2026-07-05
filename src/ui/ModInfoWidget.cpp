@@ -17,6 +17,7 @@
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QPointer>
+#include <QTimer>
 #include <QtConcurrent/QtConcurrent>
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
@@ -67,8 +68,18 @@ ModInfoWidget::ModInfoWidget(QWidget* parent) : QWidget(parent) {
     m_note->setPlaceholderText("Add a personal note for this mod\xe2\x80\xa6");
     m_note->setMaximumHeight(60);
     m_note->setTabChangesFocus(true);
-    m_note->installEventFilter(this); // save on focus-out
+    m_note->installEventFilter(this); // save on focus-out / hide
     right->addWidget(m_note);
+
+    // Debounced flush: persist a short while after typing stops, so closing the
+    // app with the note field focused can't lose the edit. Programmatic
+    // loads (showMod/clear) wrap setPlainText in a QSignalBlocker, so they don't
+    // schedule a save here.
+    m_noteSaveTimer = new QTimer(this);
+    m_noteSaveTimer->setSingleShot(true);
+    m_noteSaveTimer->setInterval(800);
+    connect(m_noteSaveTimer, &QTimer::timeout, this, &ModInfoWidget::saveNote);
+    connect(m_note, &QPlainTextEdit::textChanged, this, [this]{ m_noteSaveTimer->start(); });
 
     root->addLayout(right, 1);
 
@@ -374,8 +385,9 @@ void ModInfoWidget::saveNote() {
 }
 
 bool ModInfoWidget::eventFilter(QObject* obj, QEvent* event) {
-    if (obj == m_note && event->type() == QEvent::FocusOut)
-        saveNote();
+    if (obj == m_note && (event->type() == QEvent::FocusOut
+                          || event->type() == QEvent::Hide))
+        saveNote(); // flush pending edit on focus-out or when the panel is hidden
     return QWidget::eventFilter(obj, event);
 }
 

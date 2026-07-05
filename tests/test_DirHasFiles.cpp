@@ -65,6 +65,21 @@ private slots:
         writeFile(dir + "/textures/armor/iron.dds"); // nested file
         QVERIFY(dirHasFiles(dir));
     }
+
+    // atomicWrite must replace an existing file's contents in full (no leftover
+    // tail from a longer previous version) and leave no .tmp behind.
+    void atomicWrite_overwritesExistingFile() {
+        QTemporaryDir tmp;
+        QVERIFY(tmp.isValid());
+        const QString path = tmp.path() + "/profile.json";
+        writeFile(path, "old-and-longer-contents");
+        QVERIFY(atomicWrite(path, QByteArray("new")));
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QCOMPARE(f.readAll(), QByteArray("new"));
+        f.close();
+        QVERIFY(!QFile::exists(path + ".tmp"));
+    }
 };
 
 QTEST_MAIN(TestDirHasFiles)

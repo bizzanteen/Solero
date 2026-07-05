@@ -29,6 +29,13 @@ public:
     static bool sevenZipAvailable();
 private:
     static QString sevenZipBinary(); // "7z" or "7za"
+    // Post-extract path-safety pass: walk destDir and reject any entry whose
+    // resolved path escapes destDir (zip-slip / symlink-escape). Returns true
+    // if every entry is contained.
+    static bool validateExtraction(const QString& destDir);
+    // Gate an extractor's success on validateExtraction; on a violation, wipe
+    // destDir and return false so the extraction is treated as failed.
+    static bool finalizeExtract(const QString& destDir, bool extractOk);
 };
 
 } // namespace solero

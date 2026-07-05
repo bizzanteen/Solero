@@ -3,7 +3,12 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
+#include <QFileInfo>
 #include <QString>
+#if defined(Q_OS_UNIX)
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 namespace solero {
 
@@ -31,15 +36,36 @@ inline bool atomicWrite(const QString& path, const QByteArray& data) {
             return false;
         }
         f.flush();
+#if defined(Q_OS_UNIX)
+        // Persist the temp file's contents to disk before the rename, so a
+        // power loss can't leave an empty/partial file in its place.
+        if (f.handle() >= 0) ::fsync(f.handle());
+#endif
         f.close();
     }
-    // Remove the existing target (ignore failure) so rename can succeed on
-    // platforms where rename won't overwrite, then move temp into place.
+#if defined(Q_OS_UNIX)
+    // POSIX rename() atomically overwrites an existing target, so there is no
+    // pre-remove (which would open a crash window with the file absent). NOTE:
+    // QFile::rename does not overwrite an existing destination, so we must use the
+    // libc call here - using QFile::rename would fail on every re-save.
+    if (::rename(QFile::encodeName(tmp).constData(),
+                 QFile::encodeName(path).constData()) != 0) {
+        QFile::remove(tmp);
+        return false;
+    }
+    // fsync the containing directory so the rename itself survives power loss.
+    const QByteArray dir = QFileInfo(path).absolutePath().toLocal8Bit();
+    int dfd = ::open(dir.constData(), O_RDONLY | O_DIRECTORY);
+    if (dfd >= 0) { ::fsync(dfd); ::close(dfd); }
+#else
+    // Non-POSIX: QFile::rename won't overwrite, so remove the target first (this
+    // reintroduces a small crash window, unavoidable without an atomic-replace API).
     QFile::remove(path);
     if (!QFile::rename(tmp, path)) {
         QFile::remove(tmp);
         return false;
     }
+#endif
     return true;
 }
 

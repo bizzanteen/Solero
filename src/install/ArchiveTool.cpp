@@ -4,6 +4,7 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QDir>
+#include <QDirIterator>
 #include <QEventLoop>
 #include <QRegularExpression>
 
@@ -116,6 +117,49 @@ QList<ArchiveTool::Entry> ArchiveTool::listEntriesWithCrc(const QString& archive
     return result;
 }
 
+bool ArchiveTool::validateExtraction(const QString& destDir) {
+    const QString rootCanon = QFileInfo(destDir).canonicalFilePath();
+    if (rootCanon.isEmpty()) {
+        qCWarning(lcInstall) << "cannot canonicalize destDir for validation:" << destDir;
+        return false;
+    }
+    const QString prefix = rootCanon + '/';
+    bool ok = true;
+    QDirIterator it(destDir,
+                    QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot,
+                    QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QString entry = it.next();
+        const QFileInfo fi = it.fileInfo();
+        bool escapes = false;
+        if (fi.isSymLink()) {
+            // Resolve the link target (Qt returns an absolute path; it may not
+            // exist or still contain "..", so clean rather than canonicalize).
+            QString target = fi.symLinkTarget();
+            if (target.isEmpty()) target = fi.absoluteFilePath();
+            const QString clean = QDir::cleanPath(target);
+            escapes = (clean != rootCanon && !clean.startsWith(prefix));
+        } else {
+            const QString canon = fi.canonicalFilePath();
+            escapes = !canon.isEmpty() && canon != rootCanon && !canon.startsWith(prefix);
+        }
+        if (escapes) {
+            qCWarning(lcInstall) << "extracted entry escapes destDir, rejecting:" << entry;
+            if (fi.isSymLink()) QFile::remove(entry);
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+bool ArchiveTool::finalizeExtract(const QString& destDir, bool extractOk) {
+    if (!extractOk) return false;
+    if (validateExtraction(destDir)) return true;
+    qCWarning(lcInstall) << "extraction failed path-safety validation, removing" << destDir;
+    QDir(destDir).removeRecursively();
+    return false;
+}
+
 bool ArchiveTool::extract(const QString& archivePath, const QString& destDir,
                           const std::function<void(int)>& onProgress) {
     qCInfo(lcInstall) << "extract:" << archivePath << "->" << destDir;
@@ -142,12 +186,12 @@ bool ArchiveTool::extract(const QString& archivePath, const QString& destDir,
             loop2.exec();
             bool okRar = pr.exitStatus() == QProcess::NormalExit && pr.exitCode() == 0;
             if (!okRar) qCWarning(lcInstall) << "unrar extract failed (exit" << pr.exitCode() << ") for" << archivePath;
-            return okRar;
+            return finalizeExtract(destDir, okRar);
         }
         loop.exec();
         bool okUnar = proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
         if (!okUnar) qCWarning(lcInstall) << "unar extract failed (exit" << proc.exitCode() << ") for" << archivePath;
-        return okUnar;
+        return finalizeExtract(destDir, okUnar);
     }
 
     QString bin = sevenZipBinary();
@@ -170,7 +214,7 @@ bool ArchiveTool::extract(const QString& archivePath, const QString& destDir,
     loop.exec();
     bool ok = proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
     if (!ok) qCWarning(lcInstall) << "7z extract failed (exit" << proc.exitCode() << ") for" << archivePath;
-    return ok;
+    return finalizeExtract(destDir, ok);
 }
 
 bool ArchiveTool::isSolid(const QString& archivePath) {

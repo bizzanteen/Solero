@@ -1,6 +1,7 @@
 #include "PluginListModel.h"
 #include "core/AppConfig.h"
 #include "install/PluginScanner.h"
+#include "loot/LootSorter.h"
 #include "IconUtil.h"
 #include <QFont>
 #include <QBrush>
@@ -225,9 +226,20 @@ QVariant PluginListModel::data(const QModelIndex& idx, int role) const {
         if (!missingMasters(p).isEmpty()) return QBrush(QColor(0xD0, 0x40, 0x40));
         return {};
     }
+    // badge plugins LOOT flagged as dirty (ITM/UDR) with a warning icon,
+    // painted trailing the name by NameDelegate. The reason rides Qt::ToolTipRole.
+    if (role == Qt::DecorationRole && idx.column() == ColName) {
+        const auto& dirty = LootSorter::dirtyPlugins();
+        if (!dirty.isEmpty() && dirty.contains(p.filename.toLower())) return warnSignIcon();
+        return {};
+    }
     if (role == Qt::ToolTipRole) {
         QStringList parts;
         const PluginList& pl = m_profile->pluginList();
+        // dirty-edit note first so it's the headline of the tooltip.
+        const QString dirty = LootSorter::dirtyPlugins().value(p.filename.toLower());
+        if (!dirty.isEmpty())
+            parts << (QStringLiteral("Dirty edits ") + QChar('-') + QStringLiteral(" ") + dirty);
         // the always-checked, disabled checkbox on official plugins is a
         // silent no-op - explain why it can't be unticked.
         if (p.isOfficial)

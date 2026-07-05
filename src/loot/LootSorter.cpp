@@ -7,12 +7,42 @@
 #include <QFileInfo>
 #include <vector>
 #include <string>
+#include <optional>
 #include <filesystem>
 
 #include <loot/api.h>
 #include <loot/enum/game_type.h>
 
 namespace solero {
+
+namespace {
+// Last sort's dirty-plugin flags (lowercased filename -> reason). File-static so
+// the plugin list can read it after a sort without MainWindow having to relay it.
+QHash<QString, QString> g_dirtyPlugins;
+
+// A cleaning utility name from the masterlist is often a CommonMark link like
+// "[SSEEdit](https://...)"; show just the label.
+QString cleaningUtilityLabel(const std::string& utility) {
+    QString u = QString::fromStdString(utility).trimmed();
+    const int lb = u.indexOf(QLatin1Char('['));
+    const int rb = u.indexOf(QLatin1Char(']'), lb + 1);
+    if (lb >= 0 && rb > lb) return u.mid(lb + 1, rb - lb - 1);
+    return u.isEmpty() ? QStringLiteral("SSEEdit") : u;
+}
+
+// "N ITM, M UDR, K deleted navmeshes - clean with <utility>" for one dirty
+// record (uses a plain hyphen so the string is 7-bit clean; the UI adds glyphs).
+QString dirtyReason(const loot::PluginCleaningData& d) {
+    QStringList parts;
+    if (d.GetITMCount() > 0)             parts << QStringLiteral("%1 ITM").arg(d.GetITMCount());
+    if (d.GetDeletedReferenceCount() > 0) parts << QStringLiteral("%1 UDR").arg(d.GetDeletedReferenceCount());
+    if (d.GetDeletedNavmeshCount() > 0)  parts << QStringLiteral("%1 deleted navmeshes").arg(d.GetDeletedNavmeshCount());
+    const QString head = parts.isEmpty() ? QStringLiteral("needs cleaning") : parts.join(QStringLiteral(", "));
+    return head + QStringLiteral(" - clean with ") + cleaningUtilityLabel(d.GetCleaningUtility());
+}
+} // namespace
+
+const QHash<QString, QString>& LootSorter::dirtyPlugins() { return g_dirtyPlugins; }
 
 QString LootSorter::masterlistDir() {
     return AppConfig::dataRoot() + "/loot";
@@ -108,7 +138,33 @@ LootSorter::SortResult LootSorter::sort(PluginList& pluginList,
         newList.copyOrderState(pluginList);
         pluginList = newList;
         result.success = true;
-        qCInfo(lcLoot) << "LOOT sort done:" << int(sorted.size()) << "plugins sorted";
+
+        // after loading the plugins, ask LOOT which are known-dirty
+        // (ITM/UDR/navmesh records needing SSEEdit). Best-effort and additive -
+        // guarded so a libloot without cleaning data (or a metadata hiccup) just
+        // yields no flags rather than failing the sort. Plugins are loaded
+        // headers-only, so their CRC is unavailable; when it is available we
+        // report only the dirty record matching the installed version.
+        try {
+            for (const auto& name : sorted) {
+                auto meta = db.GetPluginMetadata(name, true /* incl. user */, false /* no cond. eval */);
+                if (!meta) continue;
+                const auto dirty = meta->GetDirtyInfo();
+                if (dirty.empty()) continue;
+                std::optional<uint32_t> crc;
+                try { if (auto pi = handle->GetPlugin(name)) crc = pi->GetCRC(); } catch (...) {}
+                for (const auto& d : dirty) {
+                    if (crc && d.GetCRC() != 0 && d.GetCRC() != *crc) continue;
+                    result.dirtyPlugins.insert(QString::fromStdString(name).toLower(), dirtyReason(d));
+                    break; // one flag per plugin
+                }
+            }
+        } catch (...) {
+            qCInfo(lcLoot) << "LOOT cleaning-data query unavailable; skipping dirty flags";
+        }
+        g_dirtyPlugins = result.dirtyPlugins;
+        qCInfo(lcLoot) << "LOOT sort done:" << int(sorted.size()) << "plugins sorted,"
+                       << result.dirtyPlugins.size() << "dirty";
     } catch (const std::exception& e) {
         result.success = false;
         result.errorMessage = QString::fromStdString(e.what());

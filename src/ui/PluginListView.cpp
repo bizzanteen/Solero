@@ -24,11 +24,11 @@
 namespace solero {
 
 namespace {
-// The model exposes the missing-master warning via Qt::DecorationRole on the
-// Plugin column. The default delegate draws that icon to the LEFT of the name;
-// instead, suppress the leading icon and paint it immediately after the text so
-// the warning trails the plugin name. The model's tooltip (listing the missing
-// masters) is left untouched, so hovering still works.
+// The model exposes a warning via Qt::DecorationRole on the Plugin column - the
+// dirty-plugin (ITM/UDR) flag. The default delegate draws that icon to
+// the LEFT of the name; instead, suppress the leading icon and paint it
+// immediately after the text so the warning trails the plugin name. The model's
+// tooltip (the cleaning reason) is left untouched, so hovering still works.
 class NameDelegate : public ElideRightDelegate {
 public:
     using ElideRightDelegate::ElideRightDelegate;
@@ -91,7 +91,7 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
     horizontalHeader()->setSectionsClickable(true);
     horizontalHeader()->setSortIndicatorShown(true);
     horizontalHeader()->setSortIndicator(PluginListModel::ColPriority, Qt::AscendingOrder);
-    // Draw the missing-master warning icon after the plugin name (see NameDelegate).
+    // Draw the dirty-plugin warning icon after the plugin name (see NameDelegate).
     setItemDelegateForColumn(PluginListModel::ColName, new NameDelegate(this));
     // Char-level elision for long plugin names ("SomePlugin - Pat…", not "SomePlugin…").
     setTextElideMode(Qt::ElideRight);

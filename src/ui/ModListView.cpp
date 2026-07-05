@@ -673,6 +673,10 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         if (!entry->nexusModId.isEmpty()) {
             menu.addAction("Endorse on Nexus",
                            [this, id = entry->id]{ emit endorseRequested(id); });
+            menu.addAction("Track on Nexus",
+                           [this, id = entry->id]{ emit trackRequested(id); });
+            menu.addAction("Untrack on Nexus",
+                           [this, id = entry->id]{ emit untrackRequested(id); });
             menu.addAction("View Nexus Page",
                            [this, id = entry->id]{ emit viewNexusPageRequested(id); });
         }
@@ -871,8 +875,38 @@ void ModListView::setStateFilter(StateFilter state) {
     applyFilter();
 }
 
+void ModListView::setCategoryFilter(const QString& separatorName) {
+    m_categoryFilter = separatorName;
+    applyFilter();
+}
+
+void ModListView::setFlagFilter(FlagFilter flag) {
+    m_flagFilter = flag;
+    applyFilter();
+}
+
+QStringList ModListView::sectionNames() const {
+    QStringList names;
+    if (!m_model || !m_model->profile()) return names;
+    const auto& list = m_model->profile()->modList();
+    for (int i = 0; i < list.count(); ++i) {
+        const auto& e = list.at(i);
+        if (e.type == EntryType::Separator && !e.name.isEmpty()
+            && !names.contains(e.name))
+            names << e.name;
+    }
+    return names;
+}
+
 bool ModListView::matchesState(const ModEntry* entry) const {
     if (!entry || entry->type != EntryType::Mod) return true;
+    // Flag facet, independent of the state combo.
+    switch (m_flagFilter) {
+        case FlagFilter::All:     break;
+        case FlagFilter::Fomod:   if (!entry->isFomod)     return false; break;
+        case FlagFilter::Output:  if (!entry->isOutputMod) return false; break;
+        case FlagFilter::HasNote: if (entry->note.trimmed().isEmpty()) return false; break;
+    }
     switch (m_stateFilter) {
         case StateFilter::All:             return true;
         case StateFilter::Conflicts:       return m_model->modHasConflict(entry->id);
@@ -890,19 +924,27 @@ void ModListView::applyFilter() {
     // hidden too (no empty sections). The Overwrite row always stays visible.
     // rebuild() clears hidden state, so callers that rebuild re-apply the filter.
     const QModelIndex root;
-    const bool filtering = !m_filter.isEmpty() || m_stateFilter != StateFilter::All;
+    const bool filtering = !m_filter.isEmpty() || m_stateFilter != StateFilter::All
+                        || !m_categoryFilter.isEmpty() || m_flagFilter != FlagFilter::All;
     // Reveal collapsed-section mods while filtering so they become candidate rows;
     // restores normal collapse when the filter clears (early-returns if unchanged).
     m_model->setSearchExpandAll(filtering);
     const int rows = m_model->rowCount();
 
     QList<bool> hidden(rows, false);
+    // Track the current section (separator name) as we walk top-down so the
+    // category facet can hide mods that aren't under the chosen separator. Mods
+    // above the first separator have an empty section.
+    QString section;
     for (int row = 0; row < rows; ++row) {
         const auto* entry = m_model->entryAt(row);
+        if (entry && entry->type == EntryType::Separator) { section = entry->name; continue; }
         if (!entry || entry->type != EntryType::Mod) continue; // sep/Overwrite below
         bool hide = false;
         if (!m_filter.isEmpty())
             hide = !entry->name.contains(m_filter, Qt::CaseInsensitive);
+        if (!hide && !m_categoryFilter.isEmpty() && section != m_categoryFilter)
+            hide = true;
         if (!hide && !matchesState(entry))
             hide = true;
         hidden[row] = hide;

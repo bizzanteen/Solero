@@ -17,6 +17,8 @@ class ModListView : public QTreeView {
 public:
     // Quick-filter predicates by mod state (alongside the name filter).
     enum class StateFilter { All, Conflicts, UpdateAvailable, Enabled, Disabled, MissingDep };
+    // Quick-filter by a per-mod flag, combined with name/state/category.
+    enum class FlagFilter { All, Fomod, Output, HasNote };
 
     explicit ModListView(QWidget* parent = nullptr);
     void setProfile(Profile* profile);
@@ -31,6 +33,14 @@ public:
     // Restrict the list to mods matching a state predicate (combined with the
     // name filter). StateFilter::All clears the state restriction.
     void setStateFilter(StateFilter state);
+    // facets, combined with the name + state filters. Category restricts to
+    // mods under the separator with the given name (empty = any category); Flag
+    // restricts by a per-mod flag (FlagFilter::All clears it).
+    void setCategoryFilter(const QString& separatorName);
+    void setFlagFilter(FlagFilter flag);
+    // Ordered, de-duplicated separator (category) names in the active profile, for
+    // populating the category-filter control. Empty when there's no profile.
+    QStringList sectionNames() const;
     // Set the enabled state of every selected Mod row at once (save + one
     // modsChanged signal). Separators / Overwrite are ignored.
     void setSelectedModsEnabled(bool enabled);
@@ -62,6 +72,9 @@ signals:
     void reinstallRequested(const QString& modId);
     void redownloadRequested(const QString& modId);
     void endorseRequested(const QString& modId);
+    // track / untrack the mod in the user's Nexus tracking centre.
+    void trackRequested(const QString& modId);
+    void untrackRequested(const QString& modId);
     void viewNexusPageRequested(const QString& modId);
     void updateRequested(const QString& modId);
     void modsChanged();
@@ -114,6 +127,8 @@ private:
     int m_autoExpandRow = -1; // visible row currently armed for auto-expand, or -1
     QString m_filter;
     StateFilter m_stateFilter = StateFilter::All;
+    QString m_categoryFilter;                  // empty = any category
+    FlagFilter m_flagFilter = FlagFilter::All;
     bool m_didAutoSize = false;
     // True when the given mod entry passes the active state predicate.
     bool matchesState(const ModEntry* entry) const;

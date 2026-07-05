@@ -167,6 +167,37 @@ NexusApi::EndorseResult NexusApi::endorse(const QString& modId, const QString& v
     return r;
 }
 
+// Shared track/untrack worker. post/DELETE /v1/user/tracked_mods.json with the
+// game domain as a query param and mod_id in the form body. Any 2xx (a fresh
+// track is 201, an already-tracked mod is 200) leaves curlRun's err empty -> ok.
+static NexusApi::TrackResult setTracked(const QString& modId, const QString& game, bool track) {
+    NexusApi::TrackResult r;
+    if (modId.isEmpty()) { r.message = "No Nexus mod id."; return r; }
+    qCInfo(lcNexus) << (track ? "track" : "untrack") << game << "mod" << modId;
+    QUrl url("https://api.nexusmods.com/v1/user/tracked_mods.json");
+    QUrlQuery q; q.addQueryItem("domain_name", game);
+    url.setQuery(q);
+    QStringList args;
+    args << "-X" << (track ? "POST" : "DELETE")
+         << "-d" << ("mod_id=" + modId)
+         << url.toString(QUrl::FullyEncoded);
+    QString err;
+    const QByteArray body = curlRun(args, &err);
+    if (!err.isEmpty()) { r.message = err; return r; }
+    r.ok = true; // 2xx; body may be empty or a {"message": ...} note
+    const auto doc = QJsonDocument::fromJson(body);
+    if (doc.isObject()) r.message = doc.object()["message"].toString();
+    return r;
+}
+
+NexusApi::TrackResult NexusApi::track(const QString& modId, const QString& game) {
+    return setTracked(modId, game, true);
+}
+
+NexusApi::TrackResult NexusApi::untrack(const QString& modId, const QString& game) {
+    return setTracked(modId, game, false);
+}
+
 NexusApi::Md5Match NexusApi::md5Search(const QString& md5, const QString& game) {
     Md5Match r;
     if (md5.isEmpty()) return r;

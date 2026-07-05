@@ -24,6 +24,13 @@ public:
     static EndorseResult endorse(const QString& modId, const QString& version, bool abstain = false,
                                  const QString& game = kDefaultGame);
 
+    // Track / untrack a mod in the user's Nexus tracking centre (post/DELETE
+    // /v1/user/tracked_mods.json). ok is true on any 2xx (already-tracked/untracked
+    // included); message carries Nexus's note when it returns one.
+    struct TrackResult { bool ok = false; QString message; };
+    static TrackResult track(const QString& modId, const QString& game = kDefaultGame);
+    static TrackResult untrack(const QString& modId, const QString& game = kDefaultGame);
+
     struct Md5Match { bool ok = false; QString modId, fileId, version, modName; };
     static Md5Match md5Search(const QString& md5, const QString& game = kDefaultGame);
 

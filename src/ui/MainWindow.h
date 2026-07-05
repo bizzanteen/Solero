@@ -67,6 +67,10 @@ protected:
     void keyPressEvent(QKeyEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
+    // accept archive files dropped onto the window and route each to
+    // installFromArchive(). Non-archive drops are ignored.
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
 
 private:
     // Detach every model from the active Profile so a late paint can't deref it
@@ -184,6 +188,8 @@ private:
     // falling back to the id). Uses the active profile's mod list.
     QString stagingRootForId(const QString& modId) const;
     void onEndorseMod(const QString& modId);
+    void onTrackMod(const QString& modId);   // track on Nexus
+    void onUntrackMod(const QString& modId); // untrack on Nexus
     void onViewNexusPage(const QString& modId);
     void onUpdateMod(const QString& modId);
     void onCheckUpdates();
@@ -356,6 +362,11 @@ private:
     QAction* m_zoomCurrentAction = nullptr;
     // Left-pane mod filter box, targeted by the Ctrl+F focus shortcut.
     QLineEdit* m_modFilter = nullptr;
+    // category (separator) facet combo; repopulated per profile / on edits.
+    QComboBox* m_categoryCombo = nullptr;
+    // Rebuild the category-filter combo from the active profile's separators,
+    // preserving the current selection where it still exists.
+    void refreshCategoryFilter();
     // Mod-list reorder undo/redo buttons, mirrored by Ctrl+Z / Ctrl+Shift+Z
     // (which act only when the respective button is enabled).
     QToolButton* m_undoBtn = nullptr;

@@ -69,6 +69,9 @@
 #include <QDialogButtonBox>
 #include <QKeyEvent>
 #include <QCloseEvent>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QMimeData>
 #include <QElapsedTimer>
 #include <QThread>
 #include <QProcess>
@@ -211,6 +214,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setupToolbar();
     setupStatusBar();
     setupCentralWidget();
+    setAcceptDrops(true); // drop archive files onto the window to install
     statusBar()->showMessage("Ready");
 
     // When the off-thread update check finishes, apply results on the UI thread.
@@ -809,8 +813,24 @@ void MainWindow::setupCentralWidget() {
     stateFilter->addItem("Enabled",          int(solero::ModListView::StateFilter::Enabled));
     stateFilter->addItem("Disabled",         int(solero::ModListView::StateFilter::Disabled));
     stateFilter->addItem("Missing dependency", int(solero::ModListView::StateFilter::MissingDep));
+
+    // facets: filter by category (separator section) and by a per-mod flag,
+    // combined with the name + state filters above.
+    auto* categoryFilter = new QComboBox(leftContainer);
+    categoryFilter->setToolTip("Show only mods under a given separator");
+    m_categoryCombo = categoryFilter; // repopulated per-profile by refreshCategoryFilter()
+
+    auto* flagFilter = new QComboBox(leftContainer);
+    flagFilter->setToolTip("Show only mods with a given flag");
+    flagFilter->addItem("Any flag",      int(solero::ModListView::FlagFilter::All));
+    flagFilter->addItem("FOMOD",         int(solero::ModListView::FlagFilter::Fomod));
+    flagFilter->addItem("Output mod",    int(solero::ModListView::FlagFilter::Output));
+    flagFilter->addItem("Has note",      int(solero::ModListView::FlagFilter::HasNote));
+
     filterRow->addWidget(modFilter, 1);
     filterRow->addWidget(stateFilter);
+    filterRow->addWidget(categoryFilter);
+    filterRow->addWidget(flagFilter);
 
     // Reorder Undo/Redo for the mod list. Curvy-arrow theme icons with a glyph
     // fallback (QChar, never a byte escape) when the icon theme lacks them.
@@ -839,13 +859,26 @@ void MainWindow::setupCentralWidget() {
         m_modListView->setStateFilter(
             static_cast<solero::ModListView::StateFilter>(stateFilter->currentData().toInt()));
     });
+    connect(categoryFilter, &QComboBox::currentIndexChanged, this, [this, categoryFilter](int){
+        m_modListView->setCategoryFilter(categoryFilter->currentData().toString());
+    });
+    connect(flagFilter, &QComboBox::currentIndexChanged, this, [this, flagFilter](int){
+        m_modListView->setFlagFilter(
+            static_cast<solero::ModListView::FlagFilter>(flagFilter->currentData().toInt()));
+    });
+    // The category facet depends on the profile's separators, which change per
+    // profile and on mod-list edits; keep the combo's items current.
+    connect(m_modListView, &solero::ModListView::modsChanged,   this, &MainWindow::refreshCategoryFilter);
+    connect(m_modListView, &solero::ModListView::modsReordered, this, &MainWindow::refreshCategoryFilter);
     // Jump-to-mod (Problems panel / plugin origin) may need to drop an active filter
     // to reveal its target. Reset the filter WIDGETS here so the box and the list
-    // stay in sync - their own signals drive setFilter("")/setStateFilter(All).
+    // stay in sync - their own signals drive setFilter("")/setStateFilter(All)/etc.
     connect(m_modListView, &solero::ModListView::filterCleared, this,
-            [modFilter, stateFilter]{
+            [modFilter, stateFilter, categoryFilter, flagFilter]{
                 modFilter->clear();              // -> setFilter("")
                 stateFilter->setCurrentIndex(0); // "All" -> setStateFilter(All)
+                categoryFilter->setCurrentIndex(0); // -> setCategoryFilter("")
+                flagFilter->setCurrentIndex(0);     // -> setFlagFilter(All)
             });
     connect(undoBtn, &QToolButton::clicked, m_modListView, &solero::ModListView::undoMove);
     connect(redoBtn, &QToolButton::clicked, m_modListView, &solero::ModListView::redoMove);
@@ -998,6 +1031,10 @@ void MainWindow::setupCentralWidget() {
             this, &MainWindow::onRedownloadMod);
     connect(m_modListView, &solero::ModListView::endorseRequested,
             this, &MainWindow::onEndorseMod);
+    connect(m_modListView, &solero::ModListView::trackRequested,
+            this, &MainWindow::onTrackMod);
+    connect(m_modListView, &solero::ModListView::untrackRequested,
+            this, &MainWindow::onUntrackMod);
     connect(m_modListView, &solero::ModListView::viewNexusPageRequested,
             this, &MainWindow::onViewNexusPage);
     connect(m_modListView, &solero::ModListView::updateRequested,
@@ -1192,6 +1229,7 @@ void MainWindow::switchProfile(const QString& name) {
     // the menu so it reflects this profile's activeTools().
     rebuildToolsMenu();
     m_modListView->setProfile(profile);
+    refreshCategoryFilter(); // repopulate the category facet for this profile's separators
     // If we're about to redeploy (profile was deployed), defer the expensive
     // game-data plugin reconcile+save to the post-deploy setProfile below so it
     // runs exactly once. Otherwise reconcile now.
@@ -1934,7 +1972,8 @@ void MainWindow::onBackupLo() {
         statusBar()->showMessage("Couldn't write load-order backup.");
     else
         statusBar()->showMessage("Load order backed up (" +
-            QString::number(profile->pluginList().count()) + " plugins).");
+            QString::number(profile->pluginList().count()) + " plugins, " +
+            QString::number(profile->modList().count()) + " mods).");
 }
 
 void MainWindow::onRestoreLo() {
@@ -1961,9 +2000,13 @@ void MainWindow::onRestoreLo() {
         for (const auto& b : backups) {
             const QString when = b.created.isValid()
                 ? b.created.toString("yyyy-MM-dd HH:mm") : QString("unknown time");
+            // Legacy plugin-only backups (modCount < 0) omit the mod tally.
+            const QString counts = b.modCount < 0
+                ? QString("%1 plugins").arg(b.pluginCount)
+                : QString("%1 plugins, %2 mods").arg(b.pluginCount).arg(b.modCount);
             auto* item = new QListWidgetItem(
-                QString("%1  -  %2  (%3 plugins)")
-                    .arg(b.label, when).arg(b.pluginCount), listw);
+                QString("%1  %2  %3  (%4)")
+                    .arg(b.label, QString(QChar('-')), when, counts), listw);
             item->setData(Qt::UserRole, b.path);
         }
         if (listw->count()) listw->setCurrentRow(0);
@@ -2012,11 +2055,32 @@ void MainWindow::onRestoreLo() {
     if (!snap.valid) { statusBar()->showMessage("Couldn't read that backup."); return; }
 
     profile->pluginList().restoreSnapshot(snap.plugins);
+
+    // Restore the mod list too when the backup carries one. Old
+    // plugin-only backups leave hasMods false, so the live mod list is untouched.
+    // setOrder reproduces the snapshot's ordering (unknown/new mods keep their
+    // relative position, appended at the end); enabled flags are re-applied per
+    // mod. Separators are ordered but never toggled.
+    bool modsRestored = false;
+    if (snap.hasMods) {
+        QStringList order;
+        for (const auto& e : snap.mods) order << e.id;
+        profile->modList().setOrder(order);
+        for (const auto& e : snap.mods)
+            if (!e.isSeparator && profile->modList().findById(e.id))
+                profile->modList().setEnabled(e.id, e.enabled);
+        profile->modList().normalizeGroups(); // keep the group invariant after reordering
+        modsRestored = true;
+    }
+
     profile->save();
     m_rightPane->setProfile(profile); // refresh the plugins view with the restored order
+    if (modsRestored) m_modListView->setProfile(profile); // rebuild the mod list too
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     updatePluginNotice();
-    statusBar()->showMessage("Load order restored from \"" + snap.label + "\".");
+    statusBar()->showMessage(modsRestored
+        ? QString("Load order + mod list restored from \"%1\".").arg(snap.label)
+        : QString("Load order restored from \"%1\".").arg(snap.label));
 }
 
 void MainWindow::onModsChanged() {
@@ -2032,6 +2096,53 @@ void MainWindow::onModsReordered() {
     // skip the full-staging plugin rescan (refreshPlugins) and dependency-health
     // walk (refreshHealthIndicator). Deploy order DID change, so still mark dirty.
     if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+}
+
+void MainWindow::refreshCategoryFilter() {
+    if (!m_categoryCombo || !m_modListView) return;
+    const QString cur = m_categoryCombo->currentData().toString(); // preserve selection
+    QSignalBlocker block(m_categoryCombo);                         // no spurious re-filter
+    m_categoryCombo->clear();
+    m_categoryCombo->addItem("All categories", QString());
+    for (const QString& name : m_modListView->sectionNames())
+        m_categoryCombo->addItem(name, name);
+    const int idx = m_categoryCombo->findData(cur);
+    m_categoryCombo->setCurrentIndex(idx >= 0 ? idx : 0);
+    // Re-assert the (possibly reset) selection on the view, since signals were
+    // blocked and the previously-chosen section may have vanished.
+    m_modListView->setCategoryFilter(m_categoryCombo->currentData().toString());
+}
+
+// recognised archive extensions for external drag-drop install. Matches
+// the file-dialog filters used by onInstallMod / the downloads scan.
+static bool isArchivePath(const QString& path) {
+    static const QStringList kExts = {"zip", "7z", "rar", "tar", "gz"};
+    return kExts.contains(QFileInfo(path).suffix().toLower());
+}
+
+void MainWindow::dragEnterEvent(QDragEnterEvent* event) {
+    if (!event->mimeData()->hasUrls()) return;
+    // Accept as soon as at least one dropped local file is a known archive.
+    for (const QUrl& url : event->mimeData()->urls()) {
+        if (url.isLocalFile() && isArchivePath(url.toLocalFile())) {
+            event->acceptProposedAction();
+            return;
+        }
+    }
+}
+
+void MainWindow::dropEvent(QDropEvent* event) {
+    if (!event->mimeData()->hasUrls()) return;
+    QStringList archives;
+    for (const QUrl& url : event->mimeData()->urls()) {
+        if (!url.isLocalFile()) continue;
+        const QString path = url.toLocalFile();
+        if (isArchivePath(path)) archives << path; // ignore non-archive drops
+    }
+    if (archives.isEmpty()) return;
+    event->acceptProposedAction();
+    for (const QString& path : archives)
+        installFromArchive(path);
 }
 
 // Defined later in this file; used by installFromArchive to pick a unique
@@ -3148,6 +3259,38 @@ void MainWindow::onEndorseMod(const QString& modId) {
     else
         QMessageBox::warning(this, "Endorse on Nexus",
             res.message.isEmpty() ? QString("The endorsement could not be submitted - Nexus did not return a result. Try again from the mod page.") : res.message);
+}
+
+void MainWindow::onTrackMod(const QString& modId) {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return;
+    solero::ModEntry* mod = profile->modList().findById(modId);
+    if (!mod || mod->nexusModId.isEmpty()) return;
+
+    if (!requireNexusKey("track mods")) return;
+
+    auto res = solero::NexusApi::track(mod->nexusModId);
+    if (res.ok)
+        statusBar()->showMessage("Tracking " + mod->name + " on Nexus.");
+    else
+        statusBar()->showMessage(res.message.isEmpty()
+            ? QString("Couldn't track %1 on Nexus.").arg(mod->name) : res.message);
+}
+
+void MainWindow::onUntrackMod(const QString& modId) {
+    auto* profile = m_profileMgr->activeProfile();
+    if (!profile) return;
+    solero::ModEntry* mod = profile->modList().findById(modId);
+    if (!mod || mod->nexusModId.isEmpty()) return;
+
+    if (!requireNexusKey("untrack mods")) return;
+
+    auto res = solero::NexusApi::untrack(mod->nexusModId);
+    if (res.ok)
+        statusBar()->showMessage("Stopped tracking " + mod->name + " on Nexus.");
+    else
+        statusBar()->showMessage(res.message.isEmpty()
+            ? QString("Couldn't untrack %1 on Nexus.").arg(mod->name) : res.message);
 }
 
 void MainWindow::onViewNexusPage(const QString& modId) {

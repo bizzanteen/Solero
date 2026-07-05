@@ -249,6 +249,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             QMessageBox::information(this, "Deploy Notice", result.warning);
         m_lastDeployWarning = result.warning;
         m_lastDeployHadFailures = !result.success;
+        m_lastDeployError = result.success ? QString() : result.errorMessage;
 
         m_deployed = result.success;
         m_deployDirty = false;
@@ -595,6 +596,7 @@ void MainWindow::setupMenuBar() {
 
     // ---- Profile: create/rename/delete + imports + update/FOMOD scans ----
     QMenu* profileMenu = mb->addMenu("&Profile");
+    profileMenu->setToolTipsVisible(true); // custom action tooltips (e.g. Check for Updates)
     profileMenu->addAction(QStringLiteral("New Profile") + ell, this, &MainWindow::onNewProfile);
     profileMenu->addAction(QStringLiteral("Rename Current Profile") + ell, this, &MainWindow::onRenameProfile);
     profileMenu->addSeparator();
@@ -616,6 +618,7 @@ void MainWindow::setupMenuBar() {
 
     // ---- View: the Browse Nexus page toggle (same checkable QAction) ----
     QMenu* viewMenu = mb->addMenu("&View");
+    viewMenu->setToolTipsVisible(true); // custom action tooltips (e.g. Browse Nexus)
     m_browseAction = viewMenu->addAction("Browse Nexus");
     m_browseAction->setCheckable(true);
     m_browseAction->setToolTip("Toggle a full nexusmods.com browser in the main view");
@@ -657,6 +660,9 @@ void MainWindow::setupMenuBar() {
     QAction* shortcutsAct = helpMenu->addAction(
         QStringLiteral("Keyboard Shortcuts") + ell, this, &MainWindow::onShowShortcuts);
     shortcutsAct->setShortcut(QKeySequence(Qt::Key_F1));
+    // Keyboard/menu-reachable entry to the Problems dialog (otherwise only the
+    // toolbar health icon opens it).
+    helpMenu->addAction(QStringLiteral("Problems") + ell, this, &MainWindow::onShowProblems);
     helpMenu->addAction("About Solero", this, &MainWindow::onAboutSolero);
 
     rebuildToolsMenu();
@@ -711,6 +717,7 @@ void MainWindow::setupToolbar() {
     m_problemsBtn->setAutoRaise(true);
     m_problemsBtn->setToolButtonStyle(Qt::ToolButtonIconOnly);
     m_problemsBtn->setIcon(solero::neutralSignIcon(20));
+    m_problemsBtn->setAccessibleName("Problems");
     m_problemsBtn->setToolTip("No problems");
     connect(m_problemsBtn, &QToolButton::clicked, this, &MainWindow::onShowProblems);
     tb->addWidget(m_problemsBtn);
@@ -787,12 +794,13 @@ void MainWindow::setupCentralWidget() {
         if (ic.isNull()) b->setText(QString(fallback));
         else             b->setIcon(ic);
         b->setToolTip(tip);
+        b->setAccessibleName(tip);
         b->setAutoRaise(true);
         b->setEnabled(false); // nothing to undo/redo until a reorder happens
         return b;
     };
-    auto* undoBtn = makeReorderBtn(QStringLiteral("edit-undo"), QChar(0x21B6), tr("Undo move"));
-    auto* redoBtn = makeReorderBtn(QStringLiteral("edit-redo"), QChar(0x21B7), tr("Redo move"));
+    auto* undoBtn = makeReorderBtn(QStringLiteral("edit-undo"), QChar(0x21B6), tr("Undo move (Ctrl+Z)"));
+    auto* redoBtn = makeReorderBtn(QStringLiteral("edit-redo"), QChar(0x21B7), tr("Redo move (Ctrl+Shift+Z)"));
     m_undoBtn = undoBtn; // mirrored by Ctrl+Z
     m_redoBtn = redoBtn; // mirrored by Ctrl+Shift+Z
     filterRow->addWidget(undoBtn);
@@ -846,7 +854,9 @@ void MainWindow::setupCentralWidget() {
                 m_rightPane->downloadsTab()->setDownloadProgress(fn, ok ? 1 : 0, ok ? 1 : 0);
                 m_rightPane->downloadsTab()->refresh();
                 if (!ok || path.isEmpty()) {
-                    statusBar()->showMessage("Update download failed: " + fn + " - " + err);
+                    statusBar()->showMessage("Update download failed: " + fn);
+                    QMessageBox::warning(this, "Update Download Failed",
+                        "Couldn't download the update for " + fn + ".\n\n" + err);
                     return;
                 }
                 auto* profile = m_profileMgr->activeProfile();
@@ -904,8 +914,9 @@ void MainWindow::setupCentralWidget() {
                 m_rightPane->downloadsTab()->refresh();
                 m_nxmMeta.remove(fn);
                 if (!ok || path.isEmpty()) {
-                    statusBar()->showMessage("Reinstall download failed: " + fn
-                        + " - " + err);
+                    statusBar()->showMessage("Reinstall download failed: " + fn);
+                    QMessageBox::warning(this, "Reinstall Download Failed",
+                        "Couldn't download the archive for " + fn + ".\n\n" + err);
                     return;
                 }
                 onReinstallMod(reModId);
@@ -933,7 +944,10 @@ void MainWindow::setupCentralWidget() {
             for (const FailedDownload& d : m_failedDownloads)
                 failPairs.append({d.fileName, d.error});
             m_rightPane->downloadsTab()->setFailedDownloads(failPairs); // calls refresh() once
-            statusBar()->showMessage(ok ? ("Downloaded: " + fn) : ("Download failed: " + fn + " - " + err));
+            statusBar()->showMessage(ok ? ("Downloaded: " + fn) : ("Download failed: " + fn));
+            if (!ok && err != "cancelled")
+                QMessageBox::warning(this, "Download Failed",
+                    "Couldn't download " + fn + ".\n\n" + err);
             // Auto-install flagged downloads (e.g. SKSE) once they finish. Runs
             // after the sidecar write above so the new mod gets tagged with its
             // Nexus identity. The update branch returns early, so no collision.
@@ -1296,8 +1310,11 @@ bool MainWindow::ensureDeployed(const QString& reason) {
     // modal and deploy silently.
     if (solero::AppConfig::instance().autoDeployBeforeLaunch()) {
         if (!deployCurrent()) {
-            QMessageBox::critical(this, "Deploy Failed",
-                "Deployment failed - see the status bar below for details. Fix the reported issue, then click Deploy again.");
+            QMessageBox box(QMessageBox::Critical, "Deploy Failed",
+                "Deployment failed. Fix the reported issue, then click Deploy again.",
+                QMessageBox::Ok, this);
+            if (!m_lastDeployError.isEmpty()) box.setDetailedText(m_lastDeployError);
+            box.exec();
             return false;
         }
         return true;
@@ -1320,8 +1337,11 @@ bool MainWindow::ensureDeployed(const QString& reason) {
         solero::AppConfig::instance().save();
     }
     if (!deployCurrent()) {
-        QMessageBox::critical(this, "Deploy Failed",
-            "Deployment failed - see the status bar below for details. Fix the reported issue, then click Deploy again.");
+        QMessageBox box(QMessageBox::Critical, "Deploy Failed",
+            "Deployment failed. Fix the reported issue, then click Deploy again.",
+            QMessageBox::Ok, this);
+        if (!m_lastDeployError.isEmpty()) box.setDetailedText(m_lastDeployError);
+        box.exec();
         return false;
     }
     return true;
@@ -4527,7 +4547,7 @@ void MainWindow::rebuildToolsMenu() {
                            QStringLiteral("Patch Wizard") + QChar(0x2026), this, &MainWindow::onPatchWizard);
     // BethINI (INI editor) folded into Tools per the declutter spec.
     m_toolsMenu->addAction(QIcon::fromTheme("preferences-system"),
-                           QStringLiteral("BethINI"), this, &MainWindow::onOpenBethini);
+                           QStringLiteral("BethINI") + QChar(0x2026), this, &MainWindow::onOpenBethini);
     m_toolsMenu->addSeparator();
     // Add and Manage are one entry: the manager dialog hosts add / edit / remove.
     m_toolsMenu->addAction(QIcon::fromTheme("configure", QIcon::fromTheme("applications-utilities")),

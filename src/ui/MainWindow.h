@@ -317,6 +317,7 @@ private:
     solero::ProblemsDialog* m_problemsDialog = nullptr;
     QTimer* m_healthDebounce = nullptr;            // collapses a burst of refreshHealthIndicator() calls
     QString m_lastDeployWarning;                   // last DeployResult::warning
+    QString m_lastDeployError;                     // last failed DeployResult::errorMessage (empty on success)
     bool m_lastDeployHadFailures = false;          // true when last deploy had file-link failures
     solero::ConflictIndex m_lastConflicts;         // last deployed/loaded conflict index
     // off-thread deploy/undeploy state. m_deploying is a hard re-entrancy

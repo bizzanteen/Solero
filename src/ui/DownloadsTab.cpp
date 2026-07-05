@@ -26,6 +26,7 @@
 #include <QFont>
 #include <QFontMetrics>
 #include <QResizeEvent>
+#include <QTimer>
 #include <limits>
 
 namespace solero {
@@ -88,6 +89,16 @@ QString humanSize(qint64 b) {
     return QString::number(v, 'f', 1) + " GB";
 }
 
+// {sideText, fullText} for a Downloading status cell: "50%"/"12.3 MB" beside the
+// icon, and the "Downloading …" tooltip. Shared by the row-insert and the
+// throttled cell-update paths so both format progress identically.
+QPair<QString,QString> formatProgress(qint64 received, qint64 total) {
+    const QString side = (total > 0)
+        ? QString("%1%").arg(int(received * 100 / total))
+        : humanSize(received);
+    return {side, QStringLiteral("Downloading ") + side};
+}
+
 } // namespace
 
 DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
@@ -141,11 +152,21 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     connect(installBtn, &QPushButton::clicked, this, installSelected);
     connect(m_table, &QTableWidget::cellDoubleClicked, this, [installSelected](int, int){ installSelected(); });
 
+    // Coalesce progress ticks: a fast download emits progress on every network read,
+    // so repaint the in-progress status cells at most ~8x/sec instead of per chunk.
+    m_progressTimer = new QTimer(this);
+    m_progressTimer->setSingleShot(true);
+    m_progressTimer->setInterval(120);
+    connect(m_progressTimer, &QTimer::timeout, this, &DownloadsTab::flushDownloadProgress);
+
     refresh();
 }
 
 void DownloadsTab::refresh() {
     m_activeRows.clear();
+    // A full rebuild replaces every in-progress row with its on-disk equivalent, so
+    // any queued progress ticks are moot - drop them (flush would no-op anyway).
+    m_pendingProgress.clear();
     m_table->setSortingEnabled(false);
     m_table->setRowCount(0);
 
@@ -267,21 +288,19 @@ void DownloadsTab::applyColumnWidths() {
 }
 
 void DownloadsTab::setDownloadProgress(const QString& fileName, qint64 received, qint64 total) {
-    // `side` is the short text painted beside the download icon ("50%" / "12.3 MB");
-    // `full` is the full status string, which lives in the cell's tooltip.
-    const QString side = (total > 0)
-        ? QString("%1%").arg(int(received * 100 / total))
-        : humanSize(received);
-    const QString full = QStringLiteral("Downloading ") + side;
-
+    // Fast path: the row already exists, so just stash the latest bytes and let the
+    // timer coalesce the (frequent) mid-download ticks into a single repaint.
     auto it = m_activeRows.find(fileName);
     if (it != m_activeRows.end()) {
-        if (auto* statusItem = m_table->item(it.value(), 1)) {
-            statusItem->setText(side);      // icon already set; just refresh the %
-            statusItem->setToolTip(full);
-        }
+        m_pendingProgress.insert(fileName, {received, total});
+        if (!m_progressTimer->isActive()) m_progressTimer->start();
         return;
     }
+
+    // First tick for this file: build its transient row immediately (structural change).
+    // `side` is the short text painted beside the download icon ("50%" / "12.3 MB");
+    // `full` is the full status string, which lives in the cell's tooltip.
+    const auto [side, full] = formatProgress(received, total);
 
     // Insert a new transient row at the top.
     m_table->setSortingEnabled(false);
@@ -306,6 +325,19 @@ void DownloadsTab::setDownloadProgress(const QString& fileName, qint64 received,
 
     m_activeRows.insert(fileName, 0);
     m_table->setSortingEnabled(true);
+}
+
+void DownloadsTab::flushDownloadProgress() {
+    for (auto it = m_pendingProgress.constBegin(); it != m_pendingProgress.constEnd(); ++it) {
+        auto rowIt = m_activeRows.constFind(it.key());
+        if (rowIt == m_activeRows.constEnd()) continue; // row rebuilt away meanwhile
+        const auto [side, full] = formatProgress(it.value().first, it.value().second);
+        if (auto* statusItem = m_table->item(rowIt.value(), 1)) {
+            statusItem->setText(side);      // icon already set; just refresh the %
+            statusItem->setToolTip(full);
+        }
+    }
+    m_pendingProgress.clear();
 }
 
 void DownloadsTab::setProfile(Profile* profile) {

@@ -295,9 +295,15 @@ void DataTab::showGameDirectory() {
     QSet<QString> hiddenByRel;
     QString recPath = DeployEngine::recordPath(gameDir);
     DeployRecord rec = DeployRecord::loadFromFile(recPath);
+    // Build modId -> display name once; rec.allPaths() can be tens of thousands
+    // of entries and modDisplayName()'s findById() is O(mods) per call.
+    QHash<QString, QString> nameById;
+    if (m_profile)
+        for (const ModEntry& e : m_profile->modList().entries())
+            nameById.insert(e.id, e.name);
     for (const auto& relPath : rec.allPaths()) {
         const QString ownerModId = rec.ownerOf(relPath);
-        ownerByRel.insert(relPath, modDisplayName(ownerModId));
+        ownerByRel.insert(relPath, nameById.value(ownerModId, ownerModId));
         ownerModIdByRel.insert(relPath, ownerModId);
         if (m_profile && !ownerModId.isEmpty() &&
             m_profile->isFileHidden(ownerModId, relPath))

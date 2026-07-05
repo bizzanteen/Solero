@@ -5,6 +5,7 @@
 #include <QList>
 class QTableWidget;
 class QTableWidgetItem;
+class QTimer;
 namespace solero { class Profile; }
 namespace solero {
 class DownloadsTab : public QWidget {
@@ -29,6 +30,10 @@ protected:
     void changeEvent(QEvent* e) override;
 private:
     void showContextMenu(const QPoint& pos);
+    // Repaint the status cell for every file with a pending progress tick. Driven by
+    // m_progressTimer so a burst of network-read ticks coalesces into one repaint
+    // instead of a setText per chunk.
+    void flushDownloadProgress();
     void applyFilters();
     // Recompute every column's width from the current font's metrics (so they scale
     // with Ctrl +/- zoom, not stay a fixed pixel constant). The last column
@@ -42,6 +47,9 @@ private:
     // refresh() ticks preserve whatever sort the user has chosen instead.
     bool m_defaultSortApplied = false;
     QHash<QString,int> m_activeRows; // fileName -> table row for in-progress downloads
+    // Latest {received,total} per in-progress file awaiting a coalesced repaint.
+    QHash<QString,QPair<qint64,qint64>> m_pendingProgress;
+    QTimer* m_progressTimer = nullptr; // ~120ms flush of m_pendingProgress
     QList<QPair<QString,QString>> m_failed; // {fileName, error}
 };
 }

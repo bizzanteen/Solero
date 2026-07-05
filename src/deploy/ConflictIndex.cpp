@@ -9,16 +9,21 @@ namespace solero {
 
 void ConflictIndex::setWinner(const QString& relPath, const QString& modId) {
     m_conflicts[relPath].winner = modId;
+    m_reverseBuilt = false; // invalidate reverse index
 }
 
 void ConflictIndex::recordConflict(const QString& relPath, const QString& winner, const QString& loser) {
     auto& c = m_conflicts[relPath];
     c.winner = winner;
     c.losers.insert(loser);
+    m_reverseBuilt = false; // invalidate reverse index
 }
 
 void ConflictIndex::clear() {
     m_conflicts.clear();
+    m_winningByMod.clear();
+    m_losingByMod.clear();
+    m_reverseBuilt = false;
 }
 
 QString ConflictIndex::winnerOf(const QString& relPath) const {
@@ -33,20 +38,27 @@ bool ConflictIndex::hasConflict(const QString& relPath) const {
     return !m_conflicts.value(relPath).losers.isEmpty();
 }
 
+void ConflictIndex::buildReverse() const {
+    m_winningByMod.clear();
+    m_losingByMod.clear();
+    for (auto it = m_conflicts.cbegin(); it != m_conflicts.cend(); ++it) {
+        const auto& c = it.value();
+        if (c.losers.isEmpty()) continue; // not a real conflict
+        m_winningByMod[c.winner].append(it.key());
+        for (const auto& loser : c.losers)
+            m_losingByMod[loser].append(it.key());
+    }
+    m_reverseBuilt = true;
+}
+
 QStringList ConflictIndex::winningFilesOf(const QString& modId) const {
-    QStringList result;
-    for (auto it = m_conflicts.cbegin(); it != m_conflicts.cend(); ++it)
-        if (it.value().winner == modId && !it.value().losers.isEmpty())
-            result.append(it.key());
-    return result;
+    if (!m_reverseBuilt) buildReverse();
+    return m_winningByMod.value(modId);
 }
 
 QStringList ConflictIndex::losingFilesOf(const QString& modId) const {
-    QStringList result;
-    for (auto it = m_conflicts.cbegin(); it != m_conflicts.cend(); ++it)
-        if (it.value().losers.contains(modId))
-            result.append(it.key());
-    return result;
+    if (!m_reverseBuilt) buildReverse();
+    return m_losingByMod.value(modId);
 }
 
 QStringList ConflictIndex::conflictedPaths() const {

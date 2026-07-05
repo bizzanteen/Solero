@@ -38,6 +38,27 @@ private slots:
         auto losing = idx.losingFilesOf("mod-x");
         QVERIFY(losing.contains("Data/c.nif"));
     }
+    void reverseIndex_invalidatesAfterQuery() {
+        // winningFilesOf/losingFilesOf are backed by a lazily-built reverse
+        // index. Querying it (building the cache) and then mutating must not return
+        // stale results - the mutation has to invalidate the cache.
+        ConflictIndex idx;
+        idx.setWinner("Data/a.nif", "mod-x");
+        idx.recordConflict("Data/a.nif", "mod-x", "mod-y");
+        QCOMPARE(idx.winningFilesOf("mod-x").size(), 1); // builds the reverse cache
+
+        // Add a second conflict after the cache was built.
+        idx.setWinner("Data/b.nif", "mod-x");
+        idx.recordConflict("Data/b.nif", "mod-x", "mod-z");
+        auto winning = idx.winningFilesOf("mod-x");
+        QCOMPARE(winning.size(), 2);
+        QVERIFY(winning.contains("Data/a.nif"));
+        QVERIFY(winning.contains("Data/b.nif"));
+        QVERIFY(idx.losingFilesOf("mod-z").contains("Data/b.nif"));
+
+        idx.clear();
+        QCOMPARE(idx.winningFilesOf("mod-x").size(), 0);
+    }
     void roundtripJson() {
         QTemporaryDir tmp;
         QString path = tmp.path() + "/conflicts.json";

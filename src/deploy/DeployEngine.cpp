@@ -81,12 +81,27 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     int done = 0;
     if (onProgress) onProgress(0, total);
 
+    ///: persist the record INCREMENTALLY (flush after each mod, not each
+    // file) so that at any interruption point the on-disk record covers exactly
+    // what has been linked into the game dir - a crash mid-deploy then leaves a
+    // record that undeploy() can fully act on, never orphaning files. Track save
+    // failures so the caller can warn (a live-but-unrecorded deploy is unsafe).
+    const QString recPath = recordPath(m_gameDir);
+    bool recordSaveFailed = false;
+    auto flushRecord = [&]() {
+        if (!record.saveToFile(recPath)) {
+            recordSaveFailed = true;
+            qCWarning(lcDeploy) << "failed to persist deploy record to" << recPath;
+        }
+    };
+
     int failures = 0;
     // Deploy every enabled mod in list order.
     for (const auto& entry : profile.modList()) {
         if (entry.type != EntryType::Mod) continue;
         if (!entry.enabled) continue;
         failures += deployMod(entry, m_gameDir, linker, record, conflicts, ciOwners);
+        flushRecord();
         ++done;
         if (onProgress) onProgress(done, total);
     }
@@ -104,6 +119,7 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
             cacheEntry.enabled       = true;
             cacheEntry.stagingFolder = folder;
             failures += deployMod(cacheEntry, m_gameDir, linker, record, conflicts, ciOwners);
+            flushRecord();
             ++done;
             if (onProgress) onProgress(done, total);
         }
@@ -115,6 +131,7 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     // Force per-path winners (Vortex/MO2 per-file conflict choice). Runs after the
     // normal load-order loop so a chosen mod wins regardless of its priority.
     failures += applyWinnerOverrides(profile, m_gameDir, linker, record, conflicts, ciOwners);
+    flushRecord();
 
     // Sort plugins with LOOT (if enabled) before writing plugins.txt. The mod
     // files must already be deployed above so LOOT can read the plugin headers.
@@ -192,15 +209,28 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
         if (QDir(jcData).exists()) QDir().mkpath(jcData + "/Domains");
     }
 
-    record.saveToFile(recordPath(m_gameDir));
-    conflicts.saveToFile(conflictIndexPath(profile.path()));
+    // Final flush also captures the generated artifacts recorded above (Plugins.txt/
+    // loadorder.txt/INIs when they land inside gameDir).: check both saves.
+    flushRecord();
+    if (!conflicts.saveToFile(conflictIndexPath(profile.path()))) {
+        recordSaveFailed = true;
+        qCWarning(lcDeploy) << "failed to persist conflict index to"
+                            << conflictIndexPath(profile.path());
+    }
 
     if (onProgress) onProgress(total, total);
 
-    result.success = (failures == 0);
+    result.success = (failures == 0 && !recordSaveFailed);
     if (failures > 0)
         result.errorMessage = QString("%1 file(s) failed to deploy; "
                                       "the rest were deployed.").arg(failures);
+    if (recordSaveFailed) {
+        if (!result.errorMessage.isEmpty()) result.errorMessage += "\n\n";
+        result.errorMessage += "The deploy record could not be saved - the "
+                               "deployment may not be fully tracked, so undeploy "
+                               "could leave files behind. Check disk space and "
+                               "folder permissions, then re-deploy.";
+    }
 
     auto appendWarning = [&](const QString& msg) {
         if (msg.isEmpty()) return;
@@ -309,11 +339,18 @@ int DeployEngine::deployMod(const ModEntry& mod,
                 QDir().mkpath(QFileInfo(backupPath).path());
                 if (!QFile::rename(dstPath, backupPath)) {
                     // Cross-fs rename can fail; fall back to copy + remove.
-                    if (QFile::copy(dstPath, backupPath))
+                    if (QFile::copy(dstPath, backupPath)) {
                         QFile::remove(dstPath);
-                    else
+                    } else {
+                        // both backup paths failed. Do not link over the
+                        // un-backed-up original - that would destroy a vanilla/CC
+                        // file with no restore entry. Count as a failure and skip.
                         qCWarning(lcDeploy) << "backup-move failed for" << destRel
-                                            << "(mod" << modId << ")";
+                                            << "(mod" << modId << ") - skipping link "
+                                               "to preserve the original";
+                        ++failures;
+                        continue;
+                    }
                 }
             }
         }
@@ -400,11 +437,17 @@ int DeployEngine::applyWinnerOverrides(Profile& profile,
             if (!QFile::exists(backupPath)) {
                 QDir().mkpath(QFileInfo(backupPath).path());
                 if (!QFile::rename(dstPath, backupPath)) {
-                    if (QFile::copy(dstPath, backupPath))
+                    if (QFile::copy(dstPath, backupPath)) {
                         QFile::remove(dstPath);
-                    else
+                    } else {
+                        // (mirror): both backup paths failed - skip linking
+                        // rather than clobber the un-backed-up original.
                         qCWarning(lcDeploy) << "backup-move failed for" << destRel
-                                            << "(mod" << modId << ")";
+                                            << "(mod" << modId << ") - skipping link "
+                                               "to preserve the original";
+                        ++failures;
+                        continue;
+                    }
                 }
             }
         }
@@ -440,10 +483,16 @@ bool DeployEngine::undeploy(const QString& gameDir, const std::function<void(int
     auto paths = record.allPaths();
     int total = paths.size();
     int done = 0;
+    int failures = 0; // recorded files we couldn't remove / originals we couldn't restore
     qCInfo(lcDeploy) << "undeploy start:" << total << "recorded files, gameDir" << normGameDir;
     for (const auto& relPath : paths) {
         QString fullPath = normGameDir + "/" + relPath;
-        QFile::remove(fullPath);
+        // A recorded path that still exists after we tried to remove it is a real
+        // failure (leaves a stale deployed file); count it so we report !ok.
+        if (QFile::exists(fullPath) && !QFile::remove(fullPath) && QFile::exists(fullPath)) {
+            ++failures;
+            qCWarning(lcDeploy) << "undeploy: failed to remove" << fullPath;
+        }
 
         // Prune now-empty parent dirs up to (but not including) the game dir.
         // Never descend into / prune the backup tree.
@@ -476,18 +525,24 @@ bool DeployEngine::undeploy(const QString& gameDir, const std::function<void(int
             QFile::remove(dstPath); // ensure the slot is free
             if (!QFile::rename(backupPath, dstPath)) {
                 // Cross-fs fallback.
-                if (QFile::copy(backupPath, dstPath))
+                if (QFile::copy(backupPath, dstPath)) {
                     QFile::remove(backupPath);
-                else
+                } else {
+                    // an original we can't restore is a failure too.
+                    ++failures;
                     qCWarning(lcDeploy) << "backup-restore failed for" << relPath;
+                }
             }
         }
         QDir(backupRoot).removeRecursively();
     }
 
-    QFile::remove(recPath);
-    qCInfo(lcDeploy) << "undeploy done:" << done << "of" << total << "recorded files removed";
-    return true;
+    // Keep the record if anything remained so a later undeploy can retry those
+    // paths; only drop it once the game dir is fully cleaned.
+    if (failures == 0) QFile::remove(recPath);
+    qCInfo(lcDeploy) << "undeploy done:" << (total - failures) << "of" << total
+                     << "recorded files removed," << failures << "failure(s)";
+    return failures == 0;
 }
 
 QString DeployEngine::canonicalizeRelPath(const QString& gameDir, const QString& relPath) {

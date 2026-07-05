@@ -2,6 +2,7 @@
 #include <QTemporaryDir>
 #include <QFile>
 #include <QDirIterator>
+#include <unistd.h> // geteuid (root can't test unremovable files)
 #include "deploy/DeployEngine.h"
 #include "deploy/DeployRecord.h"
 #include "deploy/ConflictIndex.h"
@@ -401,6 +402,88 @@ private slots:
           QCOMPARE(f.readAll(), QByteArray("ORIGINAL")); }
         QVERIFY(!QDir(gameDir + "/.solero-backup").exists());
     }
+    // the deploy record is persisted incrementally (per-mod flush), so at any
+    // interruption point the on-disk record already covers what has been linked.
+    // We observe this via the progress callback: right after the first mod is
+    // linked the record file must already list its file. Before the fix the record
+    // was written only at the very end, so this read would find nothing.
+    void interruptedDeploy_recordCoversLinkedFilesMidway() {
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QDir().mkpath(gameDir);
+        writeFile(stagingRoot + "/aaa/Data/a.nif", "A");
+        writeFile(stagingRoot + "/bbb/Data/b.nif", "B");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry ma; ma.type = EntryType::Mod; ma.id = "aaa"; ma.name = "A"; ma.enabled = true;
+        ModEntry mb; mb.type = EntryType::Mod; mb.id = "bbb"; mb.name = "B"; mb.enabled = true;
+        profile.modList().append(ma);
+        profile.modList().append(mb);
+
+        DeployEngine engine(gameDir, stagingRoot);
+        bool checkedMidway = false;
+        engine.deploy(profile, DeployMode::Copy, [&](int done, int /*total*/) {
+            if (done == 1 && QFile::exists(gameDir + "/Data/a.nif")) {
+                DeployRecord rec = DeployRecord::loadFromFile(
+                    DeployEngine::recordPath(gameDir));
+                QVERIFY2(rec.allPaths().contains("Data/a.nif"),
+                         "record must be flushed per-mod");
+                checkedMidway = true;
+            }
+        });
+        QVERIFY(checkedMidway);
+    }
+
+    // a deploy killed mid-way leaves game-dir files plus an incrementally
+    // flushed record covering exactly them. A subsequent undeploy must remove every
+    // linked file - no orphans survive the interruption.
+    void interruptedDeploy_partialRecordFullyRemovedByUndeploy() {
+        QTemporaryDir tmp;
+        QString gameDir = tmp.path() + "/game";
+        QDir().mkpath(gameDir);
+        writeFile(gameDir + "/Data/a.nif", "A");
+        writeFile(gameDir + "/Data/b.nif", "B");
+        DeployRecord rec;
+        rec.add("Data/a.nif", "aaa");
+        rec.add("Data/b.nif", "bbb");
+        QVERIFY(rec.saveToFile(DeployEngine::recordPath(gameDir)));
+
+        DeployEngine engine(gameDir, tmp.path() + "/staging");
+        QVERIFY(engine.undeploy(gameDir)); // clean -> returns true
+        QVERIFY(!QFile::exists(gameDir + "/Data/a.nif"));
+        QVERIFY(!QFile::exists(gameDir + "/Data/b.nif"));
+    }
+
+    // undeploy returns false (not an unconditional true) when a recorded file
+    // can't be removed. We block removal by dropping write permission on the parent
+    // directory so the unlink is denied. The record is kept for a later retry.
+    void undeploy_returnsFalseWhenFileCannotBeRemoved() {
+        if (::geteuid() == 0) QSKIP("root bypasses directory permissions");
+        QTemporaryDir tmp;
+        QString gameDir = tmp.path() + "/game";
+        QString lockedDir = gameDir + "/Data/locked";
+        QDir().mkpath(lockedDir);
+        writeFile(lockedDir + "/stuck.nif", "X");
+        DeployRecord rec;
+        rec.add("Data/locked/stuck.nif", "aaa");
+        QVERIFY(rec.saveToFile(DeployEngine::recordPath(gameDir)));
+
+        // r-x on the parent dir -> the file inside cannot be unlinked.
+        QVERIFY(QFile::setPermissions(lockedDir, QFile::ReadOwner | QFile::ExeOwner));
+
+        DeployEngine engine(gameDir, tmp.path() + "/staging");
+        const bool ok = engine.undeploy(gameDir);
+
+        // Restore write so QTemporaryDir can clean up, then assert.
+        QFile::setPermissions(lockedDir,
+            QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        QVERIFY(!ok);
+        QVERIFY(QFile::exists(gameDir + "/Data/locked/stuck.nif")); // still stuck
+        // Record kept so a later undeploy can retry.
+        QVERIFY(QFile::exists(DeployEngine::recordPath(gameDir)));
+    }
+
     void redeploy_removesOrphanedFiles() {
         QTemporaryDir tmp;
         QString stagingRoot = tmp.path() + "/staging";

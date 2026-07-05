@@ -176,6 +176,12 @@ private:
 
     void rebuildVisibleRows();
     bool isModEmpty(const QString& id) const;
+    // Emit a targeted dataChanged for each currently-visible row whose mod id is in
+    // `ids` (collapsed/hidden rows need no repaint), optionally limited to `roles`.
+    // Adjacent affected rows coalesce into one span. Replaces the old full-table
+    // dataChanged in the highlight/flag setters so a selection no longer repaints
+    // the whole list.
+    void emitRowsChanged(const QSet<QString>& ids, const QList<int>& roles = {});
 
     // Visible-coordinate span for a contiguous RAW block move [from, from+count) to
     // moveSection insertion index `to`, as a single beginMoveRows would announce it.

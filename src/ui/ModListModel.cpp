@@ -42,6 +42,18 @@ QString fomodChoicesSummary(const QString& modId) {
     }
     return lines.join("\n");
 }
+
+// Keys whose value differs between two hashes (added, removed, or changed). Lets a
+// highlight/flag setter repaint only the rows it actually touched.
+template <class Hash>
+QSet<QString> changedKeys(const Hash& before, const Hash& after) {
+    QSet<QString> out;
+    for (auto it = before.cbegin(); it != before.cend(); ++it)
+        if (after.value(it.key()) != it.value()) out.insert(it.key());
+    for (auto it = after.cbegin(); it != after.cend(); ++it)
+        if (!before.contains(it.key())) out.insert(it.key());
+    return out;
+}
 } // namespace
 
 ModListModel::ModListModel(QObject* parent) : QAbstractItemModel(parent) {}
@@ -67,27 +79,30 @@ void ModListModel::setProfile(Profile* profile) {
 }
 
 void ModListModel::setUpdateInfo(const QHash<QString, QPair<QString,QString>>& info) {
+    if (m_updates == info) return;
+    const QSet<QString> changed = changedKeys(m_updates, info);
     m_updates = info;
-    if (rowCount() > 0)
-        emit dataChanged(index(0,0), index(rowCount()-1, ColCount-1));
+    emitRowsChanged(changed); // version display/decoration/foreground + flags tooltip
 }
 
 void ModListModel::setConflictHighlights(const QHash<QString,int>& roles) {
     if (m_conflictHi == roles) return;
+    const QSet<QString> changed = changedKeys(m_conflictHi, roles);
     m_conflictHi = roles;
-    if (rowCount() > 0)
-        emit dataChanged(index(0,0), index(rowCount()-1, ColCount-1), {Qt::BackgroundRole});
+    emitRowsChanged(changed, {Qt::BackgroundRole});
 }
 
 void ModListModel::setPluginOriginHighlights(const QHash<QString,int>& roles) {
     if (m_pluginOriginHi == roles) return;
+    const QSet<QString> changed = changedKeys(m_pluginOriginHi, roles);
     m_pluginOriginHi = roles;
-    if (rowCount() > 0)
-        emit dataChanged(index(0,0), index(rowCount()-1, ColCount-1), {Qt::BackgroundRole});
+    emitRowsChanged(changed, {Qt::BackgroundRole});
 }
 
 void ModListModel::setConflictIndex(const ConflictIndex& ci) {
     m_conflicts = ci;
+    const QSet<QString> oldWin = m_overwritingMods;
+    const QSet<QString> oldLose = m_overwrittenMods;
     m_overwritingMods.clear();
     m_overwrittenMods.clear();
     // Precompute per-mod winner/loser membership once so data() stays O(1).
@@ -96,13 +111,38 @@ void ModListModel::setConflictIndex(const ConflictIndex& ci) {
         if (!w.isEmpty()) m_overwritingMods.insert(w);
         for (const QString& l : ci.losersOf(path)) m_overwrittenMods.insert(l);
     }
-    if (rowCount() > 0)
-        emit dataChanged(index(0,0), index(rowCount()-1, ColCount-1));
+    // Repaint only mods whose winner/loser membership actually flipped.
+    const QSet<QString> changed = (oldWin - m_overwritingMods) | (m_overwritingMods - oldWin)
+                                | (oldLose - m_overwrittenMods) | (m_overwrittenMods - oldLose);
+    emitRowsChanged(changed); // flags decoration + tooltip
+}
+
+void ModListModel::emitRowsChanged(const QSet<QString>& ids, const QList<int>& roles) {
+    if (ids.isEmpty() || !m_profile) return;
+    const auto& list = m_profile->modList();
+    int spanFirst = -1;
+    auto flush = [&](int last) {
+        if (spanFirst < 0) return;
+        emit dataChanged(index(spanFirst, 0), index(last, ColCount - 1), roles);
+        spanFirst = -1;
+    };
+    for (int vr = 0; vr < m_visibleRows.size(); ++vr) {
+        const int raw = m_visibleRows.at(vr);
+        if (raw >= 0 && ids.contains(list.at(raw).id)) {
+            if (spanFirst < 0) spanFirst = vr;
+        } else {
+            flush(vr - 1);
+        }
+    }
+    flush(m_visibleRows.size() - 1);
 }
 
 void ModListModel::refreshFlags() {
+    // No id set to diff here (e.g. a mod note changed): repaint just the Flags
+    // column rather than the whole table.
     if (rowCount() > 0)
-        emit dataChanged(index(0,0), index(rowCount()-1, ColCount-1));
+        emit dataChanged(index(0, ColFlags), index(rowCount() - 1, ColFlags),
+                         {Qt::DecorationRole, Qt::ToolTipRole});
 }
 
 void ModListModel::invalidateModCache(const QString& id) {
@@ -131,17 +171,21 @@ void ModListModel::setSearchExpandAll(bool on) {
 }
 
 void ModListModel::setDependencyWarnings(const QHash<QString,QStringList>& w) {
+    if (m_depWarnings == w) return;
+    const QSet<QString> changed = changedKeys(m_depWarnings, w);
     m_depWarnings = w;
-    if (rowCount() > 0)
-        emit dataChanged(index(0,0), index(rowCount()-1, ColCount-1));
+    emitRowsChanged(changed); // flags decoration + tooltip
 }
 
 bool ModListModel::isModEmpty(const QString& id) const {
     auto it = m_emptyCache.constFind(id);
     if (it != m_emptyCache.constEnd()) return it.value();
     const QString folder = m_profile ? m_profile->stagingFolderFor(id) : id;
+    // Non-recursive top-level probe: a staged mod has ≥1 top-level entry (loose
+    // file or a Data/ subdir), mirroring deploy's top-level "has data" check. This
+    // runs during painting, so it must not walk the whole subtree.
     QDirIterator di(AppConfig::instance().stagingDir() + "/" + folder,
-                    QDir::Files, QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
+                    QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
     bool empty = !di.hasNext();
     m_emptyCache.insert(id, empty);
     return empty;
@@ -246,7 +290,7 @@ void ModListModel::toggleCollapse(int visibleRow) {
     ModEntry updated = *entry;
     updated.collapsed = !updated.collapsed;
     m_profile->modList().update(entry->id, updated);
-    m_profile->save();
+    m_profile->saveModListOnly(); // collapse touches only the mod list
     rebuild();
 }
 
@@ -260,7 +304,7 @@ void ModListModel::expandSeparatorDuringDrag(int visibleRow) {
     ModEntry updated = *entry;
     updated.collapsed = false;
     m_profile->modList().update(entry->id, updated);
-    m_profile->save();
+    m_profile->saveModListOnly(); // collapse touches only the mod list
 
     // Compute the post-expand visible rows by a throwaway rebuild, then RESTORE the
     // pre-expand view so rowCount() still reports the old count for beginInsertRows.
@@ -328,7 +372,7 @@ bool ModListModel::expandToReveal(int rawIndex) {
     }
 
     if (changed) {
-        m_profile->save();
+        m_profile->saveModListOnly(); // collapse touches only the mod list
         rebuild();
     }
     return changed;
@@ -342,7 +386,7 @@ void ModListModel::toggleModCollapse(int visibleRow) {
     ModEntry updated = *entry;
     updated.collapsed = !updated.collapsed;
     m_profile->modList().update(entry->id, updated);
-    m_profile->save();
+    m_profile->saveModListOnly(); // collapse touches only the mod list
     rebuild();
 }
 
@@ -611,7 +655,7 @@ bool ModListModel::setData(const QModelIndex& idx, const QVariant& value, int ro
         if (value.toInt() == entry.activeVariant) return true;
         if (!m_profile->modList().setActiveVariant(id, value.toInt()))
             return false;
-        m_profile->save();
+        m_profile->saveModListOnly(); // variant switch touches only the mod list
         emit dataChanged(idx, idx);
         emit variantSwitched(id);
         return true;
@@ -619,7 +663,7 @@ bool ModListModel::setData(const QModelIndex& idx, const QVariant& value, int ro
     if (role == Qt::CheckStateRole && idx.column() == ColEnabled) {
         const ModEntry rawEntry = m_profile->modList().at(raw);
         m_profile->modList().setEnabled(rawEntry.id, value.toInt() == Qt::Checked);
-        m_profile->save();
+        m_profile->saveModListOnly(); // enable toggle touches only the mod list
         emit dataChanged(idx, idx, {role});
         // A parent toggle propagated to its children (ModList::propagateEnabled);
         // invalidate the children's visible rows so their checkboxes refresh too.
@@ -701,7 +745,7 @@ bool ModListModel::setData(const QModelIndex& idx, const QVariant& value, int ro
             }
         }
         m_profile->modList().update(e.id, e);
-        m_profile->save();
+        m_profile->saveModListOnly(); // rename touches only the mod list
         emit dataChanged(idx, idx);
         return true;
     }

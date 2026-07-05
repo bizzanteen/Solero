@@ -572,6 +572,32 @@ private slots:
         QVERIFY(c0cleared != c0);      // now the red conflict color
     }
 
+    void setConflictHighlights_repaintsOnlyChangedRows() {
+        // a per-selection highlight change must repaint only the affected
+        // rows, never the whole table.
+        QTemporaryDir tmp;
+        Profile prof("P", tmp.path());
+        addMods(prof, 4); // m0..m3 (+ Overwrite at visible row 4)
+        ModListModel model;
+        model.setProfile(&prof);
+
+        QSignalSpy changed(&model, &QAbstractItemModel::dataChanged);
+        QHash<QString,int> hi;
+        hi.insert("m1", 1);
+        model.setConflictHighlights(hi);
+        // Exactly one row (m1, visible row 1) repainted - not index(0)..index(rowCount-1).
+        QCOMPARE(changed.count(), 1);
+        const QList<QVariant> a = changed.takeFirst();
+        QCOMPARE(a.at(0).value<QModelIndex>().row(), 1); // topLeft row
+        QCOMPARE(a.at(1).value<QModelIndex>().row(), 1); // bottomRight row
+
+        // Clearing the highlight repaints the same single row back to normal.
+        QSignalSpy cleared(&model, &QAbstractItemModel::dataChanged);
+        model.setConflictHighlights({});
+        QCOMPARE(cleared.count(), 1);
+        QCOMPARE(cleared.takeFirst().at(0).value<QModelIndex>().row(), 1);
+    }
+
     void expandSeparatorDuringDrag_incrementalInsertNotReset() {
         QTemporaryDir tmp;
         Profile prof("P", tmp.path());

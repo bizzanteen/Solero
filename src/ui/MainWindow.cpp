@@ -53,6 +53,7 @@
 #include <QDateTime>
 #include <QtConcurrent/QtConcurrent>
 #include <QFutureWatcher>
+#include <QEventLoop>
 #include <QTabWidget>
 #include <QStackedWidget>
 #include <QSplitter>
@@ -222,29 +223,82 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         // newer check started) while this one was in flight, so its updates and
         // backfill belong to a profile that is no longer active.
         if (scan.gen != m_updateGen) return;
-        // Persist any fileIds resolved by MD5 this run so future checks are accurate
-        // (and so Update/Redownload can act on them) - this must happen on the UI thread.
-        if (!scan.backfill.isEmpty()) {
-            if (auto* profile = m_profileMgr->activeProfile()) {
-                for (auto it = scan.backfill.constBegin(); it != scan.backfill.constEnd(); ++it) {
-                    if (auto* e = profile->modList().findById(it.key())) {
-                        e->nexusFileId = it.value().first;
-                        if (!it.value().second.isEmpty()) e->version = it.value().second;
-                    }
-                }
-                profile->save();
-            }
+        // A deploy is running off-thread and is reading/writing this same profile; do
+        // not mutate or save it now. Stash the result and apply it when the
+        // deploy finishes (finishDeployJob).
+        if (m_deploying) {
+            m_pendingUpdateScan = scan;
+            m_hasPendingUpdateScan = true;
+            return;
         }
-        m_modListView->setUpdateInfo(scan.updates);
-        saveUpdateFlags(scan.updates); // persist so the flags show at next launch
-        solero::AppConfig::instance().setLastUpdateCheckEpoch(
-            QDateTime::currentSecsSinceEpoch());
-        solero::AppConfig::instance().save();
-        if (scan.updates.isEmpty())
-            statusBar()->showMessage("All mods up to date.");
-        else
+        applyUpdateScan(scan);
+    });
+
+    // off-thread deploy finished. The worker only linked files (never
+    // touched a widget); all result handling runs here, on the UI thread. This is
+    // the exact tail of the old synchronous deployCurrent(), moved into the watcher
+    // so the deploy itself no longer blocks the event loop.
+    connect(&m_deployWatcher, &QFutureWatcher<solero::DeployResult>::finished, this, [this]() {
+        const solero::DeployResult result = m_deployWatcher.result();
+        finishDeployJob(); // close modal, clear guard, restore controls + repaints
+        auto* profile = m_profileMgr->activeProfile();
+
+        if (!result.success)
+            QMessageBox::warning(this, "Deploy Incomplete", result.errorMessage);
+        if (!result.warning.isEmpty())
+            QMessageBox::information(this, "Deploy Notice", result.warning);
+        m_lastDeployWarning = result.warning;
+        m_lastDeployHadFailures = !result.success;
+
+        m_deployed = result.success;
+        m_deployDirty = false;
+        statusBar()->showMessage(
+            QString("Deployed %1 files. %2 conflicts. Plugins sorted by LOOT.")
+                .arg(result.filesDeployed)
+                .arg(result.conflicts.conflictedPaths().size()));
+        m_lastConflicts = result.conflicts;
+        m_rightPane->setConflictIndex(result.conflicts);
+        m_modListView->setConflictIndex(result.conflicts);
+        if (profile) m_rightPane->setProfile(profile); // LOOT may have reordered plugins
+        m_modListView->invalidateModCache();           // deploy may have populated Overwrite
+        emit conflictsUpdated(result.conflicts);
+        m_loadOrderDirty = false;                       // deploy auto-sorts via LOOT
+        updateDeployButton();
+        updatePluginNotice();
+        updateSortButton();
+        refreshHealthIndicator();
+
+        // Run the finished continuation (used by deployCurrent's local event loop to
+        // return a bool to Play / tool runs) before post-deploy tools, matching the
+        // old synchronous ordering (deployCurrent returned after runPostDeployTools).
+        auto cont = m_deployCont; m_deployCont = nullptr;
+        if (result.success) runPostDeployTools(); // only after a real, full success
+        if (cont) cont(result.success);
+    });
+
+    // off-thread undeploy finished (Deploy toolbar button's undeploy path).
+    connect(&m_undeployWatcher, &QFutureWatcher<bool>::finished, this, [this]() {
+        const bool undeployOk = m_undeployWatcher.result();
+        finishDeployJob();
+        if (!undeployOk)
             statusBar()->showMessage(
-                QString("%1 update(s) available.").arg(scan.updates.size()));
+                "Undeploy finished with warnings - some deployed files may remain "
+                "in the game folder.", 6000);
+        m_deployed = false;
+        m_deployDirty = false;
+        m_loadOrderDirty = false;                       // not deployed -> manual sort n/a
+        m_modListView->invalidateModCache();            // undeploy may have cleared Overwrite
+        if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
+        m_lastConflicts.clear();                        // no live deployment -> no winners
+        m_lastDeployWarning.clear();
+        m_lastDeployHadFailures = false;
+        if (undeployOk) statusBar()->showMessage("Undeployed.");
+        updateDeployButton();
+        updatePluginNotice();
+        updateSortButton();
+        refreshHealthIndicator();
+        auto cont = m_undeployCont; m_undeployCont = nullptr;
+        if (cont) cont(undeployOk);
     });
 
     // Per-mod update resolve finished: kick off the download (or report an error).
@@ -1274,12 +1328,34 @@ bool MainWindow::ensureDeployed(const QString& reason) {
 }
 
 bool MainWindow::deployCurrent() {
+    // Synchronous bool bridge over the off-thread deployActiveAsync(), for callers
+    // whose surrounding flow is synchronous (ensureDeployed -> Play / tool runs). The
+    // deploy itself still runs on a worker thread; a LOCAL event loop keeps the UI
+    // responsive (repaints/progress) while we wait, rather than freezing it. The
+    // m_deploying guard + app-modal ProgressModal + disabled controls prevent the
+    // nested loop from re-entering a second deploy or a mutating action.
+    bool ok = false, done = false;
+    QEventLoop loop;
+    deployActiveAsync([&](bool s){ ok = s; done = true; if (loop.isRunning()) loop.quit(); });
+    if (!done) loop.exec(); // deployActiveAsync may fail its pre-checks synchronously
+    return ok;
+}
+
+void MainWindow::deployActiveAsync(std::function<void(bool)> onDone) {
+    // Hard re-entrancy guard ( / A16): never run a deploy against half-written
+    // state left by another in-flight job.
+    if (m_deploying) {
+        statusBar()->showMessage("A deploy is already in progress\xe2\x80\xa6");
+        if (onDone) onDone(false);
+        return;
+    }
     if (m_toolRunning) {
         statusBar()->showMessage("A tool is running - please wait for it to finish.");
-        return false;
+        if (onDone) onDone(false);
+        return;
     }
     auto* profile = m_profileMgr->activeProfile();
-    if (!profile) { statusBar()->showMessage("No active profile."); return false; }
+    if (!profile) { statusBar()->showMessage("No active profile."); if (onDone) onDone(false); return; }
 
     // If Skyrim's AppData/Documents (inside the Proton prefix) couldn't be
     // located, deploy falls back to writing Plugins.txt into Data/, where
@@ -1294,53 +1370,125 @@ bool MainWindow::deployCurrent() {
     }
 
     statusBar()->showMessage("Deploying...");
-    qApp->processEvents();
 
-    solero::ProgressModal prog(this, "Deploy", "Deploying mods + sorting plugins with LOOT...");
-    prog.show(); prog.pump();
+    // Enter the job: set the guard, disable Deploy/Play, and suppress central-widget
+    // repaints so no paint-time model read touches the Profile the worker mutates
+    // (LOOT sort reorders the plugin list off-thread). The ProgressModal is
+    // app-modal, so user input is blocked until the job finishes.
+    m_deploying = true;
+    m_savedDeployActionEnabled = m_deployAction && m_deployAction->isEnabled();
+    m_savedPlayActionEnabled   = m_playAction   && m_playAction->isEnabled();
+    if (m_deployAction) m_deployAction->setEnabled(false);
+    if (m_playAction)   m_playAction->setEnabled(false);
+    if (auto* cw = centralWidget()) cw->setUpdatesEnabled(false);
 
-    solero::DeployEngine engine(
-        solero::AppConfig::instance().gameDir(),
-        solero::AppConfig::instance().stagingDir());
-    engine.setUserlistPath(profile->lootUserlistPath());
-    auto result = engine.deploy(*profile, solero::AppConfig::instance().deployMode(), [&](int d, int t){ prog.setProgress(d, t); prog.pump(); });
+    m_deployModal = new solero::ProgressModal(this, "Deploy",
+        "Deploying mods + sorting plugins with LOOT...");
+    m_deployModal->show();
+    m_deployCont = std::move(onDone);
 
-    prog.close();
+    // Snapshot everything the worker needs so it never reaches back into the UI.
+    const QString gameDir  = solero::AppConfig::instance().gameDir();
+    const QString staging  = solero::AppConfig::instance().stagingDir();
+    const auto    mode     = solero::AppConfig::instance().deployMode();
+    const QString userlist = profile->lootUserlistPath();
+    QPointer<solero::ProgressModal> modal(m_deployModal);
 
-    if (!result.success) {
-        // Partial deploy: some files failed but the rest are in place. Warn,
-        // don't pretend success, but keep whatever did deploy.
-        QMessageBox::warning(this, "Deploy Incomplete", result.errorMessage);
+    qCInfo(lcDeploy) << "deploy dispatched to worker thread";
+    auto future = QtConcurrent::run(
+        [profile, gameDir, staging, mode, userlist, modal]() -> solero::DeployResult {
+            solero::DeployEngine engine(gameDir, staging);
+            engine.setUserlistPath(userlist);
+            // Progress must not touch the widget from this thread - marshal each
+            // tick to the UI thread via a queued call.
+            return engine.deploy(*profile, mode, [modal](int d, int t){
+                QMetaObject::invokeMethod(qApp, [modal, d, t]{
+                    if (modal) modal->setProgress(d, t);
+                }, Qt::QueuedConnection);
+            });
+        });
+    m_deployWatcher.setFuture(future);
+}
+
+void MainWindow::undeployActiveAsync(std::function<void(bool)> onDone) {
+    if (m_deploying) {
+        statusBar()->showMessage("A deploy is already in progress\xe2\x80\xa6");
+        if (onDone) onDone(false);
+        return;
     }
-    if (!result.warning.isEmpty())
-        QMessageBox::information(this, "Deploy Notice", result.warning);
-    m_lastDeployWarning = result.warning;
-    m_lastDeployHadFailures = !result.success;
+    m_deploying = true;
+    m_savedDeployActionEnabled = m_deployAction && m_deployAction->isEnabled();
+    m_savedPlayActionEnabled   = m_playAction   && m_playAction->isEnabled();
+    if (m_deployAction) m_deployAction->setEnabled(false);
+    if (m_playAction)   m_playAction->setEnabled(false);
+    if (auto* cw = centralWidget()) cw->setUpdatesEnabled(false);
 
-    m_deployed = result.success;
-    m_deployDirty = false;
-    statusBar()->showMessage(
-        QString("Deployed %1 files. %2 conflicts. Plugins sorted by LOOT.")
-            .arg(result.filesDeployed)
-            .arg(result.conflicts.conflictedPaths().size()));
-    m_lastConflicts = result.conflicts;
-    m_rightPane->setConflictIndex(result.conflicts);
-    m_modListView->setConflictIndex(result.conflicts);
-    m_rightPane->setProfile(profile); // refresh plugin list - LOOT may have reordered it
-    m_modListView->invalidateModCache(); // deploy may have populated Overwrite
-    emit conflictsUpdated(result.conflicts);
-    m_loadOrderDirty = false; // deploy auto-sorts via LOOT -> order is clean
-    updateDeployButton();
-    updatePluginNotice();
-    updateSortButton();
-    refreshHealthIndicator();
+    m_deployModal = new solero::ProgressModal(this, "Deploy", "Undeploying...");
+    m_deployModal->show();
+    m_undeployCont = std::move(onDone);
 
-    // Auto-run any tools flagged "Run on deployment" - only after a real, fully
-    // successful DEPLOY (not a partial deploy, and never an undeploy, which lives
-    // in onDeployToggle and doesn't reach here).
-    if (result.success) runPostDeployTools();
+    const QString gameDir = solero::AppConfig::instance().gameDir();
+    const QString staging = solero::AppConfig::instance().stagingDir();
+    QPointer<solero::ProgressModal> modal(m_deployModal);
 
-    return result.success;
+    qCInfo(lcDeploy) << "undeploy dispatched to worker thread";
+    auto future = QtConcurrent::run([gameDir, staging, modal]() -> bool {
+        solero::DeployEngine engine(gameDir, staging);
+        return engine.undeploy(gameDir, [modal](int d, int t){
+            QMetaObject::invokeMethod(qApp, [modal, d, t]{
+                if (modal) modal->setProgress(d, t);
+            }, Qt::QueuedConnection);
+        });
+    });
+    m_undeployWatcher.setFuture(future);
+}
+
+void MainWindow::finishDeployJob() {
+    if (m_deployModal) {
+        m_deployModal->close();
+        m_deployModal->deleteLater();
+        m_deployModal = nullptr;
+    }
+    if (auto* cw = centralWidget()) cw->setUpdatesEnabled(true);
+    if (m_deployAction) m_deployAction->setEnabled(m_savedDeployActionEnabled);
+    if (m_playAction)   m_playAction->setEnabled(m_savedPlayActionEnabled);
+    m_deploying = false;
+    // Apply any update-check result that finished mid-deploy (deferred so it couldn't
+    // race the worker's profile access). Only if its generation is still current.
+    if (m_hasPendingUpdateScan) {
+        m_hasPendingUpdateScan = false;
+        if (m_pendingUpdateScan.gen == m_updateGen) applyUpdateScan(m_pendingUpdateScan);
+        m_pendingUpdateScan = {};
+    }
+}
+
+// Apply an update-check result on the UI thread (backfill fileIds/versions into the
+// profile, persist, show the update flags). Never call while m_deploying - see the
+// m_updateWatcher finished handler, which defers to here via finishDeployJob.
+void MainWindow::applyUpdateScan(const UpdateScan& scan) {
+    // Persist any fileIds resolved by MD5 this run so future checks are accurate
+    // (and so Update/Redownload can act on them).
+    if (!scan.backfill.isEmpty()) {
+        if (auto* profile = m_profileMgr->activeProfile()) {
+            for (auto it = scan.backfill.constBegin(); it != scan.backfill.constEnd(); ++it) {
+                if (auto* e = profile->modList().findById(it.key())) {
+                    e->nexusFileId = it.value().first;
+                    if (!it.value().second.isEmpty()) e->version = it.value().second;
+                }
+            }
+            profile->save();
+        }
+    }
+    m_modListView->setUpdateInfo(scan.updates);
+    saveUpdateFlags(scan.updates); // persist so the flags show at next launch
+    solero::AppConfig::instance().setLastUpdateCheckEpoch(
+        QDateTime::currentSecsSinceEpoch());
+    solero::AppConfig::instance().save();
+    if (scan.updates.isEmpty())
+        statusBar()->showMessage("All mods up to date.");
+    else
+        statusBar()->showMessage(
+            QString("%1 update(s) available.").arg(scan.updates.size()));
 }
 
 bool MainWindow::redeployForTool(const QString& title, const QString& message) {
@@ -1420,6 +1568,10 @@ void MainWindow::runPostDeployTools() {
 }
 
 void MainWindow::onDeployToggle() {
+    if (m_deploying) {
+        statusBar()->showMessage("A deploy is already in progress\xe2\x80\xa6");
+        return;
+    }
     if (m_toolRunning) {
         statusBar()->showMessage("A tool is running - please wait for it to finish.");
         return;
@@ -1434,43 +1586,18 @@ void MainWindow::onDeployToggle() {
         return;
     }
 
+    // Both branches run off the UI thread and finish asynchronously: all state
+    // updates + the button/notice/sort/health refresh happen in the respective
+    // watcher's finished handler, not here (this returns immediately).
     if (!m_deployed || m_deployDirty) {
-        if (!deployCurrent()) return;
+        deployActiveAsync({});
     } else {
         auto ret = QMessageBox::question(this, "UnDeploy",
             "Remove all deployed mod links? Staged mods will not be affected.",
             QMessageBox::Yes | QMessageBox::No);
         if (ret != QMessageBox::Yes) return;
-
-        solero::ProgressModal prog(this, "Deploy", "Undeploying...");
-        prog.show(); prog.pump();
-
-        solero::DeployEngine engine(
-            solero::AppConfig::instance().gameDir(),
-            solero::AppConfig::instance().stagingDir());
-        const bool undeployOk = engine.undeploy(solero::AppConfig::instance().gameDir(),
-            [&](int d, int t){ prog.setProgress(d, t); prog.pump(); });
-
-        prog.close();
-        if (!undeployOk)
-            statusBar()->showMessage(
-                "Undeploy finished with warnings - some deployed files may remain "
-                "in the game folder.", 6000);
-        m_deployed = false;
-        m_deployDirty = false;
-        m_loadOrderDirty = false; // not deployed -> manual sort no longer applies
-        m_modListView->invalidateModCache(); // undeploy may have cleared Overwrite
-        if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
-        m_lastConflicts.clear();      // no live deployment -> no conflict winners
-        m_lastDeployWarning.clear();
-        m_lastDeployHadFailures = false;
-        if (undeployOk) statusBar()->showMessage("Undeployed."); // else keep the warning above
+        undeployActiveAsync({});
     }
-
-    updateDeployButton();
-    updatePluginNotice();
-    updateSortButton();
-    refreshHealthIndicator();
 }
 
 void MainWindow::updateDeployButton() {
@@ -1503,6 +1630,10 @@ void MainWindow::refreshHealthIndicator() {
 
 void MainWindow::recomputeHealthIndicator() {
     if (!m_problemsBtn) return;
+    // The health scan reads the active Profile's mod/plugin lists. While an
+    // off-thread deploy is in flight the worker mutates them (LOOT reorders the
+    // plugin list), so skip now - the deploy's finished handler re-triggers this.
+    if (m_deploying) return;
     QList<solero::HealthIssue> issues;
     if (auto* profile = m_profileMgr->activeProfile()) {
         solero::HealthInputs in;
@@ -3798,6 +3929,10 @@ void MainWindow::onZoomOut()   { static_cast<Application*>(qApp)->setZoomFactor(
 void MainWindow::onZoomReset() { static_cast<Application*>(qApp)->setZoomFactor(1.0); }
 
 void MainWindow::onRunTool(const solero::Executable& exe) {
+    if (m_deploying) {
+        statusBar()->showMessage("A deploy is in progress - please wait for it to finish.");
+        return;
+    }
     if (m_toolRunning) {
         statusBar()->showMessage("A tool is running - please wait for it to finish.");
         return;
@@ -4472,6 +4607,10 @@ void MainWindow::onOpenLootRules() {
 }
 
 void MainWindow::onPlay() {
+    if (m_deploying) {
+        statusBar()->showMessage("A deploy is in progress - wait for it to finish.");
+        return;
+    }
     if (m_toolRunning) {
         statusBar()->showMessage("Something is already running - wait for it to finish.");
         return;

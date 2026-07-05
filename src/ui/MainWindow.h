@@ -43,6 +43,7 @@ class BottomPanel;
 class BethiniWindow;
 class ProblemsDialog;
 class RequirementsDialog;
+class ProgressModal;
 }
 
 class MainWindow : public QMainWindow {
@@ -90,6 +91,15 @@ private:
     void refreshProfileCombo();
     void onDeployToggle();
     bool deployCurrent();        // perform a deploy of the active profile; returns success
+    // run deploy/undeploy of the active profile off the UI thread
+    // (QtConcurrent::run + QFutureWatcher). onDone (if set) runs on the UI thread
+    // after all result handling. The Deploy toolbar button drives these
+    // fire-and-forget; deployCurrent() bridges deployActiveAsync back to a
+    // synchronous bool (local event loop) for Play / tool-run callers whose
+    // surrounding flow is synchronous. finishDeployJob() tears the job UI down.
+    void deployActiveAsync(std::function<void(bool)> onDone);
+    void undeployActiveAsync(std::function<void(bool)> onDone);
+    void finishDeployJob();
     // Like deployCurrent but for use INSIDE a tool run: deploys the active profile
     // (honoring any in-memory ModList toggle) under a ProgressModal and updates
     // deploy/conflict state, without running post-deploy tools or popping the
@@ -309,6 +319,19 @@ private:
     QString m_lastDeployWarning;                   // last DeployResult::warning
     bool m_lastDeployHadFailures = false;          // true when last deploy had file-link failures
     solero::ConflictIndex m_lastConflicts;         // last deployed/loaded conflict index
+    // off-thread deploy/undeploy state. m_deploying is a hard re-entrancy
+    // guard - while a job is in flight, a second deploy / Play / mutating action
+    // bails so nothing runs against half-written game Data. Progress is marshaled to
+    // m_deployModal on the UI thread; result handling runs in the watchers' finished
+    // handlers. The saved-*-enabled flags restore the toolbar controls on finish.
+    bool m_deploying = false;
+    QFutureWatcher<solero::DeployResult> m_deployWatcher;
+    QFutureWatcher<bool>                 m_undeployWatcher;
+    solero::ProgressModal* m_deployModal = nullptr;    // live only during a job
+    std::function<void(bool)> m_deployCont;            // deploy finished continuation
+    std::function<void(bool)> m_undeployCont;          // undeploy finished continuation
+    bool m_savedDeployActionEnabled = true;
+    bool m_savedPlayActionEnabled   = true;
     QComboBox* m_profileCombo = nullptr;
     QSplitter* m_splitter = nullptr;
     solero::ModListView*    m_modListView = nullptr;
@@ -342,6 +365,12 @@ private:
         quint64 gen = 0; // generation this scan belongs to (see m_updateGen)
     };
     QFutureWatcher<UpdateScan> m_updateWatcher;
+    // Apply an update-check result (backfill into the profile, persist, show flags).
+    // Runs on the UI thread; deferred if a deploy is in flight (m_deploying) so it
+    // can't mutate/save the profile the off-thread deploy worker is reading.
+    void applyUpdateScan(const UpdateScan& scan);
+    UpdateScan m_pendingUpdateScan;          // stashed when a scan finishes mid-deploy
+    bool m_hasPendingUpdateScan = false;     // true when the above is waiting to apply
     // Bumped on every update-check start and on profile switch, so a check whose
     // profile changed (or that raced a newer check) is discarded on finish and its
     // background progress callbacks stop touching the UI. Guards against crashes on

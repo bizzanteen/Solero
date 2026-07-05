@@ -359,8 +359,16 @@ int DeployEngine::deployMod(const ModEntry& mod,
         // (and the StockGame overlay) point back into their source; deploying the
         // symlink itself makes executables like skse64_loader.exe run FROM that
         // source dir and launch the wrong game instance (StockGame's vanilla copy).
-        QString realSrc = QFileInfo(srcPath).canonicalFilePath();
-        if (realSrc.isEmpty()) realSrc = srcPath;
+        // canonicalFilePath() is a per-file syscall; only pay it when the
+        // source is actually a symlink - regular files need no resolution.
+        QString realSrc = srcPath;
+        {
+            QFileInfo srcInfo(srcPath);
+            if (srcInfo.isSymLink()) {
+                const QString canon = srcInfo.canonicalFilePath();
+                if (!canon.isEmpty()) realSrc = canon;
+            }
+        }
         if (!linker.deploy(realSrc, dstPath)) {
             qCWarning(lcDeploy) << "Deploy failed for" << relPath << "(mod" << modId << ")";
             ++failures;
@@ -452,8 +460,15 @@ int DeployEngine::applyWinnerOverrides(Profile& profile,
             }
         }
 
-        QString realSrc = QFileInfo(srcPath).canonicalFilePath();
-        if (realSrc.isEmpty()) realSrc = srcPath;
+        // only canonicalize when the source is actually a symlink.
+        QString realSrc = srcPath;
+        {
+            QFileInfo srcInfo(srcPath);
+            if (srcInfo.isSymLink()) {
+                const QString canon = srcInfo.canonicalFilePath();
+                if (!canon.isEmpty()) realSrc = canon;
+            }
+        }
         if (!linker.deploy(realSrc, dstPath)) {
             qCWarning(lcDeploy) << "Winner override failed to link" << relPath << "(mod" << modId << ")";
             ++failures;

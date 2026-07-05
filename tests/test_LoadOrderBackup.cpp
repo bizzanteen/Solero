@@ -1,7 +1,9 @@
 #include <QtTest>
 #include <QTemporaryDir>
+#include <QFile>
 #include "core/Profile.h"
 #include "core/PluginList.h"
+#include "core/ModList.h"
 #include "core/LoadOrderBackup.h"
 using namespace solero;
 
@@ -14,6 +16,16 @@ static PluginEntry mk(const QString& name, bool enabled, bool official = false) 
     p.isLight    = name.endsWith(".esl", Qt::CaseInsensitive);
     p.isOfficial = official;
     return p;
+}
+
+// Build a mod-list entry (Mod or Separator) with a fixed id for snapshot checks.
+static ModEntry mkMod(const QString& id, bool enabled, EntryType t = EntryType::Mod) {
+    ModEntry e;
+    e.id      = id;
+    e.type    = t;
+    e.enabled = enabled;
+    e.name    = id;
+    return e;
 }
 
 class TestLoadOrderBackup : public QObject {
@@ -97,6 +109,70 @@ private slots:
         QTemporaryDir tmp;
         Profile profile("Fresh", tmp.path());
         QVERIFY(LoadOrderBackup::list(profile).isEmpty());
+    }
+
+    // a snapshot also captures the ordered mod list (id + enabled +
+    // separator flag), and load() reproduces it in order.
+    void modList_roundtrips() {
+        QTemporaryDir tmp;
+        Profile profile("P", tmp.path());
+        profile.pluginList().append(mk("Skyrim.esm", true, /*official=*/true));
+
+        ModList& ml = profile.modList();
+        ml.append(mkMod("sep1", false, EntryType::Separator));
+        ml.append(mkMod("modA", true));
+        ml.append(mkMod("modB", false));
+
+        const QString path = LoadOrderBackup::create(profile, "with-mods");
+        QVERIFY(!path.isEmpty());
+
+        // The listing reports the mod count for a new-format backup.
+        auto backups = LoadOrderBackup::list(profile);
+        QCOMPARE(backups.size(), 1);
+        QCOMPARE(backups.first().modCount, 3);
+
+        const auto snap = LoadOrderBackup::load(path);
+        QVERIFY(snap.valid);
+        QVERIFY(snap.hasMods);
+        QCOMPARE(snap.mods.size(), 3);
+        QCOMPARE(snap.mods.at(0).id, QString("sep1"));
+        QVERIFY(snap.mods.at(0).isSeparator);
+        QCOMPARE(snap.mods.at(1).id, QString("modA"));
+        QCOMPARE(snap.mods.at(1).enabled, true);
+        QCOMPARE(snap.mods.at(1).isSeparator, false);
+        QCOMPARE(snap.mods.at(2).id, QString("modB"));
+        QCOMPARE(snap.mods.at(2).enabled, false);
+
+        // The mod order round-trips through ModList::setOrder (as the restore does).
+        QStringList order;
+        for (const auto& e : snap.mods) order << e.id;
+        // Shuffle the live list, then restore.
+        ml.setOrder({"modB", "modA", "sep1"});
+        QVERIFY(ml.setOrder(order));
+        QCOMPARE(ml.at(0).id, QString("sep1"));
+        QCOMPARE(ml.at(1).id, QString("modA"));
+        QCOMPARE(ml.at(2).id, QString("modB"));
+    }
+
+    // back-compat: an old plugin-only snapshot (no "mods" section) still
+    // loads - hasMods is false and the mod list is left untouched by callers.
+    void oldFormat_pluginOnly_backCompat() {
+        QTemporaryDir tmp;
+        const QString path = tmp.path() + "/lo-old.json";
+        QFile f(path);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(R"({"label":"legacy","created":"2020-01-01T00:00:00",
+                    "plugins":[{"name":"A.esp","enabled":true},
+                               {"name":"B.esp","enabled":false}]})");
+        f.close();
+
+        const auto snap = LoadOrderBackup::load(path);
+        QVERIFY(snap.valid);
+        QVERIFY(!snap.hasMods);          // no mod-list section
+        QVERIFY(snap.mods.isEmpty());
+        QCOMPARE(snap.plugins.size(), 2); // plugins still restore
+        QCOMPARE(snap.plugins.at(0).first, QString("A.esp"));
+        QCOMPARE(snap.plugins.at(1).second, false);
     }
 };
 QTEST_MAIN(TestLoadOrderBackup)

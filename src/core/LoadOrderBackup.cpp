@@ -1,6 +1,7 @@
 #include "LoadOrderBackup.h"
 #include "Profile.h"
 #include "PluginList.h"
+#include "ModList.h"
 #include "FileUtil.h"
 #include <QDir>
 #include <QFile>
@@ -31,10 +32,24 @@ QString create(const Profile& profile, const QString& label) {
         plugins.append(o);
     }
 
+    // Capture the ordered mod list too: id + enabled flag + separator marker, so a
+    // bad install/reorder is reversible alongside the plugin order.
+    QJsonArray mods;
+    const ModList& ml = profile.modList();
+    for (int i = 0; i < ml.count(); ++i) {
+        const ModEntry& e = ml.at(i);
+        QJsonObject o;
+        o["id"]        = e.id;
+        o["enabled"]   = e.enabled;
+        o["separator"] = (e.type == EntryType::Separator);
+        mods.append(o);
+    }
+
     QJsonObject root;
     root["label"]   = effectiveLabel;
     root["created"] = now.toString(Qt::ISODate);
     root["plugins"] = plugins;
+    root["mods"]    = mods;
 
     const QString d = dir(profile);
     QDir().mkpath(d);
@@ -64,6 +79,9 @@ QList<LoadOrderBackupInfo> list(const Profile& profile) {
         info.created     = QDateTime::fromString(root["created"].toString(), Qt::ISODate);
         info.label       = root["label"].toString();
         info.pluginCount = root["plugins"].toArray().size();
+        // -1 flags a legacy plugin-only backup (no "mods" section); a present but
+        // empty array is a genuine zero-mod snapshot (0).
+        info.modCount    = root.contains("mods") ? root["mods"].toArray().size() : -1;
         if (info.label.isEmpty())
             info.label = info.created.isValid()
                 ? info.created.toString("yyyy-MM-dd HH:mm:ss") : fn;
@@ -90,6 +108,21 @@ LoadOrderSnapshot load(const QString& path) {
         const QString name = o["name"].toString();
         if (name.isEmpty()) continue;
         snap.plugins.append({name, o["enabled"].toBool(false)});
+    }
+    // Mod list: only present in newer backups. Absent means hasMods stays
+    // false and callers leave the live mod list untouched (plugin-only restore).
+    if (root.contains("mods")) {
+        snap.hasMods = true;
+        for (const auto& v : root["mods"].toArray()) {
+            const QJsonObject o = v.toObject();
+            const QString id = o["id"].toString();
+            if (id.isEmpty()) continue;
+            ModListSnapshotEntry e;
+            e.id          = id;
+            e.enabled     = o["enabled"].toBool(false);
+            e.isSeparator = o["separator"].toBool(false);
+            snap.mods.append(e);
+        }
     }
     snap.valid = true;
     return snap;

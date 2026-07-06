@@ -5,13 +5,19 @@
 #include "nexus/NexusApi.h"
 #include "wabbajack/WabbajackEngine.h"
 #include "deploy/DeployMode.h"
+#include "ui/ThemeAdapter.h"
+#include "ui/IconUtil.h"
 #include <QGroupBox>
 #include <QFileDialog>
 #include <QTabWidget>
 #include <QDialogButtonBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QFormLayout>
 #include <QComboBox>
+#include <QFontComboBox>
+#include <QSpinBox>
+#include <QColorDialog>
 #include <QCheckBox>
 #include <QLabel>
 #include <QLineEdit>
@@ -136,6 +142,68 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
         wjDetected->setVisible(t.trimmed().isEmpty());
     });
     prefsLayout->addWidget(wjGroup);
+
+    // Appearance group
+    auto* appGroup = new QGroupBox("Appearance", prefs);
+    auto* appForm = new QFormLayout(appGroup);
+
+    m_themeCombo = new QComboBox(appGroup);
+    m_themeCombo->addItem("System", "system");
+    m_themeCombo->addItem("Light",  "light");
+    m_themeCombo->addItem("Dark",   "dark");
+    {
+        const int idx = m_themeCombo->findData(cfg.themeMode());
+        m_themeCombo->setCurrentIndex(idx >= 0 ? idx : 0);
+    }
+    appForm->addRow("Theme:", m_themeCombo);
+
+    // Accent colour: a swatch button (shows the current colour) + a Default reset.
+    m_accentColor = cfg.accentColor();
+    m_accentBtn = new QPushButton(appGroup);
+    m_accentBtn->setToolTip("Choose the accent (selection / highlight) colour");
+    auto* accentDefault = new QPushButton("Default", appGroup);
+    auto* accentRow = new QHBoxLayout;
+    accentRow->addWidget(m_accentBtn, 1);
+    accentRow->addWidget(accentDefault);
+    appForm->addRow("Accent colour:", accentRow);
+    updateAccentSwatch();
+    connect(m_accentBtn, &QPushButton::clicked, this, [this]{
+        const QColor init = m_accentColor.isEmpty()
+            ? palette().color(QPalette::Highlight) : QColor(m_accentColor);
+        const QColor c = QColorDialog::getColor(init, this, "Accent colour");
+        if (c.isValid()) { m_accentColor = c.name(); updateAccentSwatch(); }
+    });
+    connect(accentDefault, &QPushButton::clicked, this, [this]{
+        m_accentColor.clear(); updateAccentSwatch();
+    });
+
+    // Font: an explicit "override" checkbox governs whether a family/size is saved,
+    // so leaving it off means "use the Qt/system default" (no ambiguity).
+    m_fontOverride = new QCheckBox("Use a custom UI font", appGroup);
+    const bool hasFont = !cfg.fontFamily().isEmpty() || cfg.fontSize() > 0;
+    m_fontOverride->setChecked(hasFont);
+    appForm->addRow("", m_fontOverride);
+
+    m_fontCombo = new QFontComboBox(appGroup);
+    if (!cfg.fontFamily().isEmpty()) m_fontCombo->setCurrentFont(QFont(cfg.fontFamily()));
+    m_fontSizeSpin = new QSpinBox(appGroup);
+    m_fontSizeSpin->setRange(0, 24);
+    m_fontSizeSpin->setSpecialValueText("Default"); // value 0 shows "Default"
+    m_fontSizeSpin->setValue(cfg.fontSize());
+    auto* fontRow = new QHBoxLayout;
+    fontRow->addWidget(m_fontCombo, 1);
+    fontRow->addWidget(m_fontSizeSpin);
+    appForm->addRow("Font:", fontRow);
+
+    auto syncFontEnabled = [this]{
+        const bool on = m_fontOverride->isChecked();
+        m_fontCombo->setEnabled(on);
+        m_fontSizeSpin->setEnabled(on);
+    };
+    connect(m_fontOverride, &QCheckBox::toggled, this, [syncFontEnabled](bool){ syncFontEnabled(); });
+    syncFontEnabled();
+
+    prefsLayout->addWidget(appGroup);
 
     prefsLayout->addStretch();
 
@@ -390,10 +458,38 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
         cfg.setJackifyEnginePath(m_jackifyEdit->text().trimmed());
         if (m_serverCombo)
             cfg.setPreferredDownloadServer(m_serverCombo->currentData().toString());
+
+        // Appearance: theme mode, accent, font.
+        cfg.setThemeMode(m_themeCombo->currentData().toString());
+        cfg.setAccentColor(m_accentColor);
+        if (m_fontOverride->isChecked()) {
+            cfg.setFontFamily(m_fontCombo->currentFont().family());
+            cfg.setFontSize(m_fontSizeSpin->value()); // 0 => keep default size
+        } else {
+            cfg.setFontFamily(QString());
+            cfg.setFontSize(0);
+        }
+
         cfg.save();
+        // Apply the theme live so the change is visible without a restart.
+        if (auto* app = qobject_cast<QApplication*>(QApplication::instance()))
+            ThemeAdapter::apply(*app);
         accept();
     });
     connect(btns, &QDialogButtonBox::rejected, this, &QDialog::reject);
+}
+
+void SettingsDialog::updateAccentSwatch() {
+    if (!m_accentBtn) return;
+    if (m_accentColor.isEmpty()) {
+        m_accentBtn->setText("Default");
+        m_accentBtn->setStyleSheet(QString());
+    } else {
+        const QColor c(m_accentColor);
+        m_accentBtn->setText(m_accentColor);
+        m_accentBtn->setStyleSheet(QString("background:%1; color:%2;")
+            .arg(m_accentColor, contrastText(c).name()));
+    }
 }
 
 void SettingsDialog::setSkseInstalledVersion(const QString& version) {

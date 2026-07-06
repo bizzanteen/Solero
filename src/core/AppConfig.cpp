@@ -106,6 +106,10 @@ bool AppConfig::load() {
     m_deployMode = (dm == "symlink") ? DeployMode::SymLink
                  : (dm == "copy")    ? DeployMode::Copy
                                      : DeployMode::HardLink;
+    m_themeMode   = obj["themeMode"].toString("system");
+    m_accentColor = obj["accentColor"].toString();
+    m_fontFamily  = obj["fontFamily"].toString();
+    m_fontSize    = obj["fontSize"].toInt(0);
     m_lastProfile = obj["lastProfile"].toString();
     m_preferredDownloadServer = obj["preferredDownloadServer"].toString();
     m_cachedDownloadServers.clear();
@@ -146,6 +150,10 @@ bool AppConfig::save() const {
     obj["deployMode"] = (m_deployMode == DeployMode::SymLink) ? "symlink"
                       : (m_deployMode == DeployMode::Copy)    ? "copy"
                                                               : "hardlink";
+    obj["themeMode"]   = m_themeMode;
+    obj["accentColor"] = m_accentColor;
+    obj["fontFamily"]  = m_fontFamily;
+    obj["fontSize"]    = m_fontSize;
     obj["lastProfile"] = m_lastProfile;
     obj["preferredDownloadServer"] = m_preferredDownloadServer;
     QJsonArray servers;

@@ -556,3 +556,15 @@ target_link_libraries(test_ColumnResize PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
 add_test(NAME test_ColumnResize COMMAND test_ColumnResize)
 set_tests_properties(test_ColumnResize PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${_qt_plugins}")
+
+# ThemeAdapter::buildPalette: pure palette logic (needs QGuiApplication for QPalette).
+add_executable(test_ThemeAdapter test_ThemeAdapter.cpp
+  ../src/ui/ThemeAdapter.cpp
+  ../src/core/AppConfig.cpp
+  ../src/core/StagingFolder.cpp
+  ../src/core/Log.cpp)
+target_include_directories(test_ThemeAdapter PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_ThemeAdapter PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Svg Qt6::Test)
+add_test(NAME test_ThemeAdapter COMMAND test_ThemeAdapter)
+set_tests_properties(test_ThemeAdapter PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${_qt_plugins}")

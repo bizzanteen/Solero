@@ -79,6 +79,17 @@ public:
     void setJackifyEnginePath(const QString& v) { m_jackifyEnginePath = v; }
     DeployMode deployMode() const             { return m_deployMode; }
     void setDeployMode(DeployMode v)          { m_deployMode = v; }
+    // UI theme options (applied by ThemeAdapter). themeMode: "system" (follow KDE,
+    // default) | "light" | "dark". accentColor: "#rrggbb" or empty (palette default).
+    // fontFamily empty / fontSize 0 = Qt default.
+    QString themeMode() const                 { return m_themeMode; }
+    void setThemeMode(const QString& v)       { m_themeMode = v; }
+    QString accentColor() const               { return m_accentColor; }
+    void setAccentColor(const QString& v)     { m_accentColor = v; }
+    QString fontFamily() const                { return m_fontFamily; }
+    void setFontFamily(const QString& v)      { m_fontFamily = v; }
+    int fontSize() const                      { return m_fontSize; }
+    void setFontSize(int v)                   { m_fontSize = v; }
     // Name of the profile active when Solero last closed; restored on next launch.
     const QString& lastProfile() const        { return m_lastProfile; }
     void setLastProfile(const QString& v)     { m_lastProfile = v; }
@@ -144,6 +155,10 @@ private:
     QString m_lastSeparatorColor;
     QString m_jackifyEnginePath;
     DeployMode m_deployMode = DeployMode::HardLink;
+    QString m_themeMode = "system";
+    QString m_accentColor;
+    QString m_fontFamily;
+    int m_fontSize = 0;
     QString m_lastProfile;
     QString m_preferredDownloadServer;
     QStringList m_cachedDownloadServers;

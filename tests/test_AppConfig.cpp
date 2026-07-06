@@ -31,6 +31,35 @@ private slots:
         QCOMPARE(cfg.pluginListHeaderState(), pluginBlob);
     }
 
+    // Theme options (mode / accent / font) round-trip through config.json.
+    void themeOptions_roundTrip() {
+        QTemporaryDir home;
+        QVERIFY(home.isValid());
+        qputenv("HOME", home.path().toLocal8Bit());
+
+        auto& cfg = AppConfig::instance();
+        // Defaults before anything is set.
+        QCOMPARE(cfg.themeMode(), QString("system"));
+        QVERIFY(cfg.accentColor().isEmpty());
+
+        cfg.setThemeMode("dark");
+        cfg.setAccentColor("#3daee9");
+        cfg.setFontFamily("Noto Sans");
+        cfg.setFontSize(11);
+        QVERIFY(cfg.save());
+
+        cfg.setThemeMode("system");
+        cfg.setAccentColor("");
+        cfg.setFontFamily("");
+        cfg.setFontSize(0);
+        QVERIFY(cfg.load());
+
+        QCOMPARE(cfg.themeMode(), QString("dark"));
+        QCOMPARE(cfg.accentColor(), QString("#3daee9"));
+        QCOMPARE(cfg.fontFamily(), QString("Noto Sans"));
+        QCOMPARE(cfg.fontSize(), 11);
+    }
+
     // Modern nested libraryfolders.vdf form.
     void parseVdf_nestedForm() {
         const QString vdf = R"(

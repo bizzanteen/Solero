@@ -3,9 +3,11 @@
 
 class QCheckBox;
 class QComboBox;
+class QFontComboBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
+class QSpinBox;
 
 namespace solero {
 
@@ -37,6 +39,14 @@ private:
     QCheckBox* m_promptAfterBrowserDownload = nullptr;
     QCheckBox* m_autoCheckUpdates = nullptr;
     QComboBox* m_deployCombo = nullptr;
+    // Appearance
+    QComboBox* m_themeCombo = nullptr;
+    QPushButton* m_accentBtn = nullptr;
+    QString m_accentColor;               // "#rrggbb" or empty (default)
+    QCheckBox* m_fontOverride = nullptr; // when off, no font override is saved
+    QFontComboBox* m_fontCombo = nullptr;
+    QSpinBox* m_fontSizeSpin = nullptr;
+    void updateAccentSwatch();           // repaint the accent button's swatch
     QLabel* m_nxmStatus = nullptr;
     QLabel* m_nexusStatus = nullptr;
     QLineEdit* m_keyEdit = nullptr;

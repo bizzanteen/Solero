@@ -54,6 +54,37 @@ protected:
     }
 };
 
+// Centres the Status column's icon. A plain QTableWidgetItem draws its icon
+// left-aligned regardless of textAlignment, so an icon-only status cell looked
+// stuck to the left. For icon-only cells this paints the style background (so
+// selection still shows) then the icon centred; cells that also carry side text
+// (a live download's "rate <dot> ETA") fall back to the normal icon+text layout.
+class StatusCellDelegate : public ElideRightDelegate {
+public:
+    using ElideRightDelegate::ElideRightDelegate;
+    void paint(QPainter* painter, const QStyleOptionViewItem& option,
+               const QModelIndex& index) const override {
+        const QString text = index.data(Qt::DisplayRole).toString();
+        const QIcon icon = index.data(Qt::DecorationRole).value<QIcon>();
+        if (text.isEmpty() && !icon.isNull()) {
+            QStyleOptionViewItem opt(option);
+            initStyleOption(&opt, index);
+            opt.icon = QIcon();
+            opt.text.clear();
+            opt.features &= ~QStyleOptionViewItem::HasDecoration;
+            const QWidget* w = opt.widget;
+            QStyle* style = w ? w->style() : QApplication::style();
+            style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, w); // bg + selection
+            const int sz = 14;
+            QRect ir(0, 0, sz, sz);
+            ir.moveCenter(option.rect.center());
+            icon.paint(painter, ir, Qt::AlignCenter);
+            return;
+        }
+        ElideRightDelegate::paint(painter, option, index);
+    }
+};
+
 // Sorts by the numeric value stored in Qt::UserRole rather than display text.
 class NumItem : public QTableWidgetItem {
 public:
@@ -136,11 +167,12 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     m_table = new DownloadsTable(this);
     m_table->setColumnCount(4);
     m_table->setHorizontalHeaderLabels({"Name", "Status", "Size", "Downloaded"});
-    // The Status cells are icons (see makeStatusItem), so the header doesn't need
-    // the word "Status" taking space - show a compact "?" that explains itself on
-    // hover. Cells stay centre-aligned (set per-item in makeStatusItem).
+    // The Status cells are icons (see makeStatusItem), so the header shows a "?"
+    // icon from the same status-dot family (not the word "Status") that explains
+    // itself on hover. Cells are centred by StatusCellDelegate below.
     if (auto* statusHdr = m_table->horizontalHeaderItem(1)) {
-        statusHdr->setText(QStringLiteral("?"));
+        statusHdr->setText(QString());
+        statusHdr->setIcon(helpStatusIcon(14));
         statusHdr->setToolTip(QStringLiteral("Status - each mod's download / install state"));
         statusHdr->setTextAlignment(Qt::AlignCenter);
     }
@@ -151,6 +183,7 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     // Char-level elision for overlong cell text ("Some Mod Na…", not "Some…") on
     // every column - the shared ElideRightDelegate pre-elides with QFontMetrics.
     m_table->setItemDelegate(new ElideRightDelegate(m_table));
+    m_table->setItemDelegateForColumn(1, new StatusCellDelegate(m_table)); // centre status icons
     m_table->setTextElideMode(Qt::ElideRight);
     m_table->setWordWrap(false);
     // Breathing room between columns so adjacent cells aren't bunched together.
@@ -341,10 +374,11 @@ void DownloadsTab::applyColumnWidths() {
     auto* hh = m_table->horizontalHeader();
     // ~16px item padding (style sheet) + icon/margins folded into each headroom.
     const int name   = qMax(220, fm.horizontalAdvance(QStringLiteral("A reasonably long example mod file name")) + 20);
-    // Wide enough for the live "rate <dot> ETA" text (e.g. "88.8 MB/s <dot> 0:00")
-    // beside the icon, not just "100%".
-    const QString statusSample = QStringLiteral("88.8 MB/s ") + QChar(0x00B7) + QStringLiteral(" 0:00");
-    const int status = qMax(56, fm.horizontalAdvance(statusSample) + 28); // icon + text
+    // Compact by default: the cells are just a centred icon (+ a short "%" while
+    // downloading), so size to fit the icon + "100%", not the full "rate <dot> ETA"
+    // text (which stays in the tooltip). The column is Interactive, so a user who
+    // wants to watch live rates can widen it.
+    const int status = qMax(40, fm.horizontalAdvance(QStringLiteral("100%")) + 30); // icon + short %
     const int size   = qMax(56, fm.horizontalAdvance(QStringLiteral("999.9 MB")) + 20);
     const int dated  = qMax(84, fm.horizontalAdvance(QStringLiteral("00th Sep, 00:00")) + 16);
     hh->resizeSection(0, name);

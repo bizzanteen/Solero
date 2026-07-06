@@ -188,6 +188,25 @@ inline QIcon neutralStatusIcon(int size = 14) {
     p.drawLine(QPointF(px * 0.30, px * 0.50), QPointF(px * 0.70, px * 0.50));
     return QIcon(pm);
 }
+// Help / "what is this?": a slate filled circle with a white question mark, in
+// the same status-dot family as installed/downloading so a column header labelled
+// with it reads as part of the set.
+inline QIcon helpStatusIcon(int size = 14) {
+    QPixmap pm = makeStatusPixmap(size);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const qreal px = size, m = px * 0.08;
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor("#6b7078"));
+    p.drawEllipse(QRectF(m, m, px - 2 * m, px - 2 * m));
+    QFont f;
+    f.setPixelSize(int(px * 0.72));
+    f.setBold(true);
+    p.setFont(f);
+    p.setPen(Qt::white);
+    p.drawText(QRectF(0, 0, px, px), Qt::AlignCenter, QStringLiteral("?"));
+    return QIcon(pm);
+}
 inline QIcon yellowUpArrowIcon(int px = kFlagIconPx) {
     QPixmap pm(px, px); pm.fill(Qt::transparent);
     QPainter p(&pm);

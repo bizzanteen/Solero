@@ -773,32 +773,10 @@ void MainWindow::setupToolbar() {
     // keep this styling across setText().
     if (auto* deployBtn = qobject_cast<QToolButton*>(tb->widgetForAction(m_deployAction))) {
         QFont f = deployBtn->font(); f.setBold(true); deployBtn->setFont(f);
-        // Escape hatch: a dropdown on the Deploy button forces a full
-        // teardown+relink, bypassing the incremental diff. The primary click still
-        // deploys normally (MenuButtonPopup keeps the main action separate).
-        auto* deployMenu = new QMenu(deployBtn);
-        QAction* fullRedeploy = deployMenu->addAction("Full Redeploy");
-        fullRedeploy->setToolTip("Tear down and re-link every file (use if a deploy "
-                                 "looks wrong). Slower than a normal deploy.");
-        connect(fullRedeploy, &QAction::triggered, this, [this]{
-            if (m_deploying) {
-                statusBar()->showMessage("A deploy is already in progress\xe2\x80\xa6");
-                return;
-            }
-            if (m_toolRunning) {
-                statusBar()->showMessage("A tool is running - please wait for it to finish.");
-                return;
-            }
-            if (!m_profileMgr->activeProfile()) { statusBar()->showMessage("No active profile."); return; }
-            if (!solero::AppConfig::instance().isConfigured()) {
-                statusBar()->showMessage("Game directory not configured. Use Game Settings...");
-                return;
-            }
-            deployActiveAsync({}, /*forceFull=*/true);
-        });
-        deployBtn->setMenu(deployMenu);
-        deployBtn->setPopupMode(QToolButton::MenuButtonPopup);
     }
+    // "Full Redeploy" ( escape hatch) lives in the Tools menu, not as a
+    // dropdown on the Deploy button - a QToolButton menu can hijack the primary
+    // click on some styles, and the primary Deploy action must never be at risk.
     if (auto* playBtn = qobject_cast<QToolButton*>(tb->widgetForAction(m_playAction))) {
         QFont f = playBtn->font(); f.setBold(true); playBtn->setFont(f);
         const QColor accent = palette().color(QPalette::Highlight);
@@ -837,6 +815,7 @@ void MainWindow::setupCentralWidget() {
     m_modFilter = modFilter; // targeted by the Ctrl+F focus shortcut
     modFilter->setPlaceholderText(QStringLiteral("Search mods") + QChar(0x2026));
     modFilter->setClearButtonEnabled(true);
+    modFilter->setMinimumWidth(140); // never collapse to a tiny "…" box
     auto* stateFilter = new QComboBox(leftContainer);
     stateFilter->setToolTip("Show only mods in a given state");
     stateFilter->addItem("All",              int(solero::ModListView::StateFilter::All));
@@ -858,6 +837,12 @@ void MainWindow::setupCentralWidget() {
     categoryFilter->setInsertPolicy(QComboBox::NoInsert);
     categoryFilter->setMaxVisibleItems(12);
     categoryFilter->setStyleSheet("QComboBox { combobox-popup: 0; }");
+    // An editable combo defaults to an Expanding width, which steals the stretch
+    // from the mod-search box beside it (shrinking it to nothing). Pin it to a
+    // fixed, content-sized width so the search box keeps the row's stretch.
+    categoryFilter->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    categoryFilter->setMinimumContentsLength(14);
+    categoryFilter->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     if (auto* comp = categoryFilter->completer()) {
         comp->setCompletionMode(QCompleter::PopupCompletion);
         comp->setFilterMode(Qt::MatchContains);
@@ -1703,20 +1688,27 @@ void MainWindow::runPostDeployTools() {
 }
 
 void MainWindow::onDeployToggle() {
+    qCInfo(lcDeploy) << "Deploy button clicked; deployed=" << m_deployed
+                     << "dirty=" << m_deployDirty << "deploying=" << m_deploying
+                     << "toolRunning=" << m_toolRunning;
     if (m_deploying) {
+        qCInfo(lcDeploy) << "Deploy ignored: a deploy is already in progress";
         statusBar()->showMessage("A deploy is already in progress\xe2\x80\xa6");
         return;
     }
     if (m_toolRunning) {
+        qCInfo(lcDeploy) << "Deploy ignored: a tool is running";
         statusBar()->showMessage("A tool is running - please wait for it to finish.");
         return;
     }
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) {
+        qCInfo(lcDeploy) << "Deploy ignored: no active profile";
         statusBar()->showMessage("No active profile.");
         return;
     }
     if (!solero::AppConfig::instance().isConfigured()) {
+        qCInfo(lcDeploy) << "Deploy ignored: game dir not configured";
         statusBar()->showMessage("Game directory not configured. Use Game Settings...");
         return;
     }
@@ -4772,6 +4764,22 @@ void MainWindow::rebuildToolsMenu() {
     // Add and Manage are one entry: the manager dialog hosts add / edit / remove.
     m_toolsMenu->addAction(QIcon::fromTheme("configure", QIcon::fromTheme("applications-utilities")),
                            QStringLiteral("Add or Manage Tools") + QChar(0x2026), this, &MainWindow::onManageTools);
+
+    // escape hatch: force a full teardown+relink (bypass the incremental
+    // diff) if a deploy ever looks wrong.
+    m_toolsMenu->addSeparator();
+    QAction* fullRedeploy = m_toolsMenu->addAction(
+        QIcon::fromTheme("view-refresh"), QStringLiteral("Full Redeploy"), this, [this]{
+            if (m_deploying) { statusBar()->showMessage("A deploy is already in progress\xe2\x80\xa6"); return; }
+            if (m_toolRunning) { statusBar()->showMessage("A tool is running - please wait for it to finish."); return; }
+            if (!m_profileMgr->activeProfile()) { statusBar()->showMessage("No active profile."); return; }
+            if (!solero::AppConfig::instance().isConfigured()) {
+                statusBar()->showMessage("Game directory not configured. Use Game Settings\xe2\x80\xa6"); return;
+            }
+            deployActiveAsync({}, /*forceFull=*/true);
+        });
+    fullRedeploy->setToolTip("Tear down and re-link every deployed file. Slower than a "
+                             "normal deploy; use if a deploy looks wrong.");
 }
 
 QList<QPair<QString,QString>> MainWindow::modChoices() const {

@@ -6,6 +6,7 @@
 #include "ui/ThemeAdapter.h"
 #include <QTimer>
 #include <QCoreApplication>
+#include <QIcon>
 
 int main(int argc, char* argv[]) {
     // Install the file sink + crash handler first, so even the app ctor's messages
@@ -27,6 +28,11 @@ int main(int argc, char* argv[]) {
     // QtWebEngine widgets require shared OpenGL contexts set before QApplication.
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
     Application app(argc, argv);
+    // Theme-based icons (undo/redo, tools, …) should still resolve where the user's
+    // configured icon theme isn't available - a minimal desktop, or the Flatpak/KDE
+    // runtime. Breeze is always present in those; fall back to it (this does not
+    // override the user's own theme, only supplements missing icons).
+    QIcon::setFallbackThemeName(QStringLiteral("breeze"));
     solero::ThemeAdapter::apply(app);
     qCInfo(lcApp) << "Solero" << QCoreApplication::applicationVersion()
                   << "starting; data dir" << solero::AppConfig::dataRoot();

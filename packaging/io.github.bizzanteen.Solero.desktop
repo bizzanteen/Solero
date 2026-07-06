@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Solero
+GenericName=Mod Manager
+Comment=Mod manager for Skyrim Special Edition / Anniversary Edition
+Exec=solero %u
+Icon=io.github.bizzanteen.Solero
+Categories=Game;Utility;
+Keywords=mod;skyrim;modmanager;nexus;
+StartupWMClass=solero
+Terminal=false
+MimeType=x-scheme-handler/nxm;

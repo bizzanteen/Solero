@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.bizzanteen.Solero</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Solero</name>
+  <summary>Mod manager for Skyrim Special Edition on Linux</summary>
+
+  <description>
+    <p>
+      Solero is a Mod Organizer-style mod manager for Skyrim Special Edition /
+      Anniversary Edition, built for Linux and the Steam Deck. It pairs MO2's
+      mod-list structure and UI with Vortex-style hardlink deployment, so you launch
+      the game the normal way through Steam - no VFS proxy and no non-Steam shortcut.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Ordered, priority-based mod list with categories, groups and per-file conflict control</li>
+      <li>Hardlink / symlink / copy deployment into the real game folder, with fast incremental deploys</li>
+      <li>Independent profiles; in-app Nexus browsing, downloads and update checks</li>
+      <li>FOMOD installer with option recall; Mod Organizer 2 and Wabbajack imports</li>
+      <li>LOOT load-order sorting; SKSE and Community Shaders management</li>
+      <li>External-tool launching through Proton with automatic output capture</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.bizzanteen.Solero.desktop</launchable>
+
+  <url type="homepage">https://github.com/bizzanteen/Solero</url>
+  <url type="bugtracker">https://github.com/bizzanteen/Solero/issues</url>
+  <url type="vcs-browser">https://github.com/bizzanteen/Solero</url>
+
+  <developer id="io.github.bizzanteen">
+    <name>bizzanteen</name>
+  </developer>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>The main window - mod list, plugins and deploy/play controls</caption>
+      <image>https://raw.githubusercontent.com/bizzanteen/Solero/main/docs/images/overview.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The Saves tab with the savegame previewer</caption>
+      <image>https://raw.githubusercontent.com/bizzanteen/Solero/main/docs/images/saves.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Conflict detection across the load order</caption>
+      <image>https://raw.githubusercontent.com/bizzanteen/Solero/main/docs/images/conflicts.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The Downloads tab</caption>
+      <image>https://raw.githubusercontent.com/bizzanteen/Solero/main/docs/images/downloads.png</image>
+    </screenshot>
+  </screenshots>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.1.0" date="2026-07-07">
+      <description>
+        <p>First public release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

@@ -82,12 +82,17 @@ FetchContent_Declare(json
 )
 FetchContent_MakeAvailable(json)
 
-# libloot C++ wrapper (built from local Rust source clone; reuses cargo cache).
-# Requires the Rust toolchain (cargo) on PATH at build time.
+# libloot C++ wrapper (built from the upstream Rust source; requires the Rust
+# toolchain (cargo) on PATH at build time). Pinned to a specific commit for
+# reproducibility. For fast local iteration against a local clone, configure with
+# -DFETCHCONTENT_SOURCE_DIR_LIBLOOT=/path/to/libloot (FetchContent's built-in
+# override - no need to edit this file).
 set(LIBLOOT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(LIBLOOT_INSTALL_DOCS OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(libloot
-  SOURCE_DIR /var/home/eamon/dev/libloot-src
+  GIT_REPOSITORY https://github.com/loot/libloot.git
+  GIT_TAG 41543ecec5e4e40a119d877ede4d502582c79de5
+  GIT_SHALLOW FALSE
   SOURCE_SUBDIR cpp)
 FetchContent_MakeAvailable(libloot)
 
@@ -193,6 +198,19 @@ add_executable(solero ${SOLERO_SOURCES})
 target_include_directories(solero PRIVATE src ${CMAKE_BINARY_DIR}/include ${SOLERO_SAVE_INCLUDES})
 target_compile_definitions(solero PRIVATE ${SOLERO_SAVE_DEFS})
 target_link_libraries(solero PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::Xml Qt6::Svg Qt6::Concurrent Qt6::WebEngineWidgets libloot::libloot ${SOLERO_SAVE_LIBS})
+
+# ── Install rules (for Flatpak / AppImage / `cmake --install`) ────────────────
+# App id is reverse-DNS after the GitHub owner (github.com/bizzanteen/Solero).
+include(GNUInstallDirs)
+set(SOLERO_APP_ID "io.github.bizzanteen.Solero")
+install(TARGETS solero RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES packaging/${SOLERO_APP_ID}.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES packaging/${SOLERO_APP_ID}.metainfo.xml
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+install(FILES resources/icons/solero-logo.svg
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+        RENAME ${SOLERO_APP_ID}.svg)
 
 enable_testing()
 add_subdirectory(tests)

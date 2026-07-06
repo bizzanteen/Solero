@@ -21,16 +21,16 @@ namespace solero {
 // the SOLERO_REPORT_RELAY env var to override at runtime. While it still equals this
 // placeholder, the report dialog disables Send and offers the browser fallback.
 inline constexpr const char* kReportRelayUrl =
-    "https://YOUR-WORKER.example.workers.dev/report";
+    "https://solero-report-relay.solero.workers.dev/report";
 
 // The target GitHub repo, used only for the browser fallback URL
 // (github.com/<owner>/<repo>/issues/new). The relay holds the authoritative repo for
 // authenticated submits.
-inline constexpr const char* kReportRepo = "YOUR-OWNER/YOUR-REPO";
+inline constexpr const char* kReportRepo = "bizzanteen/Solero";
 
 // Shared token sent as the X-Solero-Report header; the Worker checks it as a light
 // anti-abuse gate. Kept in step with the Worker's SHARED_TOKEN secret.
-inline constexpr const char* kReportSharedToken = "REPLACE-WITH-SHARED-TOKEN";
+inline constexpr const char* kReportSharedToken = "8dfdabefb9f88efc4f8305ed4111736b22c3fe9a23db519f";
 
 class ReportSubmitter : public QObject {
     Q_OBJECT

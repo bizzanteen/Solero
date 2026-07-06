@@ -136,6 +136,14 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     m_table = new DownloadsTable(this);
     m_table->setColumnCount(4);
     m_table->setHorizontalHeaderLabels({"Name", "Status", "Size", "Downloaded"});
+    // The Status cells are icons (see makeStatusItem), so the header doesn't need
+    // the word "Status" taking space - show a compact "?" that explains itself on
+    // hover. Cells stay centre-aligned (set per-item in makeStatusItem).
+    if (auto* statusHdr = m_table->horizontalHeaderItem(1)) {
+        statusHdr->setText(QStringLiteral("?"));
+        statusHdr->setToolTip(QStringLiteral("Status - each mod's download / install state"));
+        statusHdr->setTextAlignment(Qt::AlignCenter);
+    }
     m_table->setSortingEnabled(true);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);

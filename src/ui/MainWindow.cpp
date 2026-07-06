@@ -59,6 +59,7 @@
 #include <QStackedWidget>
 #include <QSplitter>
 #include <QComboBox>
+#include <QCompleter>
 #include <QToolBar>
 #include <QToolButton>
 #include <QLabel>
@@ -849,6 +850,25 @@ void MainWindow::setupCentralWidget() {
     // combined with the name + state filters above.
     auto* categoryFilter = new QComboBox(leftContainer);
     categoryFilter->setToolTip("Show only mods under a given separator");
+    // A long category list shouldn't span the whole screen: make the dropdown
+    // searchable + bounded. Editable with a contains-completer gives type-to-search;
+    // combobox-popup:0 + maxVisibleItems forces a scrollbar past ~12 rows instead of
+    // a full-height popup.
+    categoryFilter->setEditable(true);
+    categoryFilter->setInsertPolicy(QComboBox::NoInsert);
+    categoryFilter->setMaxVisibleItems(12);
+    categoryFilter->setStyleSheet("QComboBox { combobox-popup: 0; }");
+    if (auto* comp = categoryFilter->completer()) {
+        comp->setCompletionMode(QCompleter::PopupCompletion);
+        comp->setFilterMode(Qt::MatchContains);
+        comp->setCaseSensitivity(Qt::CaseInsensitive);
+    }
+    // If the user types something that isn't a real category, snap the shown text
+    // back to the active selection so the box never displays a bogus value.
+    connect(categoryFilter->lineEdit(), &QLineEdit::editingFinished, this, [categoryFilter]{
+        if (categoryFilter->findText(categoryFilter->currentText()) < 0)
+            categoryFilter->setEditText(categoryFilter->itemText(categoryFilter->currentIndex()));
+    });
     m_categoryCombo = categoryFilter; // repopulated per-profile by refreshCategoryFilter()
 
     auto* flagFilter = new QComboBox(leftContainer);

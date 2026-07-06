@@ -1,0 +1,43 @@
+# Flatpak manifest for Solero. Built in CI (see .github/workflows/flatpak.yml) or
+# locally with:  flatpak run org.flatpak.Builder --force-clean --user --install \
+#     build-dir io.github.bizzanteen.Solero.yml
+#
+# The KDE runtime provides Qt6 + QtWebEngine. libloot is built from Rust via the
+# rust-stable SDK extension. The build fetches nlohmann/json + libloot + cargo crates
+# over the network (--share=network) - pragmatic for our own bundle (not Flathub-pure).
+id: io.github.bizzanteen.Solero
+runtime: org.kde.Platform
+runtime-version: '6.10'
+sdk: org.kde.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: solero
+
+finish-args:
+  - --share=ipc
+  - --share=network                       # Nexus API + the embedded browser
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri                          # GL for QtWebEngine
+  # Solero launches HOST binaries (Steam, umu-run/Proton, the game, external tools)
+  # via flatpak-spawn --host - this permission is what makes that work.
+  - --talk-name=org.freedesktop.Flatpak
+  # A mod manager needs to reach the Steam library, staging, and downloads folders,
+  # which can live anywhere (incl. secondary drives).
+  - --filesystem=host
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/solero/cargo
+  build-args:
+    - --share=network                     # let FetchContent (json/libloot) + cargo fetch
+
+modules:
+  - name: solero
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+    sources:
+      - type: dir
+        path: .

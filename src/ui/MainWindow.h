@@ -101,7 +101,9 @@ private:
     // fire-and-forget; deployCurrent() bridges deployActiveAsync back to a
     // synchronous bool (local event loop) for Play / tool-run callers whose
     // surrounding flow is synchronous. finishDeployJob() tears the job UI down.
-    void deployActiveAsync(std::function<void(bool)> onDone);
+    // forceFull requests a full teardown+relink (the "Full Redeploy" escape hatch)
+    // instead of the default incremental diff.
+    void deployActiveAsync(std::function<void(bool)> onDone, bool forceFull = false);
     void undeployActiveAsync(std::function<void(bool)> onDone);
     void finishDeployJob();
     // Like deployCurrent but for use INSIDE a tool run: deploys the active profile

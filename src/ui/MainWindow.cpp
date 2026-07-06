@@ -772,6 +772,31 @@ void MainWindow::setupToolbar() {
     // keep this styling across setText().
     if (auto* deployBtn = qobject_cast<QToolButton*>(tb->widgetForAction(m_deployAction))) {
         QFont f = deployBtn->font(); f.setBold(true); deployBtn->setFont(f);
+        // Escape hatch: a dropdown on the Deploy button forces a full
+        // teardown+relink, bypassing the incremental diff. The primary click still
+        // deploys normally (MenuButtonPopup keeps the main action separate).
+        auto* deployMenu = new QMenu(deployBtn);
+        QAction* fullRedeploy = deployMenu->addAction("Full Redeploy");
+        fullRedeploy->setToolTip("Tear down and re-link every file (use if a deploy "
+                                 "looks wrong). Slower than a normal deploy.");
+        connect(fullRedeploy, &QAction::triggered, this, [this]{
+            if (m_deploying) {
+                statusBar()->showMessage("A deploy is already in progress\xe2\x80\xa6");
+                return;
+            }
+            if (m_toolRunning) {
+                statusBar()->showMessage("A tool is running - please wait for it to finish.");
+                return;
+            }
+            if (!m_profileMgr->activeProfile()) { statusBar()->showMessage("No active profile."); return; }
+            if (!solero::AppConfig::instance().isConfigured()) {
+                statusBar()->showMessage("Game directory not configured. Use Game Settings...");
+                return;
+            }
+            deployActiveAsync({}, /*forceFull=*/true);
+        });
+        deployBtn->setMenu(deployMenu);
+        deployBtn->setPopupMode(QToolButton::MenuButtonPopup);
     }
     if (auto* playBtn = qobject_cast<QToolButton*>(tb->widgetForAction(m_playAction))) {
         QFont f = playBtn->font(); f.setBold(true); playBtn->setFont(f);
@@ -1431,7 +1456,7 @@ bool MainWindow::deployCurrent() {
     return ok;
 }
 
-void MainWindow::deployActiveAsync(std::function<void(bool)> onDone) {
+void MainWindow::deployActiveAsync(std::function<void(bool)> onDone, bool forceFull) {
     // Hard re-entrancy guard ( / A16): never run a deploy against half-written
     // state left by another in-flight job.
     if (m_deploying) {
@@ -1484,9 +1509,9 @@ void MainWindow::deployActiveAsync(std::function<void(bool)> onDone) {
     const QString userlist = profile->lootUserlistPath();
     QPointer<solero::ProgressModal> modal(m_deployModal);
 
-    qCInfo(lcDeploy) << "deploy dispatched to worker thread";
+    qCInfo(lcDeploy) << "deploy dispatched to worker thread" << (forceFull ? "(full redeploy)" : "");
     auto future = QtConcurrent::run(
-        [profile, gameDir, staging, mode, userlist, modal]() -> solero::DeployResult {
+        [profile, gameDir, staging, mode, userlist, modal, forceFull]() -> solero::DeployResult {
             solero::DeployEngine engine(gameDir, staging);
             engine.setUserlistPath(userlist);
             // Progress must not touch the widget from this thread - marshal each
@@ -1495,7 +1520,7 @@ void MainWindow::deployActiveAsync(std::function<void(bool)> onDone) {
                 QMetaObject::invokeMethod(qApp, [modal, d, t]{
                     if (modal) modal->setProgress(d, t);
                 }, Qt::QueuedConnection);
-            });
+            }, forceFull);
         });
     m_deployWatcher.setFuture(future);
 }

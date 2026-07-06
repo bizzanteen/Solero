@@ -28,6 +28,27 @@ static QByteArray readFile(const QString& path) {
 class TestProfile : public QObject {
     Q_OBJECT
 private slots:
+    // per-profile local saves flag round-trips through settings.json.
+    void localSaves_roundTrips() {
+        QTemporaryDir tmp;
+        Profile p("Char A", tmp.path() + "/profiles");
+        QVERIFY(!p.localSaves()); // default off
+        p.setLocalSaves(true);
+        QVERIFY(p.save());
+
+        Profile reloaded("Char A", tmp.path() + "/profiles");
+        QVERIFY(reloaded.load());
+        QVERIFY(reloaded.localSaves());
+    }
+
+    // The save subfolder name is a filesystem/Skyrim-safe version of the profile name.
+    void saveFolderName_sanitizes() {
+        QCOMPARE(Profile::sanitizeSaveFolder("Char A"), QString("Char A"));
+        QCOMPARE(Profile::sanitizeSaveFolder("A/B:C*?"), QString("A_B_C__"));
+        QCOMPARE(Profile::sanitizeSaveFolder("  trimmed  "), QString("trimmed"));
+        QVERIFY(!Profile::sanitizeSaveFolder("").isEmpty()); // never empty
+    }
+
     void createProfile_dirExists() {
         QTemporaryDir tmp;
         ProfileManager mgr(tmp.path());

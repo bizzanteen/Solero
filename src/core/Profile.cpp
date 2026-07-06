@@ -27,6 +27,37 @@ QString Profile::lootUserlistPath()  const { return m_path + "/loot-userlist.yam
 QString Profile::fileRulesPath()     const { return m_path + "/filerules.json"; }
 QString Profile::loadOrderStatePath() const { return m_path + "/loadorder-state.json"; }
 QString Profile::shaderCachePath()    const { return m_path + "/shadercache.json"; }
+QString Profile::profileSettingsPath() const { return m_path + "/settings.json"; }
+
+QString Profile::sanitizeSaveFolder(const QString& name) {
+    QString out;
+    out.reserve(name.size());
+    for (const QChar c : name) {
+        // Keep names portable to the Windows/Proton save path; replace anything
+        // that isn't alphanumeric/space/dash/underscore/dot.
+        if (c.isLetterOrNumber() || c == ' ' || c == '-' || c == '_' || c == '.')
+            out.append(c);
+        else
+            out.append('_');
+    }
+    out = out.trimmed();
+    return out.isEmpty() ? QStringLiteral("Profile") : out;
+}
+
+bool Profile::saveSettings() const {
+    QJsonObject root;
+    root["localSaves"] = m_localSaves;
+    return atomicWrite(profileSettingsPath(),
+                       QJsonDocument(root).toJson(QJsonDocument::Indented));
+}
+
+bool Profile::loadSettings() {
+    QFile f(profileSettingsPath());
+    if (!f.open(QIODevice::ReadOnly)) { m_localSaves = false; return false; }
+    const auto root = QJsonDocument::fromJson(f.readAll()).object();
+    m_localSaves = root["localSaves"].toBool(false);
+    return true;
+}
 
 bool Profile::save() const {
     QDir().mkpath(m_path);
@@ -48,6 +79,10 @@ bool Profile::save() const {
     }
     if (!saveShaderCache()) {
         qCWarning(lcProfile) << "save:" << m_name << "shader cache write failed" << shaderCachePath();
+        return false;
+    }
+    if (!saveSettings()) {
+        qCWarning(lcProfile) << "save:" << m_name << "settings write failed" << profileSettingsPath();
         return false;
     }
     const bool ok = saveLoadOrderState();
@@ -127,6 +162,7 @@ bool Profile::load() {
     loadExecutables();
     loadFileRules();
     loadShaderCache();
+    loadSettings();
     loadLoadOrderState(); // after the plugin list - state is applied onto it
     // Lift any legacy isManagedCache mod-list entry into m_shaderCache.
     bool dirty = migrateManagedCacheEntry();

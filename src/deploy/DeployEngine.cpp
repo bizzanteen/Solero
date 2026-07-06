@@ -7,6 +7,7 @@
 #include "core/StagingFolder.h"
 #include "core/FileUtil.h"
 #include "core/Log.h"
+#include "bethini/IniFile.h"
 #include <QDirIterator>
 #include <QFile>
 #include <QDir>
@@ -217,6 +218,25 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
         if (QFile::exists(inis[i])) {
             copyOverwrite(inis[i], iniTargets[i]);
             recordIfInGameDir(iniTargets[i]);
+        }
+    }
+
+    // per-profile local saves. Redirect Skyrim's SLocalSavePath (read
+    // relative to My Games/Skyrim SE/) to a per-profile "Saves\<name>\" subfolder,
+    // patching the just-deployed Skyrim.ini (or creating a minimal one), and make
+    // sure the folder exists so the game can write into it.
+    if (profile.localSaves()) {
+        const QString sub = profile.saveFolderName();
+        const QString iniPath = iniDir + "/Skyrim.ini";
+        IniFile ini;
+        ini.load(iniPath); // tolerant when the file doesn't exist yet
+        ini.setValue("General", "SLocalSavePath", "Saves\\" + sub + "\\");
+        if (ini.save(iniPath)) {
+            recordIfInGameDir(iniPath);
+            QDir().mkpath(iniDir + "/Saves/" + sub);
+            qCInfo(lcDeploy) << "per-profile saves: SLocalSavePath -> Saves/" << sub;
+        } else {
+            qCWarning(lcDeploy) << "per-profile saves: failed to write SLocalSavePath to" << iniPath;
         }
     }
 

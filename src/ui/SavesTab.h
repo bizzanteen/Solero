@@ -3,6 +3,7 @@
 
 class QTableWidget;
 class QLabel;
+class QCheckBox;
 
 namespace solero {
 class Profile;
@@ -32,6 +33,7 @@ private:
 
     QTableWidget* m_table = nullptr;
     QLabel*       m_countLabel = nullptr;
+    QCheckBox*    m_localSavesCheck = nullptr; // per-profile saves toggle
     Profile*      m_profile = nullptr;
 };
 

@@ -41,6 +41,16 @@ public:
     QString fileRulesPath()     const;
     QString loadOrderStatePath() const;
     QString shaderCachePath()    const;
+    QString profileSettingsPath() const; // small per-profile settings.json
+
+    // per-profile local saves. When on, deploy redirects Skyrim's
+    // SLocalSavePath to a per-profile "Saves/<saveFolderName()>" subfolder so each
+    // profile keeps its own savegames. saveFolderName() is the filesystem/Skyrim-safe
+    // form of the profile name.
+    bool localSaves() const                   { return m_localSaves; }
+    void setLocalSaves(bool v)                { m_localSaves = v; }
+    QString saveFolderName() const            { return sanitizeSaveFolder(m_name); }
+    static QString sanitizeSaveFolder(const QString& name);
 
     // Per-file conflict resolution (MO2 ".mohidden" + Vortex per-file winner).
     // relPath is in the same form DeployEngine uses: path relative to the mod
@@ -106,11 +116,14 @@ private:
     QHash<QString, QSet<QString>> m_hiddenFiles;  // modId  -> hidden relPaths
     QHash<QString, QString>       m_fileOverrides; // relPath -> forced winner modId
     ManagedShaderCache            m_shaderCache;
+    bool                          m_localSaves = false;
 
     bool saveExecutables() const;
     bool loadExecutables();
     bool saveShaderCache() const;
     bool loadShaderCache();
+    bool saveSettings() const; // settings.json (localSaves, …)
+    bool loadSettings();
     // One-time: lift a legacy isManagedCache mod-list entry into m_shaderCache and
     // drop it from the list. Returns true if a migration happened (caller saves).
     bool migrateManagedCacheEntry();

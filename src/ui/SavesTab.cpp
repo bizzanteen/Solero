@@ -11,6 +11,7 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
+#include <QCheckBox>
 #include <QLabel>
 #include <QDir>
 #include <QFileInfo>
@@ -128,6 +129,20 @@ SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
     m_countLabel = new QLabel(this);
     bar->addWidget(m_countLabel);
     bar->addStretch();
+    // per-profile saves toggle. Takes effect on the next Deploy (the
+    // redirect is written into the deployed Skyrim.ini's SLocalSavePath).
+    m_localSavesCheck = new QCheckBox("Profile-specific saves", this);
+    m_localSavesCheck->setToolTip(
+        "Give this profile its own Saves folder (Saves/<profile>). Applied on the "
+        "next Deploy, then when you next launch the game.");
+    connect(m_localSavesCheck, &QCheckBox::toggled, this, [this](bool on) {
+        if (!m_profile) return;
+        if (m_profile->localSaves() == on) return;
+        m_profile->setLocalSaves(on);
+        m_profile->save();
+        rebuild();
+    });
+    bar->addWidget(m_localSavesCheck);
     auto* refreshBtn = new QPushButton("Refresh", this);
     refreshBtn->setToolTip("Rescan the Skyrim Saves folder");
     connect(refreshBtn, &QPushButton::clicked, this, &SavesTab::refresh);
@@ -137,6 +152,10 @@ SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
 
 void SavesTab::setProfile(Profile* profile) {
     m_profile = profile;
+    if (m_localSavesCheck) {
+        QSignalBlocker block(m_localSavesCheck); // don't re-save while syncing UI
+        m_localSavesCheck->setChecked(profile && profile->localSaves());
+    }
     rebuild();
 }
 
@@ -161,7 +180,11 @@ void SavesTab::rebuild() {
             loadOrder << pl.at(i).filename;
     }
 
-    const QString dir = AppConfig::instance().savesDir();
+    // when the active profile uses per-profile saves, read its own
+    // Saves/<name> subfolder (where the deploy-time SLocalSavePath points the game).
+    QString dir = AppConfig::instance().savesDir();
+    if (m_profile && m_profile->localSaves() && !dir.isEmpty())
+        dir += "/" + m_profile->saveFolderName();
     QFileInfoList files;
     if (!dir.isEmpty())
         files = QDir(dir).entryInfoList({"*.ess"}, QDir::Files, QDir::Time);

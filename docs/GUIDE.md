@@ -4,6 +4,8 @@ A complete tour of Solero, the native Linux mod manager for Skyrim Special Editi
 Anniversary Edition. If you just want the quick version, the [README](../README.md) has
 it. This document goes into every feature in detail.
 
+![The Solero main window: an ordered mod list with separators on the left, the Plugins load order on the right, and the Deploy and Play controls in the toolbar.](images/overview.png)
+
 ## Contents
 
 - [How Solero works (and why)](#how-solero-works-and-why)
@@ -12,6 +14,7 @@ it. This document goes into every feature in detail.
 - [The main window](#the-main-window)
 - [The mod list](#the-mod-list)
 - [Installing mods](#installing-mods)
+- [Versions & updates](#versions--updates)
 - [Plugins & load order](#plugins--load-order)
 - [Conflicts & the Overwrite](#conflicts--the-overwrite)
 - [Deploying & playing](#deploying--playing)
@@ -21,7 +24,9 @@ it. This document goes into every feature in detail.
 - [INI files (BethINI)](#ini-files-bethini)
 - [Saves](#saves)
 - [Profiles](#profiles)
+- [Health checks & problems](#health-checks--problems)
 - [Appearance & settings](#appearance--settings)
+- [Keyboard shortcuts](#keyboard-shortcuts)
 - [Automation & AI assistants (MCP)](#automation--ai-assistants-mcp)
 - [Reporting bugs & logs](#reporting-bugs--logs)
 - [Troubleshooting](#troubleshooting)
@@ -50,7 +55,29 @@ different filesystems, use Symlink or Copy mode (see [Deploying](#deploying--pla
 
 ## Installation & first run
 
-### Build
+### Flatpak (recommended)
+
+Grab `solero.flatpak` from the [latest release](https://github.com/bizzanteen/Solero/releases)
+and install it:
+
+```bash
+flatpak install --user ./solero.flatpak
+flatpak run io.github.bizzanteen.Solero
+```
+
+The first install also pulls the KDE runtime and the QtWebEngine base it needs from
+Flathub, so make sure Flathub is set up:
+
+```bash
+flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
+```
+
+A note on the sandbox: Solero's whole job is launching other programs (Steam, Proton, the
+game, and modding tools), which live on the host rather than inside the Flatpak. It runs
+them through `flatpak-spawn`, which is why the package asks for host filesystem access and
+the `org.freedesktop.Flatpak` permission. That is expected for a tool like this.
+
+### Build from source
 
 ```bash
 git clone git@github.com:bizzanteen/Solero.git solero
@@ -81,6 +108,8 @@ The first launch walks you through four things:
 4. Your Nexus API key, which is optional. You can paste it now or later under
    `Settings > Nexus Account`. Premium enables in-app API downloads; any account is
    enough for browsing, endorsing, and update checks.
+
+![The first-run setup wizard: fields for the game directory, staging directory, downloads directory, and an optional Nexus API key.](images/setup-wizard.png)
 
 ## Core concepts
 
@@ -115,6 +144,8 @@ has File, Profile, Tools, View, and Help. F1 opens the shortcut list.
 
 Each row is a mod, a separator (category), or the special Overwrite row.
 
+![The mod list: enable checkboxes, priority numbers, mods grouped under coloured separators, a version column, and the conflict and flags column.](images/modlist.png)
+
 The columns are the enable checkbox, priority number, name, version, and a Flags column
 (conflict winner and loser markers, the FOMOD badge, the output-mod badge, has-note, and
 update-available). Right-click the header to show or hide columns, and drag any column
@@ -134,13 +165,8 @@ to conflicts, updates, enabled, disabled, or missing-dependency; and the categor
 flag facets narrow further. The category dropdown is searchable and scrolls, so a long
 category list stays compact.
 
-For versions and updates: installing a newer version offers Replace, Keep Both, or
-Rename. Keep Both turns the version cell into a dropdown so you can flip between installed
-versions. Mods with a known Nexus ID show an update flag when a newer file is out, and
-Update Mod fetches it. Check everything at once with F5.
-
 Right-clicking a mod gives you per-mod actions: reinstall, redownload, endorse, track or
-untrack on Nexus, view the Nexus page, add a note, and more.
+untrack on Nexus, open the Nexus page, add a note, and more.
 
 ## Installing mods
 
@@ -156,14 +182,34 @@ There are several ways to get mods in.
 4. Import. Bring in an existing MO2 instance, or install a Wabbajack modlist (powered by
    [Jackify](https://github.com/Omni-guides/Jackify)'s `jackify-engine`).
 
+![The Downloads tab: downloaded archives with name, a status icon, size, and date, plus install actions.](images/downloads.png)
+
+The Downloads tab groups the files that belong to one mod together (a main file plus its
+optional or update files), warns about duplicates, and remembers which Nexus file each
+archive came from so redownloading and update checks line up. Downloads run on a worker
+thread with mirror selection and retry, so a slow or dropped mirror doesn't stall the app.
+
 When a mod ships a scripted FOMOD installer, Solero shows the option wizard (radio and
 checkbox choices with preview images). It remembers your selections, so a later Reinstall
 (FOMOD) starts from the choices you made before.
+
+## Versions & updates
+
+Installing a newer version of a mod offers Replace, Keep Both, or Rename. Keep Both turns
+the version cell into a dropdown so you can flip between installed versions without
+reinstalling. Mods with a known Nexus ID show an update flag when a newer file is out, and
+Update Mod fetches it. Check the whole list at once with F5.
+
+Because Solero tracks the mod-to-Nexus link by (mod id, file id), redownloading an archive
+updates the existing mod rather than creating a duplicate, and a mod's optional or update
+files are grouped under it instead of scattered across the list.
 
 ## Plugins & load order
 
 The Plugins tab is your master and plugin (`.esm`, `.esp`, `.esl`) load order, kept
 separate from the mod-file order.
+
+![The Plugins tab: the master and plugin load order with enabled state, index, and flags, next to the mod list.](images/plugins.png)
 
 - Toggle and reorder plugins, and check the flags for masters, ESL or light, and missing
   masters.
@@ -191,12 +237,16 @@ Deploy runs LOOT automatically, unless the order is locked, and writes `Plugins.
 - The Overwrite row collects files created at runtime that no mod owns. Right-click it and
   choose Create Mod from Overwrite to promote them into a real, named, orderable mod.
 
+![The Conflicts tab: per-file winners and losers across the load order, next to the mod list.](images/conflicts.png)
+
 ## Deploying & playing
 
 1. Enable mods and set the order you want.
 2. Click Deploy (`Ctrl+D`). The status pill goes from Not Deployed to Deployed, and if you
    change the list afterwards it shows Redeploy.
 3. Click Play (`Ctrl+P`), or just launch Skyrim SE from Steam.
+
+![The toolbar with the Deploy status pill in its Deployed state next to the Play button.](images/toolbar.png)
 
 There are three deploy modes under `Settings > Deploy mode`:
 
@@ -255,6 +305,8 @@ the game's Proton prefix, and it can capture their output into a dedicated outpu
 generated files (LOD, patches, meshes) become a normal, orderable mod instead of loose
 clutter in `Data`.
 
+![The Tools menu with registered tools and the built-in Patch Wizard, BethINI, and Full Redeploy entries.](images/tools-menu.png)
+
 - Preset tools (xEdit or SSEEdit, Nemesis or Pandora, DynDOLOD, BodySlide, PGPatcher, and
   so on) come with sensible capture settings.
 - Custom tools you add yourself have unknown output, so Solero automatically captures
@@ -263,7 +315,17 @@ clutter in `Data`.
 - The built-ins ([Patch Wizard](#patch-wizard), [BethINI](#ini-files-bethini), and Full
   Redeploy) live in the Tools menu.
 
+The tools manager lists your registered tools with their icons and lets you add, edit, or
+remove them. Tools are per-profile, so a profile built around a different game or a
+different toolchain keeps its own set.
+
+![The tools manager: registered external tools with add, edit, and remove buttons.](images/tools-manager.png)
+
 After a tool runs, Deploy again to fold its captured output into your load order.
+
+Two integrations are worth calling out. PGPatcher (ParallaxGen) runs through a generated
+Mod Organizer 2 compatibility layer so it works without a real MO2 install. And any tool
+that expects an MO2-style instance can be pointed at the same generated layer.
 
 ### Patch Wizard
 
@@ -278,6 +340,8 @@ or a plugin-specific patch once that plugin is in your list. Each candidate name
 concrete trigger that makes it apply (a present plugin or file), so you can see why it's
 being suggested.
 
+![The Patch Wizard: found compatibility patches grouped by the mod that provides them, each showing the plugin that makes it applicable.](images/patch-wizard.png)
+
 Tick the ones you want and Install Selected. Solero extracts and installs just those patch
 files (the delta) from the owning mod's archive. Re-run the wizard whenever you add mods
 to catch newly applicable patches.
@@ -285,14 +349,22 @@ to catch newly applicable patches.
 ## INI files (BethINI)
 
 Solero includes a BethINI-style INI editor at `Tools > BethINI` for `Skyrim.ini`,
-`SkyrimPrefs.ini`, and `SkyrimCustom.ini`. INIs are per-profile: Solero deploys the active
-profile's INIs into the game's `My Games` folder on Deploy and re-syncs them on Play, so
-an in-game graphics change can't quietly override the preset you applied.
+`SkyrimPrefs.ini`, and `SkyrimCustom.ini`. It has the same shape as standalone BethINI:
+quality presets across the top, tabbed settings (Basic, General, Gameplay, Interface,
+Environment, Shadows, Visuals, View Distance, Advanced), and a search box.
+
+![The BethINI editor: quality presets, tabbed sections, and the display settings.](images/bethini.png)
+
+INIs are per-profile: Solero deploys the active profile's INIs into the game's `My Games`
+folder on Deploy and re-syncs them on Play, so an in-game graphics change can't quietly
+override the preset you applied.
 
 ## Saves
 
 The Saves tab lists your Skyrim savegames (read-only, since Solero never moves or deletes
 a save) with an MO2-style previewer.
+
+![The Saves tab: the save list on the left and a preview panel on the right with the screenshot, character details, play time, and a missing-plugins list.](images/saves.png)
 
 Select a save to see its screenshot and details: character, level, race, location, play
 time, save number, and game version. If a save references plugins your current load order
@@ -307,7 +379,19 @@ Deploy, then when you next launch, so each profile keeps its own characters sepa
 A profile is an independent load order plus plugin selection plus INI and tool config. Use
 the Profile menu or the toolbar profile picker to create, switch, copy, and rename
 profiles. Switching is instant; deploy to apply the newly active profile to the game.
-Cloning a profile copies its full configuration (rules, pins, INIs, tools).
+Cloning a profile copies its full configuration (rules, pins, INIs, tools). Each profile
+also gets its own output or Overwrite mod, so captured files never leak between profiles.
+
+## Health checks & problems
+
+The health indicator in the toolbar summarises the state of your setup at a glance. Open
+it for the Problems view, which collects things worth looking at: missing masters, mods
+with unmet requirements, plugins that are present but disabled, and similar issues. It's a
+quick pre-flight check before you deploy and play.
+
+Individual mods surface their own requirements too. When a mod declares dependencies that
+aren't satisfied, it's flagged in the list, and the missing-dependency filter narrows the
+list to just those so you can find and fix them.
 
 ## Appearance & settings
 
@@ -315,7 +399,13 @@ Cloning a profile copies its full configuration (rules, pins, INIs, tools).
 the SKSE version, the deploy mode, separator-colour behaviour, deletion confirmations, and
 the Wabbajack and jackify path.
 
-Under `Settings > Preferences > Appearance`:
+![The Settings dialog: paths on the Setup tab, with Preferences and Nexus Account tabs.](images/settings.png)
+
+The Preferences tab holds the day-to-day toggles and the Appearance controls.
+
+![The Preferences tab: deletion and update toggles, the nxm handler, deploy mode, the jackify path, and the Appearance group with theme, accent, and font.](images/preferences.png)
+
+Under Appearance:
 
 - Theme: System (follows your desktop, meaning the KDE colour scheme, or GNOME light and
   dark plus accent), Light, or Dark.
@@ -325,6 +415,31 @@ Under `Settings > Preferences > Appearance`:
 
 Changes apply live. Use Zoom (`Ctrl` with `+`, `-`, or `0`) to scale the whole UI, which
 helps on a handheld screen.
+
+## Keyboard shortcuts
+
+Press F1 at any time for the in-app shortcut list (`Help > Keyboard Shortcuts`).
+
+![The keyboard shortcuts reference dialog, grouped by area.](images/shortcuts.png)
+
+| Action | Shortcut |
+|---|---|
+| Deploy | `Ctrl+D` |
+| Play | `Ctrl+P` |
+| Install mod(s) | `Ctrl+I` |
+| Filter / search mods | `Ctrl+F` |
+| Settings | `Ctrl+,` |
+| Undo mod move | `Ctrl+Z` |
+| Redo mod move | `Ctrl+Shift+Z` |
+| Delete selected mods | `Del` |
+| Toggle enabled | `Space` |
+| Check mods for updates | `F5` |
+| Zoom in / out / reset | `Ctrl++` / `Ctrl+-` / `Ctrl+0` |
+| Keyboard shortcuts help | `F1` |
+| Quit | `Ctrl+Q` |
+
+To resize a column, grab the divider on its right edge (Name included) and drag. The
+columns always fill the pane. Right-click a column header to show or hide columns.
 
 ## Automation & AI assistants (MCP)
 

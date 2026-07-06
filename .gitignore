@@ -4,3 +4,7 @@
 *.user
 .qt/
 /dev/
+/flatpak-repo/
+/solero.flatpak
+/build-dir/
+/.flatpak-builder/

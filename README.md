@@ -76,14 +76,30 @@ currently deployed, and Play launches the game through Steam and Proton.
 
 ## Getting started
 
-### Requirements
+### Install (Flatpak)
 
-- Linux with Qt 6 (Widgets, Svg, Network, WebEngine), a C++23 toolchain, and CMake 3.25
-  or newer. Building libloot also needs the Rust toolchain (cargo).
-- Skyrim SE/AE installed through Steam (Proton).
-- A Nexus Mods account is optional. Premium enables in-app API downloads.
+Download `solero.flatpak` from the [latest release](https://github.com/bizzanteen/Solero/releases)
+and install it:
 
-### Build
+```bash
+# one-time, if you don't already have Flathub set up
+flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
+
+flatpak install --user ./solero.flatpak
+flatpak run io.github.bizzanteen.Solero
+```
+
+The first install pulls in the KDE runtime and the QtWebEngine base from Flathub. Solero
+launches host programs (Steam, Proton, the game, and modding tools) through
+`flatpak-spawn`, so the package asks for host filesystem access and the
+`org.freedesktop.Flatpak` permission, which is normal for a tool like this.
+
+### Build from source
+
+Requirements: Qt 6 (Widgets, Svg, Network, WebEngine), a C++23 toolchain, CMake 3.25 or
+newer, and the Rust toolchain (cargo, for libloot). Skyrim SE/AE has to be installed
+through Steam (Proton). A Nexus Mods account is optional; Premium enables in-app API
+downloads.
 
 ```bash
 git clone https://github.com/bizzanteen/Solero.git solero

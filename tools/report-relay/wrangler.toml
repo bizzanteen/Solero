@@ -1,0 +1,16 @@
+# Cloudflare Worker config for the Solero bug/crash report relay.
+# Deploy:  cd tools/report-relay && wrangler deploy
+# Secrets (NOT stored here): GITHUB_TOKEN, SHARED_TOKEN  (set via `wrangler secret put`)
+name = "solero-report-relay"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+[vars]
+REPO = "bizzanteen/Solero"
+
+# Optional per-IP rate limiter (recommended for a public repo). Create the namespace:
+#   wrangler kv namespace create RL
+# then uncomment and paste the returned id:
+# [[kv_namespaces]]
+# binding = "RL"
+# id = "PASTE_KV_NAMESPACE_ID_HERE"

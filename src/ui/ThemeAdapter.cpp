@@ -10,6 +10,7 @@
 #include <QHash>
 #include <QPalette>
 #include <QProcess>
+#include "core/HostProcess.h"
 #include <QSettings>
 #include <QStyleFactory>
 
@@ -133,7 +134,8 @@ QPalette readKdePalette(const QApplication& app) {
 // the key doesn't exist - so non-GNOME desktops degrade quietly.
 QString readGsettings(const QString& key) {
     QProcess p;
-    p.start("gsettings", {"get", "org.gnome.desktop.interface", key});
+    const auto hc = solero::hostCommand("gsettings", {"get", "org.gnome.desktop.interface", key}, {}, solero::runningInFlatpak());
+    p.start(hc.program, hc.args);
     if (!p.waitForFinished(1500) || p.exitStatus() != QProcess::NormalExit
         || p.exitCode() != 0)
         return QString();

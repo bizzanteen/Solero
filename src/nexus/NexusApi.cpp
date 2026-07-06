@@ -6,6 +6,7 @@
 #include "tools/CurlError.h"
 #include "core/FileUtil.h"
 #include <QProcess>
+#include "core/HostProcess.h"
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -55,7 +56,8 @@ static QByteArray curlRun(const QStringList& extraArgs, QString* err = nullptr) 
     // -K - reads further options from stdin; %{stderr} routes the status code to
     // stderr so it never contaminates the JSON body on stdout.
     QStringList args; args << "-sS" << "-w" << "%{stderr}%{http_code}" << "-K" << "-" << extraArgs;
-    p.start("curl", args);
+    const auto hc = solero::hostCommand("curl", args, {}, solero::runningInFlatpak());
+    p.start(hc.program, hc.args);
     // Feed the apikey header through the config channel, out of argv/ps/proc.
     p.write(QByteArray("header = \"apikey: ") + key.toUtf8() + "\"\n");
     p.closeWriteChannel();
@@ -433,7 +435,8 @@ NexusApi::UserInfo NexusApi::validateUser(const QString& key) {
     args << "-s" << "--max-time" << "10" << "-K" << "-"
          << "https://api.nexusmods.com/v1/users/validate.json";
     qCInfo(lcNexus) << "validateUser";
-    p.start("curl", args);
+    const auto hc = solero::hostCommand("curl", args, {}, solero::runningInFlatpak());
+    p.start(hc.program, hc.args);
     // Supply the apikey header via stdin config, never argv.
     p.write(QByteArray("header = \"apikey: ") + useKey.toUtf8() + "\"\n");
     p.closeWriteChannel();

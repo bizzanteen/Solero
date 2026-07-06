@@ -20,6 +20,7 @@
 #include "install/InstallConflict.h"
 #include "deploy/DeployEngine.h"
 #include "deploy/DeployRecord.h"
+#include "core/HostProcess.h"
 #include "import/Mo2Importer.h"
 #include "io/ProfileManifest.h"
 #include "ui/WabbajackDialog.h"
@@ -4956,13 +4957,16 @@ void MainWindow::onPlay() {
         }
     }
     auto steamRunning = [] {
-        QProcess p; p.start("pgrep", {"-x", "steam"}); p.waitForFinished(2000);
+        // pgrep + steam are HOST binaries; inside Flatpak run them via flatpak-spawn.
+        const auto hc = solero::hostCommand("pgrep", {"-x", "steam"}, {}, solero::runningInFlatpak());
+        QProcess p; p.start(hc.program, hc.args); p.waitForFinished(2000);
         return p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0;
     };
     if (!steamRunning()) {
         statusBar()->showMessage("Starting Steam (needed for the game's DRM)\xe2\x80\xa6");
         qApp->processEvents();
-        QProcess::startDetached("steam", {"-silent"});
+        const auto hc = solero::hostCommand("steam", {"-silent"}, {}, solero::runningInFlatpak());
+        QProcess::startDetached(hc.program, hc.args);
         QElapsedTimer t; t.start();
         while (!steamRunning() && t.elapsed() < 30000) { QThread::msleep(400); qApp->processEvents(); }
         if (!steamRunning()) {

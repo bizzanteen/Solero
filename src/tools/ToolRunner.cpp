@@ -5,6 +5,7 @@
 #include "deploy/DeployRecord.h"
 #include "deploy/UnmanagedScanner.h"
 #include "tools/ToolCatalog.h"
+#include "core/HostProcess.h"
 #include <QProcess>
 #include <QSet>
 #include <QProcessEnvironment>
@@ -114,10 +115,14 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
         }
         qCInfo(lcTools) << "launch native" << exeName << "cwd" << proc.workingDirectory()
                         << (capture ? "(capturing output)" : "");
-        proc.start(exe.binaryPath, args);
+        // Inside Flatpak, run the host tool via flatpak-spawn --host.
+        const auto hc = hostCommand(exe.binaryPath, args, {}, runningInFlatpak());
+        proc.start(hc.program, hc.args);
     } else {
-        // Windows tool via umu-run, reusing the Skyrim Proton prefix.
-        if (QStandardPaths::findExecutable("umu-run").isEmpty()) {
+        // Windows tool via umu-run, reusing the Skyrim Proton prefix. Inside Flatpak
+        // umu-run lives on the host (not on the sandbox PATH), so only check the
+        // sandbox PATH when not sandboxed - otherwise we run it via flatpak-spawn.
+        if (!runningInFlatpak() && QStandardPaths::findExecutable("umu-run").isEmpty()) {
             r.error = "umu-run not found - install umu-launcher to run Windows tools.";
             qCWarning(lcTools) << "run:" << exeName << r.error;
             return r;
@@ -133,16 +138,23 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
         QString steamRoot = QDir(gameDir + "/../../..").canonicalPath();
         if (steamRoot.isEmpty())
             steamRoot = QDir::homePath() + "/.local/share/Steam";
-        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-        env.insert("WINEPREFIX", prefix + "/pfx");
-        env.insert("STEAM_COMPAT_DATA_PATH", prefix);
-        env.insert("STEAM_COMPAT_CLIENT_INSTALL_PATH", steamRoot);
-        env.insert("GAMEID", "umu-489830");
-        env.insert("STORE", "none");
-        env.insert("PROTONPATH", protonDir);
-        env.insert("PROTON_VERB", "waitforexitandrun");
-        proc.setProcessEnvironment(env);
+        // The Proton env the tool needs. Kept as a plain map so it can either be
+        // applied to the QProcess (native) or folded into flatpak-spawn --env flags.
+        QMap<QString, QString> ov;
+        ov["WINEPREFIX"] = prefix + "/pfx";
+        ov["STEAM_COMPAT_DATA_PATH"] = prefix;
+        ov["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = steamRoot;
+        ov["GAMEID"] = "umu-489830";
+        ov["STORE"] = "none";
+        ov["PROTONPATH"] = protonDir;
+        ov["PROTON_VERB"] = "waitforexitandrun";
         QStringList pargs; pargs << exe.binaryPath; pargs += args;
+        const solero::HostCommand protonCmd = hostCommand("umu-run", pargs, ov, runningInFlatpak());
+        if (protonCmd.applyEnvToProcess) {
+            QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+            for (auto it = ov.cbegin(); it != ov.cend(); ++it) env.insert(it.key(), it.value());
+            proc.setProcessEnvironment(env);
+        }
         if (capture) {
             for (const QString& base : captureBases)
                 preSnapshots.insert(base, snapshotMtimes(base));
@@ -150,7 +162,7 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
         }
         qCInfo(lcTools) << "launch proton" << exeName << "prefix" << prefix
                         << "cwd" << proc.workingDirectory() << (capture ? "(capturing output)" : "");
-        proc.start("umu-run", pargs);
+        proc.start(protonCmd.program, protonCmd.args);
     }
     if (!proc.waitForStarted(15000)) {
         r.error = "Failed to start: " + exe.binaryPath;

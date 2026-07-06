@@ -2,6 +2,7 @@
 #include <QFile>
 #include <QDir>
 #include <QProcess>
+#include "core/HostProcess.h"
 #include <QTextStream>
 #include <QStandardPaths>
 #include <QFileInfo>
@@ -47,6 +48,7 @@ static void ensureNxmDefault(const QString& path) {
 }
 
 bool NxmRegister::isRegistered() {
+    if (runningInFlatpak()) return true; // registered via the Flatpak desktop export
     QProcess proc;
     proc.start("xdg-mime", {"query", "default", "x-scheme-handler/nxm"});
     proc.waitForFinished();
@@ -55,6 +57,7 @@ bool NxmRegister::isRegistered() {
 }
 
 bool NxmRegister::registerHandler(QString& outMsg) {
+    if (runningInFlatpak()) { outMsg = "Registered as the nxm handler via Flatpak."; return true; }
     const QString launcher = QDir::homePath() + "/.local/bin/solero";
     const QString appsDir = QDir::homePath() + "/.local/share/applications";
     const QString desktopPath = appsDir + "/solero.desktop";

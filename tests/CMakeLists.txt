@@ -145,6 +145,7 @@ add_solero_deploy_test(test_DeployIncremental)
 # deploy source/link set plus ToolRunner.cpp itself.
 add_executable(test_ToolRunner test_ToolRunner.cpp
   ../src/tools/ToolRunner.cpp
+  ../src/core/HostProcess.cpp
   ../src/tools/ToolCatalog.cpp
   ../src/deploy/Linker.cpp
   ../src/deploy/DeployRecord.cpp
@@ -435,6 +436,7 @@ add_executable(test_WabbajackFilter test_WabbajackFilter.cpp
   ../src/wabbajack/WabbajackEngine.cpp
   ../src/import/Mo2Importer.cpp
   ../src/nexus/NexusApi.cpp
+  ../src/core/HostProcess.cpp
   ../src/nexus/MirrorPick.cpp
   ../src/tools/ToolDownloader.cpp
   ../src/tools/ToolCatalog.cpp
@@ -457,6 +459,7 @@ set_tests_properties(test_WabbajackFilter PROPERTIES
 add_executable(test_NxmHandler test_NxmHandler.cpp
   ../src/nexus/NxmHandler.cpp
   ../src/nexus/NexusApi.cpp
+  ../src/core/HostProcess.cpp
   ../src/nexus/MirrorPick.cpp
   ../src/tools/ToolDownloader.cpp
   ../src/tools/ToolCatalog.cpp
@@ -477,6 +480,7 @@ set_tests_properties(test_NxmHandler PROPERTIES
 # chain (curl/QImage via ToolDownloader). Headless for QImage like test_NxmHandler.
 add_executable(test_NexusApi test_NexusApi.cpp
   ../src/nexus/NexusApi.cpp
+  ../src/core/HostProcess.cpp
   ../src/nexus/MirrorPick.cpp
   ../src/tools/ToolDownloader.cpp
   ../src/tools/ToolCatalog.cpp
@@ -570,6 +574,7 @@ set_tests_properties(test_ColumnResize PROPERTIES
 # ThemeAdapter::buildPalette: pure palette logic (needs QGuiApplication for QPalette).
 add_executable(test_ThemeAdapter test_ThemeAdapter.cpp
   ../src/ui/ThemeAdapter.cpp
+  ../src/core/HostProcess.cpp
   ../src/core/AppConfig.cpp
   ../src/core/StagingFolder.cpp
   ../src/core/Log.cpp)
@@ -578,3 +583,9 @@ target_link_libraries(test_ThemeAdapter PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets 
 add_test(NAME test_ThemeAdapter COMMAND test_ThemeAdapter)
 set_tests_properties(test_ThemeAdapter PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${_qt_plugins}")
+
+# HostProcess: pure flatpak-spawn command rewriting (QtCore only).
+add_executable(test_HostProcess test_HostProcess.cpp ../src/core/HostProcess.cpp)
+target_include_directories(test_HostProcess PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_HostProcess PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_HostProcess COMMAND test_HostProcess)

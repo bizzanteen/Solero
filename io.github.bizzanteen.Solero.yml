@@ -9,6 +9,10 @@ id: io.github.bizzanteen.Solero
 runtime: org.kde.Platform
 runtime-version: '6.10'
 sdk: org.kde.Sdk
+# The KDE runtime does not ship QtWebEngine, so layer it in from the Qt BaseApp
+# (provides both the build-time cmake config and the runtime libs / QtWebEngineProcess).
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.10'
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
 command: solero
@@ -41,3 +45,9 @@ modules:
     sources:
       - type: dir
         path: .
+        skip:
+          - build
+          - build-dir
+          - .git
+          - .flatpak-builder
+          - flatpak-repo

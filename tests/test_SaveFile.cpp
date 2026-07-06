@@ -221,6 +221,42 @@ private slots:
         QVERIFY(h.plugins.isEmpty());
     }
 
+    // The save-previewer summary formats every key field from the header.
+    void summaryHtml_hasKeyFields() {
+        SaveHeader h;
+        h.ok = true;
+        h.characterName = "Lydia";
+        h.level = 42;
+        h.location = "Whiterun";
+        h.gameDate = "Day 5";
+        h.raceEditorId = "NordRace";
+        h.sex = 1; // female
+        h.saveNumber = 7;
+        h.version = 12;
+        h.plugins = QStringList{"Skyrim.esm", "Update.esm", "SkyUI.esp"};
+        h.pluginsReadable = true;
+        const QString s = saveSummaryHtml(h, "06 Jul 2026, 12:00");
+        QVERIFY(s.contains("Lydia"));
+        QVERIFY(s.contains("42"));
+        QVERIFY(s.contains("Whiterun"));
+        QVERIFY(s.contains("Nord"));          // "Race" suffix trimmed
+        QVERIFY(s.contains("Female"));
+        QVERIFY(s.contains("06 Jul 2026, 12:00"));
+        QVERIFY(s.contains("3"));             // plugin count
+    }
+
+    // An unreadable (compressed) plugin list is reported gracefully, not as a count.
+    void summaryHtml_unreadablePluginsNoted() {
+        SaveHeader h;
+        h.ok = true;
+        h.characterName = "Nemesis";
+        h.pluginsReadable = false;
+        h.compressionType = 2;
+        const QString s = saveSummaryHtml(h, "now");
+        QVERIFY(s.contains("Nemesis"));
+        QVERIFY(s.toLower().contains("not readable") || s.toLower().contains("compressed"));
+    }
+
 #ifdef SOLERO_HAVE_ZLIB
     // A zlib-compressed SSE save (compressionType 1): the plugin list lives inside
     // the compressed body and is recovered via the linked zlib decompressor.

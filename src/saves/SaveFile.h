@@ -48,4 +48,11 @@ SaveHeader parseSaveHeader(const QString& path);
 // Empty when the save's plugin list is unreadable or nothing is missing.
 QStringList missingPlugins(const SaveHeader& save, const QStringList& loadOrder);
 
+// Human-readable HTML summary of a save's metadata for the previewer panel
+// (character, level, race + sex, location, in-game date, real save time, save #,
+// game version, plugin count). Pure presentation of SaveHeader; `savedWhen` is a
+// preformatted real-time string the caller supplies (the file's timestamp). An
+// unreadable (compressed) plugin list is noted rather than shown as a count.
+QString saveSummaryHtml(const SaveHeader& save, const QString& savedWhen);
+
 } // namespace solero

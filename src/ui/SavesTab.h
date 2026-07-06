@@ -30,10 +30,16 @@ protected:
 
 private:
     void rebuild();
+    // MO2-style previewer: fill the right-hand panel from the selected save (large
+    // screenshot + metadata + missing-plugin list), or show a placeholder.
+    void updatePreview();
 
     QTableWidget* m_table = nullptr;
     QLabel*       m_countLabel = nullptr;
     QCheckBox*    m_localSavesCheck = nullptr; // per-profile saves toggle
+    QLabel*       m_previewShot = nullptr;     // large screenshot
+    QLabel*       m_previewInfo = nullptr;     // metadata (rich text)
+    QLabel*       m_previewMissing = nullptr;  // "needs plugins you don't have"
     Profile*      m_profile = nullptr;
 };
 

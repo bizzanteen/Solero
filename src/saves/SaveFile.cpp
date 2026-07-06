@@ -249,6 +249,49 @@ SaveHeader parseSaveHeader(const QString& path) {
     return h;
 }
 
+QString saveSummaryHtml(const SaveHeader& save, const QString& savedWhen) {
+    if (!save.ok) return QStringLiteral("<i>Unreadable save.</i>");
+
+    // Race: trim a trailing "Race" editor-id suffix ("NordRace" -> "Nord").
+    QString race = save.raceEditorId;
+    if (race.endsWith(QStringLiteral("Race"), Qt::CaseInsensitive))
+        race.chop(4);
+    const QString sex = save.sex == 1 ? QStringLiteral("Female") : QStringLiteral("Male");
+
+    auto esc = [](const QString& s) { return s.toHtmlEscaped(); };
+    auto row = [&](const QString& label, const QString& value) {
+        if (value.trimmed().isEmpty()) return QString();
+        return QStringLiteral("<tr><td style='color:#888; padding-right:10px;'>%1</td>"
+                              "<td>%2</td></tr>").arg(esc(label), esc(value));
+    };
+
+    const QString name = save.characterName.isEmpty()
+        ? QStringLiteral("(unnamed)") : save.characterName;
+
+    QString pluginsCell;
+    if (save.pluginsReadable)
+        pluginsCell = QString::number(save.plugins.size());
+    else if (save.compressionType != 0)
+        pluginsCell = QStringLiteral("not readable (compressed save)");
+    else
+        pluginsCell = QStringLiteral("0");
+
+    QString html;
+    html += QStringLiteral("<div style='font-size:large;'><b>%1</b></div>").arg(esc(name));
+    html += QStringLiteral("<table cellspacing='0' cellpadding='2'>");
+    html += row(QStringLiteral("Level"),    save.level ? QString::number(save.level) : QString());
+    html += row(QStringLiteral("Race"),     race.trimmed().isEmpty() ? QString()
+                                            : QStringLiteral("%1 \xC2\xB7 %2").arg(race.trimmed(), sex));
+    html += row(QStringLiteral("Location"), save.location);
+    html += row(QStringLiteral("In-game"),  save.gameDate);
+    html += row(QStringLiteral("Saved"),    savedWhen);
+    html += row(QStringLiteral("Save #"),   save.saveNumber ? QString::number(save.saveNumber) : QString());
+    html += row(QStringLiteral("Version"),  save.version ? QString::number(save.version) : QString());
+    html += row(QStringLiteral("Plugins"),  pluginsCell);
+    html += QStringLiteral("</table>");
+    return html;
+}
+
 QStringList missingPlugins(const SaveHeader& save, const QStringList& loadOrder) {
     if (!save.pluginsReadable || save.plugins.isEmpty()) return {};
     QSet<QString> present;

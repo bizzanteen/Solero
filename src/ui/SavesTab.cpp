@@ -13,6 +13,8 @@
 #include <QPushButton>
 #include <QCheckBox>
 #include <QLabel>
+#include <QSplitter>
+#include <QScrollArea>
 #include <QDir>
 #include <QFileInfo>
 #include <QFileInfoList>
@@ -123,7 +125,44 @@ SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
     hh->resizeSection(ColLocation, 220);
     hh->resizeSection(ColDate, 150);
     hh->resizeSection(ColSaveNum, 80);
-    v->addWidget(m_table, 1);
+
+    // Previewer (MO2-style): the list on the left, a save-detail panel on the right,
+    // split by a draggable divider. The panel shows the selected save's screenshot,
+    // metadata, and any plugins it needs that the profile's load order lacks.
+    auto* preview = new QWidget(this);
+    auto* pv = new QVBoxLayout(preview);
+    pv->setContentsMargins(10, 6, 6, 6);
+    m_previewShot = new QLabel(preview);
+    m_previewShot->setAlignment(Qt::AlignHCenter | Qt::AlignTop);
+    m_previewShot->setMinimumHeight(kThumbH);
+    pv->addWidget(m_previewShot);
+    m_previewInfo = new QLabel(preview);
+    m_previewInfo->setTextFormat(Qt::RichText);
+    m_previewInfo->setWordWrap(true);
+    m_previewInfo->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_previewInfo->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+    pv->addWidget(m_previewInfo);
+    m_previewMissing = new QLabel(preview);
+    m_previewMissing->setTextFormat(Qt::RichText);
+    m_previewMissing->setWordWrap(true);
+    m_previewMissing->setVisible(false);
+    pv->addWidget(m_previewMissing);
+    pv->addStretch(1);
+
+    auto* previewScroll = new QScrollArea(this);
+    previewScroll->setWidget(preview);
+    previewScroll->setWidgetResizable(true);
+    previewScroll->setFrameShape(QFrame::NoFrame);
+
+    auto* split = new QSplitter(Qt::Horizontal, this);
+    split->addWidget(m_table);
+    split->addWidget(previewScroll);
+    split->setStretchFactor(0, 3);
+    split->setStretchFactor(1, 2);
+    split->setSizes({560, 360});
+    v->addWidget(split, 1);
+
+    connect(m_table, &QTableWidget::itemSelectionChanged, this, &SavesTab::updatePreview);
 
     auto* bar = new QHBoxLayout;
     m_countLabel = new QLabel(this);
@@ -290,6 +329,64 @@ void SavesTab::rebuild() {
         summary += QStringLiteral(" ") + QChar('-') + QStringLiteral(" ")
                  + QString::number(flagged) + QStringLiteral(" need missing plugins");
     m_countLabel->setText(summary);
+
+    updatePreview(); // refresh the panel for the (possibly changed) selection
+}
+
+void SavesTab::updatePreview() {
+    if (!m_previewInfo) return;
+
+    // The selected save's file path is stashed on the screenshot cell (UserRole+1).
+    QString path;
+    const auto sel = m_table->selectionModel() ? m_table->selectionModel()->selectedRows(ColShot)
+                                               : QModelIndexList();
+    if (!sel.isEmpty())
+        path = sel.first().data(Qt::UserRole + 1).toString();
+
+    if (path.isEmpty()) {
+        m_previewShot->clear();
+        m_previewInfo->setText(QStringLiteral(
+            "<span style='color:#888;'>Select a save to preview.</span>"));
+        m_previewMissing->setVisible(false);
+        return;
+    }
+
+    // Reuse the parse cache (the row was parsed during rebuild).
+    const auto cit = parseCache().constFind(path);
+    const SaveHeader h = cit != parseCache().constEnd() ? cit->header : parseSaveHeader(path);
+
+    // Large screenshot, scaled to the panel width (aspect-kept).
+    const QImage img = screenshotImage(h);
+    if (!img.isNull()) {
+        const int w = qMax(200, m_previewShot->width() - 8);
+        m_previewShot->setPixmap(QPixmap::fromImage(img).scaledToWidth(
+            qMin(w, 480), Qt::SmoothTransformation));
+    } else {
+        m_previewShot->setText(QStringLiteral("<span style='color:#888;'>(no screenshot)</span>"));
+    }
+
+    const QString savedWhen =
+        QFileInfo(path).lastModified().toString(QStringLiteral("dd MMM yyyy, HH:mm"));
+    m_previewInfo->setText(saveSummaryHtml(h, savedWhen));
+
+    // "This save needs plugins you don't have" - the same set the list flags.
+    QStringList loadOrder;
+    if (m_profile) {
+        const PluginList& pl = m_profile->pluginList();
+        for (int i = 0; i < pl.count(); ++i) loadOrder << pl.at(i).filename;
+    }
+    const QStringList missing = missingPlugins(h, loadOrder);
+    if (missing.isEmpty()) {
+        m_previewMissing->setVisible(false);
+    } else {
+        QString html = QStringLiteral(
+            "<div style='margin-top:8px;'><b style='color:#e08a2e;'>Missing plugins "
+            "(%1)</b><br><span style='color:#c0653a;'>%2</span></div>")
+            .arg(missing.size())
+            .arg(missing.join(QStringLiteral("<br>")).toHtmlEscaped());
+        m_previewMissing->setText(html);
+        m_previewMissing->setVisible(true);
+    }
 }
 
 } // namespace solero

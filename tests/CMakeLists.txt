@@ -36,6 +36,11 @@ target_include_directories(test_ExeResolve PRIVATE ../src ${CMAKE_BINARY_DIR}/in
 target_link_libraries(test_ExeResolve PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_ExeResolve COMMAND test_ExeResolve)
 
+# Source lint: fail if a UTF-8 multi-byte sequence is written as \xNN byte escapes
+# inside a QStringLiteral / u"..." (renders as mojibake - see the script header).
+add_test(NAME check_no_mojibake
+  COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/check-no-mojibake.sh ${CMAKE_SOURCE_DIR}/src)
+
 # UnmanagedScanner (core): pure; links DeployRecord + UnmanagedScanner only.
 add_executable(test_UnmanagedScanner test_UnmanagedScanner.cpp
   ../src/deploy/UnmanagedScanner.cpp ../src/deploy/DeployRecord.cpp)

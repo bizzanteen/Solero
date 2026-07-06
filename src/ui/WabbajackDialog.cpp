@@ -767,7 +767,8 @@ void WabbajackDialog::showFailureReport(int exitCode,
                 : QStringLiteral("missing");
             QString line = QStringLiteral("<b>%1</b>").arg(fa.name.toHtmlEscaped());
             if (!friendly.isEmpty())
-                line += QStringLiteral(" - %1").arg(friendly.toHtmlEscaped());
+                line += QStringLiteral(" ") + QChar('-') + QStringLiteral(" ")
+                        + friendly.toHtmlEscaped();
             line += QStringLiteral(" (%1)").arg(state);
             itemLines << line;
         }

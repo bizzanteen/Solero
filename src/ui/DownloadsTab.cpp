@@ -205,7 +205,8 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     if (auto* statusHdr = m_table->horizontalHeaderItem(1)) {
         statusHdr->setText(QString());
         statusHdr->setIcon(helpStatusIcon(14));
-        statusHdr->setToolTip(QStringLiteral("Status - each mod's download / install state"));
+        statusHdr->setToolTip(QStringLiteral("Status ") + QChar('-')
+                              + QStringLiteral(" each mod's download / install state"));
         statusHdr->setTextAlignment(Qt::AlignCenter);
     }
     m_table->setSortingEnabled(true);

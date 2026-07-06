@@ -11,6 +11,7 @@
 #include <QFile>
 #include <QDir>
 #include <QFileInfo>
+#include <QDateTime>
 #include <QDebug>
 #include <sys/stat.h>
 
@@ -43,11 +44,31 @@ QString DeployEngine::conflictIndexPath(const QString& profileDir) {
     return profileDir + "/conflicts.json";
 }
 
-DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::function<void(int,int)>& onProgress) {
+DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
+                                  const std::function<void(int,int)>& onProgress,
+                                  bool forceFull) {
     DeployResult result;
+    m_linkCount = 0;
+    m_skipCount = 0;
 
-    // Clean up any previous deployment first to avoid orphaned files
-    undeploy(m_gameDir);
+    // decide full vs incremental. Load the prior on-disk record; an
+    // incremental deploy diffs against it and only touches the delta. Fall back to
+    // a full teardown+relink when there is nothing safe to diff against: no/empty
+    // record, a legacy v1 record (no fingerprints), a record written in a different
+    // DeployMode (every file's physical form would change), or a forced Full Redeploy.
+    const QString recPath = recordPath(m_gameDir);
+    DeployRecord prevRecord = DeployRecord::loadFromFile(recPath);
+    const bool fullRedeploy = forceFull
+        || prevRecord.count() == 0
+        || prevRecord.version() < 2
+        || prevRecord.deployMode() != int(mode);
+    if (fullRedeploy) {
+        // Full teardown restores originals and empties the game dir, so there's
+        // nothing to skip against or sweep afterwards.
+        undeploy(m_gameDir);
+        prevRecord.clear();
+    }
+    result.incremental = !fullRedeploy;
 
     // Seed per-file conflict rules from the profile (hidden files + forced winners).
     m_hiddenFiles   = profile.hiddenFiles();
@@ -55,6 +76,7 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
 
     Linker linker(mode);
     DeployRecord record;
+    record.setDeployMode(int(mode)); // persisted with every flush (see below)
     ConflictIndex conflicts;
     // Case-insensitive owner index (lowercased relPath -> actual deployed
     // relPath). Wine/Proton present the game dir case-insensitively, so two
@@ -86,7 +108,6 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     // what has been linked into the game dir - a crash mid-deploy then leaves a
     // record that undeploy() can fully act on, never orphaning files. Track save
     // failures so the caller can warn (a live-but-unrecorded deploy is unsafe).
-    const QString recPath = recordPath(m_gameDir);
     bool recordSaveFailed = false;
     auto flushRecord = [&]() {
         if (!record.saveToFile(recPath)) {
@@ -100,7 +121,7 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     for (const auto& entry : profile.modList()) {
         if (entry.type != EntryType::Mod) continue;
         if (!entry.enabled) continue;
-        failures += deployMod(entry, m_gameDir, linker, record, conflicts, ciOwners);
+        failures += deployMod(entry, m_gameDir, linker, prevRecord, record, conflicts, ciOwners);
         flushRecord();
         ++done;
         if (onProgress) onProgress(done, total);
@@ -118,7 +139,7 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
             cacheEntry.name          = QStringLiteral("Shader Cache");
             cacheEntry.enabled       = true;
             cacheEntry.stagingFolder = folder;
-            failures += deployMod(cacheEntry, m_gameDir, linker, record, conflicts, ciOwners);
+            failures += deployMod(cacheEntry, m_gameDir, linker, prevRecord, record, conflicts, ciOwners);
             flushRecord();
             ++done;
             if (onProgress) onProgress(done, total);
@@ -130,7 +151,7 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
 
     // Force per-path winners (Vortex/MO2 per-file conflict choice). Runs after the
     // normal load-order loop so a chosen mod wins regardless of its priority.
-    failures += applyWinnerOverrides(profile, m_gameDir, linker, record, conflicts, ciOwners);
+    failures += applyWinnerOverrides(profile, m_gameDir, linker, prevRecord, record, conflicts, ciOwners);
     flushRecord();
 
     // Sort plugins with LOOT (if enabled) before writing plugins.txt. The mod
@@ -209,6 +230,13 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
         if (QDir(jcData).exists()) QDir().mkpath(jcData + "/Domains");
     }
 
+    // stale sweep: remove every path the previous deployment had that this
+    // one doesn't (disabled mods, changed conflict winners, deleted files) and
+    // restore any originals they covered. must run after the generated artifacts
+    // above are recorded so they aren't mistaken for stale. No-op in full-redeploy
+    // mode (prevRecord was cleared, so undeploy already did the teardown).
+    result.filesRemoved = removeStalePaths(prevRecord, record, m_gameDir, failures);
+
     // Final flush also captures the generated artifacts recorded above (Plugins.txt/
     // loadorder.txt/INIs when they land inside gameDir).: check both saves.
     flushRecord();
@@ -257,14 +285,20 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode, const std::
     const int conflictCount = conflicts.conflictedPaths().size();
     result.conflicts = std::move(conflicts);
     result.filesDeployed = record.count();
-    qCInfo(lcDeploy) << "deploy done:" << result.filesDeployed << "files linked,"
-                     << conflictCount << "conflicts," << failures << "failures";
+    result.filesLinked = m_linkCount;
+    result.filesUnchanged = m_skipCount;
+    qCInfo(lcDeploy).nospace()
+        << "deploy done (" << (result.incremental ? "incremental" : "full") << "): "
+        << m_linkCount << " linked, " << m_skipCount << " unchanged, "
+        << result.filesRemoved << " removed, " << conflictCount << " conflicts, "
+        << failures << " failures";
     return result;
 }
 
 int DeployEngine::deployMod(const ModEntry& mod,
                              const QString& gameDir,
                              const Linker& linker,
+                             const DeployRecord& prevRecord,
                              DeployRecord& record,
                              ConflictIndex& conflicts,
                              QHash<QString, QString>& ciOwners) {
@@ -316,6 +350,31 @@ int DeployEngine::deployMod(const ModEntry& mod,
         // setWinner(loser) under the variant the Conflicts tab then shows winning.
         const QString conflictKey = ciKey;
 
+        // Source fingerprint (size + mtime) for the incremental skip test and for
+        // recording. it.fileInfo() reuses the walk's cached stat; size()/lastModified()
+        // follow symlinks so this reflects the real staged content.
+        const QFileInfo srcInfo = it.fileInfo();
+        const DeployRecord::Fingerprint srcFp = fingerprintOf(srcInfo);
+
+        // incremental skip: if this is the first provider of the path in this
+        // pass (priorRel empty => no conflict yet, so the file on disk is the one we
+        // would link), and the previous deployment already had this mod owning this
+        // exact canonical path with an UNCHANGED source, and the file is still on
+        // disk, reuse it - no link needed. Recording still happens so the new record
+        // is complete. When priorRel is non-empty another mod already wrote this path
+        // this pass, so we must link to establish the correct winner (never skip).
+        if (priorRel.isEmpty() && prevRecord.ownerOf(destRel) == modId
+            && QFile::exists(dstPath)) {
+            const auto pfp = prevRecord.fingerprintOf(destRel);
+            if (pfp.valid() && pfp.size == srcFp.size && pfp.mtimeMs == srcFp.mtimeMs) {
+                conflicts.setWinner(conflictKey, modId);
+                record.add(destRel, modId, srcFp.size, srcFp.mtimeMs);
+                ciOwners.insert(ciKey, destRel);
+                ++m_skipCount;
+                continue;
+            }
+        }
+
         // Wine/Proton is case-insensitive: a file already deployed at a case-variant
         // of this path (e.g. QUI.dll vs qui.dll) would both be visible to the game and
         // load twice. The current mod is later in the load order = higher priority =
@@ -328,10 +387,13 @@ int DeployEngine::deployMod(const ModEntry& mod,
         }
 
         // First Solero owner of this path and something already lives there:
-        // it's a genuine pre-existing original (deploy() ran undeploy() first,
-        // so any Solero-owned file at this path is already gone). Move it to
-        // the backup tree so undeploy can restore it later.
-        if (previousOwner.isEmpty() && QFile::exists(dstPath)) {
+        // it's a genuine pre-existing original. Move it to the backup tree so
+        // undeploy can restore it later. The prevRecord.contains() guard is the
+        // incremental case: a path already Solero-owned by the PREVIOUS deployment
+        // holds our own link, not a vanilla original, so it must never be backed up
+        // (that would capture our link and, on restore, resurrect a stale mod file).
+        if (previousOwner.isEmpty() && !prevRecord.contains(destRel)
+            && QFile::exists(dstPath)) {
             QString backupPath = gameDir + "/" + backupDirName() + "/" + destRel;
             // Don't clobber an existing backup (e.g. from an interrupted run);
             // the first one we saw is the true original.
@@ -362,25 +424,23 @@ int DeployEngine::deployMod(const ModEntry& mod,
         // canonicalFilePath() is a per-file syscall; only pay it when the
         // source is actually a symlink - regular files need no resolution.
         QString realSrc = srcPath;
-        {
-            QFileInfo srcInfo(srcPath);
-            if (srcInfo.isSymLink()) {
-                const QString canon = srcInfo.canonicalFilePath();
-                if (!canon.isEmpty()) realSrc = canon;
-            }
+        if (srcInfo.isSymLink()) {
+            const QString canon = srcInfo.canonicalFilePath();
+            if (!canon.isEmpty()) realSrc = canon;
         }
         if (!linker.deploy(realSrc, dstPath)) {
             qCWarning(lcDeploy) << "Deploy failed for" << relPath << "(mod" << modId << ")";
             ++failures;
             continue; // do not record a failed link as deployed
         }
+        ++m_linkCount;
 
         if (!previousOwner.isEmpty()) {
             conflicts.recordConflict(conflictKey, modId, previousOwner);
         } else {
             conflicts.setWinner(conflictKey, modId);
         }
-        record.add(destRel, modId);
+        record.add(destRel, modId, srcFp.size, srcFp.mtimeMs);
         ciOwners.insert(ciKey, destRel);
         qCDebug(lcDeploy) << "linked" << destRel << "(mod" << modId << ")";
     }
@@ -390,6 +450,7 @@ int DeployEngine::deployMod(const ModEntry& mod,
 int DeployEngine::applyWinnerOverrides(Profile& profile,
                                        const QString& gameDir,
                                        const Linker& linker,
+                                       const DeployRecord& prevRecord,
                                        DeployRecord& record,
                                        ConflictIndex& conflicts,
                                        QHash<QString, QString>& ciOwners) {
@@ -439,8 +500,10 @@ int DeployEngine::applyWinnerOverrides(Profile& profile,
         }
 
         // No Solero owner yet but a file sits at the slot -> it's a pre-existing
-        // original; back it up so undeploy can restore it (mirrors deployMod).
-        if (currentOwner.isEmpty() && QFile::exists(dstPath)) {
+        // original; back it up so undeploy can restore it (mirrors deployMod). The
+        // prevRecord guard prevents capturing our own prior-deploy link (incremental).
+        if (currentOwner.isEmpty() && !prevRecord.contains(destRel)
+            && QFile::exists(dstPath)) {
             QString backupPath = gameDir + "/" + backupDirName() + "/" + destRel;
             if (!QFile::exists(backupPath)) {
                 QDir().mkpath(QFileInfo(backupPath).path());
@@ -461,19 +524,19 @@ int DeployEngine::applyWinnerOverrides(Profile& profile,
         }
 
         // only canonicalize when the source is actually a symlink.
+        const QFileInfo srcInfo(srcPath);
+        const DeployRecord::Fingerprint srcFp = fingerprintOf(srcInfo);
         QString realSrc = srcPath;
-        {
-            QFileInfo srcInfo(srcPath);
-            if (srcInfo.isSymLink()) {
-                const QString canon = srcInfo.canonicalFilePath();
-                if (!canon.isEmpty()) realSrc = canon;
-            }
+        if (srcInfo.isSymLink()) {
+            const QString canon = srcInfo.canonicalFilePath();
+            if (!canon.isEmpty()) realSrc = canon;
         }
         if (!linker.deploy(realSrc, dstPath)) {
             qCWarning(lcDeploy) << "Winner override failed to link" << relPath << "(mod" << modId << ")";
             ++failures;
             continue;
         }
+        ++m_linkCount;
         // The displaced load-order winner becomes a loser of the forced choice.
         // Key the conflict index by the canonical case-folded path (== ciKey),
         // consistent with deployMod, so case-variants map to one entry.
@@ -481,7 +544,7 @@ int DeployEngine::applyWinnerOverrides(Profile& profile,
             conflicts.recordConflict(ciKey, modId, currentOwner);
         else
             conflicts.setWinner(ciKey, modId);
-        record.add(destRel, modId);
+        record.add(destRel, modId, srcFp.size, srcFp.mtimeMs);
         ciOwners.insert(ciKey, destRel);
         qCDebug(lcDeploy) << "winner-override" << destRel << "-> mod" << modId;
     }
@@ -584,6 +647,70 @@ QString DeployEngine::canonicalizeRelPath(const QString& gameDir, const QString&
         absDir = absDir + "/" + actual;
     }
     return out.join('/');
+}
+
+DeployRecord::Fingerprint DeployEngine::fingerprintOf(const QFileInfo& srcInfo) const {
+    return DeployRecord::Fingerprint{ srcInfo.size(),
+                                      srcInfo.lastModified().toMSecsSinceEpoch() };
+}
+
+int DeployEngine::removeStalePaths(const DeployRecord& prevRecord, DeployRecord& newRecord,
+                                   const QString& gameDir, int& failures) {
+    const QString normGameDir = QDir::cleanPath(gameDir);
+    const QString backupRoot = normGameDir + "/" + backupDirName();
+    int removed = 0;
+    for (const QString& relPath : prevRecord.allPaths()) {
+        if (newRecord.contains(relPath)) continue; // still deployed this pass
+        const QString fullPath = normGameDir + "/" + relPath;
+        bool ok = true;
+
+        // Remove the stale deployed file. A recorded path that still exists after we
+        // tried to remove it is a real failure (mirrors undeploy's).
+        if (QFile::exists(fullPath) && !QFile::remove(fullPath) && QFile::exists(fullPath)) {
+            ok = false;
+            ++failures;
+            qCWarning(lcDeploy) << "incremental: failed to remove stale" << fullPath;
+        }
+
+        // Restore a backed-up pre-existing original into the freed slot, if any.
+        // (The path is stale => no mod covers it now => its original should return.)
+        const QString backupPath = backupRoot + "/" + relPath;
+        if (ok && QFile::exists(backupPath)) {
+            QDir().mkpath(QFileInfo(fullPath).path());
+            QFile::remove(fullPath);
+            if (!QFile::rename(backupPath, fullPath)) {
+                if (QFile::copy(backupPath, fullPath)) {
+                    QFile::remove(backupPath);
+                } else {
+                    ok = false;
+                    ++failures;
+                    qCWarning(lcDeploy) << "incremental: failed to restore original" << relPath;
+                }
+            }
+        }
+
+        if (!ok) {
+            // Keep the path tracked so a later deploy retries it (never orphan).
+            newRecord.add(relPath, prevRecord.ownerOf(relPath));
+            continue;
+        }
+        ++removed;
+
+        // Prune now-empty parent dirs up to (but not including) the game dir; never
+        // descend into / prune the backup tree.
+        QDir dir(QFileInfo(fullPath).path());
+        while (QDir::cleanPath(dir.path()) != normGameDir
+               && !QDir::cleanPath(dir.path()).startsWith(backupRoot)
+               && dir.exists() && dir.isEmpty()) {
+            const QString dirPath = dir.path();
+            const QString parent = QFileInfo(dirPath).path();
+            QDir(parent).rmdir(QFileInfo(dirPath).fileName());
+            dir = QDir(parent);
+        }
+    }
+    if (removed > 0 || failures > 0)
+        qCDebug(lcDeploy) << "incremental sweep removed" << removed << "stale path(s)";
+    return removed;
 }
 
 } // namespace solero

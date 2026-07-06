@@ -80,6 +80,34 @@ private slots:
         QCOMPARE(unmanaged, (QStringList{"Data/Skyrim.esm"})); // vanilla surfaces; .solero excluded
     }
 
+    // captureUnmanagedInto MOVES the loose files into a mod's staging folder,
+    // preserving relpaths, and removes them from the game dir.
+    void captureMovesNewFilesIntoMod() {
+        QTemporaryDir tmp; QVERIFY(tmp.isValid());
+        const QString game = tmp.path() + "/game";
+        const QString dest = tmp.path() + "/mods/Overwrite";
+        writeFile(game + "/Data/Skyrim.esm");                 // vanilla (baseline)
+        writeFile(game + "/Data/MyMod.esp");                  // managed (record)
+        const QSet<QString> baseline = snapshotGameFiles(game);
+        DeployRecord rec; rec.add("Data/MyMod.esp", "mod-a");
+
+        // A run writes two loose files.
+        writeFile(game + "/Data/SKSE/Plugins/generated.bin", "cache");
+        writeFile(game + "/Data/loose.txt", "note");
+
+        const QStringList moved = captureUnmanagedInto(game, rec, baseline, dest);
+        QCOMPARE(moved, (QStringList{"Data/SKSE/Plugins/generated.bin", "Data/loose.txt"}));
+
+        // Loose files now live under the mod, gone from the game dir.
+        QVERIFY(QFile::exists(dest + "/Data/SKSE/Plugins/generated.bin"));
+        QVERIFY(QFile::exists(dest + "/Data/loose.txt"));
+        QVERIFY(!QFile::exists(game + "/Data/SKSE/Plugins/generated.bin"));
+        QVERIFY(!QFile::exists(game + "/Data/loose.txt"));
+        // Managed + vanilla files are untouched.
+        QVERIFY(QFile::exists(game + "/Data/MyMod.esp"));
+        QVERIFY(QFile::exists(game + "/Data/Skyrim.esm"));
+    }
+
     // A missing/empty game dir yields empty results, never a crash.
     void missingDirIsEmpty() {
         DeployRecord rec;

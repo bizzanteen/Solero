@@ -8,6 +8,7 @@
 #include "core/FileUtil.h"
 #include "core/Log.h"
 #include "bethini/IniFile.h"
+#include "deploy/UnmanagedScanner.h"
 #include <QDirIterator>
 #include <QFile>
 #include <QDir>
@@ -264,6 +265,19 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
         recordSaveFailed = true;
         qCWarning(lcDeploy) << "failed to persist conflict index to"
                             << conflictIndexPath(profile.path());
+    }
+
+    // when the profile opts in, snapshot the just-deployed game dir as the
+    // baseline for later loose-file capture (files a tool/game writes after this are
+    // then distinguishable from the deployed + vanilla set). Opt-in so the extra
+    // game-dir walk isn't paid by profiles that don't use the feature.
+    if (profile.trackUnmanaged()) {
+        const QSet<QString> snap = snapshotGameFiles(m_gameDir);
+        if (!saveGameSnapshot(profile.unmanagedBaselinePath(), snap))
+            qCWarning(lcDeploy) << "failed to write unmanaged baseline to"
+                                << profile.unmanagedBaselinePath();
+        else
+            qCInfo(lcDeploy) << "unmanaged baseline:" << snap.size() << "files";
     }
 
     if (onProgress) onProgress(total, total);

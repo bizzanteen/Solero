@@ -111,6 +111,7 @@ function(add_solero_deploy_test name)
     ../src/deploy/DeployRecord.cpp
     ../src/deploy/ConflictIndex.cpp
     ../src/deploy/DeployEngine.cpp
+    ../src/deploy/UnmanagedScanner.cpp
     ../src/bethini/IniFile.cpp
     ../src/loot/LootSorter.cpp
     ../src/install/PluginScanner.cpp
@@ -143,6 +144,7 @@ add_executable(test_ToolRunner test_ToolRunner.cpp
   ../src/deploy/DeployRecord.cpp
   ../src/deploy/ConflictIndex.cpp
   ../src/deploy/DeployEngine.cpp
+  ../src/deploy/UnmanagedScanner.cpp
   ../src/bethini/IniFile.cpp
   ../src/loot/LootSorter.cpp
   ../src/install/PluginScanner.cpp

@@ -24,4 +24,18 @@ QStringList findUnmanagedFiles(const QString& gameDir,
                                const DeployRecord& record,
                                const QSet<QString>& baseline);
 
+// MOVE every unmanaged file (findUnmanagedFiles) out of `gameDir` into `destStagingDir`,
+// preserving each relPath, and prune emptied parent dirs in the game dir. Returns the
+// relPaths actually captured (sorted). Skips - and omits from the result - any file it
+// can't move so it's never lost. This is the destructive "capture into a mod" step; the
+// caller should confirm with the user and re-deploy afterwards.
+QStringList captureUnmanagedInto(const QString& gameDir,
+                                 const DeployRecord& record,
+                                 const QSet<QString>& baseline,
+                                 const QString& destStagingDir);
+
+// Persist / restore a game-file snapshot (the post-deploy baseline) as a JSON array.
+bool saveGameSnapshot(const QString& path, const QSet<QString>& snapshot);
+QSet<QString> loadGameSnapshot(const QString& path); // empty if missing/unreadable
+
 } // namespace solero

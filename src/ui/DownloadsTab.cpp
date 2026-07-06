@@ -7,6 +7,8 @@
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QHeaderView>
+#include <QStyleOptionHeader>
+#include <QStyle>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
@@ -51,6 +53,35 @@ protected:
         painter.drawText(r, Qt::AlignCenter | Qt::TextWordWrap,
             QStringLiteral("No downloads yet ") + QChar('-')
                 + QStringLiteral(" download from the Nexus browser."));
+    }
+};
+
+// Centres an icon-only header section (the Status "?" icon) so the header matches
+// the centred data cells - a plain header item always draws its icon on the left.
+// Other sections paint the normal way.
+class CenteredIconHeader : public QHeaderView {
+public:
+    using QHeaderView::QHeaderView;
+protected:
+    void paintSection(QPainter* p, const QRect& rect, int idx) const override {
+        if (!rect.isValid() || !model()) { QHeaderView::paintSection(p, rect, idx); return; }
+        const QString text = model()->headerData(idx, orientation(), Qt::DisplayRole).toString();
+        const QVariant decoV = model()->headerData(idx, orientation(), Qt::DecorationRole);
+        const QIcon icon = decoV.canConvert<QIcon>() ? decoV.value<QIcon>() : QIcon();
+        if (!text.isEmpty() || icon.isNull()) { QHeaderView::paintSection(p, rect, idx); return; }
+        // Draw the section chrome with no content, then centre the icon in it.
+        QStyleOptionHeader opt;
+        initStyleOption(&opt);
+        opt.rect = rect;
+        opt.section = idx;
+        opt.text.clear();
+        opt.icon = QIcon();
+        opt.iconAlignment = Qt::AlignCenter;
+        style()->drawControl(QStyle::CE_Header, &opt, p, this);
+        const int sz = 14;
+        QRect ir(0, 0, sz, sz);
+        ir.moveCenter(rect.center());
+        icon.paint(p, ir, Qt::AlignCenter);
     }
 };
 
@@ -165,6 +196,7 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     auto* v = new QVBoxLayout(this);
 
     m_table = new DownloadsTable(this);
+    m_table->setHorizontalHeader(new CenteredIconHeader(Qt::Horizontal, m_table));
     m_table->setColumnCount(4);
     m_table->setHorizontalHeaderLabels({"Name", "Status", "Size", "Downloaded"});
     // The Status cells are icons (see makeStatusItem), so the header shows a "?"

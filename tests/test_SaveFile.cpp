@@ -241,6 +241,8 @@ private slots:
         QVERIFY(s.contains("Whiterun"));
         QVERIFY(s.contains("Nord"));          // "Race" suffix trimmed
         QVERIFY(s.contains("Female"));
+        QVERIFY(s.contains("Play time"));     // gameDate surfaced as play time
+        QVERIFY(s.contains("Day 5"));
         QVERIFY(s.contains("06 Jul 2026, 12:00"));
         QVERIFY(s.contains("3"));             // plugin count
     }

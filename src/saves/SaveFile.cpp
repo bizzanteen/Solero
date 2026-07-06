@@ -282,9 +282,9 @@ QString saveSummaryHtml(const SaveHeader& save, const QString& savedWhen) {
     html += row(QStringLiteral("Level"),    save.level ? QString::number(save.level) : QString());
     html += row(QStringLiteral("Race"),     race.trimmed().isEmpty() ? QString()
                                             : QStringLiteral("%1 \xC2\xB7 %2").arg(race.trimmed(), sex));
-    html += row(QStringLiteral("Location"), save.location);
-    html += row(QStringLiteral("In-game"),  save.gameDate);
-    html += row(QStringLiteral("Saved"),    savedWhen);
+    html += row(QStringLiteral("Location"),  save.location);
+    html += row(QStringLiteral("Play time"), save.gameDate);
+    html += row(QStringLiteral("Saved"),     savedWhen);
     html += row(QStringLiteral("Save #"),   save.saveNumber ? QString::number(save.saveNumber) : QString());
     html += row(QStringLiteral("Version"),  save.version ? QString::number(save.version) : QString());
     html += row(QStringLiteral("Plugins"),  pluginsCell);

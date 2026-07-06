@@ -34,8 +34,4 @@ QStringList captureUnmanagedInto(const QString& gameDir,
                                  const QSet<QString>& baseline,
                                  const QString& destStagingDir);
 
-// Persist / restore a game-file snapshot (the post-deploy baseline) as a JSON array.
-bool saveGameSnapshot(const QString& path, const QSet<QString>& snapshot);
-QSet<QString> loadGameSnapshot(const QString& path); // empty if missing/unreadable
-
 } // namespace solero

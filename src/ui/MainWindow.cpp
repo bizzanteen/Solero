@@ -20,7 +20,6 @@
 #include "install/InstallConflict.h"
 #include "deploy/DeployEngine.h"
 #include "deploy/DeployRecord.h"
-#include "deploy/UnmanagedScanner.h"
 #include "import/Mo2Importer.h"
 #include "io/ProfileManifest.h"
 #include "ui/WabbajackDialog.h"
@@ -4783,71 +4782,8 @@ void MainWindow::rebuildToolsMenu() {
         });
     fullRedeploy->setToolTip("Tear down and re-link every deployed file. Slower than a "
                              "normal deploy; use if a deploy looks wrong.");
-
-    // capture loose files a tool / the game wrote into the game folder
-    // (not managed by any mod) into the Overwrite mod.
-    QAction* captureLoose = m_toolsMenu->addAction(
-        QIcon::fromTheme("edit-download"),
-        QStringLiteral("Capture Loose Files") + QChar(0x2026), this,
-        [this]{ onCaptureLooseFiles(); });
-    captureLoose->setToolTip("Move files a tool or the game wrote loose into your game "
-                             "folder into the Overwrite mod (needs Deploy-time tracking).");
-}
-
-void MainWindow::onCaptureLooseFiles() {
-    auto* profile = m_profileMgr->activeProfile();
-    if (!profile) { statusBar()->showMessage("No active profile."); return; }
-    if (!solero::AppConfig::instance().isConfigured()) {
-        statusBar()->showMessage("Game directory not configured. Use Game Settings\xe2\x80\xa6");
-        return;
-    }
-    const QString gameDir = solero::AppConfig::instance().gameDir();
-    const QString baselinePath = profile->unmanagedBaselinePath();
-
-    // First-use: tracking must be on and a baseline must exist (written at Deploy).
-    if (!profile->trackUnmanaged() || !QFile::exists(baselinePath)) {
-        const auto ret = QMessageBox::question(this, "Capture Loose Files",
-            "Loose-file tracking isn't set up for this profile yet.\n\n"
-            "Solero needs a baseline (recorded at Deploy) to tell which files a tool or "
-            "the game wrote loose into your game folder.\n\n"
-            "Enable it now? You'll then Deploy once, run your tool/game, and come back "
-            "here to capture.", QMessageBox::Yes | QMessageBox::No);
-        if (ret == QMessageBox::Yes) {
-            profile->setTrackUnmanaged(true);
-            profile->save();
-            if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
-            statusBar()->showMessage("Loose-file tracking enabled - Deploy, run your "
-                                     "tool/game, then Capture Loose Files.", 8000);
-        }
-        return;
-    }
-
-    auto rec = solero::DeployRecord::loadFromFile(solero::DeployEngine::recordPath(gameDir));
-    const QSet<QString> baseline = solero::loadGameSnapshot(baselinePath);
-    const QStringList loose = solero::findUnmanagedFiles(gameDir, rec, baseline);
-    if (loose.isEmpty()) {
-        QMessageBox::information(this, "Capture Loose Files",
-            "No loose files found - your game folder only has managed + baseline files.");
-        return;
-    }
-
-    QString preview;
-    for (int i = 0; i < loose.size() && i < 15; ++i) preview += "\n  " + loose[i];
-    if (loose.size() > 15) preview += QString("\n  \xe2\x80\xa6 and %1 more").arg(loose.size() - 15);
-    const auto ret = QMessageBox::question(this, "Capture Loose Files",
-        QString("Move %1 loose file(s) from your game folder into the Overwrite mod?%2\n\n"
-                "They'll be removed from the game folder and captured into Overwrite; "
-                "Deploy afterwards to re-apply them.").arg(loose.size()).arg(preview),
-        QMessageBox::Yes | QMessageBox::No);
-    if (ret != QMessageBox::Yes) return;
-
-    const QString dest = solero::AppConfig::overwriteDir(profile->name());
-    const QStringList moved = solero::captureUnmanagedInto(gameDir, rec, baseline, dest);
-    m_modListView->invalidateModCache();
-    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
-    qCInfo(lcDeploy) << "captured" << moved.size() << "loose files into Overwrite";
-    QMessageBox::information(this, "Capture Loose Files",
-        QString("Captured %1 file(s) into Overwrite. Deploy to re-apply them.").arg(moved.size()));
+    // loose-file capture is rolled into the tool-run flow for CUSTOM tools
+    // (ToolRunner), so it needs no menu entry here.
 }
 
 QList<QPair<QString,QString>> MainWindow::modChoices() const {

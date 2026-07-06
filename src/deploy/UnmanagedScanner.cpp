@@ -5,8 +5,6 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
-#include <QJsonArray>
-#include <QJsonDocument>
 #include <algorithm>
 
 namespace solero {
@@ -95,25 +93,6 @@ QStringList captureUnmanagedInto(const QString& gameDir,
         }
     }
     return moved;
-}
-
-bool saveGameSnapshot(const QString& path, const QSet<QString>& snapshot) {
-    QStringList sorted(snapshot.cbegin(), snapshot.cend());
-    std::sort(sorted.begin(), sorted.end());
-    QJsonArray arr;
-    for (const QString& p : sorted) arr.append(p);
-    QFile f(path);
-    if (!f.open(QIODevice::WriteOnly)) return false;
-    return f.write(QJsonDocument(arr).toJson(QJsonDocument::Compact)) >= 0;
-}
-
-QSet<QString> loadGameSnapshot(const QString& path) {
-    QSet<QString> out;
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return out;
-    const auto arr = QJsonDocument::fromJson(f.readAll()).array();
-    for (const auto& v : arr) out.insert(v.toString());
-    return out;
 }
 
 } // namespace solero

@@ -52,12 +52,6 @@ public:
     QString saveFolderName() const            { return sanitizeSaveFolder(m_name); }
     static QString sanitizeSaveFolder(const QString& name);
 
-    // when on, deploy records a post-deploy game-file baseline so the user
-    // can later capture loose/unmanaged files (tool/game output) into a mod.
-    bool trackUnmanaged() const               { return m_trackUnmanaged; }
-    void setTrackUnmanaged(bool v)            { m_trackUnmanaged = v; }
-    QString unmanagedBaselinePath() const     { return m_path + "/unmanaged-baseline.json"; }
-
     // Per-file conflict resolution (MO2 ".mohidden" + Vortex per-file winner).
     // relPath is in the same form DeployEngine uses: path relative to the mod
     // root (e.g. "Data/SKSE/Plugins/foo.dll").
@@ -123,7 +117,6 @@ private:
     QHash<QString, QString>       m_fileOverrides; // relPath -> forced winner modId
     ManagedShaderCache            m_shaderCache;
     bool                          m_localSaves = false;
-    bool                          m_trackUnmanaged = false;
 
     bool saveExecutables() const;
     bool loadExecutables();

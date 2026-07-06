@@ -105,8 +105,6 @@ private:
     // instead of the default incremental diff.
     void deployActiveAsync(std::function<void(bool)> onDone, bool forceFull = false);
     void undeployActiveAsync(std::function<void(bool)> onDone);
-    // capture loose/unmanaged files from the game dir into Overwrite.
-    void onCaptureLooseFiles();
     void finishDeployJob();
     // Like deployCurrent but for use INSIDE a tool run: deploys the active profile
     // (honoring any in-memory ModList toggle) under a ProgressModal and updates

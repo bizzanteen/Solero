@@ -140,6 +140,7 @@ add_solero_deploy_test(test_DeployIncremental)
 # deploy source/link set plus ToolRunner.cpp itself.
 add_executable(test_ToolRunner test_ToolRunner.cpp
   ../src/tools/ToolRunner.cpp
+  ../src/tools/ToolCatalog.cpp
   ../src/deploy/Linker.cpp
   ../src/deploy/DeployRecord.cpp
   ../src/deploy/ConflictIndex.cpp

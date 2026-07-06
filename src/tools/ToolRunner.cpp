@@ -3,7 +3,10 @@
 #include "core/Log.h"
 #include "deploy/DeployEngine.h"
 #include "deploy/DeployRecord.h"
+#include "deploy/UnmanagedScanner.h"
+#include "tools/ToolCatalog.h"
 #include <QProcess>
+#include <QSet>
 #include <QProcessEnvironment>
 #include <QEventLoop>
 #include <QDir>
@@ -48,6 +51,14 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
     Result r;
     bool capture = exe.isCapturingOutput;
 
+    // Custom tools (not in the preset catalog) have unknown output. When one isn't
+    // already configured to capture into an output mod, roll in directly:
+    // snapshot the game dir just before the run and, afterwards, capture anything
+    // loose (unmanaged by the active deployment) it left into Overwrite - no menu,
+    // no per-deploy baseline. Preset tools have known output, so they're excluded.
+    const bool customLooseCapture = !capture && (ToolCatalog::byId(exe.id) == nullptr);
+    QSet<QString> looseBaseline;
+
     // Capture roots: always Data, plus any extra roots a tool/preset declares
     // (e.g. DynDOLOD_Output, xEdit root logs) relative to gameDir. Empty extras =
     // identical behavior to the old Data-only capture.
@@ -86,6 +97,8 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
                      &loop, &QEventLoop::quit);
 
     const QString exeName = QFileInfo(exe.binaryPath).fileName();
+    // Baseline the game dir just before launching a custom tool (see above).
+    if (customLooseCapture) looseBaseline = snapshotGameFiles(gameDir);
     if (exe.runtime == RuntimeType::Native) {
         if (exe.binaryPath.isEmpty() || !QFile::exists(exe.binaryPath)) {
             r.error = "Native binary not found: " + exe.binaryPath;
@@ -174,6 +187,21 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
             captureNewFiles(base, destBase, gameDir, runStart, rec,
                             preSnapshots.value(base), &warning);
         r.output += warning;
+    }
+
+    // for custom tools: capture files the run left loose in the game dir
+    // (unmanaged by the deployment, absent from the pre-run baseline) into Overwrite.
+    if (customLooseCapture) {
+        const DeployRecord rec = DeployRecord::loadFromFile(DeployEngine::recordPath(gameDir));
+        const QString dest = overwriteDir.isEmpty()
+            ? (AppConfig::dataRoot() + "/overwrite") : overwriteDir;
+        const QStringList moved = captureUnmanagedInto(gameDir, rec, looseBaseline, dest);
+        if (!moved.isEmpty()) {
+            r.output += QString("\n[Solero] Captured %1 loose file(s) into Overwrite.")
+                            .arg(moved.size());
+            qCInfo(lcTools) << "custom tool" << exeName << "captured" << moved.size()
+                            << "loose files into Overwrite";
+        }
     }
     return r;
 }

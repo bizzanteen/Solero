@@ -47,17 +47,15 @@ QString Profile::sanitizeSaveFolder(const QString& name) {
 bool Profile::saveSettings() const {
     QJsonObject root;
     root["localSaves"] = m_localSaves;
-    root["trackUnmanaged"] = m_trackUnmanaged;
     return atomicWrite(profileSettingsPath(),
                        QJsonDocument(root).toJson(QJsonDocument::Indented));
 }
 
 bool Profile::loadSettings() {
     QFile f(profileSettingsPath());
-    if (!f.open(QIODevice::ReadOnly)) { m_localSaves = false; m_trackUnmanaged = false; return false; }
+    if (!f.open(QIODevice::ReadOnly)) { m_localSaves = false; return false; }
     const auto root = QJsonDocument::fromJson(f.readAll()).object();
     m_localSaves = root["localSaves"].toBool(false);
-    m_trackUnmanaged = root["trackUnmanaged"].toBool(false);
     return true;
 }
 

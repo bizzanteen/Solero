@@ -14,5 +14,12 @@ public:
     // mode == "system"). No AppConfig / filesystem access - unit-testable.
     static QPalette buildPalette(const QString& mode, const QColor& accent,
                                  const QPalette& systemBase);
+
+    // GNOME "System" following (pure, testable). gnomeSchemeIsDark maps the
+    // org.gnome.desktop.interface color-scheme value ("prefer-dark" etc., possibly
+    // single-quoted by gsettings) to dark/light. gnomeAccentColor maps a GNOME 47+
+    // accent-color name ("blue", "teal", …) to its colour, or an invalid QColor.
+    static bool gnomeSchemeIsDark(const QString& colorScheme);
+    static QColor gnomeAccentColor(const QString& accentName);
 };
 }

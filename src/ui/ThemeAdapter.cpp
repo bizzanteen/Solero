@@ -7,7 +7,9 @@
 #include <QDir>
 #include <QFile>
 #include <QFont>
+#include <QHash>
 #include <QPalette>
+#include <QProcess>
 #include <QSettings>
 #include <QStyleFactory>
 
@@ -126,7 +128,37 @@ QPalette readKdePalette(const QApplication& app) {
     return pal;
 }
 
+// Read a gsettings key (org.gnome.desktop.interface). Returns the raw value
+// (single-quoted as gsettings prints it) or empty when gsettings is unavailable /
+// the key doesn't exist - so non-GNOME desktops degrade quietly.
+QString readGsettings(const QString& key) {
+    QProcess p;
+    p.start("gsettings", {"get", "org.gnome.desktop.interface", key});
+    if (!p.waitForFinished(1500) || p.exitStatus() != QProcess::NormalExit
+        || p.exitCode() != 0)
+        return QString();
+    return QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+}
+
 } // namespace
+
+bool ThemeAdapter::gnomeSchemeIsDark(const QString& colorScheme) {
+    return colorScheme.contains(QLatin1String("prefer-dark"));
+}
+
+QColor ThemeAdapter::gnomeAccentColor(const QString& accentName) {
+    QString n = accentName.trimmed();
+    if (n.startsWith('\'') && n.endsWith('\'') && n.size() >= 2)
+        n = n.mid(1, n.size() - 2);
+    // GNOME 47 accent palette.
+    static const QHash<QString, QString> kAccents = {
+        {"blue",   "#3584e4"}, {"teal",   "#2190a4"}, {"green",  "#3a944a"},
+        {"yellow", "#c88800"}, {"orange", "#ed5b00"}, {"red",    "#e62d42"},
+        {"pink",   "#d56199"}, {"purple", "#9141ac"}, {"slate",  "#6f8396"},
+    };
+    const auto it = kAccents.constFind(n);
+    return it == kAccents.constEnd() ? QColor() : QColor(it.value());
+}
 
 QPalette ThemeAdapter::buildPalette(const QString& mode, const QColor& accent,
                                     const QPalette& systemBase) {
@@ -148,9 +180,34 @@ void ThemeAdapter::apply(QApplication& app) {
     app.setStyle("Fusion");
 
     AppConfig& cfg = AppConfig::instance();
-    const QPalette systemBase = readKdePalette(app);
-    const QColor accent(cfg.accentColor()); // invalid if empty / malformed
-    app.setPalette(buildPalette(cfg.themeMode(), accent, systemBase));
+    const QString mode = cfg.themeMode();
+    QColor accent(cfg.accentColor()); // invalid if empty / malformed
+
+    // Compute the "system" base palette by desktop. KDE: read kdeglobals colours
+    // (existing behaviour). Otherwise try GNOME: follow the color-scheme (light/dark)
+    // and, when the user hasn't picked their own accent, the GNOME 47+ accent-color.
+    // Unknown desktops fall back to Fusion's palette with derived shades.
+    QPalette systemBase;
+    if (mode == QLatin1String("system")) {
+        const bool kde = QFile::exists(QDir::homePath() + "/.config/kdeglobals");
+        if (kde) {
+            systemBase = readKdePalette(app);
+        } else {
+            const QString scheme = readGsettings("color-scheme");
+            if (scheme.isEmpty()) {
+                systemBase = app.palette();
+                deriveShades(systemBase); // unknown DE - keep Fusion colours
+            } else {
+                systemBase = gnomeSchemeIsDark(scheme) ? darkBase() : lightBase();
+                deriveShades(systemBase);
+                if (!accent.isValid()) {
+                    const QColor ga = gnomeAccentColor(readGsettings("accent-color"));
+                    if (ga.isValid()) accent = ga;
+                }
+            }
+        }
+    }
+    app.setPalette(buildPalette(mode, accent, systemBase));
 
     // Font override (family / point size). Empty family + size 0 => Qt default.
     const QString fam = cfg.fontFamily();

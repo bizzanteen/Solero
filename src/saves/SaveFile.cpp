@@ -281,7 +281,8 @@ QString saveSummaryHtml(const SaveHeader& save, const QString& savedWhen) {
     html += QStringLiteral("<table cellspacing='0' cellpadding='2'>");
     html += row(QStringLiteral("Level"),    save.level ? QString::number(save.level) : QString());
     html += row(QStringLiteral("Race"),     race.trimmed().isEmpty() ? QString()
-                                            : QStringLiteral("%1 \xC2\xB7 %2").arg(race.trimmed(), sex));
+                                            : race.trimmed() + QStringLiteral(" ")
+                                              + QChar(0x00B7) + QStringLiteral(" ") + sex);
     html += row(QStringLiteral("Location"),  save.location);
     html += row(QStringLiteral("Play time"), save.gameDate);
     html += row(QStringLiteral("Saved"),     savedWhen);

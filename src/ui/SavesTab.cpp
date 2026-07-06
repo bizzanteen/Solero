@@ -330,6 +330,12 @@ void SavesTab::rebuild() {
                  + QString::number(flagged) + QStringLiteral(" need missing plugins");
     m_countLabel->setText(summary);
 
+    // Default to the newest save selected (MO2-style), so the previewer shows
+    // something instead of an empty panel.
+    if (m_table->selectionModel() && m_table->selectionModel()->selectedRows().isEmpty()
+        && m_table->rowCount() > 0)
+        m_table->selectRow(0);
+
     updatePreview(); // refresh the panel for the (possibly changed) selection
 }
 
@@ -379,12 +385,21 @@ void SavesTab::updatePreview() {
     if (missing.isEmpty()) {
         m_previewMissing->setVisible(false);
     } else {
-        QString html = QStringLiteral(
+        // Escape each name first, then join with <br> (escaping the joined string
+        // would turn the separators into literal "&lt;br&gt;"). Cap the list so a
+        // heavily-diverged save doesn't produce a wall of text.
+        constexpr int kMax = 20;
+        QStringList shown;
+        for (int i = 0; i < missing.size() && i < kMax; ++i)
+            shown << missing.at(i).toHtmlEscaped();
+        QString body = shown.join(QStringLiteral("<br>"));
+        if (missing.size() > kMax)
+            body += QStringLiteral("<br>") + QChar(0x2026)
+                  + QStringLiteral(" and %1 more").arg(missing.size() - kMax);
+        m_previewMissing->setText(QStringLiteral(
             "<div style='margin-top:8px;'><b style='color:#e08a2e;'>Missing plugins "
             "(%1)</b><br><span style='color:#c0653a;'>%2</span></div>")
-            .arg(missing.size())
-            .arg(missing.join(QStringLiteral("<br>")).toHtmlEscaped());
-        m_previewMissing->setText(html);
+            .arg(missing.size()).arg(body));
         m_previewMissing->setVisible(true);
     }
 }

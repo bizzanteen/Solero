@@ -1,4 +1,5 @@
 #include "DownloadsTab.h"
+#include "ColumnFit.h"
 #include "core/AppConfig.h"
 #include "core/Profile.h"
 #include "core/RelativeTime.h"
@@ -233,7 +234,19 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     // columns visibly jump (B-3).
     hh->setSectionResizeMode(QHeaderView::Interactive);
     hh->setStretchLastSection(true);
-    applyColumnWidths();
+    // Restore persisted widths if the user customised them; otherwise the defaults
+    // (content-fit + fill Name) are applied on first show, when the viewport is sized.
+    if (const QByteArray st = AppConfig::instance().downloadsHeaderState(); !st.isEmpty()) {
+        hh->restoreState(st);
+        hh->setSectionResizeMode(QHeaderView::Interactive); // restoreState can change modes
+        hh->setStretchLastSection(true);
+        m_didAutoSize = true; // keep the restored widths; don't auto-size on first show
+    }
+    m_headerSaveTimer = new QTimer(this);
+    m_headerSaveTimer->setSingleShot(true);
+    m_headerSaveTimer->setInterval(300);
+    connect(m_headerSaveTimer, &QTimer::timeout, this, &DownloadsTab::saveHeaderState);
+    connect(hh, &QHeaderView::sectionResized, this, [this](int,int,int){ m_headerSaveTimer->start(); });
     m_table->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_table, &QWidget::customContextMenuRequested, this, &DownloadsTab::showContextMenu);
     v->addWidget(m_table, 1);
@@ -387,38 +400,44 @@ void DownloadsTab::changeEvent(QEvent* e) {
         m_table->setFont(f);
         m_table->horizontalHeader()->setFont(f);
         m_table->resizeRowsToContents();
-        // Column WIDTHS must track the zoom too: the earlier zoom fix only
-        // re-asserted the font + row heights, so at higher zoom the text grew but
-        // the fixed-pixel columns stayed narrow (worsening elision). Recompute the
-        // data columns from the new font's metrics and re-flex Name.
-        applyColumnWidths();
+        // Column WIDTHS should track the zoom too, but only when the user hasn't set
+        // their own widths (persisted): re-fitting would clobber a remembered layout.
+        if (AppConfig::instance().downloadsHeaderState().isEmpty())
+            applyColumnWidths();
     }
 }
 
 void DownloadsTab::applyColumnWidths() {
     if (!m_table) return;
-    // Derive every column from the current font's metrics (not fixed pixels) so they
-    // scale ~proportionally with Ctrl +/- zoom. The last column (Downloaded)
-    // stretches to fill, so its width here is just a floor for the overflow case.
-    // DownloadsTab doesn't persist header widths; this recomputes on construction
-    // and on each zoom step (refresh() never touches widths), so between zooms a
-    // user's manual Name resize sticks.
+    // Content-fit the data columns to the current rows (clamped to sensible floors so
+    // an empty/short table still fits the widest values), and give Name (col 0) the
+    // remaining width so it's the big default. stretchLastSection keeps Downloaded
+    // absorbing later pane-resize slack. Floors are font-derived so they scale with
+    // Ctrl +/- zoom. Persisted user widths (restored in the ctor) take precedence.
     const QFontMetrics fm(m_table->font());
-    auto* hh = m_table->horizontalHeader();
-    // ~16px item padding (style sheet) + icon/margins folded into each headroom.
-    const int name   = qMax(220, fm.horizontalAdvance(QStringLiteral("A reasonably long example mod file name")) + 20);
-    // Compact by default: the cells are just a centred icon (+ a short "%" while
-    // downloading), so size to fit the icon + "100%", not the full "rate <dot> ETA"
-    // text (which stays in the tooltip). The column is Interactive, so a user who
-    // wants to watch live rates can widen it.
-    const int status = qMax(40, fm.horizontalAdvance(QStringLiteral("100%")) + 30); // icon + short %
-    const int size   = qMax(56, fm.horizontalAdvance(QStringLiteral("999.9 MB")) + 20);
-    const int dated  = qMax(84, fm.horizontalAdvance(QStringLiteral("00th Sep, 00:00")) + 16);
-    hh->resizeSection(0, name);
-    hh->resizeSection(1, status);
-    hh->resizeSection(2, size);
-    hh->resizeSection(3, dated);
-    hh->setStretchLastSection(true); // keep the tail filling after the resizes above
+    const int nameFloor   = qMax(220, fm.horizontalAdvance(QStringLiteral("A reasonably long example mod file name")) + 20);
+    const int statusFloor = qMax(40,  fm.horizontalAdvance(QStringLiteral("100%")) + 30);
+    const int sizeFloor   = qMax(56,  fm.horizontalAdvance(QStringLiteral("999.9 MB")) + 20);
+    const int datedFloor  = qMax(84,  fm.horizontalAdvance(QStringLiteral("00th Sep, 00:00")) + 16);
+    solero::applyFitFillDefaults(m_table, m_table->horizontalHeader(),
+                                 /*fillCol=*/0, {nameFloor, statusFloor, sizeFloor, datedFloor});
+    m_table->horizontalHeader()->setStretchLastSection(true);
+}
+
+void DownloadsTab::showEvent(QShowEvent* e) {
+    QWidget::showEvent(e);
+    // First real show: apply the content-fit + fill-Name defaults now that the table
+    // has a width. Skipped when persisted widths were restored (m_didAutoSize set).
+    if (!m_didAutoSize) {
+        m_didAutoSize = true;
+        QTimer::singleShot(0, this, [this]{ applyColumnWidths(); });
+    }
+}
+
+void DownloadsTab::saveHeaderState() {
+    if (!m_table) return;
+    AppConfig::instance().setDownloadsHeaderState(m_table->horizontalHeader()->saveState());
+    AppConfig::instance().save();
 }
 
 void DownloadsTab::setDownloadProgress(const QString& fileName, qint64 received, qint64 total) {

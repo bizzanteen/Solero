@@ -33,8 +33,14 @@ protected:
     // Re-assert the app font here so the table scales with Ctrl +/- like the
     // mod/plugin lists (which carry no direct style sheet).
     void changeEvent(QEvent* e) override;
+    // Apply content-fit + fill-Name defaults on first show (viewport width is known
+    // by then), unless the user has persisted column widths to restore.
+    void showEvent(QShowEvent* e) override;
 private:
     void showContextMenu(const QPoint& pos);
+    void saveHeaderState();
+    bool m_didAutoSize = false;
+    QTimer* m_headerSaveTimer = nullptr;
     // Repaint the status cell for every file with a pending progress tick. Driven by
     // m_progressTimer so a burst of network-read ticks coalesces into one repaint
     // instead of a setText per chunk.

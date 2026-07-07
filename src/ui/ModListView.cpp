@@ -1,5 +1,6 @@
 #include "ModListView.h"
 #include "ModListModel.h"
+#include "ColumnFit.h"
 #include "VersionDelegate.h"
 #include "ElideDelegate.h"
 #include "SeparatorDialog.h"
@@ -323,10 +324,12 @@ void ModListView::selectModById(const QString& id) {
 }
 
 void ModListView::autoSizeColumns() {
-    // Fit the fixed columns to header + cell contents; the last section stretches
-    // (stretchLastSection) so the row still spans the full pane afterwards.
-    header()->resizeSections(QHeaderView::ResizeToContents);
-    header()->setStretchLastSection(true); // resizeSections can clear it
+    // Content-fit every column to its contents (the double-click size), except Name,
+    // which takes the remaining pane width so it's the big default. stretchLastSection
+    // keeps the row spanning the pane and lets the last column absorb resize slack.
+    solero::applyFitFillDefaults(this, header(), ModListModel::ColName,
+                                 {28, 40, 200, 60, 60});
+    header()->setStretchLastSection(true); // resizeSection can clear it
 }
 
 void ModListView::applyRowSpans() {

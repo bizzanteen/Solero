@@ -1,6 +1,9 @@
 #include "SavesTab.h"
 #include "saves/SaveFile.h"
 #include "core/AppConfig.h"
+#include <QEvent>
+#include <QTimer>
+#include "ColumnFit.h"
 #include "core/Profile.h"
 #include "core/PluginList.h"
 #include "IconUtil.h"
@@ -118,13 +121,32 @@ SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
 
     auto* hh = m_table->horizontalHeader();
     hh->setSectionResizeMode(QHeaderView::Interactive);
-    hh->setStretchLastSection(false);
-    hh->resizeSection(ColShot, kThumbW + 12);
-    hh->resizeSection(ColCharacter, 180);
-    hh->resizeSection(ColLevel, 60);
-    hh->resizeSection(ColLocation, 220);
-    hh->resizeSection(ColDate, 150);
-    hh->resizeSection(ColSaveNum, 80);
+    hh->setStretchLastSection(true); // Save # (last) absorbs pane-resize slack
+    hh->setMinimumSectionSize(24);
+    if (const QByteArray st = AppConfig::instance().savesHeaderState(); !st.isEmpty()) {
+        hh->restoreState(st);
+        hh->setSectionResizeMode(QHeaderView::Interactive); // restoreState can change modes
+        hh->setStretchLastSection(true);
+        m_didAutoSize = true; // keep restored widths; skip fit-fill defaults on show
+    } else {
+        // Pre-show fallback; the real content-fit + fill-Location runs on first show.
+        hh->resizeSection(ColShot, kThumbW + 12);
+        hh->resizeSection(ColCharacter, 160);
+        hh->resizeSection(ColLevel, 60);
+        hh->resizeSection(ColLocation, 240);
+        hh->resizeSection(ColDate, 150);
+        hh->resizeSection(ColSaveNum, 70);
+    }
+    m_hdrSaveTimer = new QTimer(this);
+    m_hdrSaveTimer->setSingleShot(true);
+    m_hdrSaveTimer->setInterval(300);
+    connect(m_hdrSaveTimer, &QTimer::timeout, this, [this] {
+        if (m_table) {
+            AppConfig::instance().setSavesHeaderState(m_table->horizontalHeader()->saveState());
+            AppConfig::instance().save();
+        }
+    });
+    connect(hh, &QHeaderView::sectionResized, this, [this](int, int, int){ m_hdrSaveTimer->start(); });
 
     // Previewer (MO2-style): the list on the left, a save-detail panel on the right,
     // split by a draggable divider. The panel shows the selected save's screenshot,
@@ -135,6 +157,7 @@ SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
     m_previewShot = new QLabel(preview);
     m_previewShot->setAlignment(Qt::AlignHCenter | Qt::AlignTop);
     m_previewShot->setMinimumHeight(kThumbH);
+    m_previewShot->installEventFilter(this); // rescale the screenshot when the pane resizes
     pv->addWidget(m_previewShot);
     m_previewInfo = new QLabel(preview);
     m_previewInfo->setTextFormat(Qt::RichText);
@@ -204,7 +227,35 @@ void SavesTab::refresh() {
 
 void SavesTab::showEvent(QShowEvent* e) {
     QWidget::showEvent(e);
+    // First real show: content-fit the columns, with Location taking the remaining
+    // width. Skipped when persisted widths were restored.
+    if (!m_didAutoSize) {
+        m_didAutoSize = true;
+        QTimer::singleShot(0, this, [this] {
+            solero::applyFitFillDefaults(m_table, m_table->horizontalHeader(),
+                                         ColLocation, {kThumbW + 12, 120, 44, 200, 130, 60});
+            m_table->horizontalHeader()->setStretchLastSection(true);
+        });
+    }
     rebuild();
+}
+
+bool SavesTab::eventFilter(QObject* obj, QEvent* e) {
+    if (obj == m_previewShot && e->type() == QEvent::Resize)
+        rescaleShot();
+    return QWidget::eventFilter(obj, e);
+}
+
+void SavesTab::rescaleShot() {
+    if (!m_previewShot || m_curShot.isNull()) return;
+    const int w = qMax(200, m_previewShot->width() - 8);
+    if (w == m_lastShotW) return; // avoid redundant re-scales / layout feedback
+    m_lastShotW = w;
+    // Expand to the panel width (no fixed cap), but don't upscale a tiny screenshot
+    // past a sane multiple of its source so it doesn't turn to mush.
+    const int maxW = qMax(m_curShot.width() * 4, 700);
+    m_previewShot->setPixmap(QPixmap::fromImage(m_curShot).scaledToWidth(
+        qMin(w, maxW), Qt::SmoothTransformation));
 }
 
 void SavesTab::rebuild() {
@@ -350,6 +401,7 @@ void SavesTab::updatePreview() {
         path = sel.first().data(Qt::UserRole + 1).toString();
 
     if (path.isEmpty()) {
+        m_curShot = QImage();
         m_previewShot->clear();
         m_previewInfo->setText(QStringLiteral(
             "<span style='color:#888;'>Select a save to preview.</span>"));
@@ -363,10 +415,10 @@ void SavesTab::updatePreview() {
 
     // Large screenshot, scaled to the panel width (aspect-kept).
     const QImage img = screenshotImage(h);
+    m_curShot = img;   // remembered so the pane-resize filter can rescale it
+    m_lastShotW = -1;  // force a fresh scale for this save
     if (!img.isNull()) {
-        const int w = qMax(200, m_previewShot->width() - 8);
-        m_previewShot->setPixmap(QPixmap::fromImage(img).scaledToWidth(
-            qMin(w, 480), Qt::SmoothTransformation));
+        rescaleShot();
     } else {
         m_previewShot->setText(QStringLiteral("<span style='color:#888;'>(no screenshot)</span>"));
     }

@@ -122,6 +122,10 @@ bool AppConfig::load() {
         obj["modListHeaderState"].toString().toLatin1());
     m_pluginListHeaderState = QByteArray::fromBase64(
         obj["pluginListHeaderState"].toString().toLatin1());
+    m_downloadsHeaderState = QByteArray::fromBase64(
+        obj["downloadsHeaderState"].toString().toLatin1());
+    m_savesHeaderState = QByteArray::fromBase64(
+        obj["savesHeaderState"].toString().toLatin1());
     return true;
 }
 
@@ -164,6 +168,8 @@ bool AppConfig::save() const {
     obj["hiddenColumns"] = hidden;
     obj["modListHeaderState"]   = QString::fromLatin1(m_modListHeaderState.toBase64());
     obj["pluginListHeaderState"] = QString::fromLatin1(m_pluginListHeaderState.toBase64());
+    obj["downloadsHeaderState"]  = QString::fromLatin1(m_downloadsHeaderState.toBase64());
+    obj["savesHeaderState"]      = QString::fromLatin1(m_savesHeaderState.toBase64());
     return atomicWrite(configPath(), QJsonDocument(obj).toJson(QJsonDocument::Indented));
 }
 

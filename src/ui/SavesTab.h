@@ -1,9 +1,11 @@
 #pragma once
 #include <QWidget>
+#include <QImage>
 
 class QTableWidget;
 class QLabel;
 class QCheckBox;
+class QTimer;
 
 namespace solero {
 class Profile;
@@ -27,12 +29,17 @@ protected:
     // Rescan when the tab is shown, so saves written while playing appear without a
     // manual refresh (the mtime cache keeps this cheap).
     void showEvent(QShowEvent* e) override;
+    // Re-scale the preview screenshot when its label resizes (pane widened/narrowed).
+    bool eventFilter(QObject* obj, QEvent* e) override;
 
 private:
     void rebuild();
     // MO2-style previewer: fill the right-hand panel from the selected save (large
     // screenshot + metadata + missing-plugin list), or show a placeholder.
     void updatePreview();
+    // Rescale m_curShot into m_previewShot at the current label width (expands with
+    // the pane). No-op when there's no current screenshot.
+    void rescaleShot();
 
     QTableWidget* m_table = nullptr;
     QLabel*       m_countLabel = nullptr;
@@ -40,6 +47,10 @@ private:
     QLabel*       m_previewShot = nullptr;     // large screenshot
     QLabel*       m_previewInfo = nullptr;     // metadata (rich text)
     QLabel*       m_previewMissing = nullptr;  // "needs plugins you don't have"
+    QImage        m_curShot;                    // current save's screenshot (for rescale)
+    int           m_lastShotW = -1;             // last width we scaled m_curShot to
+    bool          m_didAutoSize = false;        // applied fit-fill column defaults yet?
+    QTimer*       m_hdrSaveTimer = nullptr;     // debounced column-width persistence
     Profile*      m_profile = nullptr;
 };
 

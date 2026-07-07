@@ -110,6 +110,10 @@ public:
     void setModListHeaderState(const QByteArray& v) { m_modListHeaderState = v; }
     const QByteArray& pluginListHeaderState() const { return m_pluginListHeaderState; }
     void setPluginListHeaderState(const QByteArray& v) { m_pluginListHeaderState = v; }
+    const QByteArray& downloadsHeaderState() const   { return m_downloadsHeaderState; }
+    void setDownloadsHeaderState(const QByteArray& v) { m_downloadsHeaderState = v; }
+    const QByteArray& savesHeaderState() const       { return m_savesHeaderState; }
+    void setSavesHeaderState(const QByteArray& v)     { m_savesHeaderState = v; }
 
     static QString dataRoot();   // ~/.local/share/solero
     // Per-profile Overwrite capture dir: dataRoot()/overwrite/<sanitized profileName>.
@@ -165,6 +169,8 @@ private:
     QList<int> m_hiddenColumns;
     QByteArray m_modListHeaderState;
     QByteArray m_pluginListHeaderState;
+    QByteArray m_downloadsHeaderState;
+    QByteArray m_savesHeaderState;
 };
 
 } // namespace solero

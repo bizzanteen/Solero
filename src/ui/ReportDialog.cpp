@@ -106,8 +106,8 @@ ReportDialog::ReportDialog(Mode mode, QWidget* parent)
     if (!ReportSubmitter::relayConfigured()) {
         m_sendBtn->setEnabled(false);
         m_sendBtn->setToolTip(
-            tr("Report relay not configured. See tools/report-relay/README.md, then set "
-               "kReportRelayUrl (or the SOLERO_REPORT_RELAY env var)."));
+            tr("Report relay not configured. Deploy the Worker in tools/report-relay/, then "
+               "set kReportRelayUrl (or the SOLERO_REPORT_RELAY env var)."));
         m_status->setText(
             tr("Direct submission isn't configured yet - use \"Open in browser "
                "instead\" to file this on GitHub."));

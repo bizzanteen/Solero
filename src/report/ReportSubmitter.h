@@ -16,21 +16,13 @@ class QNetworkAccessManager;
 
 namespace solero {
 
-// The compiled-in placeholder. Reporting counts as "not configured" while the effective
-// relay URL still equals this (and no SOLERO_REPORT_RELAY override is set) - a fork that
-// hasn't deployed its own relay gets the browser fallback instead of a dead Send button.
-inline constexpr const char* kReportRelayPlaceholder =
-    "https://solero-report-relay.solero.workers.dev/report";
-
-// The relay endpoint the app POSTs reports to. Set to the deployed Worker URL (see
-// tools/report-relay/README.md); a fork can leave it at kReportRelayPlaceholder above and
-// override at runtime with the SOLERO_REPORT_RELAY env var.
+// The relay endpoint reports are POSTed to (a Cloudflare Worker that holds the GitHub
+// token and files the issue). Override at runtime with the SOLERO_REPORT_RELAY env var.
 inline constexpr const char* kReportRelayUrl =
     "https://solero-report-relay.solero.workers.dev/report";
 
-// The target GitHub repo, used only for the browser fallback URL
-// (github.com/<owner>/<repo>/issues/new). The relay holds the authoritative repo for
-// authenticated submits.
+// Target GitHub repo, used for the browser-fallback URL (github.com/<owner>/<repo>/
+// issues/new). The relay holds the authoritative repo for authenticated submits.
 inline constexpr const char* kReportRepo = "bizzanteen/Solero";
 
 // Shared token sent as the X-Solero-Report header; the Worker checks it as a light

@@ -8,3 +8,4 @@
 /solero.flatpak
 /build-dir/
 /.flatpak-builder/
+/tools/report-relay/.wrangler/

@@ -86,17 +86,16 @@ private slots:
         QVERIFY(serialized.contains("~/.local/share/solero"));
     }
 
-    // The compiled-in relay URL is still the placeholder -> relayConfigured() is false
-    // (Send is disabled and the browser fallback offered), unless SOLERO_REPORT_RELAY
-    // overrides it.
-    void relayConfigured_reflectsPlaceholder() {
+    // relayUrl() returns the compiled-in endpoint by default and honours the
+    // SOLERO_REPORT_RELAY override; a non-empty URL counts as configured.
+    void relayUrl_defaultAndOverride() {
         qunsetenv("SOLERO_REPORT_RELAY");
         QCOMPARE(ReportSubmitter::relayUrl(), QString::fromLatin1(kReportRelayUrl));
-        QVERIFY(!ReportSubmitter::relayConfigured());
+        QVERIFY(ReportSubmitter::relayConfigured());
 
         qputenv("SOLERO_REPORT_RELAY", "https://example.test/report");
-        QVERIFY(ReportSubmitter::relayConfigured());
         QCOMPARE(ReportSubmitter::relayUrl(), QString("https://example.test/report"));
+        QVERIFY(ReportSubmitter::relayConfigured());
         qunsetenv("SOLERO_REPORT_RELAY");
     }
 };

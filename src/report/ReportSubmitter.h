@@ -16,10 +16,15 @@ class QNetworkAccessManager;
 
 namespace solero {
 
-// The relay endpoint the app POSTs reports to. This is a PLACEHOLDER the owner must
-// replace with their deployed Worker URL (see tools/report-relay/README.md), or set
-// the SOLERO_REPORT_RELAY env var to override at runtime. While it still equals this
-// placeholder, the report dialog disables Send and offers the browser fallback.
+// The compiled-in placeholder. Reporting counts as "not configured" while the effective
+// relay URL still equals this (and no SOLERO_REPORT_RELAY override is set) - a fork that
+// hasn't deployed its own relay gets the browser fallback instead of a dead Send button.
+inline constexpr const char* kReportRelayPlaceholder =
+    "https://solero-report-relay.solero.workers.dev/report";
+
+// The relay endpoint the app POSTs reports to. Set to the deployed Worker URL (see
+// tools/report-relay/README.md); a fork can leave it at kReportRelayPlaceholder above and
+// override at runtime with the SOLERO_REPORT_RELAY env var.
 inline constexpr const char* kReportRelayUrl =
     "https://solero-report-relay.solero.workers.dev/report";
 

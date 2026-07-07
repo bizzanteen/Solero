@@ -123,7 +123,7 @@ QString ReportSubmitter::relayUrl() {
 }
 
 bool ReportSubmitter::relayConfigured() {
-    return relayUrl() != QString::fromLatin1(kReportRelayUrl);
+    return !relayUrl().isEmpty();
 }
 
 QString ReportSubmitter::prefilledIssueUrl(const QJsonObject& payload) {

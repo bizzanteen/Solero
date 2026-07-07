@@ -645,9 +645,12 @@ void MainWindow::setupMenuBar() {
     // ---- View: the Browse Nexus page toggle (same checkable QAction) ----
     QMenu* viewMenu = mb->addMenu("&View");
     viewMenu->setToolTipsVisible(true); // custom action tooltips (e.g. Browse Nexus)
-    m_browseAction = viewMenu->addAction("Browse Nexus");
+    // Initial label carries the same arrow as the toggled states (onToggleNexus keeps
+    // it in step) so the toolbar button doesn't change width on first use. Plain char*
+    // literal -> QString::fromUtf8, so the arrow bytes are not the QStringLiteral trap.
+    m_browseAction = viewMenu->addAction("\xe2\x86\x92 Browse Nexus");
     m_browseAction->setCheckable(true);
-    m_browseAction->setToolTip("Toggle a full nexusmods.com browser in the main view");
+    m_browseAction->setToolTip("Switch the main view between the mod manager and a full nexusmods.com browser");
     connect(m_browseAction, &QAction::toggled, this, &MainWindow::onToggleNexus);
 
     // ---- View ▸ Zoom: presets + in/out/reset, all on the one zoom mechanism ----
@@ -757,6 +760,16 @@ void MainWindow::setupToolbar() {
     connect(m_profileCombo, &QComboBox::currentTextChanged,
             this, &MainWindow::switchProfile);
     tb->addWidget(m_profileCombo);
+
+    // Prominent Mod Manager <-> Nexus browser switch. Reuses the same checkable
+    // m_browseAction as the View menu, so both stay in lockstep; on the toolbar it
+    // reads as a pressed toggle while the Nexus browser is showing.
+    tb->addSeparator();
+    if (m_browseAction) {
+        tb->addAction(m_browseAction);
+        if (auto* browseBtn = qobject_cast<QToolButton*>(tb->widgetForAction(m_browseAction)))
+            browseBtn->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    }
 
     // Stretch pushes the primary Deploy/Play pair to the right edge.
     auto* spacer = new QWidget(tb);

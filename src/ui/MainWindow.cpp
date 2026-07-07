@@ -195,6 +195,17 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     // Load global config; show setup wizard if not yet configured
     solero::AppConfig::instance().load();
+    // One-time migration to the content-fit + fill-Name column layout: drop any header
+    // widths persisted by the old auto-size so the new defaults apply. Deliberate
+    // resizes made from here on are remembered again.
+    if (solero::AppConfig::instance().columnLayoutVersion() < 1) {
+        auto& cfg = solero::AppConfig::instance();
+        cfg.setModListHeaderState({});
+        cfg.setDownloadsHeaderState({});
+        cfg.setSavesHeaderState({});
+        cfg.setColumnLayoutVersion(1);
+        cfg.save();
+    }
     if (!solero::AppConfig::instance().isConfigured()) {
         solero::SetupWizard wizard(this);
         if (wizard.exec() != QDialog::Accepted) {

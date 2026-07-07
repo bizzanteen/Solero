@@ -114,6 +114,10 @@ public:
     void setDownloadsHeaderState(const QByteArray& v) { m_downloadsHeaderState = v; }
     const QByteArray& savesHeaderState() const       { return m_savesHeaderState; }
     void setSavesHeaderState(const QByteArray& v)     { m_savesHeaderState = v; }
+    // Bumped when the default column layout changes, so a one-time migration can reset
+    // stale persisted header widths and let the new defaults apply.
+    int  columnLayoutVersion() const                 { return m_columnLayoutVersion; }
+    void setColumnLayoutVersion(int v)               { m_columnLayoutVersion = v; }
 
     static QString dataRoot();   // ~/.local/share/solero
     // Per-profile Overwrite capture dir: dataRoot()/overwrite/<sanitized profileName>.
@@ -171,6 +175,7 @@ private:
     QByteArray m_pluginListHeaderState;
     QByteArray m_downloadsHeaderState;
     QByteArray m_savesHeaderState;
+    int        m_columnLayoutVersion = 0;
 };
 
 } // namespace solero

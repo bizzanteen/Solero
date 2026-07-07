@@ -1119,21 +1119,24 @@ void ModListView::groupSelectedMods() {
     // it contiguously, in their selection order, via groupUnder.
     const QString parentId = ids.first();
     auto& list = m_model->profile()->modList();
+    bool moved = false;
     for (int i = 1; i < ids.size(); ++i)
-        list.groupUnder(ids.at(i), parentId);
+        moved |= list.groupUnder(ids.at(i), parentId);
     saveProfile();
     m_model->rebuild();
     applyFilter();
-    emit modsChanged();
+    // Grouping is organizational; only a real reposition changes the deploy order, so
+    // only then take the (dirtying) reorder path - otherwise it stays deploy-clean.
+    if (moved) emit modsReordered();
 }
 
 void ModListView::ungroupMod(const QString& id) {
     if (!m_model->profile()) return;
-    m_model->profile()->modList().ungroup(id);
+    const bool moved = m_model->profile()->modList().ungroup(id);
     saveProfile();
     m_model->rebuild();
     applyFilter();
-    emit modsChanged();
+    if (moved) emit modsReordered(); // only a real reposition dirties the deploy
 }
 
 void ModListView::keyPressEvent(QKeyEvent* event) {

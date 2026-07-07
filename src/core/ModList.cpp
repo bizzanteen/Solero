@@ -155,18 +155,18 @@ int ModList::childRunCount(int parentRaw) const {
     return count;
 }
 
-void ModList::groupUnder(const QString& childId, const QString& parentId) {
-    if (childId.isEmpty() || parentId.isEmpty() || childId == parentId) return;
+bool ModList::groupUnder(const QString& childId, const QString& parentId) {
+    if (childId.isEmpty() || parentId.isEmpty() || childId == parentId) return false;
     int parentRaw = -1, childRaw = -1;
     for (int i = 0; i < m_entries.size(); ++i) {
         if (m_entries.at(i).id == parentId) parentRaw = i;
         if (m_entries.at(i).id == childId)  childRaw  = i;
     }
-    if (parentRaw < 0 || childRaw < 0) return;
-    if (m_entries.at(parentRaw).type != EntryType::Mod) return;
+    if (parentRaw < 0 || childRaw < 0) return false;
+    if (m_entries.at(parentRaw).type != EntryType::Mod) return false;
     // Only a plain Mod can be grouped under a parent - never a Separator (it owns
     // a whole section, not a single entry), which would corrupt the section model.
-    if (m_entries.at(childRaw).type != EntryType::Mod) return;
+    if (m_entries.at(childRaw).type != EntryType::Mod) return false;
 
     // Re-parent. (childRunCount uses parentId, so set this first.)
     m_entries[childRaw].parentId = parentId;
@@ -186,18 +186,20 @@ void ModList::groupUnder(const QString& childId, const QString& parentId) {
     // removal, so adjust when the child currently sits before the target.
     int dest = runEnd;
     if (childRaw < dest) dest -= 1;
-    if (dest != childRaw) m_entries.move(childRaw, dest);
+    const bool moved = (dest != childRaw);
+    if (moved) m_entries.move(childRaw, dest);
     rebuildIndex();
+    return moved;
 }
 
-void ModList::ungroup(const QString& childId) {
-    if (childId.isEmpty()) return;
+bool ModList::ungroup(const QString& childId) {
+    if (childId.isEmpty()) return false;
     int childRaw = -1;
     for (int i = 0; i < m_entries.size(); ++i)
         if (m_entries.at(i).id == childId) { childRaw = i; break; }
-    if (childRaw < 0) return;
+    if (childRaw < 0) return false;
     const QString parentId = m_entries.at(childRaw).parentId;
-    if (parentId.isEmpty()) return; // not a child
+    if (parentId.isEmpty()) return false; // not a child
 
     // Locate the (former) parent and the end of its contiguous child block.
     int parentRaw = -1;
@@ -206,7 +208,7 @@ void ModList::ungroup(const QString& childId) {
 
     m_entries[childRaw].parentId.clear();
 
-    if (parentRaw < 0) return; // dangling parent: just drop the parentId in place.
+    if (parentRaw < 0) return false; // dangling parent: just drop the parentId in place.
 
     // End of the parent's contiguous child run. The just-cleared child still sits
     // physically inside the run, so skip over it (childRaw) when scanning; the run
@@ -221,8 +223,10 @@ void ModList::ungroup(const QString& childId) {
     // Place the now-top-level mod just after the block.
     int dest = blockEnd;
     if (childRaw < dest) dest -= 1;
-    if (dest != childRaw) m_entries.move(childRaw, dest);
+    const bool moved = (dest != childRaw);
+    if (moved) m_entries.move(childRaw, dest);
     rebuildIndex();
+    return moved;
 }
 
 void ModList::normalizeGroups() {

@@ -117,6 +117,27 @@ private slots:
         QVERIFY(list.findById("u")->parentId.isEmpty());
     }
 
+    // groupUnder/ungroup return whether they actually REPOSITIONED the entry, so the UI
+    // can dirty the deploy only on a real reorder (grouping an already-adjacent mod is
+    // a pure re-parent and must not report a move).
+    void groupUnder_reportsWhetherItMoved() {
+        ModList list;
+        list.append(makeMod("a", "1"));
+        list.append(makeMod("b", "2")); // directly below a
+        list.append(makeMod("x", "3")); // unrelated, sits between the block and c
+        list.append(makeMod("c", "4")); // not adjacent to a
+        // b already sits right after a -> pure re-parent, no reposition.
+        QCOMPARE(list.groupUnder("b", "a"), false);
+        QCOMPARE(rawOrder(list), QString("a,b,x,c"));
+        QCOMPARE(list.findById("b")->parentId, QString("a"));
+        // c is not adjacent to a's block (x is between) -> grouping repositions it.
+        QCOMPARE(list.groupUnder("c", "a"), true);
+        QCOMPARE(rawOrder(list), QString("a,b,c,x")); // c pulled up after b
+        // Ungrouping a middle child repositions it out of the block -> moved.
+        QCOMPARE(list.ungroup("b"), true);
+        QVERIFY(list.findById("b")->parentId.isEmpty());
+    }
+
     void ungroup_clearsParent_andPlacesAfterBlock() {
         // [a, b(child of a), c(child of a), u]. Ungroup b -> it loses parentId and
         // moves to just after the remaining group block (after c).

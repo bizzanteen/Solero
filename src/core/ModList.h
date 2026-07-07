@@ -44,10 +44,13 @@ public:
     // sits at the END of the parent's existing contiguous child run (i.e. right
     // after the parent + any current children). No-op if either id is missing,
     // they're the same, or parentId refers to a non-Mod.
-    void groupUnder(const QString& childId, const QString& parentId);
+    // Returns true only if the entry was actually REPOSITIONED (the deploy-relevant
+    // change); a pure re-parent that leaves order unchanged returns false.
+    bool groupUnder(const QString& childId, const QString& parentId);
     // ungroup: clear child.parentId and move it to just after its former parent's
     // group block, so it becomes a top-level mod directly below the group.
-    void ungroup(const QString& childId);
+    // Returns true only if the entry was actually repositioned.
+    bool ungroup(const QString& childId);
     // Count of the contiguous run of child Mods stored after the mod at rawIndex
     // (children = Mod entries whose parentId == that mod's id).
     int childRunCount(int parentRaw) const;

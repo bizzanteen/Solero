@@ -238,8 +238,7 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     // (content-fit + fill Name) are applied on first show, when the viewport is sized.
     if (const QByteArray st = AppConfig::instance().downloadsHeaderState(); !st.isEmpty()) {
         hh->restoreState(st);
-        hh->setSectionResizeMode(QHeaderView::Interactive); // restoreState can change modes
-        hh->setStretchLastSection(true);
+        solero::assertFillMode(hh, /*fillCol=*/0); // Name = Stretch; restoreState can change modes
         m_didAutoSize = true; // keep the restored widths; don't auto-size on first show
     }
     m_headerSaveTimer = new QTimer(this);
@@ -421,7 +420,6 @@ void DownloadsTab::applyColumnWidths() {
     const int datedFloor  = qMax(84,  fm.horizontalAdvance(QStringLiteral("00th Sep, 00:00")) + 16);
     solero::applyFitFillDefaults(m_table, m_table->horizontalHeader(),
                                  /*fillCol=*/0, {nameFloor, statusFloor, sizeFloor, datedFloor});
-    m_table->horizontalHeader()->setStretchLastSection(true);
 }
 
 void DownloadsTab::showEvent(QShowEvent* e) {

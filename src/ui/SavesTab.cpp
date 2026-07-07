@@ -125,8 +125,7 @@ SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
     hh->setMinimumSectionSize(24);
     if (const QByteArray st = AppConfig::instance().savesHeaderState(); !st.isEmpty()) {
         hh->restoreState(st);
-        hh->setSectionResizeMode(QHeaderView::Interactive); // restoreState can change modes
-        hh->setStretchLastSection(true);
+        solero::assertFillMode(hh, ColLocation); // Location = Stretch; restoreState can change modes
         m_didAutoSize = true; // keep restored widths; skip fit-fill defaults on show
     } else {
         // Pre-show fallback; the real content-fit + fill-Location runs on first show.
@@ -234,7 +233,6 @@ void SavesTab::showEvent(QShowEvent* e) {
         QTimer::singleShot(0, this, [this] {
             solero::applyFitFillDefaults(m_table, m_table->horizontalHeader(),
                                          ColLocation, {kThumbW + 12, 120, 44, 200, 130, 60});
-            m_table->horizontalHeader()->setStretchLastSection(true);
         });
     }
     rebuild();

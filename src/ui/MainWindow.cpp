@@ -198,12 +198,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // One-time migration to the content-fit + fill-Name column layout: drop any header
     // widths persisted by the old auto-size so the new defaults apply. Deliberate
     // resizes made from here on are remembered again.
-    if (solero::AppConfig::instance().columnLayoutVersion() < 1) {
+    if (solero::AppConfig::instance().columnLayoutVersion() < 2) {
         auto& cfg = solero::AppConfig::instance();
         cfg.setModListHeaderState({});
         cfg.setDownloadsHeaderState({});
         cfg.setSavesHeaderState({});
-        cfg.setColumnLayoutVersion(1);
+        cfg.setColumnLayoutVersion(2);
         cfg.save();
     }
     if (!solero::AppConfig::instance().isConfigured()) {

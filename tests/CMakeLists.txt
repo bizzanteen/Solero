@@ -140,6 +140,7 @@ add_solero_deploy_test(test_DeployRecord)
 add_solero_deploy_test(test_ConflictIndex)
 add_solero_deploy_test(test_DeployEngine)
 add_solero_deploy_test(test_DeployIncremental)
+add_solero_deploy_test(test_ProfileDeployFiles)
 
 # ToolRunner's capture helper depends on the deploy record/engine, so reuse the
 # deploy source/link set plus ToolRunner.cpp itself.

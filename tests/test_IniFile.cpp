@@ -99,6 +99,25 @@ private slots:
         QVERIFY(out.indexOf("c=3") > out.indexOf("b=2"));
     }
 
+    // remove() deletes a key (case-insensitive), marks dirty, and is a no-op for an
+    // absent key. Used to clear SLocalSavePath when per-profile saves are turned off.
+    void remove_deletesKey() {
+        IniFile ini;
+        ini.setValue("General", "SLocalSavePath", "Saves\\Foo\\");
+        ini.setValue("General", "keep", "1");
+        QVERIFY(ini.has("General", "SLocalSavePath"));
+        ini.remove("general", "slocalsavepath"); // case-insensitive
+        QVERIFY(!ini.has("General", "SLocalSavePath"));
+        QVERIFY(ini.has("General", "keep")); // other keys untouched
+        QVERIFY(ini.dirty());
+
+        IniFile clean;
+        clean.setValue("General", "keep", "1");
+        clean.remove("General", "absent"); // no-op
+        // (no assertion on dirty here; just must not crash / must leave keep intact)
+        QVERIFY(clean.has("General", "keep"));
+    }
+
     // Key lookup is case-insensitive (Skyrim is lenient).
     void keyLookup_caseInsensitive() {
         IniFile ini;

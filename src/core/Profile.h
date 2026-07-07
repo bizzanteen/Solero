@@ -52,6 +52,19 @@ public:
     QString saveFolderName() const            { return sanitizeSaveFolder(m_name); }
     static QString sanitizeSaveFolder(const QString& name);
 
+    // Per-profile INI files. When on, deploy/play push this profile's Skyrim.ini /
+    // SkyrimPrefs.ini / SkyrimCustom.ini into the game's My Games folder; when off,
+    // the live (shared) INIs are left untouched. Only INIs the profile actually has
+    // are deployed. Profiles saved before this flag existed migrate to on when they
+    // already carry INIs, preserving the old presence-based behaviour.
+    bool localInis() const                    { return m_localInis; }
+    void setLocalInis(bool v)                 { m_localInis = v; }
+    bool hasProfileInis() const;              // any of the three profile INIs exist
+
+    // Persist just settings.json (localSaves / localInis) without rewriting the whole
+    // profile. Handy for flipping a flag, or setting flags on a not-yet-loaded profile.
+    bool saveSettings() const;
+
     // Per-file conflict resolution (MO2 ".mohidden" + Vortex per-file winner).
     // relPath is in the same form DeployEngine uses: path relative to the mod
     // root (e.g. "Data/SKSE/Plugins/foo.dll").
@@ -117,12 +130,12 @@ private:
     QHash<QString, QString>       m_fileOverrides; // relPath -> forced winner modId
     ManagedShaderCache            m_shaderCache;
     bool                          m_localSaves = false;
+    bool                          m_localInis  = false;     // per-profile INI files
 
     bool saveExecutables() const;
     bool loadExecutables();
     bool saveShaderCache() const;
     bool loadShaderCache();
-    bool saveSettings() const; // settings.json (localSaves, …)
     bool loadSettings();
     // One-time: lift a legacy isManagedCache mod-list entry into m_shaderCache and
     // drop it from the list. Returns true if a migration happened (caller saves).

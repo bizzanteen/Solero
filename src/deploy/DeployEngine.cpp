@@ -204,39 +204,54 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
     QString docsDir = AppConfig::instance().documentsDir();
     QString iniDir = docsDir.isEmpty() ? m_gameDir : docsDir;
     QDir().mkpath(iniDir);
-    const QStringList inis = {
-        profile.skyrimIniPath(),
-        profile.skyrimPrefsPath(),
-        profile.skyrimCustomPath()
-    };
-    const QStringList iniTargets = {
-        iniDir + "/Skyrim.ini",
-        iniDir + "/SkyrimPrefs.ini",
-        iniDir + "/SkyrimCustom.ini"
-    };
-    for (int i = 0; i < inis.size(); ++i) {
-        if (QFile::exists(inis[i])) {
-            copyOverwrite(inis[i], iniTargets[i]);
-            recordIfInGameDir(iniTargets[i]);
+    // INIs: only when the profile owns its INIs (localInis), and only the ones it
+    // actually has. When off, the live/shared My Games INIs are left untouched.
+    if (profile.localInis()) {
+        const QStringList inis = {
+            profile.skyrimIniPath(),
+            profile.skyrimPrefsPath(),
+            profile.skyrimCustomPath()
+        };
+        const QStringList iniTargets = {
+            iniDir + "/Skyrim.ini",
+            iniDir + "/SkyrimPrefs.ini",
+            iniDir + "/SkyrimCustom.ini"
+        };
+        for (int i = 0; i < inis.size(); ++i) {
+            if (QFile::exists(inis[i])) {
+                copyOverwrite(inis[i], iniTargets[i]);
+                recordIfInGameDir(iniTargets[i]);
+            }
         }
     }
 
-    // per-profile local saves. Redirect Skyrim's SLocalSavePath (read
-    // relative to My Games/Skyrim SE/) to a per-profile "Saves\<name>\" subfolder,
-    // patching the just-deployed Skyrim.ini (or creating a minimal one), and make
-    // sure the folder exists so the game can write into it.
+    // Per-profile local saves. On: redirect Skyrim's SLocalSavePath (read relative to
+    // My Games/Skyrim SE/) to a per-profile "Saves\<name>\" subfolder, patching the
+    // live Skyrim.ini (or creating a minimal one) and making sure the folder exists.
+    // Off: strip any SLocalSavePath we (or a previously-active profile) left, so saves
+    // return to the shared folder. The per-profile Saves folder is left on disk.
+    const QString saveIniPath = iniDir + "/Skyrim.ini";
     if (profile.localSaves()) {
         const QString sub = profile.saveFolderName();
-        const QString iniPath = iniDir + "/Skyrim.ini";
         IniFile ini;
-        ini.load(iniPath); // tolerant when the file doesn't exist yet
+        ini.load(saveIniPath); // tolerant when the file doesn't exist yet
         ini.setValue("General", "SLocalSavePath", "Saves\\" + sub + "\\");
-        if (ini.save(iniPath)) {
-            recordIfInGameDir(iniPath);
+        if (ini.save(saveIniPath)) {
+            recordIfInGameDir(saveIniPath);
             QDir().mkpath(iniDir + "/Saves/" + sub);
             qCInfo(lcDeploy) << "per-profile saves: SLocalSavePath -> Saves/" << sub;
         } else {
-            qCWarning(lcDeploy) << "per-profile saves: failed to write SLocalSavePath to" << iniPath;
+            qCWarning(lcDeploy) << "per-profile saves: failed to write SLocalSavePath to" << saveIniPath;
+        }
+    } else if (QFile::exists(saveIniPath)) {
+        IniFile ini;
+        ini.load(saveIniPath);
+        if (ini.has("General", "SLocalSavePath")) {
+            ini.remove("General", "SLocalSavePath");
+            if (ini.save(saveIniPath)) {
+                recordIfInGameDir(saveIniPath);
+                qCInfo(lcDeploy) << "per-profile saves off: cleared SLocalSavePath";
+            }
         }
     }
 

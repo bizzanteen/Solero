@@ -142,6 +142,10 @@ private:
     void onNewProfile();
     void onDeleteProfile();
     void onRenameProfile();
+    void onToggleLocalInis(bool on);
+    void onToggleLocalSaves(bool on);
+    // Reflect the active profile's INI/save flags in the Profile-menu checkboxes.
+    void syncProfileFlagActions();
     void onImportMo2();
     void onExportProfile();      // write the active profile to a .solero-profile.json manifest
     void onImportProfile();      // reconstruct a profile from a .solero-profile.json manifest
@@ -359,6 +363,9 @@ private:
     QWidget* m_modManagerPage = nullptr;
     QAction* m_browseAction = nullptr;
     QAction* m_checkUpdatesAction = nullptr;
+    // Profile menu: per-profile INI / save toggles for the active profile.
+    QAction* m_localInisAction = nullptr;
+    QAction* m_localSavesAction = nullptr;
     // View ▸ Zoom: preset actions (exclusive) + a disabled "Current: N%" label.
     QActionGroup* m_zoomGroup = nullptr;
     QAction* m_zoomCurrentAction = nullptr;

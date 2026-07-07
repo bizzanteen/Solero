@@ -355,9 +355,10 @@ Environment, Shadows, Visuals, View Distance, Advanced), and a search box.
 
 ![The BethINI editor: quality presets, tabbed sections, and the display settings.](images/bethini.png)
 
-INIs are per-profile: Solero deploys the active profile's INIs into the game's `My Games`
-folder on Deploy and re-syncs them on Play, so an in-game graphics change can't quietly
-override the preset you applied.
+Saving in BethINI applies your changes to the game right away and turns on this profile's
+[profile-specific INIs](#profile-specific-inis-and-saves), so Deploy and Play keep
+re-applying them and an in-game graphics change can't quietly override the preset you set.
+Profiles that don't use per-profile INIs just share the game's normal INIs.
 
 ## Saves
 
@@ -370,9 +371,10 @@ Select a save to see its screenshot and details: character, level, race, locatio
 time, save number, and game version. If a save references plugins your current load order
 is missing, a highlighted "Missing plugins" warning appears.
 
-You can also tick Profile-specific saves on the Saves tab to give a profile its own
-`Saves/<profile>` folder, via Skyrim's `SLocalSavePath`. It takes effect on the next
-Deploy, then when you next launch, so each profile keeps its own characters separate.
+Profile-specific saves are described under [Profiles](#profile-specific-inis-and-saves).
+Enable them per profile from the Profile menu (or the checkbox here on the Saves tab) to
+give a profile its own `Saves/<profile>` folder, so each profile keeps its own characters
+separate. It takes effect on the next Deploy.
 
 ## Profiles
 
@@ -381,6 +383,26 @@ the Profile menu or the toolbar profile picker to create, switch, copy, and rena
 profiles. Switching is instant; deploy to apply the newly active profile to the game.
 Cloning a profile copies its full configuration (rules, pins, INIs, tools). Each profile
 also gets its own output or Overwrite mod, so captured files never leak between profiles.
+
+### Profile-specific INIs and saves
+
+Two per-profile options, off by default, work the way they do in Mod Organizer. The New
+Profile dialog has a checkbox for each, and you can flip them for the active profile any
+time from the Profile menu (Profile-Specific INI Files and Profile-Specific Save Games).
+Both take effect on the next Deploy.
+
+Profile-specific INI files: when you turn this on, Solero seeds the profile with a copy of
+your current `Skyrim.ini` and `SkyrimPrefs.ini`, so it starts from your existing settings,
+and from then on Deploy and Play push the profile's INIs into `My Games`. Edit them
+through the [BethINI editor](#ini-files-bethini). Turn it off and Solero stops touching the
+INIs, leaving the shared ones in place; the profile keeps its copies, so re-enabling picks
+up where you left off.
+
+Profile-specific save games: turning this on gives the profile its own `Saves/<profile>`
+folder (via Skyrim's `SLocalSavePath`) so characters stay separate. Existing shared saves
+aren't moved, so the folder starts empty and your old characters reappear if you turn the
+option back off. Turning it off strips the redirect on the next Deploy, so saving returns
+to the shared folder; the per-profile save folder is left on disk, not deleted.
 
 ## Health checks & problems
 

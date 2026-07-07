@@ -41,6 +41,48 @@ private slots:
         QVERIFY(reloaded.localSaves());
     }
 
+    // The per-profile INI flag round-trips through settings.json.
+    void localInis_roundTrips() {
+        QTemporaryDir tmp;
+        Profile p("P", tmp.path() + "/profiles");
+        QVERIFY(!p.localInis()); // default off for a fresh profile
+        p.setLocalInis(true);
+        QVERIFY(p.saveSettings());
+
+        Profile reloaded("P", tmp.path() + "/profiles");
+        QVERIFY(reloaded.load());
+        QVERIFY(reloaded.localInis());
+    }
+
+    // Migration: a profile from before the flag existed (no localInis key in
+    // settings.json) defaults localInis to ON when it already carries INI files, so
+    // the old presence-based deploy behaviour is preserved.
+    void localInis_migratesWhenIniPresent() {
+        QTemporaryDir tmp;
+        const QString root = tmp.path() + "/profiles";
+        Profile seed("Legacy", root);
+        QVERIFY(seed.save());
+        // Give it an INI but write a settings.json without the localInis key.
+        { QFile f(seed.skyrimIniPath()); QDir().mkpath(QFileInfo(f).path());
+          f.open(QIODevice::WriteOnly); f.write("[Display]\niSize W=1\n"); }
+        { QFile f(seed.profileSettingsPath());
+          f.open(QIODevice::WriteOnly); f.write("{ \"localSaves\": false }"); }
+
+        Profile migrated("Legacy", root);
+        QVERIFY(migrated.load());
+        QVERIFY(migrated.hasProfileInis());
+        QVERIFY(migrated.localInis()); // migrated to on because it has INIs
+
+        // A profile with no INIs and no flag stays off.
+        Profile fresh("Empty", root);
+        QVERIFY(fresh.save());
+        { QFile f(fresh.profileSettingsPath());
+          f.open(QIODevice::WriteOnly); f.write("{ \"localSaves\": false }"); }
+        Profile freshLoaded("Empty", root);
+        QVERIFY(freshLoaded.load());
+        QVERIFY(!freshLoaded.localInis());
+    }
+
     // The save subfolder name is a filesystem/Skyrim-safe version of the profile name.
     void saveFolderName_sanitizes() {
         QCOMPARE(Profile::sanitizeSaveFolder("Char A"), QString("Char A"));

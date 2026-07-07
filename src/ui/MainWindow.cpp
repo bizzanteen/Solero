@@ -6,6 +6,7 @@
 #include "SetupWizard.h"
 #include "ui/SettingsDialog.h"
 #include "bethini/BethiniWindow.h"
+#include "bethini/IniFile.h"
 #include "app/Application.h"
 #include "core/AppConfig.h"
 #include "core/ModList.h"
@@ -88,6 +89,7 @@
 #include <QAbstractButton>
 #include <QPushButton>
 #include <QInputDialog>
+#include <QFormLayout>
 #include <QLineEdit>
 #include <QTextEdit>
 #include <QPlainTextEdit>
@@ -612,6 +614,17 @@ void MainWindow::setupMenuBar() {
     profileMenu->setToolTipsVisible(true); // custom action tooltips (e.g. Check for Updates)
     profileMenu->addAction(QStringLiteral("New Profile") + ell, this, &MainWindow::onNewProfile);
     profileMenu->addAction(QStringLiteral("Rename Current Profile") + ell, this, &MainWindow::onRenameProfile);
+    profileMenu->addSeparator();
+    // Per-profile INI / save toggles for the active profile (MO2-style).
+    m_localInisAction = profileMenu->addAction("Profile-Specific INI Files");
+    m_localInisAction->setCheckable(true);
+    m_localInisAction->setToolTip("Give this profile its own Skyrim.ini / SkyrimPrefs.ini, "
+                                  "seeded from your current settings when first enabled.");
+    connect(m_localInisAction, &QAction::toggled, this, &MainWindow::onToggleLocalInis);
+    m_localSavesAction = profileMenu->addAction("Profile-Specific Save Games");
+    m_localSavesAction->setCheckable(true);
+    m_localSavesAction->setToolTip("Give this profile its own Saves folder so characters stay separate.");
+    connect(m_localSavesAction, &QAction::toggled, this, &MainWindow::onToggleLocalSaves);
     profileMenu->addSeparator();
     profileMenu->addAction(QStringLiteral("Import MO2 Profile") + ell, this, &MainWindow::onImportMo2);
     profileMenu->addSeparator();
@@ -1297,6 +1310,7 @@ void MainWindow::switchProfile(const QString& name) {
     m_lastDeployWarning.clear();  // stale once we switch profiles
     m_lastDeployHadFailures = false;
     setWindowTitle(QString("Solero - %1").arg(name));
+    syncProfileFlagActions(); // reflect this profile's INI/save flags in the menu
 
     // Keep the toolbar selector in sync with the actually-active profile. The
     // startup restore (and onImportProfile) call switchProfile() directly rather
@@ -3939,20 +3953,96 @@ void MainWindow::refreshDeployState() {
     refreshHealthIndicator(); // m_deployed just settled - reflect it in the count
 }
 
+// Copy the current live My Games INIs into a profile so per-profile INIs start from
+// the user's existing settings. Only copies INIs that exist, and only when the profile
+// doesn't already carry them.
+static void seedProfileInisFromLive(solero::Profile* prof) {
+    if (!prof || prof->hasProfileInis()) return;
+    const QString docs = solero::AppConfig::instance().documentsDir();
+    const QString iniDir = docs.isEmpty() ? solero::AppConfig::instance().gameDir() : docs;
+    if (iniDir.isEmpty()) return;
+    const QStringList src = { iniDir + "/Skyrim.ini", iniDir + "/SkyrimPrefs.ini", iniDir + "/SkyrimCustom.ini" };
+    const QStringList dst = { prof->skyrimIniPath(), prof->skyrimPrefsPath(), prof->skyrimCustomPath() };
+    for (int i = 0; i < src.size(); ++i)
+        if (QFile::exists(src[i])) solero::copyOverwrite(src[i], dst[i]);
+}
+
 void MainWindow::onNewProfile() {
-    bool ok;
-    QString name = QInputDialog::getText(this, "New Profile", "Profile name:", QLineEdit::Normal, "", &ok);
-    if (!ok || name.trimmed().isEmpty()) return;
-    name = name.trimmed();
+    QDialog dlg(this);
+    dlg.setWindowTitle("New Profile");
+    auto* form = new QFormLayout(&dlg);
+    auto* nameEdit = new QLineEdit(&dlg);
+    nameEdit->setPlaceholderText("Profile name");
+    form->addRow("Name:", nameEdit);
+    auto* iniCheck = new QCheckBox("Profile-specific INI files", &dlg);
+    iniCheck->setToolTip("Give this profile its own Skyrim.ini / SkyrimPrefs.ini, "
+                         "seeded from your current settings.");
+    auto* saveCheck = new QCheckBox("Profile-specific save games", &dlg);
+    saveCheck->setToolTip("Give this profile its own Saves folder so characters stay separate.");
+    form->addRow(QString(), iniCheck);
+    form->addRow(QString(), saveCheck);
+    auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    form->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    nameEdit->setFocus();
+    if (dlg.exec() != QDialog::Accepted) return;
+
+    const QString name = nameEdit->text().trimmed();
+    if (name.isEmpty()) return;
     if (!m_profileMgr->createProfile(name)) {
         QMessageBox::warning(this, "New Profile", QString("A profile named '%1' already exists. Choose a different name.").arg(name));
         return;
+    }
+    // Apply the chosen flags to the just-created (not-yet-active) profile.
+    if (iniCheck->isChecked() || saveCheck->isChecked()) {
+        solero::Profile prof(name, m_profileMgr->root());
+        if (iniCheck->isChecked()) { seedProfileInisFromLive(&prof); prof.setLocalInis(true); }
+        if (saveCheck->isChecked()) prof.setLocalSaves(true);
+        prof.saveSettings();
     }
     // refreshProfileCombo blocks combo signals while it repopulates, so merely
     // listing the new profile doesn't trigger a switch - promptSwitchToNewProfile
     // owns that decision.
     refreshProfileCombo();
     promptSwitchToNewProfile(name);
+}
+
+void MainWindow::onToggleLocalInis(bool on) {
+    auto* prof = m_profileMgr->activeProfile();
+    if (!prof || prof->localInis() == on) return;
+    if (on) seedProfileInisFromLive(prof); // capture current settings as the baseline
+    prof->setLocalInis(on);
+    prof->saveSettings();
+    m_deployDirty = true; updateDeployButton();
+    statusBar()->showMessage(on
+        ? "Per-profile INI files on. Applies on the next Deploy."
+        : "Per-profile INI files off. The shared INIs are used; applies on the next Deploy.");
+}
+
+void MainWindow::onToggleLocalSaves(bool on) {
+    auto* prof = m_profileMgr->activeProfile();
+    if (!prof || prof->localSaves() == on) return;
+    prof->setLocalSaves(on);
+    prof->saveSettings();
+    m_deployDirty = true; updateDeployButton();
+    statusBar()->showMessage(on
+        ? "Per-profile saves on. A Saves/<profile> folder is used from the next Deploy."
+        : "Per-profile saves off. Saves return to the shared folder on the next Deploy.");
+}
+
+void MainWindow::syncProfileFlagActions() {
+    auto* prof = m_profileMgr->activeProfile();
+    if (m_localInisAction) {
+        QSignalBlocker b(m_localInisAction);
+        m_localInisAction->setChecked(prof && prof->localInis());
+        m_localInisAction->setEnabled(prof != nullptr);
+    }
+    if (m_localSavesAction) {
+        QSignalBlocker b(m_localSavesAction);
+        m_localSavesAction->setChecked(prof && prof->localSaves());
+        m_localSavesAction->setEnabled(prof != nullptr);
+    }
 }
 
 void MainWindow::onDeleteProfile() {
@@ -4892,10 +4982,25 @@ void MainWindow::onPlay() {
         QString iniDir = docs.isEmpty() ? solero::AppConfig::instance().gameDir() : docs;
         if (!iniDir.isEmpty()) {
             QDir().mkpath(iniDir);
-            const QStringList iniSrc = { prof->skyrimIniPath(), prof->skyrimPrefsPath(), prof->skyrimCustomPath() };
-            const QStringList iniDst = { iniDir + "/Skyrim.ini", iniDir + "/SkyrimPrefs.ini", iniDir + "/SkyrimCustom.ini" };
-            for (int i = 0; i < iniSrc.size(); ++i)
-                if (QFile::exists(iniSrc[i])) solero::copyOverwrite(iniSrc[i], iniDst[i]);
+            // Only push the profile's INIs when it owns them (localInis); otherwise
+            // leave the live/shared INIs alone.
+            if (prof->localInis()) {
+                const QStringList iniSrc = { prof->skyrimIniPath(), prof->skyrimPrefsPath(), prof->skyrimCustomPath() };
+                const QStringList iniDst = { iniDir + "/Skyrim.ini", iniDir + "/SkyrimPrefs.ini", iniDir + "/SkyrimCustom.ini" };
+                for (int i = 0; i < iniSrc.size(); ++i)
+                    if (QFile::exists(iniSrc[i])) solero::copyOverwrite(iniSrc[i], iniDst[i]);
+            }
+            // Keep the save redirect in sync too, since deploy may have been skipped.
+            const QString saveIni = iniDir + "/Skyrim.ini";
+            solero::IniFile ini;
+            if (prof->localSaves()) {
+                ini.load(saveIni);
+                ini.setValue("General", "SLocalSavePath", "Saves\\" + prof->saveFolderName() + "\\");
+                if (ini.save(saveIni)) QDir().mkpath(iniDir + "/Saves/" + prof->saveFolderName());
+            } else if (QFile::exists(saveIni)) {
+                ini.load(saveIni);
+                if (ini.has("General", "SLocalSavePath")) { ini.remove("General", "SLocalSavePath"); ini.save(saveIni); }
+            }
         }
     }
 

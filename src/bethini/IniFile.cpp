@@ -114,6 +114,15 @@ void IniFile::setValue(const QString& section, const QString& key, const QString
     m_dirty = true;
 }
 
+void IniFile::remove(const QString& section, const QString& key) {
+    int s = findSection(section);
+    if (s < 0) return;
+    int k = findKeyInSection(s, key);
+    if (k < 0) return;
+    m_lines.removeAt(k);
+    m_dirty = true;
+}
+
 bool IniFile::save(const QString& path) const {
     QString text = m_lines.join('\n');
     if (!text.endsWith('\n')) text.append('\n');

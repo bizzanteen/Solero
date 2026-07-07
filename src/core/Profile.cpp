@@ -44,18 +44,33 @@ QString Profile::sanitizeSaveFolder(const QString& name) {
     return out.isEmpty() ? QStringLiteral("Profile") : out;
 }
 
+bool Profile::hasProfileInis() const {
+    return QFile::exists(skyrimIniPath()) || QFile::exists(skyrimPrefsPath())
+        || QFile::exists(skyrimCustomPath());
+}
+
 bool Profile::saveSettings() const {
+    QDir().mkpath(m_path); // self-sufficient: don't require a prior save()
     QJsonObject root;
     root["localSaves"] = m_localSaves;
+    root["localInis"]  = m_localInis;
     return atomicWrite(profileSettingsPath(),
                        QJsonDocument(root).toJson(QJsonDocument::Indented));
 }
 
 bool Profile::loadSettings() {
     QFile f(profileSettingsPath());
-    if (!f.open(QIODevice::ReadOnly)) { m_localSaves = false; return false; }
+    // No settings.json => a profile from before these flags existed. Default saves off,
+    // but migrate INIs to on if the profile already carries INI files (preserves the
+    // old presence-based deploy behaviour).
+    if (!f.open(QIODevice::ReadOnly)) {
+        m_localSaves = false;
+        m_localInis  = hasProfileInis();
+        return false;
+    }
     const auto root = QJsonDocument::fromJson(f.readAll()).object();
     m_localSaves = root["localSaves"].toBool(false);
+    m_localInis  = root["localInis"].toBool(hasProfileInis());
     return true;
 }
 

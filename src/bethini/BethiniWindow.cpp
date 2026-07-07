@@ -644,6 +644,9 @@ void BethiniWindow::onSave() {
         if (rowDiffersFromIni(rw)) saveRow(rw);
     saveAllInis();
     pushInisToLive();
+    // Editing this profile's INIs means it should own them: turn on per-profile INIs
+    // so Deploy and Play keep re-applying them (and another profile can't clobber them).
+    if (!m_profile->localInis()) { m_profile->setLocalInis(true); m_profile->saveSettings(); }
     if (m_advEdit) m_advEdit->document()->setModified(false);
     resetDirty();
     // check mark + em dash, built from QChar so they don't mojibake.

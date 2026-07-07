@@ -19,6 +19,9 @@ public:
     QStringList profileNames() const;
     Profile* loadProfile(const QString& name);
     Profile* activeProfile() { return m_active.get(); }
+    // The profiles root, so a caller can construct a Profile for a name that isn't
+    // the active one (e.g. to set flags on a just-created profile).
+    const QString& root() const { return m_root; }
 
 private:
     QString m_root;

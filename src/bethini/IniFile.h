@@ -24,6 +24,11 @@ public:
     // stored value actually changes.
     void setValue(const QString& section, const QString& key, const QString& value);
 
+    // Remove a key line if present (exact section, case-insensitive key). Sets
+    // dirty() only if a line was actually removed. The section header is left in
+    // place even if it becomes empty.
+    void remove(const QString& section, const QString& key);
+
     // Write via atomicWrite, ensuring a trailing newline.
     bool save(const QString& path) const;
 

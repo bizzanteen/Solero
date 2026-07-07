@@ -386,23 +386,21 @@ also gets its own output or Overwrite mod, so captured files never leak between 
 
 ### Profile-specific INIs and saves
 
-Two per-profile options, off by default, work the way they do in Mod Organizer. The New
-Profile dialog has a checkbox for each, and you can flip them for the active profile any
-time from the Profile menu (Profile-Specific INI Files and Profile-Specific Save Games).
-Both take effect on the next Deploy.
+Two per-profile options, both off by default, that behave like Mod Organizer's. The New
+Profile dialog has a checkbox for each, and you can flip them for the active profile from
+the Profile menu (Profile-Specific INI Files and Profile-Specific Save Games). Changes take
+effect on the next Deploy.
 
-Profile-specific INI files: when you turn this on, Solero seeds the profile with a copy of
-your current `Skyrim.ini` and `SkyrimPrefs.ini`, so it starts from your existing settings,
-and from then on Deploy and Play push the profile's INIs into `My Games`. Edit them
-through the [BethINI editor](#ini-files-bethini). Turn it off and Solero stops touching the
-INIs, leaving the shared ones in place; the profile keeps its copies, so re-enabling picks
-up where you left off.
+Profile-specific INI files. On: Solero seeds the profile from your current `Skyrim.ini` and
+`SkyrimPrefs.ini`, then Deploy and Play push the profile's INIs into `My Games`; edit them
+in the [BethINI editor](#ini-files-bethini). Off: the shared INIs are left alone. Either
+way the profile keeps its copies, so re-enabling resumes them.
 
-Profile-specific save games: turning this on gives the profile its own `Saves/<profile>`
-folder (via Skyrim's `SLocalSavePath`) so characters stay separate. Existing shared saves
-aren't moved, so the folder starts empty and your old characters reappear if you turn the
-option back off. Turning it off strips the redirect on the next Deploy, so saving returns
-to the shared folder; the per-profile save folder is left on disk, not deleted.
+Profile-specific save games. On: the profile gets its own `Saves/<profile>` folder (via
+Skyrim's `SLocalSavePath`). Existing shared saves aren't moved, so the folder starts empty
+and your old characters reappear if you turn it back off. Off: the redirect is stripped on
+the next Deploy, so saving returns to the shared folder; the per-profile folder is kept,
+not deleted.
 
 ## Health checks & problems
 

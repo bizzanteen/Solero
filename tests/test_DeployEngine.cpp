@@ -623,6 +623,83 @@ private slots:
         QVERIFY(!QFile::exists(gameDir + "/Data/foo.nif"));
         QVERIFY(!QFile::exists(gameDir + "/Data/CellOffsets/x.fco"));
     }
+
+    // A no-op re-deploy (no mod/profile changes) must relink NOTHING - not even
+    // conflicted paths. Regression for: the incremental skip only fired for
+    // single-provider paths, so every candidate of every conflict was
+    // unlinked+relinked on every deploy (~32k relinks per launch in the field).
+    void deploy_noOpRedeployDoesNotRelinkConflicts() {
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QDir().mkpath(gameDir);
+        // aaa and bbb both provide foo.nif (bbb, later in the order, wins); each
+        // also ships a unique file.
+        writeFile(stagingRoot + "/aaa/Data/foo.nif", "low");
+        writeFile(stagingRoot + "/bbb/Data/foo.nif", "high");
+        writeFile(stagingRoot + "/aaa/Data/a.nif", "a");
+        writeFile(stagingRoot + "/bbb/Data/b.nif", "b");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry ma; ma.type = EntryType::Mod; ma.id = "aaa"; ma.name = "Low";  ma.enabled = true;
+        ModEntry mb; mb.type = EntryType::Mod; mb.id = "bbb"; mb.name = "High"; mb.enabled = true;
+        profile.modList().append(ma);
+        profile.modList().append(mb);
+        profile.save();
+
+        DeployEngine engine(gameDir, stagingRoot);
+        auto r1 = engine.deploy(profile, DeployMode::HardLink);
+        QVERIFY(r1.success);
+        QVERIFY(r1.filesLinked > 0);
+        { QFile f(gameDir + "/Data/foo.nif"); f.open(QIODevice::ReadOnly);
+          QCOMPARE(f.readAll(), QByteArray("high")); } // winner deployed
+
+        // Second deploy, nothing changed: incremental, and relinks NOTHING - the
+        // conflict winner is already correctly linked, the loser doesn't link.
+        DeployEngine engine2(gameDir, stagingRoot);
+        auto r2 = engine2.deploy(profile, DeployMode::HardLink);
+        QVERIFY(r2.success);
+        QVERIFY(r2.incremental);
+        QCOMPARE(r2.filesLinked, 0);
+        { QFile f(gameDir + "/Data/foo.nif"); f.open(QIODevice::ReadOnly);
+          QCOMPARE(f.readAll(), QByteArray("high")); } // winner still correct
+    }
+
+    // The inode short-circuit skips a relink even when the recorded fingerprint is
+    // stale, as long as the deployed file is still the correct hardlink. Guards
+    // against whole categories relinking because of a size/mtime mismatch.
+    void deploy_inodeShortCircuitSkipsWhenFingerprintStale() {
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QDir().mkpath(gameDir);
+        writeFile(stagingRoot + "/aaa/Data/foo.nif", "data");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry m; m.type = EntryType::Mod; m.id = "aaa"; m.name = "M"; m.enabled = true;
+        profile.modList().append(m);
+        profile.save();
+
+        DeployEngine engine(gameDir, stagingRoot);
+        auto r1 = engine.deploy(profile, DeployMode::HardLink);
+        QVERIFY(r1.success);
+        QVERIFY(r1.filesLinked > 0);
+
+        // Bump the staging source's mtime so the recorded fingerprint goes stale. The
+        // deployed file shares the source inode, so it is still correct on disk.
+        { QFile f(stagingRoot + "/aaa/Data/foo.nif");
+          QVERIFY(f.open(QIODevice::ReadWrite));
+          QVERIFY(f.setFileTime(QDateTime::currentDateTime().addSecs(120),
+                                QFileDevice::FileModificationTime));
+          f.close(); }
+
+        DeployEngine engine2(gameDir, stagingRoot);
+        auto r2 = engine2.deploy(profile, DeployMode::HardLink);
+        QVERIFY(r2.success);
+        QVERIFY(r2.incremental);
+        QCOMPARE(r2.filesLinked, 0);          // no relink...
+        QVERIFY(r2.filesAlreadyLinked >= 1);  // ...caught by the inode short-circuit
+    }
 };
 QTEST_MAIN(TestDeployEngine)
 #include "test_DeployEngine.moc"

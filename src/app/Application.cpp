@@ -19,6 +19,7 @@ void Application::applyZoom() {
     QFont f = font();
     f.setPointSizeF(10.0 * m_zoomFactor);
     setFont(f);
+    emit zoomChanged();
 }
 
 void Application::saveZoom() {

@@ -21,6 +21,7 @@
 #include "install/InstallConflict.h"
 #include "deploy/DeployEngine.h"
 #include "core/DeploySignature.h"
+#include <QStyle>
 #include "deploy/DeployRecord.h"
 #include "core/HostProcess.h"
 #include "import/Mo2Importer.h"
@@ -819,6 +820,7 @@ void MainWindow::setupToolbar() {
     // dropdown on the Deploy button - a QToolButton menu can hijack the primary
     // click on some styles, and the primary Deploy action must never be at risk.
     if (auto* playBtn = qobject_cast<QToolButton*>(tb->widgetForAction(m_playAction))) {
+        m_playBtn = playBtn;
         QFont f = playBtn->font(); f.setBold(true); playBtn->setFont(f);
         const QColor accent = palette().color(QPalette::Highlight);
         const QColor accentText = palette().color(QPalette::HighlightedText);
@@ -830,6 +832,15 @@ void MainWindow::setupToolbar() {
             " padding:2px 10px; }"
             "QToolButton:disabled { background:%3; color:%4; }")
             .arg(accent.name(), accentText.name(), off.name(), offText.name()));
+        // The style sheet sets WA_StyleSheet, which blocks app-font (zoom) propagation
+        // and caches the resolved font. Re-assert the font and re-polish on each zoom so
+        // the Play pill scales with Ctrl +/- like the rest of the toolbar.
+        connect(static_cast<Application*>(qApp), &Application::zoomChanged, this, [this] {
+            if (!m_playBtn) return;
+            QFont zf = QApplication::font(); zf.setBold(true); m_playBtn->setFont(zf);
+            m_playBtn->style()->unpolish(m_playBtn);
+            m_playBtn->style()->polish(m_playBtn);
+        });
     }
 }
 

@@ -334,6 +334,7 @@ private:
     QByteArray m_deployedSig;     // deploySignature() at the last successful deploy
     bool m_contentDirty = false;  // sticky dirtiness the signature can't see (rename,
                                   // reinstall, patch, ini/save toggle); cleared on deploy
+    QToolButton* m_playBtn = nullptr; // the accent-pill Play button (re-fonted on zoom)
     bool m_loadOrderDirty = false; // user manually reordered plugins since last sort/deploy
     bool m_toolRunning = false;  // guards re-entrancy while a tool runs (nested event loop)
     bool m_switchingProfile = false; // guards re-entrant switchProfile (pumps re-dispatch combo changes)

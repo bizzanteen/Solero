@@ -51,6 +51,7 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
     DeployResult result;
     m_linkCount = 0;
     m_skipCount = 0;
+    m_alreadyCorrect = 0;
 
     // decide full vs incremental. Load the prior on-disk record; an
     // incremental deploy diffs against it and only touches the delta. Fall back to
@@ -89,6 +90,11 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
     // funnel into a single on-disk casing per directory.
     m_dirCaseIndex.clear();
     m_dirCaseScanned.clear();
+
+    // Resolve the single load-order winner of every path up front so deployMod can
+    // skip loser candidates outright (a conflicted path is then linked once, by its
+    // winner, not relinked once per providing mod on every deploy).
+    m_winners = computeWinners(profile);
 
     int total = 0;
     for (const auto& entry : profile.modList())
@@ -345,13 +351,59 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
     result.conflicts = std::move(conflicts);
     result.filesDeployed = record.count();
     result.filesLinked = m_linkCount;
-    result.filesUnchanged = m_skipCount;
+    result.filesUnchanged = m_skipCount + m_alreadyCorrect;
+    result.filesAlreadyLinked = m_alreadyCorrect;
     qCInfo(lcDeploy).nospace()
         << "deploy done (" << (result.incremental ? "incremental" : "full") << "): "
-        << m_linkCount << " linked, " << m_skipCount << " unchanged, "
+        << m_linkCount << " relinked, " << (m_skipCount + m_alreadyCorrect)
+        << " unchanged (" << m_alreadyCorrect << " already-linked), "
         << result.filesRemoved << " removed, " << conflictCount << " conflicts, "
         << failures << " failures";
     return result;
+}
+
+QHash<QString, QString> DeployEngine::computeWinners(const Profile& profile) const {
+    QHash<QString, QString> winner; // ciKey (lowercased relPath) -> owning modId
+    auto scan = [&](const QString& modId, const QString& modRoot) {
+        if (modRoot.isEmpty() || !QDir(modRoot).exists()) return;
+        const auto hiddenIt = m_hiddenFiles.constFind(modId);
+        const bool hasHidden = hiddenIt != m_hiddenFiles.constEnd();
+        QDirIterator it(modRoot, QDir::Files | QDir::NoDotAndDotDot,
+                        QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
+        while (it.hasNext()) {
+            const QString srcPath = it.next();
+            const QString relPath = srcPath.mid(modRoot.length() + 1);
+            const QString fn = QFileInfo(srcPath).fileName();
+            // Same eligibility as deployMod: never deploy per-mod metadata, and
+            // respect per-file HIDE, so the winner map matches what actually links.
+            if (fn.startsWith(".solero")
+                || fn.compare("fomod-choices.json", Qt::CaseInsensitive) == 0)
+                continue;
+            if (hasHidden && hiddenIt.value().contains(relPath))
+                continue;
+            winner.insert(relPath.toLower(), modId); // later scan (higher priority) wins
+        }
+    };
+    // Order mirrors deploy(): mods in list order, then the shader cache, then the
+    // Overwrite layer - each scanned after the previous so last-wins is preserved.
+    for (const auto& e : profile.modList())
+        if (e.type == EntryType::Mod && e.enabled)
+            scan(e.id, stagingPathFor(m_stagingRoot, e));
+    if (profile.shaderCache().managed) {
+        const QString folder =
+            profile.shaderCache().folderFor(activeCacheKey(profile.modList()));
+        if (!folder.isEmpty()) {
+            // Resolve the on-disk root exactly like the deploy loop (a staging folder
+            // name under m_stagingRoot), not the bare folder string.
+            ModEntry ce;
+            ce.id = QStringLiteral("__shadercache__");
+            ce.stagingFolder = folder;
+            scan(ce.id, stagingPathFor(m_stagingRoot, ce));
+        }
+    }
+    if (!m_overwriteDir.isEmpty() && QDir(m_overwriteDir).exists())
+        scan(overwriteOwnerId(), m_overwriteDir);
+    return winner;
 }
 
 int DeployEngine::deployMod(const ModEntry& mod,
@@ -402,6 +454,20 @@ int DeployEngine::deployMod(const ModEntry& mod,
         QString dstPath = gameDir + "/" + destRel;
 
         const QString ciKey = relPath.toLower();
+
+        // Skip loser candidates: another mod wins this path (resolved up front in
+        // computeWinners). Record the conflict for the UI, but do not link - only the
+        // winner links, so a conflicted path is touched once per deploy, not once per
+        // providing mod. (A forced per-file override winner is applied afterwards by
+        // applyWinnerOverrides, which deploys from that mod's staging directly.)
+        {
+            const QString winnerId = m_winners.value(ciKey);
+            if (!winnerId.isEmpty() && winnerId != modId) {
+                conflicts.recordConflict(ciKey, winnerId, modId);
+                continue;
+            }
+        }
+
         const QString priorRel = ciOwners.value(ciKey);   // earlier-deployed path at this CI path, if any
         QString previousOwner = priorRel.isEmpty() ? QString() : record.ownerOf(priorRel);
 
@@ -490,6 +556,20 @@ int DeployEngine::deployMod(const ModEntry& mod,
             const QString canon = srcInfo.canonicalFilePath();
             if (!canon.isEmpty()) realSrc = canon;
         }
+
+        // Ground-truth short-circuit: the destination is already the correct hardlink
+        // to this source (same device+inode), so its bytes and mtime already match -
+        // skip the unlink+relink even when the record fingerprint didn't line up (e.g.
+        // btrfs mtime granularity). Still record it so the new record stays complete.
+        if (linker.alreadyDeployed(realSrc, dstPath)) {
+            if (!previousOwner.isEmpty()) conflicts.recordConflict(conflictKey, modId, previousOwner);
+            else                          conflicts.setWinner(conflictKey, modId);
+            record.add(destRel, modId, srcFp.size, srcFp.mtimeMs);
+            ciOwners.insert(ciKey, destRel);
+            ++m_alreadyCorrect;
+            continue;
+        }
+
         if (!linker.deploy(realSrc, dstPath)) {
             qCWarning(lcDeploy) << "Deploy failed for" << relPath << "(mod" << modId << ")";
             ++failures;
@@ -592,6 +672,17 @@ int DeployEngine::applyWinnerOverrides(Profile& profile,
         if (srcInfo.isSymLink()) {
             const QString canon = srcInfo.canonicalFilePath();
             if (!canon.isEmpty()) realSrc = canon;
+        }
+        // Already the correct hardlink from a prior deploy? Skip the relink (see deployMod).
+        if (linker.alreadyDeployed(realSrc, dstPath)) {
+            if (!currentOwner.isEmpty() && currentOwner != modId)
+                conflicts.recordConflict(ciKey, modId, currentOwner);
+            else
+                conflicts.setWinner(ciKey, modId);
+            record.add(destRel, modId, srcFp.size, srcFp.mtimeMs);
+            ciOwners.insert(ciKey, destRel);
+            ++m_alreadyCorrect;
+            continue;
         }
         if (!linker.deploy(realSrc, dstPath)) {
             qCWarning(lcDeploy) << "Winner override failed to link" << relPath << "(mod" << modId << ")";

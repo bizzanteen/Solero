@@ -25,8 +25,9 @@ struct DeployResult {
     // filesUnchanged = files skipped because they were already deployed unchanged;
     // filesRemoved = stale files pruned by the incremental sweep.
     bool incremental = false;
-    int filesLinked = 0;
-    int filesUnchanged = 0;
+    int filesLinked = 0;       // relinked (unlink+hardlink) this deploy
+    int filesUnchanged = 0;    // skipped as already-correct (fingerprint or inode)
+    int filesAlreadyLinked = 0; // subset of filesUnchanged caught by the inode check
     int filesRemoved = 0;
 };
 
@@ -77,6 +78,19 @@ private:
     QHash<QString, QString>       m_fileOverrides;  // relPath -> forced winner modId
     QString m_overwriteDir;                          // per-profile Overwrite dir; empty = no layer
 
+    // Resolved winner per deployed path for the current deploy (ciKey = lowercased
+    // relPath -> owning modId), matching the deploy order (mods in list order, then
+    // shader cache, then Overwrite; last wins). deployMod skips a file whose ciKey
+    // this mod does not win, so a conflicted path is linked once by its winner
+    // instead of once per providing mod. Rebuilt at the top of every deploy().
+    QHash<QString, QString> m_winners;
+
+    // Build m_winners for a deploy: the single load-order winner of every path.
+    // Forced per-file overrides are applied afterwards by applyWinnerOverrides, so
+    // they are intentionally NOT folded in here (forcing a non-provider would make
+    // every real provider skip and drop the file entirely).
+    QHash<QString, QString> computeWinners(const Profile& profile) const;
+
     // Re-link forced per-path winners after the normal mod loop. See deploy().
     // Returns the number of forced winners that FAILED to link (a mod present and
     // enabled that staged the path but couldn't be deployed) - these are added to
@@ -121,8 +135,9 @@ private:
     DeployRecord::Fingerprint fingerprintOf(const QFileInfo& srcInfo) const;
 
     // Per-deploy link/skip tallies (reset at the top of deploy()).
-    int m_linkCount = 0;
-    int m_skipCount = 0;
+    int m_linkCount = 0;      // relinked (actual unlink+hardlink)
+    int m_skipCount = 0;      // skipped via the record fingerprint (unchanged source)
+    int m_alreadyCorrect = 0; // skipped via the inode short-circuit (already linked)
 
     // Resolve a staged relPath against the live game dir, adopting existing
     // on-disk directory casing component-by-component (Wine/Proton is

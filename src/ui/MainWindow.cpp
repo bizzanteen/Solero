@@ -20,6 +20,7 @@
 #include "install/ModInstaller.h"
 #include "install/InstallConflict.h"
 #include "deploy/DeployEngine.h"
+#include "core/DeploySignature.h"
 #include "deploy/DeployRecord.h"
 #include "core/HostProcess.h"
 #include "import/Mo2Importer.h"
@@ -275,6 +276,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
         m_deployed = result.success;
         m_deployDirty = false;
+        if (m_deployed) captureDeployedSignature();
         statusBar()->showMessage(
             QString("Deployed %1 files. %2 conflicts. Plugins sorted by LOOT.")
                 .arg(result.filesDeployed)
@@ -1149,7 +1151,7 @@ void MainWindow::setupCentralWidget() {
     // A per-file rule changed (hide a file in a mod / force a per-path winner):
     // the staged outputs no longer match what's deployed, so mark dirty.
     connect(m_rightPane, &solero::RightPane::fileRulesChanged, this, [this]{
-        if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+        refreshDeployDirty();
         updatePluginNotice();
     });
     // Rename / delete of a staged file or folder from the Data tab: perform the
@@ -1359,6 +1361,7 @@ void MainWindow::switchProfile(const QString& name) {
                                     [&](int d, int t){ if (prog) { prog->setProgress(d, t); prog->pump(); } });
         m_deployed = result.success;
         m_deployDirty = false;
+        if (m_deployed) captureDeployedSignature();
         m_lastDeployWarning = result.warning;
         m_lastDeployHadFailures = !result.success;
         if (result.success) {
@@ -1674,6 +1677,7 @@ bool MainWindow::redeployForTool(const QString& title, const QString& message) {
     if (result.success) {
         m_deployed = true;
         m_deployDirty = false;
+        captureDeployedSignature();
         m_lastConflicts = result.conflicts;
         m_rightPane->setConflictIndex(result.conflicts);
         m_modListView->setConflictIndex(result.conflicts);
@@ -1783,6 +1787,23 @@ void MainWindow::updateDeployButton() {
         m_deployAction->setText("\xe2\x9c\x97 Not Deployed");
         m_deployAction->setToolTip("Click to deploy mods to game directory (Ctrl+D)");
     }
+}
+
+void MainWindow::refreshDeployDirty() {
+    if (!m_deployed) { updateDeployButton(); return; }
+    auto* p = m_profileMgr->activeProfile();
+    // A structural change is undeployed only if the current signature diverges from the
+    // one captured at deploy; sticky content dirtiness always keeps us dirty. So a
+    // disable+re-enable (or reorder+back) flips the button straight back to Deployed.
+    const bool sigChanged = !p || solero::deploySignature(*p) != m_deployedSig;
+    m_deployDirty = m_contentDirty || sigChanged;
+    updateDeployButton();
+}
+
+void MainWindow::captureDeployedSignature() {
+    auto* p = m_profileMgr->activeProfile();
+    m_deployedSig = p ? solero::deploySignature(*p) : QByteArray();
+    m_contentDirty = false;
 }
 
 void MainWindow::refreshHealthIndicator() {
@@ -1898,7 +1919,7 @@ void MainWindow::onDataRename(const QString& modId, const QString& relPath,
     m_modListView->invalidateModCache(modId);
     m_rightPane->invalidateModPluginCache(modId);
     solero::DependencyChecker::invalidate(modId);
-    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+    m_contentDirty = true; if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     updatePluginNotice();
     refreshHealthIndicator();
 }
@@ -1953,7 +1974,7 @@ void MainWindow::onDataDelete(const QString& modId, const QString& relPath,
     m_modListView->invalidateModCache(modId);
     m_rightPane->invalidateModPluginCache(modId);
     solero::DependencyChecker::invalidate(modId);
-    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+    m_contentDirty = true; if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     updatePluginNotice();
     refreshHealthIndicator();
 }
@@ -2163,7 +2184,7 @@ void MainWindow::onRestoreLo() {
     profile->save();
     m_rightPane->setProfile(profile); // refresh the plugins view with the restored order
     if (modsRestored) m_modListView->setProfile(profile); // rebuild the mod list too
-    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+    refreshDeployDirty();
     updatePluginNotice();
     statusBar()->showMessage(modsRestored
         ? QString("Load order + mod list restored from \"%1\".").arg(snap.label)
@@ -2173,7 +2194,7 @@ void MainWindow::onRestoreLo() {
 void MainWindow::onModsChanged() {
     auto* profile = m_profileMgr->activeProfile();
     if (profile) m_rightPane->refreshPlugins(profile);  // plugins follow enabled mods
-    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+    refreshDeployDirty();
     updatePluginNotice();
     refreshHealthIndicator();
 }
@@ -2182,7 +2203,7 @@ void MainWindow::onModsReordered() {
     // Order-only change: plugin membership and dependency health are unchanged, so
     // skip the full-staging plugin rescan (refreshPlugins) and dependency-health
     // walk (refreshHealthIndicator). Deploy order DID change, so still mark dirty.
-    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+    refreshDeployDirty();
 }
 
 void MainWindow::refreshCategoryFilter() {
@@ -2672,7 +2693,7 @@ void MainWindow::installFromArchive(const QString& archive) {
 
     m_modListView->setProfile(profile);
     if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
-    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+    m_contentDirty = true; if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     m_rightPane->downloadsTab()->refresh();
     updatePluginNotice();
     if (!variantTargetId.isEmpty()) {
@@ -2924,7 +2945,7 @@ void MainWindow::onReinstallMod(const QString& modId) {
 
     m_modListView->setProfile(profile);
     if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
-    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+    m_contentDirty = true; if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     updatePluginNotice();
     statusBar()->showMessage("Reinstalled: " + existing->name);
 }
@@ -3115,7 +3136,7 @@ void MainWindow::onCreateModFromOverwrite() {
     solero::DependencyChecker::invalidate(mod.id);
     m_modListView->setProfile(profile);
     if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
-    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+    m_contentDirty = true; if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
     updatePluginNotice();
     statusBar()->showMessage(
         QString("Created mod '%1' from Overwrite (%2 files)").arg(name).arg(moved));
@@ -3149,7 +3170,7 @@ void MainWindow::onClearShaderCache(const QString& modId) {
         cacheStaging);
 
     m_modListView->invalidateModCache(); // staged/overwrite contents changed
-    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+    m_contentDirty = true; if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
 
     if (result.removedPaths.isEmpty()) {
         statusBar()->showMessage(
@@ -3199,7 +3220,7 @@ void MainWindow::enableManagedCache() {
     QDir().mkpath(modRoot + "/Data/ShaderCache");
 
     profile->save();
-    if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+    refreshDeployDirty();
     statusBar()->showMessage("Solero is now managing the Community Shaders shader cache.");
 }
 
@@ -3977,6 +3998,9 @@ void MainWindow::refreshDeployState() {
         m_deployed = QFile::exists(rec);
     }
     m_deployDirty = false;
+    // Baseline the signature to the current profile so an unchanged relaunch reads
+    // Deployed and later net-zero edits can flip back.
+    if (m_deployed) captureDeployedSignature();
     m_loadOrderDirty = false;
     updateDeployButton();
     updatePluginNotice();
@@ -4045,7 +4069,7 @@ void MainWindow::onToggleLocalInis(bool on) {
     if (on) seedProfileInisFromLive(prof); // capture current settings as the baseline
     prof->setLocalInis(on);
     prof->saveSettings();
-    m_deployDirty = true; updateDeployButton();
+    m_contentDirty = true; m_deployDirty = true; updateDeployButton();
     statusBar()->showMessage(on
         ? "Per-profile INI files on. Applies on the next Deploy."
         : "Per-profile INI files off. The shared INIs are used; applies on the next Deploy.");
@@ -4056,7 +4080,7 @@ void MainWindow::onToggleLocalSaves(bool on) {
     if (!prof || prof->localSaves() == on) return;
     prof->setLocalSaves(on);
     prof->saveSettings();
-    m_deployDirty = true; updateDeployButton();
+    m_contentDirty = true; m_deployDirty = true; updateDeployButton();
     statusBar()->showMessage(on
         ? "Per-profile saves on. A Saves/<profile> folder is used from the next Deploy."
         : "Per-profile saves off. Saves return to the shared folder on the next Deploy.");
@@ -4943,7 +4967,7 @@ void MainWindow::onPatchWizard() {
             solero::DependencyChecker::invalidate(id);
         }
         if (auto* p = m_profileMgr->activeProfile()) m_rightPane->refreshPlugins(p);
-        if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
+        m_contentDirty = true; if (m_deployed) { m_deployDirty = true; updateDeployButton(); }
         updatePluginNotice();
         statusBar()->showMessage("Patches installed - re-deploy to apply.");
     });
@@ -5214,7 +5238,7 @@ void MainWindow::onPlay() {
                 if (anyFail) {
                     // A re-link failed: the live dir is now missing a captured
                     // shader, so fall back to forcing a redeploy on next Play.
-                    m_deployDirty = true;
+                    m_contentDirty = true; m_deployDirty = true;
                 }
                 updateDeployButton();
                 statusBar()->showMessage(

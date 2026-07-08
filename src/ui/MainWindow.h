@@ -116,6 +116,14 @@ private:
     void hideRunLock();
     void refreshDeployState();   // detect an existing deployment on startup
     void updateDeployButton();   // sync the toggle's text/tooltip to m_deployed
+    // Recompute m_deployDirty after a mod-list change: compare the current deploy
+    // signature to the one captured at deploy. A net-zero structural change (disable
+    // then re-enable, reorder then back) clears the dirty flag; sticky content
+    // dirtiness (m_contentDirty) keeps it set. Call this instead of setting
+    // m_deployDirty = true for structural mutations.
+    void refreshDeployDirty();
+    // Snapshot the deploy signature (and clear content dirtiness) after a deploy.
+    void captureDeployedSignature();
     // Request a health-indicator refresh (debounced): a burst of toggles/renames
     // collapses into one recompute instead of one shallow dependency scan per event.
     void refreshHealthIndicator();
@@ -323,6 +331,9 @@ private:
 
     bool m_deployed = false;
     bool m_deployDirty = false;
+    QByteArray m_deployedSig;     // deploySignature() at the last successful deploy
+    bool m_contentDirty = false;  // sticky dirtiness the signature can't see (rename,
+                                  // reinstall, patch, ini/save toggle); cleared on deploy
     bool m_loadOrderDirty = false; // user manually reordered plugins since last sort/deploy
     bool m_toolRunning = false;  // guards re-entrancy while a tool runs (nested event loop)
     bool m_switchingProfile = false; // guards re-entrant switchProfile (pumps re-dispatch combo changes)

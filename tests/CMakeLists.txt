@@ -23,6 +23,7 @@ add_solero_test(test_AppConfig)
 add_solero_test(test_VersionUtil)
 add_solero_test(test_PluginList)
 add_solero_test(test_Profile)
+add_solero_test(test_DeploySignature)
 add_solero_test(test_LoadOrderBackup)
 
 add_executable(test_MirrorPick test_MirrorPick.cpp ../src/nexus/MirrorPick.cpp)

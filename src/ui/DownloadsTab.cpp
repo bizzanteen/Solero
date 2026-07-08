@@ -446,8 +446,13 @@ void DownloadsTab::resizeEvent(QResizeEvent* e) {
     // Until the user customises a column, keep Name (col 0) filling the pane as it
     // widens / narrows.
     if (!m_userCols && m_table) {
+        // Floor for the last column (Downloaded, a date) is font-derived so it stays
+        // right under Ctrl +/- zoom, matching applyColumnWidths.
+        const QFontMetrics fm(m_table->font());
+        const int datedFloor = qMax(84, fm.horizontalAdvance(QStringLiteral("00th Sep, 00:00")) + 16);
         m_adjustingCols = true;
-        solero::fillColumnToViewport(m_table, m_table->horizontalHeader(), /*fillCol=*/0, 220);
+        solero::refillFillColumn(m_table, m_table->horizontalHeader(), /*fillCol=*/0,
+                                 /*fillMin=*/220, /*lastFloor=*/datedFloor);
         m_adjustingCols = false;
     }
 }

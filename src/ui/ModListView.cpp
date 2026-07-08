@@ -360,7 +360,8 @@ void ModListView::resizeEvent(QResizeEvent* event) {
     // narrows (and as Ctrl +/- zoom re-flows the other columns).
     if (!m_userCols) {
         m_adjustingCols = true;
-        solero::fillColumnToViewport(this, header(), ModListModel::ColName, 200);
+        solero::refillFillColumn(this, header(), ModListModel::ColName, /*fillMin=*/200,
+                                 /*lastFloor(Flags)=*/40);
         m_adjustingCols = false;
     }
 }

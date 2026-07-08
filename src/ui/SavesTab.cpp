@@ -249,7 +249,8 @@ void SavesTab::resizeEvent(QResizeEvent* e) {
     // Until the user customises a column, keep Location filling the pane as it resizes.
     if (!m_userCols && m_table) {
         m_adjustingCols = true;
-        solero::fillColumnToViewport(m_table, m_table->horizontalHeader(), ColLocation, 200);
+        solero::refillFillColumn(m_table, m_table->horizontalHeader(), ColLocation,
+                                 /*fillMin=*/200, /*lastFloor(SaveNum)=*/60);
         m_adjustingCols = false;
     }
 }

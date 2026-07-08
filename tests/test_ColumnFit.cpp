@@ -8,10 +8,14 @@
 // absorbing pane-resize / zoom slack.
 //
 // Assertions:
-//   (a) after applyFitFillDefaults no section is Stretch (all Interactive),
+//   (a) after applyFitFillDefaults every section is Interactive (draggable, no Stretch
+//       mode) but stretchLastSection is on so the pane is always filled with no gap,
 //   (b) the fill column is itself resizable (Interactive),
-//   (c) the fill column is the widest and the columns roughly span the viewport,
-//   (d) shrinking the viewport + fillColumnToViewport shrinks the fill column.
+//   (c) the fill column is the widest and the columns span the viewport exactly,
+//   (d) shrinking the viewport keeps the columns spanning it (no gap, via the last
+//       column absorbing), and
+//   (e) widening the viewport + refillFillColumn re-maximizes the FILL column (not the
+//       last one) while the columns still span the pane.
 #include "ui/ColumnFit.h"
 #include <QApplication>
 #include <QTableWidget>
@@ -51,34 +55,52 @@ int main(int argc, char** argv) {
     solero::applyFitFillDefaults(&table, hh, fillCol, mins);
     app.processEvents();
 
-    // (a) nothing is Stretch; every section is Interactive.
+    // (a) every section is Interactive (draggable) and stretchLastSection is on so the
+    // pane is always filled.
     for (int c = 0; c < hh->count(); ++c)
         CHECK(hh->sectionResizeMode(c) == QHeaderView::Interactive,
-              "every column is Interactive (no Stretch section)");
+              "every column is Interactive (no Stretch mode)");
+    CHECK(hh->stretchLastSection(),
+          "stretchLastSection is on so the pane is never left with a gap");
 
     // (b) the fill column is resizable.
     CHECK(hh->sectionResizeMode(fillCol) == QHeaderView::Interactive,
           "the fill column is Interactive (user-resizable)");
 
-    // (c) the fill column is the widest, and the columns roughly span the viewport.
+    // (c) the fill column is the widest, and the columns span the viewport exactly.
     const int vw = table.viewport()->width();
     for (int c = 1; c < hh->count(); ++c)
         CHECK(hh->sectionSize(fillCol) > hh->sectionSize(c),
               "the fill column is the widest column");
-    CHECK(std::abs(totalWidth(hh) - vw) <= 4,
-          "the columns roughly span the viewport after applyFitFillDefaults");
+    CHECK(std::abs(totalWidth(hh) - vw) <= 2,
+          "the columns span the viewport after applyFitFillDefaults (no gap)");
 
     const int wideFill = hh->sectionSize(fillCol);
 
-    // (d) shrinking the viewport + fillColumnToViewport shrinks the fill column.
+    // (d) shrinking the viewport: the real view re-fits on resize (refillFillColumn),
+    // so the fill column shrinks and the columns still span the pane (no gap, no
+    // overflow) down to the fill floor.
     table.resize(360, 300);
     app.processEvents();
-    solero::fillColumnToViewport(&table, hh, fillCol, mins.at(fillCol));
+    solero::refillFillColumn(&table, hh, fillCol, mins.at(fillCol), mins.last());
     app.processEvents();
     CHECK(hh->sectionSize(fillCol) < wideFill,
-          "fillColumnToViewport shrinks the fill column when the viewport shrinks");
-    CHECK(std::abs(totalWidth(hh) - table.viewport()->width()) <= 4,
-          "the columns still span the (smaller) viewport after fillColumnToViewport");
+          "the fill column shrinks when the viewport shrinks");
+    CHECK(std::abs(totalWidth(hh) - table.viewport()->width()) <= 2,
+          "the columns still span the smaller viewport (no gap)");
+
+    // (e) widening the viewport + refillFillColumn re-maximizes the FILL column (widen
+    // slack goes to it, not the last column) while the pane stays full.
+    table.resize(800, 300);
+    app.processEvents();
+    solero::refillFillColumn(&table, hh, fillCol, mins.at(fillCol), mins.last());
+    app.processEvents();
+    CHECK(hh->sectionSize(fillCol) > wideFill,
+          "refillFillColumn grows the fill column when the viewport widens");
+    CHECK(hh->sectionSize(hh->count() - 1) <= mins.last() + 4,
+          "the last column stays at its floor (the fill column absorbed the slack)");
+    CHECK(std::abs(totalWidth(hh) - table.viewport()->width()) <= 2,
+          "the columns span the wider viewport exactly (no gap)");
     CHECK(hh->sectionSize(fillCol) >= mins.at(fillCol),
           "the fill column never shrinks below its floor");
 

@@ -1,5 +1,6 @@
 #include "DownloadsTab.h"
 #include "ColumnFit.h"
+#include "app/Application.h"
 #include "core/AppConfig.h"
 #include "core/Profile.h"
 #include "core/RelativeTime.h"
@@ -238,14 +239,23 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     // (content-fit + fill Name) are applied on first show, when the viewport is sized.
     if (const QByteArray st = AppConfig::instance().downloadsHeaderState(); !st.isEmpty()) {
         hh->restoreState(st);
-        solero::assertFillMode(hh, /*fillCol=*/0); // Name = Stretch; restoreState can change modes
+        solero::assertFillMode(hh, /*fillCol=*/0); // all Interactive; restoreState can change modes
         m_didAutoSize = true; // keep the restored widths; don't auto-size on first show
+        m_userCols = true;    // a persisted layout is the user's; don't auto-fill over it
     }
     m_headerSaveTimer = new QTimer(this);
     m_headerSaveTimer->setSingleShot(true);
     m_headerSaveTimer->setInterval(300);
     connect(m_headerSaveTimer, &QTimer::timeout, this, &DownloadsTab::saveHeaderState);
-    connect(hh, &QHeaderView::sectionResized, this, [this](int,int,int){ m_headerSaveTimer->start(); });
+    connect(hh, &QHeaderView::sectionResized, this, [this](int,int,int){
+        if (!m_adjustingCols) m_userCols = true; // a genuine user drag stops auto-fill
+        m_headerSaveTimer->start();
+    });
+    // The table carries a QSS style sheet (WA_StyleSheet), which blocks automatic
+    // application-font propagation, so it doesn't scale with Ctrl +/- like the mod
+    // list. Re-assert the zoom font explicitly whenever the app zoom changes.
+    connect(static_cast<Application*>(qApp), &Application::zoomChanged, this,
+            [this]{ applyZoomFont(); });
     m_table->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_table, &QWidget::customContextMenuRequested, this, &DownloadsTab::showContextMenu);
     v->addWidget(m_table, 1);
@@ -389,21 +399,18 @@ void DownloadsTab::refresh() {
     applyFilters();
 }
 
-void DownloadsTab::changeEvent(QEvent* e) {
-    QWidget::changeEvent(e);
-    if (e->type() == QEvent::ApplicationFontChange && m_table) {
-        // The table carries a direct style sheet (WA_StyleSheet), so Qt won't
-        // propagate the new application font to it automatically. Push it in
-        // explicitly and re-flow row heights so headers + rows track the zoom.
-        const QFont f = QApplication::font();
-        m_table->setFont(f);
-        m_table->horizontalHeader()->setFont(f);
-        m_table->resizeRowsToContents();
-        // Column WIDTHS should track the zoom too, but only when the user hasn't set
-        // their own widths (persisted): re-fitting would clobber a remembered layout.
-        if (AppConfig::instance().downloadsHeaderState().isEmpty())
-            applyColumnWidths();
-    }
+void DownloadsTab::applyZoomFont() {
+    if (!m_table) return;
+    const QFont f = QApplication::font();
+    m_table->setFont(f);
+    m_table->horizontalHeader()->setFont(f);
+    // QSS caches the resolved font; force a re-resolve so the new size actually paints.
+    m_table->style()->unpolish(m_table);
+    m_table->style()->polish(m_table);
+    m_table->resizeRowsToContents();
+    // Column WIDTHS should track the zoom too, but only when the user hasn't set their
+    // own widths: re-fitting would clobber a remembered/customised layout.
+    if (!m_userCols) { m_adjustingCols = true; applyColumnWidths(); m_adjustingCols = false; }
 }
 
 void DownloadsTab::applyColumnWidths() {
@@ -428,7 +435,20 @@ void DownloadsTab::showEvent(QShowEvent* e) {
     // has a width. Skipped when persisted widths were restored (m_didAutoSize set).
     if (!m_didAutoSize) {
         m_didAutoSize = true;
-        QTimer::singleShot(0, this, [this]{ applyColumnWidths(); });
+        QTimer::singleShot(0, this, [this]{
+            m_adjustingCols = true; applyColumnWidths(); m_adjustingCols = false;
+        });
+    }
+}
+
+void DownloadsTab::resizeEvent(QResizeEvent* e) {
+    QWidget::resizeEvent(e);
+    // Until the user customises a column, keep Name (col 0) filling the pane as it
+    // widens / narrows.
+    if (!m_userCols && m_table) {
+        m_adjustingCols = true;
+        solero::fillColumnToViewport(m_table, m_table->horizontalHeader(), /*fillCol=*/0, 220);
+        m_adjustingCols = false;
     }
 }
 

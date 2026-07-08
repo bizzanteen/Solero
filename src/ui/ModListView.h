@@ -8,6 +8,7 @@
 class QTimer;
 class QDragMoveEvent;
 class QDragLeaveEvent;
+class QResizeEvent;
 
 namespace solero {
 class ModListModel;
@@ -110,6 +111,7 @@ protected:
     void mousePressEvent(QMouseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void showEvent(QShowEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
     // Capture the dragged mods' ids before the drop, then re-select them at their
     // new rows afterwards so a multi-mod drag keeps its selection (the base impl
@@ -130,6 +132,10 @@ private:
     QString m_categoryFilter;                  // empty = any category
     FlagFilter m_flagFilter = FlagFilter::All;
     bool m_didAutoSize = false;
+    // The Name column auto-fills the pane (and absorbs resize/zoom slack) until the
+    // user manually drags a divider; then their widths are respected and persisted.
+    bool m_userCols = false;
+    bool m_adjustingCols = false; // guard: our own resizes must not count as a user drag
     // True when the given mod entry passes the active state predicate.
     bool matchesState(const ModEntry* entry) const;
     // Right-click header menu: toggle which columns are shown (Name is mandatory);

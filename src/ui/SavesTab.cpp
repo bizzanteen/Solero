@@ -125,8 +125,9 @@ SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
     hh->setMinimumSectionSize(24);
     if (const QByteArray st = AppConfig::instance().savesHeaderState(); !st.isEmpty()) {
         hh->restoreState(st);
-        solero::assertFillMode(hh, ColLocation); // Location = Stretch; restoreState can change modes
+        solero::assertFillMode(hh, ColLocation); // all Interactive; restoreState can change modes
         m_didAutoSize = true; // keep restored widths; skip fit-fill defaults on show
+        m_userCols = true;    // a persisted layout is the user's; don't auto-fill over it
     } else {
         // Pre-show fallback; the real content-fit + fill-Location runs on first show.
         hh->resizeSection(ColShot, kThumbW + 12);
@@ -145,7 +146,10 @@ SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
             AppConfig::instance().save();
         }
     });
-    connect(hh, &QHeaderView::sectionResized, this, [this](int, int, int){ m_hdrSaveTimer->start(); });
+    connect(hh, &QHeaderView::sectionResized, this, [this](int, int, int){
+        if (!m_adjustingCols) m_userCols = true; // a genuine user drag stops auto-fill
+        m_hdrSaveTimer->start();
+    });
 
     // Previewer (MO2-style): the list on the left, a save-detail panel on the right,
     // split by a draggable divider. The panel shows the selected save's screenshot,
@@ -231,11 +235,23 @@ void SavesTab::showEvent(QShowEvent* e) {
     if (!m_didAutoSize) {
         m_didAutoSize = true;
         QTimer::singleShot(0, this, [this] {
+            m_adjustingCols = true;
             solero::applyFitFillDefaults(m_table, m_table->horizontalHeader(),
                                          ColLocation, {kThumbW + 12, 120, 44, 200, 130, 60});
+            m_adjustingCols = false;
         });
     }
     rebuild();
+}
+
+void SavesTab::resizeEvent(QResizeEvent* e) {
+    QWidget::resizeEvent(e);
+    // Until the user customises a column, keep Location filling the pane as it resizes.
+    if (!m_userCols && m_table) {
+        m_adjustingCols = true;
+        solero::fillColumnToViewport(m_table, m_table->horizontalHeader(), ColLocation, 200);
+        m_adjustingCols = false;
+    }
 }
 
 bool SavesTab::eventFilter(QObject* obj, QEvent* e) {

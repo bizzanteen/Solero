@@ -184,9 +184,12 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     // blob. Skipped on first run (empty blob) so the default widths above apply.
     {
         const QByteArray saved = AppConfig::instance().modListHeaderState();
-        if (!saved.isEmpty()) hdr->restoreState(saved);
-        // restoreState also restores resize MODES, so re-assert ours: Name = Stretch
-        // (fill), everything else Interactive, no last-section stretch.
+        if (!saved.isEmpty()) {
+            hdr->restoreState(saved);
+            m_userCols = true; // a persisted layout is the user's; don't auto-fill over it
+        }
+        // restoreState also restores resize MODES, so re-assert ours: everything
+        // Interactive, no last-section stretch. Name fills via fillColumnToViewport.
         solero::assertFillMode(hdr, ModListModel::ColName);
     }
     // Debounce column-resize saves: a drag emits sectionResized rapidly, so coalesce
@@ -196,7 +199,10 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     m_headerSaveTimer->setInterval(300);
     connect(m_headerSaveTimer, &QTimer::timeout, this, &ModListView::saveHeaderState);
     connect(hdr, &QHeaderView::sectionResized, this,
-            [this](int, int, int){ m_headerSaveTimer->start(); });
+            [this](int, int, int){
+        if (!m_adjustingCols) m_userCols = true; // a genuine user drag stops auto-fill
+        m_headerSaveTimer->start();
+    });
     // The list is manually ordered (drag-reorder); there's no real sort(), so
     // clickable headers would only flip a lying sort indicator. Disable sorting.
     setSortingEnabled(false);
@@ -317,10 +323,12 @@ void ModListView::selectModById(const QString& id) {
 
 void ModListView::autoSizeColumns() {
     // Content-fit every column to its contents (the double-click size), except Name,
-    // which is the Stretch column so it eats the remaining pane width. Flags/Version
-    // stay tight to their icons/text.
+    // which fills the remaining pane width. Flags/Version stay tight to their
+    // icons/text. Our own resize must not be mistaken for a user drag.
+    m_adjustingCols = true;
     solero::applyFitFillDefaults(this, header(), ModListModel::ColName,
                                  {28, 40, 200, 60, 40});
+    m_adjustingCols = false;
 }
 
 void ModListView::applyRowSpans() {
@@ -343,6 +351,17 @@ void ModListView::showEvent(QShowEvent* event) {
         m_didAutoSize = true;
         if (AppConfig::instance().modListHeaderState().isEmpty())
             QTimer::singleShot(0, this, [this]{ autoSizeColumns(); });
+    }
+}
+
+void ModListView::resizeEvent(QResizeEvent* event) {
+    QTreeView::resizeEvent(event);
+    // Until the user customises a column, keep Name filling the pane as it widens /
+    // narrows (and as Ctrl +/- zoom re-flows the other columns).
+    if (!m_userCols) {
+        m_adjustingCols = true;
+        solero::fillColumnToViewport(this, header(), ModListModel::ColName, 200);
+        m_adjustingCols = false;
     }
 }
 

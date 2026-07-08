@@ -7,6 +7,7 @@
 class QTableWidget;
 class QTableWidgetItem;
 class QTimer;
+class QResizeEvent;
 namespace solero { class Profile; }
 namespace solero {
 class DownloadsTab : public QWidget {
@@ -28,18 +29,19 @@ signals:
     void pauseRequested(const QString& fileName);
     void resumeRequested(const QString& fileName);
 protected:
-    // A style sheet is set on the table (item padding), which sets WA_StyleSheet
-    // and blocks Qt's automatic propagation of application-font (zoom) changes.
-    // Re-assert the app font here so the table scales with Ctrl +/- like the
-    // mod/plugin lists (which carry no direct style sheet).
-    void changeEvent(QEvent* e) override;
     // Apply content-fit + fill-Name defaults on first show (viewport width is known
     // by then), unless the user has persisted column widths to restore.
     void showEvent(QShowEvent* e) override;
+    // Keep Name filling the pane as it resizes, until the user customises a column.
+    void resizeEvent(QResizeEvent* e) override;
 private:
     void showContextMenu(const QPoint& pos);
     void saveHeaderState();
     bool m_didAutoSize = false;
+    // Name auto-fills the pane (and absorbs resize/zoom slack) until the user drags a
+    // divider; then their widths are respected and persisted.
+    bool m_userCols = false;
+    bool m_adjustingCols = false; // guard: our own resizes must not count as a user drag
     QTimer* m_headerSaveTimer = nullptr;
     // Repaint the status cell for every file with a pending progress tick. Driven by
     // m_progressTimer so a burst of network-read ticks coalesces into one repaint
@@ -50,6 +52,9 @@ private:
     // with Ctrl +/- zoom, not stay a fixed pixel constant). The last column
     // (Downloaded) then stretches to fill via stretchLastSection.
     void applyColumnWidths();
+    // Re-assert the application (zoom) font on the QSS-styled table and re-polish it
+    // so the new size actually paints (the style engine caches the resolved font).
+    void applyZoomFont();
     // Bytes/sec from a short moving average of received-byte samples (0 if unknown).
     double currentRate(const QString& fileName) const;
     // Build the Status cell {sideText, tooltip} for an in-progress file, including a

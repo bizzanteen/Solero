@@ -3,47 +3,54 @@
 #include <QHeaderView>
 #include <QList>
 
-// Shared column-sizing helpers for the MO2-style tables (Mods, Downloads, Saves).
+// Shared column-sizing for the MO2-style tables (Mods, Downloads, Saves).
 //
-// Layout: every column is content-fit (the width you'd get by double-clicking its
-// separator), except one "fill" column (Name, or Location for Saves) which is set to
-// Stretch so it eats all the remaining pane width. So the data columns stay tight to
-// their content and the fill column absorbs the slack (and pane-resize slack too).
-// User-set widths are persisted separately and restored, overriding these defaults.
-//
-// Note: because the fill column is Stretch, columns to its right are less freely
-// resizable (Qt gives the space to the stretch column) - the accepted trade-off for
-// "the fill column always eats the space".
+// Every column is Interactive (user-resizable). Non-fill columns start content-fit
+// (the width a double-click on the separator gives), clamped to a floor. The fill
+// column (Name, or Location for Saves) takes the remaining viewport so it is the big
+// default, and callers re-run fillColumnToViewport() on resize so it keeps absorbing
+// the slack. Nothing is Stretch, so every divider drag follows the cursor and the fill
+// column stays resizable. Persisted user widths are restored and take precedence.
 
 namespace solero {
 
-// Put every visible non-fill column at its content width (clamped to mins[col] and the
-// header minimum), and make `fillCol` the Stretch column so it eats the rest.
+// Set the fill column to whatever viewport width is left after the other visible
+// columns. Interactive, so the user can still drag it afterwards.
+inline void fillColumnToViewport(QAbstractItemView* view, QHeaderView* hh,
+                                 int fillCol, int fillMin) {
+    if (!view || !hh || hh->isSectionHidden(fillCol)) return;
+    int used = 0;
+    for (int c = 0; c < hh->count(); ++c)
+        if (c != fillCol && !hh->isSectionHidden(c)) used += hh->sectionSize(c);
+    const int avail = view->viewport()->width() - used;
+    hh->resizeSection(fillCol, qMax(avail, fillMin));
+}
+
+// Content-fit every non-fill column (clamped to mins[col] and the header minimum),
+// keep all columns Interactive, and let the fill column take the rest of the viewport.
 inline void applyFitFillDefaults(QAbstractItemView* view, QHeaderView* hh,
                                  int fillCol, const QList<int>& mins) {
     if (!view || !hh) return;
-    hh->setStretchLastSection(false); // the fill column absorbs slack, not the last one
+    hh->setStretchLastSection(false);
     const int n = hh->count();
     for (int c = 0; c < n; ++c) {
-        if (c == fillCol) { hh->setSectionResizeMode(c, QHeaderView::Stretch); continue; }
         hh->setSectionResizeMode(c, QHeaderView::Interactive);
-        if (hh->isSectionHidden(c)) continue;
+        if (c == fillCol || hh->isSectionHidden(c)) continue;
         int w = view->sizeHintForColumn(c);
         if (c < mins.size()) w = qMax(w, mins.at(c));
         w = qMax(w, hh->minimumSectionSize());
         hh->resizeSection(c, w);
     }
+    fillColumnToViewport(view, hh, fillCol, fillCol < mins.size() ? mins.at(fillCol) : 120);
 }
 
-// Re-assert the fill/interactive resize modes after a restoreState() (which also
-// restores modes, potentially the wrong ones). Widths from the restore are kept.
-inline void assertFillMode(QHeaderView* hh, int fillCol) {
+// Re-assert Interactive modes after restoreState() (which can restore Stretch or the
+// wrong modes). Restored widths are kept as-is.
+inline void assertFillMode(QHeaderView* hh, int /*fillCol*/) {
     if (!hh) return;
     hh->setStretchLastSection(false);
-    const int n = hh->count();
-    for (int c = 0; c < n; ++c)
-        hh->setSectionResizeMode(c, c == fillCol ? QHeaderView::Stretch
-                                                 : QHeaderView::Interactive);
+    for (int c = 0; c < hh->count(); ++c)
+        hh->setSectionResizeMode(c, QHeaderView::Interactive);
 }
 
 } // namespace solero

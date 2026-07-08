@@ -6,6 +6,7 @@ class QTableWidget;
 class QLabel;
 class QCheckBox;
 class QTimer;
+class QResizeEvent;
 
 namespace solero {
 class Profile;
@@ -29,6 +30,8 @@ protected:
     // Rescan when the tab is shown, so saves written while playing appear without a
     // manual refresh (the mtime cache keeps this cheap).
     void showEvent(QShowEvent* e) override;
+    // Keep Location filling the pane as the tab resizes, until the user customises a column.
+    void resizeEvent(QResizeEvent* e) override;
     // Re-scale the preview screenshot when its label resizes (pane widened/narrowed).
     bool eventFilter(QObject* obj, QEvent* e) override;
 
@@ -50,6 +53,10 @@ private:
     QImage        m_curShot;                    // current save's screenshot (for rescale)
     int           m_lastShotW = -1;             // last width we scaled m_curShot to
     bool          m_didAutoSize = false;        // applied fit-fill column defaults yet?
+    // Location auto-fills the pane (and absorbs resize slack) until the user drags a
+    // divider; then their widths are respected and persisted.
+    bool          m_userCols = false;
+    bool          m_adjustingCols = false;      // guard: our resizes aren't a user drag
     QTimer*       m_hdrSaveTimer = nullptr;     // debounced column-width persistence
     Profile*      m_profile = nullptr;
 };

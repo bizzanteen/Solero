@@ -3,10 +3,21 @@
 #include <QFile>
 #include <QFileInfo>
 #include <filesystem>
+#include <sys/stat.h>
 
 namespace solero {
 
 Linker::Linker(DeployMode mode) : m_mode(mode) {}
+
+bool Linker::alreadyDeployed(const QString& src, const QString& dst) const {
+    if (m_mode != DeployMode::HardLink) return false; // only hardlinks share an inode
+    struct stat ss, ds;
+    if (::stat(src.toLocal8Bit().constData(), &ss) != 0) return false;   // src: real file
+    if (::lstat(dst.toLocal8Bit().constData(), &ds) != 0) return false;  // dst: no symlink follow
+    // Same device + inode => dst is already a hardlink to src, so its bytes and mtime
+    // match by definition and there is nothing to do.
+    return ss.st_dev == ds.st_dev && ss.st_ino == ds.st_ino;
+}
 
 bool Linker::deploy(const QString& src, const QString& dst) const {
     QDir().mkpath(QFileInfo(dst).path());

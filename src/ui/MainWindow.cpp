@@ -1354,6 +1354,7 @@ void MainWindow::switchProfile(const QString& name) {
         solero::DeployEngine engine(solero::AppConfig::instance().gameDir(),
                                     solero::AppConfig::instance().stagingDir());
         engine.setUserlistPath(profile->lootUserlistPath());
+        engine.setOverwriteDir(solero::AppConfig::overwriteDir(profile->name()));
         auto result = engine.deploy(*profile, solero::AppConfig::instance().deployMode(),
                                     [&](int d, int t){ if (prog) { prog->setProgress(d, t); prog->pump(); } });
         m_deployed = result.success;
@@ -1548,17 +1549,19 @@ void MainWindow::deployActiveAsync(std::function<void(bool)> onDone, bool forceF
     m_deployCont = std::move(onDone);
 
     // Snapshot everything the worker needs so it never reaches back into the UI.
-    const QString gameDir  = solero::AppConfig::instance().gameDir();
-    const QString staging  = solero::AppConfig::instance().stagingDir();
-    const auto    mode     = solero::AppConfig::instance().deployMode();
-    const QString userlist = profile->lootUserlistPath();
+    const QString gameDir   = solero::AppConfig::instance().gameDir();
+    const QString staging   = solero::AppConfig::instance().stagingDir();
+    const auto    mode      = solero::AppConfig::instance().deployMode();
+    const QString userlist  = profile->lootUserlistPath();
+    const QString overwrite = solero::AppConfig::overwriteDir(profile->name());
     QPointer<solero::ProgressModal> modal(m_deployModal);
 
     qCInfo(lcDeploy) << "deploy dispatched to worker thread" << (forceFull ? "(full redeploy)" : "");
     auto future = QtConcurrent::run(
-        [profile, gameDir, staging, mode, userlist, modal, forceFull]() -> solero::DeployResult {
+        [profile, gameDir, staging, mode, userlist, overwrite, modal, forceFull]() -> solero::DeployResult {
             solero::DeployEngine engine(gameDir, staging);
             engine.setUserlistPath(userlist);
+            engine.setOverwriteDir(overwrite);
             // Progress must not touch the widget from this thread - marshal each
             // tick to the UI thread via a queued call.
             return engine.deploy(*profile, mode, [modal](int d, int t){
@@ -1662,6 +1665,7 @@ bool MainWindow::redeployForTool(const QString& title, const QString& message) {
         solero::AppConfig::instance().gameDir(),
         solero::AppConfig::instance().stagingDir());
     engine.setUserlistPath(profile->lootUserlistPath());
+    engine.setOverwriteDir(solero::AppConfig::overwriteDir(profile->name()));
     auto result = engine.deploy(*profile, solero::AppConfig::instance().deployMode(),
                                 [&](int d, int t){ prog.setProgress(d, t); prog.pump(); });
 
@@ -3089,12 +3093,16 @@ void MainWindow::onCreateModFromOverwrite() {
     mod.stagingFolder = solero::uniqueStagingFolder(
         solero::sanitizeStagingFolder(name), takenStagingFolders(profile));
 
-    const QString destData = solero::stagingPathFor(
-        solero::AppConfig::instance().stagingDir(), mod) + "/Data";
-    QDir().mkpath(destData);
+    // Overwrite contents are gameDir-relative (they already carry the leading
+    // "Data/"), so move them into the mod's STAGING ROOT - not its Data subfolder -
+    // to mirror a normal mod's on-disk layout (else paths would double up as
+    // Data/Data/...).
+    const QString destRoot = solero::stagingPathFor(
+        solero::AppConfig::instance().stagingDir(), mod);
+    QDir().mkpath(destRoot);
 
     // Move (not copy) the overwrite contents in; cross-fs safe, leaves Overwrite empty.
-    const int moved = solero::moveTreeContents(overwriteDir, destData);
+    const int moved = solero::moveTreeContents(overwriteDir, destRoot);
 
     // Append -> the new mod lands at the bottom of the real mod list, i.e. just
     // ABOVE the Overwrite pseudo-row (which isn't stored in the mod list).

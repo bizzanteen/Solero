@@ -572,6 +572,15 @@ add_test(NAME test_ColumnResize COMMAND test_ColumnResize)
 set_tests_properties(test_ColumnResize PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${_qt_plugins}")
 
+# Locks in the shared ColumnFit helpers: fill column stays Interactive (resizable),
+# not Stretch, while still filling the pane. Self-contained; needs only Qt Widgets.
+add_executable(test_ColumnFit test_ColumnFit.cpp)
+target_include_directories(test_ColumnFit PRIVATE ../src)
+target_link_libraries(test_ColumnFit PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
+add_test(NAME test_ColumnFit COMMAND test_ColumnFit)
+set_tests_properties(test_ColumnFit PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${_qt_plugins}")
+
 # ThemeAdapter::buildPalette: pure palette logic (needs QGuiApplication for QPalette).
 add_executable(test_ThemeAdapter test_ThemeAdapter.cpp
   ../src/ui/ThemeAdapter.cpp

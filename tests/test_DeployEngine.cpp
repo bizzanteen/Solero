@@ -585,6 +585,44 @@ private slots:
         QVERIFY(result.success);
         QVERIFY(!QDir(gameDir + "/Data/ShaderCache").exists()); // nothing deployed
     }
+
+    // The per-profile Overwrite layer deploys LAST, above every mod, and is
+    // re-linked into the game dir on each deploy - so runtime files captured out
+    // of Data (offset/shader caches, logs) return instead of regenerating.
+    void overwriteDeploysAtHighestPriorityAndUndeploys() {
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QString overwrite   = tmp.path() + "/overwrite";
+        QDir().mkpath(gameDir);
+        // A mod ships foo.nif; Overwrite has foo.nif at the same Data path plus a
+        // unique captured file. Overwrite contents are gameDir-relative (they carry
+        // the leading "Data/"), mirroring the live capture layout.
+        writeFile(stagingRoot + "/aaa/Data/foo.nif", "mod");
+        writeFile(overwrite + "/Data/foo.nif", "overwrite");
+        writeFile(overwrite + "/Data/CellOffsets/x.fco", "cache");
+
+        Profile profile("Test", tmp.path() + "/profiles");
+        ModEntry m; m.type = EntryType::Mod; m.id = "aaa"; m.name = "M"; m.enabled = true;
+        profile.modList().append(m);
+
+        DeployEngine engine(gameDir, stagingRoot);
+        engine.setOverwriteDir(overwrite);
+        auto result = engine.deploy(profile, DeployMode::Copy);
+        QVERIFY(result.success);
+        // Overwrite wins the conflict...
+        { QFile f(gameDir + "/Data/foo.nif"); f.open(QIODevice::ReadOnly);
+          QCOMPARE(f.readAll(), QByteArray("overwrite")); }
+        // ...and its unique captured file lands too.
+        QVERIFY(QFile::exists(gameDir + "/Data/CellOffsets/x.fco"));
+        QCOMPARE(result.conflicts.winnerOf("data/foo.nif"),
+                 DeployEngine::overwriteOwnerId());
+
+        // Undeploy removes overwrite-owned files as well as mod files.
+        engine.undeploy(gameDir);
+        QVERIFY(!QFile::exists(gameDir + "/Data/foo.nif"));
+        QVERIFY(!QFile::exists(gameDir + "/Data/CellOffsets/x.fco"));
+    }
 };
 QTEST_MAIN(TestDeployEngine)
 #include "test_DeployEngine.moc"

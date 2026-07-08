@@ -100,6 +100,10 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
     if (profile.shaderCache().managed
         && !profile.shaderCache().folderFor(activeCacheKey(profile.modList())).isEmpty())
         ++total; // deployed last, below
+    // The Overwrite layer (if present and non-empty) deploys as one more step.
+    const bool willDeployOverwrite =
+        !m_overwriteDir.isEmpty() && QDir(m_overwriteDir).exists();
+    if (willDeployOverwrite) ++total;
     total += 1; // finalize/LOOT step
     int done = 0;
     if (onProgress) onProgress(0, total);
@@ -154,6 +158,26 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
     // normal load-order loop so a chosen mod wins regardless of its priority.
     failures += applyWinnerOverrides(profile, m_gameDir, linker, prevRecord, record, conflicts, ciOwners);
     flushRecord();
+
+    // Deploy the per-profile Overwrite layer LAST so runtime-captured files win
+    // every conflict and are re-linked into the game dir on each deploy. Without
+    // this, files captured out of Data after a play session (offset/shader caches,
+    // logs) would never return, so the game would regenerate them every launch.
+    // Modelled as a synthetic top-priority mod whose source root IS the Overwrite
+    // dir (its contents are already gameDir-relative), so it flows through the same
+    // incremental-skip, backup, conflict and stale-sweep machinery as any mod.
+    if (willDeployOverwrite) {
+        ModEntry ow;
+        ow.type    = EntryType::Mod;
+        ow.id      = overwriteOwnerId();
+        ow.name    = QStringLiteral("Overwrite");
+        ow.enabled = true;
+        failures += deployMod(ow, m_gameDir, linker, prevRecord, record,
+                              conflicts, ciOwners, m_overwriteDir);
+        flushRecord();
+        ++done;
+        if (onProgress) onProgress(done, total);
+    }
 
     // Sort plugins with LOOT (if enabled) before writing plugins.txt. The mod
     // files must already be deployed above so LOOT can read the plugin headers.
@@ -336,11 +360,14 @@ int DeployEngine::deployMod(const ModEntry& mod,
                              const DeployRecord& prevRecord,
                              DeployRecord& record,
                              ConflictIndex& conflicts,
-                             QHash<QString, QString>& ciOwners) {
+                             QHash<QString, QString>& ciOwners,
+                             const QString& modRootOverride) {
     // The id remains the deploy-record owner key; the on-disk folder is resolved
-    // via the (name-based) staging folder.
+    // via the (name-based) staging folder, unless the caller overrides the source
+    // root (the Overwrite layer points it at the Overwrite dir).
     const QString modId = mod.id;
-    QString modRoot = stagingPathFor(m_stagingRoot, mod);
+    QString modRoot = modRootOverride.isEmpty()
+        ? stagingPathFor(m_stagingRoot, mod) : modRootOverride;
     if (!QDir(modRoot).exists()) return 0;
 
     int failures = 0;

@@ -1,5 +1,6 @@
 #include "NexusWebView.h"
 #include "nexus/NexusApi.h"
+#include "app/Application.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QTabWidget>
@@ -214,6 +215,14 @@ NexusWebView::NexusWebView(QWidget* parent) : QWidget(parent) {
 
     connect(m_tabs, &QTabWidget::currentChanged, this, [this](int){ refreshNav(); });
 
+    // Re-apply the app zoom to every open tab whenever it changes.
+    connect(static_cast<Application*>(qApp), &Application::zoomChanged, this, [this]{
+        const double z = static_cast<Application*>(qApp)->zoomFactor();
+        for (int i = 0; i < m_tabs->count(); ++i)
+            if (auto* vw = qobject_cast<QWebEngineView*>(m_tabs->widget(i)))
+                vw->setZoomFactor(z);
+    });
+
     // Nav bar drives the current view
     connect(m_back, &QToolButton::clicked, this, [this]{ if (auto* vw = currentView()) vw->back(); });
     connect(m_fwd,  &QToolButton::clicked, this, [this]{ if (auto* vw = currentView()) vw->forward(); });
@@ -245,6 +254,9 @@ QWebEngineView* NexusWebView::createTabView(bool foreground) {
                                  return v->page();
                              });
     view->setPage(page);
+    // Match the page zoom to the app's zoom level (web content isn't affected by
+    // the app-font scaling that drives zoom elsewhere).
+    view->setZoomFactor(static_cast<Application*>(qApp)->zoomFactor());
 
     connect(view, &QWebEngineView::urlChanged, this, [this, view](const QUrl& u){
         if (view == currentView()) {

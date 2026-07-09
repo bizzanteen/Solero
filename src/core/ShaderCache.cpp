@@ -1,6 +1,5 @@
 #include "ShaderCache.h"
 #include "ModList.h"
-#include "VersionUtil.h"
 #include "core/Log.h"
 #include <QDir>
 #include <QDirIterator>
@@ -168,19 +167,12 @@ int assertShaderCacheDeployed(const QString& gameDir, const QString& cacheStagin
     return placed;
 }
 
-QString activeCacheKey(const ModList& ml) {
+QString communityShadersCacheRoot(const ModList& ml, const QString& stagingDir) {
     const ModEntry* cs = ml.findCommunityShaders();
-    if (!cs) return QStringLiteral("default");
-    if (!cs->nexusFileId.isEmpty()) {
-        qCDebug(lcShader) << "activeCacheKey: nexusFileId" << cs->nexusFileId;
-        return cs->nexusFileId;
-    }
-    const QString nv = normalizeVersion(cs->version);
-    if (!nv.isEmpty()) {
-        qCDebug(lcShader) << "activeCacheKey: version" << nv;
-        return nv;
-    }
-    return QStringLiteral("default");
+    if (!cs || cs->stagingFolder.isEmpty() || stagingDir.isEmpty()) return {};
+    // cs->stagingFolder mirrors the active version variant, so this path is already
+    // scoped to the installed CS version.
+    return stagingDir + "/" + cs->stagingFolder;
 }
 
 } // namespace solero

@@ -44,9 +44,12 @@ int assertShaderCacheDeployed(const QString& gameDir, const QString& cacheStagin
                               bool hardlink, QStringList* relinked = nullptr,
                               int* outFailed = nullptr);
 
-// Derive the cache key for the profile's Community Shaders install: the active
-// CS variant's nexusFileId (most specific), then its normalised version, then
-// "default". Every consumer of the managed cache derives the key through here.
-QString activeCacheKey(const ModList& ml);
+// Where the Community Shaders shader cache lives: inside the CS mod's own staging
+// folder. Returns "<stagingDir>/<CS stagingFolder>" (the mod root that
+// captureShaderCache/assertShaderCacheDeployed treat as cacheStagingDir), or an
+// empty string when CS is absent or has no resolved staging folder. The CS entry's
+// stagingFolder already mirrors the active version variant, so the cache is
+// version-scoped for free. Single source of truth for "where the CS cache lives".
+QString communityShadersCacheRoot(const ModList& ml, const QString& stagingDir);
 
 } // namespace solero

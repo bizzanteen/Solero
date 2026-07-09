@@ -2,7 +2,6 @@
 #include "Linker.h"
 #include "loot/LootSorter.h"
 #include "core/Profile.h"
-#include "core/ShaderCache.h"
 #include "core/AppConfig.h"
 #include "core/StagingFolder.h"
 #include "core/FileUtil.h"
@@ -101,11 +100,6 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
         if (entry.type == EntryType::Mod && entry.enabled) ++total;
     qCInfo(lcDeploy) << "deploy start:" << total << "enabled mods, mode" << int(mode)
                      << ", staging" << m_stagingRoot;
-    // Counts one step only when a cache folder for the active CS version will
-    // actually deploy (below) - mirrors that guard so progress isn't off by one.
-    if (profile.shaderCache().managed
-        && !profile.shaderCache().folderFor(activeCacheKey(profile.modList())).isEmpty())
-        ++total; // deployed last, below
     // The Overwrite layer (if present and non-empty) deploys as one more step.
     const bool willDeployOverwrite =
         !m_overwriteDir.isEmpty() && QDir(m_overwriteDir).exists();
@@ -137,28 +131,9 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
         ++done;
         if (onProgress) onProgress(done, total);
     }
-    // The managed shader cache (profile-level state, not a list entry) deploys after
-    // everything else so its captured shaders win all conflicts (last-wins). Applied
-    // via a synthetic ModEntry pointing at the active CS version's staging folder.
-    if (profile.shaderCache().managed) {
-        const QString folder =
-            profile.shaderCache().folderFor(activeCacheKey(profile.modList()));
-        if (!folder.isEmpty()) {
-            ModEntry cacheEntry;
-            cacheEntry.type          = EntryType::Mod;
-            cacheEntry.id            = QStringLiteral("__shadercache__");
-            cacheEntry.name          = QStringLiteral("Shader Cache");
-            cacheEntry.enabled       = true;
-            cacheEntry.stagingFolder = folder;
-            failures += deployMod(cacheEntry, m_gameDir, linker, prevRecord, record, conflicts, ciOwners);
-            flushRecord();
-            ++done;
-            if (onProgress) onProgress(done, total);
-        }
-        // No folder for this CS version -> deploy no cache at all. CS compiles fresh
-        // and the post-play capture populates this key. Never deploy a different
-        // version's cache.
-    }
+    // The Community Shaders shader cache now lives inside the CS mod's own staging
+    // folder, so it deploys as ordinary CS content in the load-order loop above - no
+    // separate synthetic layer.
 
     // Force per-path winners (Vortex/MO2 per-file conflict choice). Runs after the
     // normal load-order loop so a chosen mod wins regardless of its priority.
@@ -384,23 +359,12 @@ QHash<QString, QString> DeployEngine::computeWinners(const Profile& profile) con
             winner.insert(relPath.toLower(), modId); // later scan (higher priority) wins
         }
     };
-    // Order mirrors deploy(): mods in list order, then the shader cache, then the
-    // Overwrite layer - each scanned after the previous so last-wins is preserved.
+    // Order mirrors deploy(): mods in list order (the CS shader cache rides inside
+    // the CS mod), then the Overwrite layer - each scanned after the previous so
+    // last-wins is preserved.
     for (const auto& e : profile.modList())
         if (e.type == EntryType::Mod && e.enabled)
             scan(e.id, stagingPathFor(m_stagingRoot, e));
-    if (profile.shaderCache().managed) {
-        const QString folder =
-            profile.shaderCache().folderFor(activeCacheKey(profile.modList()));
-        if (!folder.isEmpty()) {
-            // Resolve the on-disk root exactly like the deploy loop (a staging folder
-            // name under m_stagingRoot), not the bare folder string.
-            ModEntry ce;
-            ce.id = QStringLiteral("__shadercache__");
-            ce.stagingFolder = folder;
-            scan(ce.id, stagingPathFor(m_stagingRoot, ce));
-        }
-    }
     if (!m_overwriteDir.isEmpty() && QDir(m_overwriteDir).exists())
         scan(overwriteOwnerId(), m_overwriteDir);
     return winner;

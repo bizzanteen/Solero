@@ -542,11 +542,10 @@ QPair<QString,QString> DownloadsTab::formatActiveProgress(const QString& fileNam
     if (total > 0 && received <= total)
         etaStr = formatEta(qint64(double(total - received) / rate));
 
-    // Beside the icon: "3.2 MB/s <middle-dot> 0:45" (drop the ETA if unknown).
-    QString side = rateStr;
-    if (!etaStr.isEmpty())
-        side += QStringLiteral(" ") + QChar(0x00B7) + QStringLiteral(" ") + etaStr;
-    // Tooltip carries the percentage too, which the narrow cell can't always show.
+    // Beside the icon: just the percentage, so the cell stays narrow. The rate and
+    // ETA move into the tooltip below.
+    const QString side = pct;
+    // Tooltip carries the rate and ETA the compact cell no longer shows.
     QString full = QStringLiteral("Downloading ") + pct + QStringLiteral(" ")
                  + QChar('-') + QStringLiteral(" ") + rateStr;
     if (!etaStr.isEmpty())

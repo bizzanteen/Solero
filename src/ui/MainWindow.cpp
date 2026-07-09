@@ -3153,8 +3153,8 @@ void MainWindow::onClearShaderCache(const QString& modId) {
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (reply != QMessageBox::Yes) return;
 
-    // Resolve the managed cache's staging root (empty if not managed -> that copy is
-    // skipped, but the live game-dir + Overwrite copies are still cleared).
+    // Resolve the CS mod's cache staging root (empty if CS isn't installed -> that copy
+    // is skipped, but the live game-dir + Overwrite copies are still cleared).
     auto* scP = m_profileMgr->activeProfile();
     const QString cacheStaging = cacheStagingPath(scP);
 
@@ -5021,8 +5021,8 @@ void MainWindow::onPlay() {
         }
     }
 
-    // Re-assert the managed shader cache into the live game dir on every launch,
-    // for the same reason as the INI re-sync above: Community Shaders OWNS
+    // Re-assert the Community Shaders shader cache into the live game dir on every
+    // launch, for the same reason as the INI re-sync above: Community Shaders OWNS
     // Data/ShaderCache at runtime and DELETES the whole tree whenever it invalidates
     // the cache, silently removing the hardlinks we deployed. ensureDeployed() skips
     // redeploy when the modlist is deployed-and-clean, so the staged Info.ini would

@@ -281,22 +281,23 @@ everything else.
 ## Community Shaders
 
 [Community Shaders](https://www.nexusmods.com/skyrimspecialedition/mods/86492) compiles a
-shader cache that's slow to rebuild from scratch, so Solero manages it and you rarely pay
-that cost.
+shader cache that's slow to rebuild from scratch. Solero handles it automatically, so you
+rarely pay that cost.
 
-- It keeps a separate compiled cache per CS version. Switching versions restores that
-  version's cache instead of recompiling, and never deploys the wrong one.
-- After you play, it captures the freshly compiled cache into its managed store for the
-  active CS version.
+- The cache is stored inside the Community Shaders mod itself, so it's kept per CS version.
+  Switching versions restores that version's cache instead of recompiling, never deploys
+  the wrong one, and the cache is removed when you remove Community Shaders.
+- After you play, Solero captures the freshly compiled cache into the Community Shaders mod
+  for the version you're running.
 - Community Shaders deletes `Data/ShaderCache` at runtime whenever it invalidates the
   cache, which would wipe the hardlinks Solero deployed. So before each launch Solero
-  re-links the staged cache back into the game directory, which is what stops the
-  recompile every session. You'll see a brief "Restored N shader cache files" message when
-  it happens.
+  re-links the cache back into the game directory, which is what stops the recompile every
+  session. You'll see a brief "Restored N shader cache files" message when it happens.
 - When you do want a clean recompile, for instance after changing shader settings,
   right-click the Community Shaders mod and choose Clear Shader Cache.
 
-None of this needs configuring. It activates as soon as Community Shaders is in your list.
+None of this needs configuring or turning on. It just works as soon as Community Shaders is
+in your list.
 
 ## Tools
 

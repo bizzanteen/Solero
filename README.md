@@ -50,8 +50,8 @@ What it does:
 - External tools. Register and launch tools (xEdit, Nemesis or Pandora, DynDOLOD,
   BodySlide, PGPatcher, and so on) through Proton, and capture their output automatically.
 - Importers. Bring in an existing MO2 setup, or install a Wabbajack modlist.
-- Community Shaders support. A managed per-version shader cache, so switching CS versions
-  doesn't recompile from scratch or deploy the wrong cache.
+- Community Shaders support. The shader cache is handled automatically and kept per CS
+  version, so switching versions doesn't recompile from scratch or deploy the wrong cache.
 - Automation. A built-in MCP server lets MCP clients (AI assistants included) read and
   edit your load order, with a transaction log you can roll back.
 
@@ -237,13 +237,14 @@ The [full guide](docs/GUIDE.md#skse) has the details.
 ## Community Shaders
 
 [Community Shaders](https://www.nexusmods.com/skyrimspecialedition/mods/86492) compiles a
-shader cache that's slow to rebuild, so Solero manages it for you.
+shader cache that's slow to rebuild. Solero handles it automatically, with nothing to turn
+on: the cache is stored inside the Community Shaders mod itself.
 
-It keeps a separate compiled cache per CS version, which means switching versions
-restores that version's cache instead of recompiling, and never deploys the wrong one.
-It captures the cache after you play, and re-links it into the game before each launch,
-because Community Shaders deletes `Data/ShaderCache` at runtime. That's what stops you
-recompiling shaders every session. If you do want a clean recompile, right-click the
+Because it lives with the mod, it's kept per CS version, so switching versions restores
+that version's cache instead of recompiling, and it's removed when you remove Community
+Shaders. Solero captures the cache after you play and re-links it into the game before each
+launch, because Community Shaders deletes `Data/ShaderCache` at runtime. That's what stops
+you recompiling shaders every session. If you do want a clean recompile, right-click the
 Community Shaders mod and choose Clear Shader Cache.
 
 The [full guide](docs/GUIDE.md#community-shaders) has the details.

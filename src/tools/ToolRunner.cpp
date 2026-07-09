@@ -57,7 +57,8 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
     // snapshot the game dir just before the run and, afterwards, capture anything
     // loose (unmanaged by the active deployment) it left into Overwrite - no menu,
     // no per-deploy baseline. Preset tools have known output, so they're excluded.
-    const bool customLooseCapture = !capture && (ToolCatalog::byId(exe.id) == nullptr);
+    const bool customLooseCapture = !capture && !exe.suppressLooseCapture
+                                    && (ToolCatalog::byId(exe.id) == nullptr);
     QSet<QString> looseBaseline;
 
     // Capture roots: always Data, plus any extra roots a tool/preset declares

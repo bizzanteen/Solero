@@ -5176,7 +5176,10 @@ void MainWindow::onPlay() {
     exe.winePrefix = QDir(gameDir + "/../..").canonicalPath() + "/compatdata/489830";
     // No VFS: files the game writes at runtime (e.g. Community Shaders' shader
     // cache) land in the real Data folder and stay there - they are not captured
-    // or moved into Overwrite.
+    // or moved into Overwrite. Without this the game falls into the custom-tool
+    // loose capture and its runtime writes (including the shader cache the managed
+    // capture wants) get swept into Overwrite instead.
+    exe.suppressLooseCapture = true;
 
     // Lock the UI (MO2-style) while the game runs; ToolRunner blocks via an event
     // loop until the process exits, then we unlock.

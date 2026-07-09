@@ -127,6 +127,11 @@ struct Executable {
     // True for tools that write to their own output path (e.g. Radium) - Solero
     // skips the Data capture walk and relies on the tool's configured output dir.
     bool writesOutputDirectly = false;
+    // True for the game launch itself: its runtime writes (Community Shaders' cache,
+    // CS settings, ImGui ini) are meant to stay in the live Data dir (no-VFS design)
+    // and, for the shader cache, be handled by the dedicated managed-cache capture -
+    // NOT swept into Overwrite by the custom-tool loose capture.
+    bool suppressLooseCapture = false;
     QString iconPath;
     QList<ToolAction> extraActions;
 };

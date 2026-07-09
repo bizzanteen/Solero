@@ -6,6 +6,7 @@
 #include "core/Log.h"
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QSet>
 #include <QJsonDocument>
 #include <QJsonArray>
@@ -92,10 +93,6 @@ bool Profile::save() const {
         qCWarning(lcProfile) << "save:" << m_name << "file rules write failed" << fileRulesPath();
         return false;
     }
-    if (!saveShaderCache()) {
-        qCWarning(lcProfile) << "save:" << m_name << "shader cache write failed" << shaderCachePath();
-        return false;
-    }
     if (!saveSettings()) {
         qCWarning(lcProfile) << "save:" << m_name << "settings write failed" << profileSettingsPath();
         return false;
@@ -113,60 +110,52 @@ bool Profile::saveModListOnly() const {
     return m_modList.saveToFile(modlistPath());
 }
 
-bool Profile::saveShaderCache() const {
-    // Only persist when active; otherwise remove a stale file so an un-managed
-    // profile has no shadercache.json lying around.
-    if (!m_shaderCache.active()) {
-        QFile::remove(shaderCachePath());
-        return true;
-    }
-    QJsonObject foldersObj;
-    for (auto it = m_shaderCache.folders.cbegin(); it != m_shaderCache.folders.cend(); ++it)
-        foldersObj.insert(it.key(), it.value());
-    QJsonObject root;
-    root["managed"] = m_shaderCache.managed;
-    root["folders"] = foldersObj;
-    return atomicWrite(shaderCachePath(), QJsonDocument(root).toJson(QJsonDocument::Indented));
-}
+bool Profile::migrateAwayFromManagedCache() {
+    // The shader cache used to live in separate "managed cache" staging folders
+    // tracked by shadercache.json (and, older still, a hidden isManagedCache mod-list
+    // entry). It now lives inside the Community Shaders mod's own staging folder, so
+    // retire the old machinery: gather the old folder names, move them to Trash
+    // (reversible - never a hard delete), and remove the bookkeeping.
+    QStringList oldFolders;
 
-bool Profile::loadShaderCache() {
-    m_shaderCache = {};
     QFile f(shaderCachePath());
-    if (!f.open(QIODevice::ReadOnly)) return false; // missing == not managed
-    const auto root = QJsonDocument::fromJson(f.readAll()).object();
-    m_shaderCache.managed = root["managed"].toBool(false);
-    if (root.contains("folders")) {
-        // New schema: {"managed": bool, "folders": {key: folder, ...}}
+    if (f.open(QIODevice::ReadOnly)) {
+        const auto root = QJsonDocument::fromJson(f.readAll()).object();
+        f.close();
         const auto fobj = root["folders"].toObject();
         for (auto it = fobj.constBegin(); it != fobj.constEnd(); ++it)
-            m_shaderCache.folders.insert(it.key(), it.value().toString());
-    } else {
-        // Legacy schema migration: {"managed": bool, "stagingFolder": str}
-        // m_modList must already be loaded before this is called (see Profile::load).
-        const QString sf = root["stagingFolder"].toString();
-        if (!sf.isEmpty())
-            m_shaderCache.folders.insert(activeCacheKey(m_modList), sf);
+            oldFolders << it.value().toString();
+        const QString legacySingle = root["stagingFolder"].toString();
+        if (!legacySingle.isEmpty()) oldFolders << legacySingle;
     }
-    return true;
-}
 
-bool Profile::migrateManagedCacheEntry() {
-    // Legacy profiles stored the managed cache as a hidden mod-list entry. Lift the
-    // first such entry into m_shaderCache and drop it from the list. The staged
-    // shaders on disk are untouched - only the bookkeeping moves.
+    // Older profiles kept the cache as a hidden mod-list entry - drop it too.
+    bool droppedEntry = false;
     auto& entries = m_modList.entries();
     for (int i = 0; i < entries.size(); ++i) {
         if (entries[i].type != EntryType::Mod || !entries[i].isManagedCache) continue;
-        if (!m_shaderCache.active()) { // don't clobber state already in shadercache.json
-            m_shaderCache.managed = entries[i].enabled;
-            const QString key = activeCacheKey(m_modList);
-            if (!entries[i].stagingFolder.isEmpty())
-                m_shaderCache.folders.insert(key, entries[i].stagingFolder);
-        }
+        if (!entries[i].stagingFolder.isEmpty()) oldFolders << entries[i].stagingFolder;
         m_modList.remove(entries[i].id);
-        return true;
+        droppedEntry = true;
+        break;
     }
-    return false;
+
+    const bool hadFile = QFile::exists(shaderCachePath());
+    if (oldFolders.isEmpty() && !hadFile && !droppedEntry) return false; // nothing to do
+
+    const QString stagingRoot = AppConfig::instance().stagingDir();
+    for (const QString& folder : oldFolders) {
+        if (folder.isEmpty()) continue;
+        const QString path = stagingRoot + "/" + folder;
+        if (QFileInfo::exists(path)) {
+            if (QFile::moveToTrash(path))
+                qCInfo(lcProfile) << "migrateAwayFromManagedCache: trashed old cache folder" << path;
+            else
+                qCWarning(lcProfile) << "migrateAwayFromManagedCache: could not trash" << path;
+        }
+    }
+    QFile::remove(shaderCachePath());
+    return true;
 }
 
 bool Profile::load() {
@@ -176,11 +165,10 @@ bool Profile::load() {
         m_pluginList = PluginList::loadFromFile(pluginsPath());
     loadExecutables();
     loadFileRules();
-    loadShaderCache();
     loadSettings();
     loadLoadOrderState(); // after the plugin list - state is applied onto it
-    // Lift any legacy isManagedCache mod-list entry into m_shaderCache.
-    bool dirty = migrateManagedCacheEntry();
+    // Retire the old separate managed shader-cache (cache now lives in the CS folder).
+    bool dirty = migrateAwayFromManagedCache();
     // Backfill staging-folder names and rename UUID folders on disk.
     dirty = migrateStagingFolders() || dirty;
     if (dirty) save(); // persist migrations (new shadercache.json + cleaned modlist)

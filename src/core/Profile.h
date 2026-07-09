@@ -26,11 +26,6 @@ public:
     QList<Executable>& executables() { return m_executables; }
     const QList<Executable>& executables() const { return m_executables; }
 
-    // Managed Community Shaders shader cache (first-class state, not a mod-list
-    // entry). Deployed last so its shaders win; invisible in the mod list.
-    ManagedShaderCache& shaderCache() { return m_shaderCache; }
-    const ManagedShaderCache& shaderCache() const { return m_shaderCache; }
-
     QString modlistPath()       const;
     QString pluginsPath()       const;
     QString skyrimIniPath()     const;
@@ -128,18 +123,17 @@ private:
     QList<Executable> m_executables;
     QHash<QString, QSet<QString>> m_hiddenFiles;  // modId  -> hidden relPaths
     QHash<QString, QString>       m_fileOverrides; // relPath -> forced winner modId
-    ManagedShaderCache            m_shaderCache;
     bool                          m_localSaves = false;
     bool                          m_localInis  = false;     // per-profile INI files
 
     bool saveExecutables() const;
     bool loadExecutables();
-    bool saveShaderCache() const;
-    bool loadShaderCache();
     bool loadSettings();
-    // One-time: lift a legacy isManagedCache mod-list entry into m_shaderCache and
-    // drop it from the list. Returns true if a migration happened (caller saves).
-    bool migrateManagedCacheEntry();
+    // One-time: retire the old separate managed shader-cache. Reads the legacy
+    // shadercache.json (and any isManagedCache mod-list entry), moves those staging
+    // folders to Trash, and deletes shadercache.json. The cache now lives inside the
+    // Community Shaders mod's own staging folder. Returns true if anything changed.
+    bool migrateAwayFromManagedCache();
     bool saveFileRules() const;
     bool loadFileRules();
     // Manual load-order control (lock + pins). The state lives on m_pluginList;

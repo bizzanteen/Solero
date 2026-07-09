@@ -89,7 +89,6 @@ bool AppConfig::load() {
     if (m_documents.isEmpty() && !m_gameDir.isEmpty())
         m_documents = detectDocumentsDir(m_gameDir);
     m_confirmModDeletion   = obj["confirmModDeletion"].toBool(true);
-    m_shaderCacheDeclined  = obj["shaderCacheDeclined"].toBool(false);
     m_toolsMigratedToPerProfile = obj["toolsMigratedToPerProfile"].toBool(false);
     m_outputModsProfileQualified = obj["outputModsProfileQualified"].toBool(false);
     m_cycleSeparatorColors = obj["cycleSeparatorColors"].toBool(true);
@@ -139,7 +138,6 @@ bool AppConfig::save() const {
     obj["documentsDir"]    = m_documents;
     obj["downloadsDir"]    = m_downloads;
     obj["confirmModDeletion"]   = m_confirmModDeletion;
-    obj["shaderCacheDeclined"]  = m_shaderCacheDeclined;
     obj["toolsMigratedToPerProfile"] = m_toolsMigratedToPerProfile;
     obj["outputModsProfileQualified"] = m_outputModsProfileQualified;
     obj["cycleSeparatorColors"] = m_cycleSeparatorColors;

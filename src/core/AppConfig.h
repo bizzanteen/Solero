@@ -40,9 +40,6 @@ public:
     // Persisted preferences
     bool confirmModDeletion() const          { return m_confirmModDeletion; }
     void setConfirmModDeletion(bool v)        { m_confirmModDeletion = v; }
-    // One-time "let Solero manage the Community Shaders cache?" offer was declined.
-    bool shaderCacheDeclined() const          { return m_shaderCacheDeclined; }
-    void setShaderCacheDeclined(bool v)       { m_shaderCacheDeclined = v; }
     // One-time migration of the legacy global tool template into the active
     // profile's per-profile executables. Set true after the migration runs once.
     bool toolsMigratedToPerProfile() const    { return m_toolsMigratedToPerProfile; }
@@ -149,7 +146,6 @@ private:
     QString m_documents;
     QString m_downloads;
     bool m_confirmModDeletion = true;
-    bool m_shaderCacheDeclined = false;
     bool m_toolsMigratedToPerProfile = false;
     bool m_outputModsProfileQualified = false;
     bool m_cycleSeparatorColors = true;

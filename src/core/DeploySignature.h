@@ -8,10 +8,11 @@ namespace solero {
 
 // A stable fingerprint of everything about a profile that determines WHAT a deploy
 // links into the game dir: the ordered enabled mods (plus each mod's active version
-// variant), the per-file hide rules and forced conflict winners, and whether the
-// managed shader cache is on. Two profiles with equal signatures deploy the same set
-// of files, so the UI can flip back to "Deployed" after a net-zero change (disable
-// then re-enable a mod, reorder then reorder back, hide then unhide a file).
+// variant) and the per-file hide rules and forced conflict winners. Two profiles
+// with equal signatures deploy the same set of files, so the UI can flip back to
+// "Deployed" after a net-zero change (disable then re-enable a mod, reorder then
+// reorder back, hide then unhide a file). The Community Shaders cache rides along
+// inside the CS mod, so its enabled/disabled state is already covered by the mod list.
 //
 // Deliberately NOT included: INI/save redirection and staged file CONTENT (a data
 // rename, reinstall, patch run, ini toggle). Those change the deployment without
@@ -43,9 +44,6 @@ inline QByteArray deploySignature(const Profile& p) {
             s += "O:"; s += k.toUtf8(); s += '='; s += o.value(k).toUtf8(); s += ';';
         }
     }
-    s += "SC:";
-    s += (p.shaderCache().managed ? '1' : '0');
-    s += ';';
     return s;
 }
 

@@ -760,6 +760,12 @@ void MainWindow::updateZoomMenu() {
         a->setChecked(a->data().toInt() == cur);
 }
 
+QMenu* MainWindow::createPopupMenu() {
+    // Returning null removes the default right-click menu on the toolbar/menu bar,
+    // whose only entry was a checkable toggle for the (non-movable) "Main" toolbar.
+    return nullptr;
+}
+
 void MainWindow::setupToolbar() {
     auto* tb = addToolBar("Main");
     tb->setMovable(false);

@@ -71,6 +71,9 @@ protected:
     // installFromArchive(). Non-archive drops are ignored.
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dropEvent(QDropEvent* event) override;
+    // Suppress Qt's built-in toolbar/dock toggle context menu (a lone checkable
+    // "Main" entry from the toolbar title) that pops up on right-click.
+    QMenu* createPopupMenu() override;
 
 private:
     // Detach every model from the active Profile so a late paint can't deref it

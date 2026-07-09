@@ -2726,6 +2726,17 @@ void MainWindow::installFromArchive(const QString& archive) {
 
     // A freshly-installed Community Shaders triggers the one-time managed-cache
     // offer (no-op if CS isn't present, already managed, or previously declined).
+    // If the user declined before but has now (re)installed CS itself, treat that
+    // as a fresh start and clear the declined flag so the offer shows again -
+    // otherwise a reinstall silently leaves the cache spilling into overwrite/.
+    if (const solero::ModEntry* installed = profile->modList().findById(refreshId)) {
+        const bool isCS = installed->nexusModId == "86492"
+            || installed->name.compare("Community Shaders", Qt::CaseInsensitive) == 0;
+        if (isCS && solero::AppConfig::instance().shaderCacheDeclined()) {
+            solero::AppConfig::instance().setShaderCacheDeclined(false);
+            solero::AppConfig::instance().save();
+        }
+    }
     maybeOfferShaderCacheManagement();
 
     // If this install satisfied a requirement listed in an open RequirementsDialog,

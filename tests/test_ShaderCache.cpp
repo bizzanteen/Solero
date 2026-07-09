@@ -253,21 +253,23 @@ private slots:
         QCOMPARE(captureShaderCache(gameDir, QString()), 0);
     }
 
-    // activeCacheKey returns nexusFileId > normalised version > "default".
-    void activeCacheKey_fallbackChain() {
+    // communityShadersCacheRoot resolves to <stagingDir>/<CS stagingFolder>, or empty
+    // when CS is absent or has no staging folder.
+    void communityShadersCacheRoot_resolvesCsFolder() {
         ModList ml;
-        QCOMPARE(activeCacheKey(ml), QString("default")); // no CS mod
+        QCOMPARE(communityShadersCacheRoot(ml, "/staging"), QString()); // no CS mod
 
         ModEntry cs;
         cs.type = EntryType::Mod;
         cs.id   = "cs";
         cs.name = "Community Shaders";
-        cs.version = "1.6.1";
         ml.append(cs);
-        QCOMPARE(activeCacheKey(ml), QString("1.6.1")); // normalised version fallback
+        QCOMPARE(communityShadersCacheRoot(ml, "/staging"), QString()); // no stagingFolder
 
-        ml.entries().last().nexusFileId = "f77";
-        QCOMPARE(activeCacheKey(ml), QString("f77")); // fileId wins
+        ml.entries().last().stagingFolder = "Community Shaders";
+        QCOMPARE(communityShadersCacheRoot(ml, "/staging"),
+                 QString("/staging/Community Shaders"));
+        QCOMPARE(communityShadersCacheRoot(ml, QString()), QString()); // no staging dir
     }
 
     // findCommunityShaders matches nexusModId 86492.

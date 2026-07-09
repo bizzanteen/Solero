@@ -42,15 +42,6 @@ private slots:
         QCOMPARE(deploySignature(p), base);
     }
 
-    // Turning the managed shader cache on changes what deploys.
-    void shaderCacheToggle_changesSignature() {
-        QTemporaryDir tmp;
-        Profile p("T", tmp.path());
-        p.modList().append(mod("a"));
-        const QByteArray base = deploySignature(p);
-        p.shaderCache().managed = true;
-        QVERIFY(deploySignature(p) != base);
-    }
 };
 
 QTEST_MAIN(TestDeploySignature)

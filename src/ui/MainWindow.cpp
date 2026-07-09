@@ -4464,9 +4464,25 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     hideRunLock();
     m_toolRunning = false;
 
-    // Re-enable the output mod and redeploy so the tool's fresh output returns to
-    // the deployed game Data. Idempotent (no-op if we never toggled).
-    restoreOutput();
+    if (res.launched) {
+        // The tool ran and may have captured fresh output. Re-enable the output mod
+        // (if we toggled it off for the run) and persist that, but deliberately do
+        // NOT redeploy: the output is staged and ready, so leaving the deploy pending
+        // lets the user enable anything else and deploy once, instead of being forced
+        // to deploy here and again after their next change. The deploy button reflects
+        // the pending state.
+        if (tp && !resolvedOutputModId.isEmpty()) {
+            tp->modList().setEnabled(resolvedOutputModId, true);
+            tp->save();
+        }
+        toggledOutput = false; // handled here; keep restoreOutput() a no-op
+        m_contentDirty = true;
+        refreshDeployDirty();
+    } else {
+        // The tool never launched, so nothing new was produced - cleanly restore the
+        // pre-run deployed state (re-enable + redeploy only if we toggled it off).
+        restoreOutput();
+    }
 
     if (!res.launched) {
         QMessageBox::warning(this, "Tool",

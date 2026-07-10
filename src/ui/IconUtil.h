@@ -188,6 +188,43 @@ inline QIcon neutralStatusIcon(int size = 14) {
     p.drawLine(QPointF(px * 0.30, px * 0.50), QPointF(px * 0.70, px * 0.50));
     return QIcon(pm);
 }
+// Solid right-pointing triangle for the Play button. Sized by the caller so it
+// can scale with the toolbar font / app zoom. Colour is passed in (the Play pill
+// uses its highlighted-text colour so the glyph reads on the accent fill).
+inline QIcon playTriangleIcon(int size, const QColor& color) {
+    QPixmap pm = makeStatusPixmap(size);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const qreal px = size;
+    QPainterPath t;
+    t.moveTo(px * 0.24, px * 0.16);
+    t.lineTo(px * 0.84, px * 0.50);
+    t.lineTo(px * 0.24, px * 0.84);
+    t.closeSubpath();
+    p.setPen(Qt::NoPen);
+    p.setBrush(color);
+    p.drawPath(t);
+    return QIcon(pm);
+}
+// A bare check mark (no surrounding circle) for the Deploy button's "Deployed"
+// state. Caller-sized so it scales with the toolbar font / app zoom.
+inline QIcon checkMarkIcon(int size, const QColor& color) {
+    QPixmap pm = makeStatusPixmap(size);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const qreal px = size;
+    QPen pen(color);
+    pen.setWidthF(px * 0.16);
+    pen.setCapStyle(Qt::RoundCap);
+    pen.setJoinStyle(Qt::RoundJoin);
+    p.setPen(pen);
+    QPainterPath tick;
+    tick.moveTo(px * 0.20, px * 0.54);
+    tick.lineTo(px * 0.42, px * 0.74);
+    tick.lineTo(px * 0.80, px * 0.28);
+    p.drawPath(tick);
+    return QIcon(pm);
+}
 // Feather: a light, tilted quill that trails the name of a light-master
 // (ESL / ESL-flagged) plugin, so a light plugin is obvious at a glance without
 // reading the Type column. Painted (not a font glyph) to match the app's icon

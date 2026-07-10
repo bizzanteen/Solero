@@ -118,7 +118,14 @@ private:
     void showRunLock(const QString& toolName);
     void hideRunLock();
     void refreshDeployState();   // detect an existing deployment on startup
-    void updateDeployButton();   // sync the toggle's text/tooltip to m_deployed
+    void updateDeployButton();   // sync the toggle's icon/text/tooltip to m_deployed
+    // Re-apply the app font (uniform size, matching "Profile:") to every toolbar
+    // text element and re-render the Deploy/Play glyph icons at a font-proportional
+    // size, so the whole bar scales together with Ctrl +/- zoom.
+    void applyToolbarFont();
+    // Square size for the Deploy/Play glyph icons, derived from the current app font
+    // so they stay proportional to the button text across zoom levels.
+    int toolbarIconPx() const;
     // Recompute m_deployDirty after a mod-list change: compare the current deploy
     // signature to the one captured at deploy. A net-zero structural change (disable
     // then re-enable, reorder then back) clears the dirty flag; sticky content
@@ -333,6 +340,8 @@ private:
                                   // reinstall, patch, ini/save toggle); cleared on deploy
     QToolButton* m_playBtn = nullptr; // the accent-pill Play button (re-fonted on zoom)
     QToolButton* m_deployBtn = nullptr; // the Deploy button (sized to match Play/Profile)
+    QToolButton* m_browseBtn = nullptr; // the Browse Nexus toolbar button
+    QLabel* m_profileLabel = nullptr;   // the "Profile:" toolbar label (font reference)
     bool m_loadOrderDirty = false; // user manually reordered plugins since last sort/deploy
     bool m_toolRunning = false;  // guards re-entrancy while a tool runs (nested event loop)
     bool m_switchingProfile = false; // guards re-entrant switchProfile (pumps re-dispatch combo changes)

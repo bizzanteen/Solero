@@ -130,6 +130,14 @@ private:
     int removeStalePaths(const DeployRecord& prevRecord, DeployRecord& newRecord,
                          const QString& gameDir, int& failures);
 
+    // Undeploy safety net: remove any game-dir file that is a hardlink to content
+    // reachable from the staging root but which the deploy record didn't track
+    // (record orphans from legacy/migration drift or a winner-change edge). Their
+    // bytes persist in staging, so removal is lossless and leaves the game dir
+    // vanilla. Returns the count removed. Never touches single-link (vanilla) files,
+    // the backup tree, or staged paths that resolve into the game dir itself.
+    int sweepStagingOrphans(const QString& gameDir, const QString& backupRoot);
+
     // Source-file fingerprint (size + mtime ms) used for the incremental skip test
     // and stored in the record. Follows symlinks so it reflects real content.
     DeployRecord::Fingerprint fingerprintOf(const QFileInfo& srcInfo) const;

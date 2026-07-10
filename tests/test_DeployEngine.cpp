@@ -84,6 +84,29 @@ private slots:
         engine.undeploy(gameDir);
         QVERIFY(!QFile::exists(gameDir + "/Data/bar.nif"));
     }
+    // Safety net: a file HARDLINKED from staging into the game dir but absent from
+    // the deploy record (a migration/tool orphan) must still be swept on undeploy,
+    // while a genuine single-link vanilla file is preserved.
+    void undeploy_sweepsUntrackedStagingOrphans() {
+        QTemporaryDir tmp;
+        QString stagingRoot = tmp.path() + "/staging";
+        QString gameDir     = tmp.path() + "/game";
+        QDir().mkpath(gameDir + "/Data/meshes");
+
+        writeFile(stagingRoot + "/aaa/Data/meshes/orphan.nif", "staged");
+        QVERIFY(::link(
+            QFile::encodeName(stagingRoot + "/aaa/Data/meshes/orphan.nif").constData(),
+            QFile::encodeName(gameDir + "/Data/meshes/orphan.nif").constData()) == 0);
+
+        writeFile(gameDir + "/Data/Skyrim.esm", "vanilla"); // single-link vanilla
+
+        // No deploy ran, so there is no record; the sweep must still catch the orphan.
+        DeployEngine engine(gameDir, stagingRoot);
+        engine.undeploy(gameDir);
+
+        QVERIFY(!QFile::exists(gameDir + "/Data/meshes/orphan.nif")); // swept
+        QVERIFY(QFile::exists(gameDir + "/Data/Skyrim.esm"));         // vanilla kept
+    }
     void disabledMod_notDeployed() {
         QTemporaryDir tmp;
         QString stagingRoot = tmp.path() + "/staging";

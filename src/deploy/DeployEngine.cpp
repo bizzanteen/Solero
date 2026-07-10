@@ -10,6 +10,8 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QDir>
+#include <QSet>
+#include <QPair>
 #include <QFileInfo>
 #include <QDateTime>
 #include <QDebug>
@@ -705,6 +707,16 @@ bool DeployEngine::undeploy(const QString& gameDir, const std::function<void(int
         if (onProgress && (done % 20 == 0 || done == total)) onProgress(done, total);
     }
 
+    // Safety net: remove deploy-record ORPHANS - files Solero hardlinked into the
+    // game dir that never made it into the record (legacy/migration drift, a
+    // winner-change edge, or content that predated a record fix). The record loop
+    // above can't see them, so without this they'd survive undeploy and read as
+    // "not vanilla". They're identified structurally (a hardlink whose inode is a
+    // real staged file), so this needs no record and self-heals however they arose.
+    const int swept = sweepStagingOrphans(normGameDir, backupRoot);
+    if (swept > 0)
+        qCInfo(lcDeploy) << "undeploy: swept" << swept << "untracked staging orphan(s)";
+
     // Restore pre-existing originals that mods were deployed over. The backup
     // tree mirrors relPaths, so it's self-describing - move each file back to
     // its game-dir slot (overwriting the just-removed deployed file's place),
@@ -738,6 +750,72 @@ bool DeployEngine::undeploy(const QString& gameDir, const std::function<void(int
     qCInfo(lcDeploy) << "undeploy done:" << (total - failures) << "of" << total
                      << "recorded files removed," << failures << "failure(s)";
     return failures == 0;
+}
+
+int DeployEngine::sweepStagingOrphans(const QString& gameDir, const QString& backupRoot) {
+    if (m_stagingRoot.isEmpty() || !QDir(m_stagingRoot).exists()) return 0;
+    const QString normGameDir = QDir::cleanPath(gameDir);
+
+    // 1. Every (dev,inode) reachable as a real file from the staging root, following
+    //    symlinks (mods may symlink into Solero's own source trees, e.g. Wabbajack).
+    //    Skip anything that resolves INTO the game dir - never treat a vanilla /
+    //    StockGame file as a removable orphan.
+    QSet<QPair<quint64, quint64>> stagedInodes;
+    {
+        QDirIterator it(m_stagingRoot, QDir::Files | QDir::NoDotAndDotDot,
+                        QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
+        while (it.hasNext()) {
+            it.next();
+            const QFileInfo fi = it.fileInfo();
+            if (fi.isSymLink()) {
+                const QString canon = fi.canonicalFilePath();
+                if (canon.isEmpty()
+                    || QDir::cleanPath(canon).startsWith(normGameDir + "/"))
+                    continue;
+            }
+            struct stat st;
+            if (::stat(QFile::encodeName(it.filePath()).constData(), &st) == 0)
+                stagedInodes.insert({quint64(st.st_dev), quint64(st.st_ino)});
+        }
+    }
+    if (stagedInodes.isEmpty()) return 0;
+
+    // 2. Walk the game dir; collect every file that is a hardlink (nlink >= 2 - a
+    //    vanilla Steam file is single-link and is never touched) whose inode is a
+    //    staged inode. Collect first, remove after, so we don't mutate the tree
+    //    mid-walk. Never descend the backup tree.
+    QStringList orphans;
+    {
+        QDirIterator it(normGameDir, QDir::Files | QDir::NoDotAndDotDot,
+                        QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString p = it.next();
+            if (QDir::cleanPath(p).startsWith(backupRoot)) continue;
+            struct stat st;
+            if (::stat(QFile::encodeName(p).constData(), &st) != 0) continue;
+            if (st.st_nlink < 2) continue; // single-link => vanilla/original, keep
+            if (stagedInodes.contains({quint64(st.st_dev), quint64(st.st_ino)}))
+                orphans << p;
+        }
+    }
+
+    int removed = 0;
+    for (const QString& p : orphans) {
+        if (!QFile::remove(p)) continue;
+        ++removed;
+        // Prune now-empty parent dirs up to (not including) the game dir; never the
+        // backup tree.
+        QDir dir(QFileInfo(p).path());
+        while (QDir::cleanPath(dir.path()) != normGameDir
+               && !QDir::cleanPath(dir.path()).startsWith(backupRoot)
+               && dir.exists() && dir.isEmpty()) {
+            const QString dirPath = dir.path();
+            const QString parent = QFileInfo(dirPath).path();
+            QDir(parent).rmdir(QFileInfo(dirPath).fileName());
+            dir = QDir(parent);
+        }
+    }
+    return removed;
 }
 
 QString DeployEngine::canonicalizeRelPath(const QString& gameDir, const QString& relPath) {

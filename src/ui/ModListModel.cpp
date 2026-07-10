@@ -725,6 +725,17 @@ bool ModListModel::setData(const QModelIndex& idx, const QVariant& value, int ro
             }
             const QString oldFolder =
                 cur.stagingFolder.isEmpty() ? cur.id : cur.stagingFolder;
+            // Also reserve every folder that physically exists in the staging dir,
+            // even orphans no mod tracks (leftovers from earlier installs/renames).
+            // QDir::rename fails outright if the destination already exists, so a
+            // collision with such an orphan would abort the rename ("Rename
+            // Incomplete"); treating it as taken makes uniqueStagingFolder pick a
+            // free name instead. Exclude this mod's own folder, which it's vacating.
+            for (const QString& onDisk :
+                     QDir(stagingDir).entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+                if (onDisk.compare(oldFolder, Qt::CaseInsensitive) == 0) continue;
+                taken.insert(onDisk.toLower());
+            }
             const QString newFolder =
                 solero::uniqueStagingFolder(solero::sanitizeStagingFolder(nn), taken);
             if (newFolder != oldFolder) {

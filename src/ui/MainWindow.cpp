@@ -810,19 +810,32 @@ void MainWindow::setupToolbar() {
     m_playAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_P));
     m_playAction->setToolTip("Launch the game via Steam (Ctrl+P)");
 
-    // Promote the pair so it dominates: bold both, and give Play a filled
-    // accent pill pulled from the resolved palette (Highlight role) - no
-    // hardcoded colours. The Deploy label mutates at runtime; the buttons
-    // keep this styling across setText().
+    // Promote the pair so it dominates and reads as important as the Profile
+    // selector: bold both, size both to the Profile combo's height (so Deploy/Play
+    // aren't the small text-toolbuttons Qt draws by default), and give Play a
+    // filled accent pill + Deploy a matching bordered pill - both from the resolved
+    // palette, no hardcoded colours. The Deploy label mutates at runtime; the
+    // buttons keep this styling across setText().
+    const int barH = m_profileCombo ? m_profileCombo->sizeHint().height() : 0;
+    const QColor mid = palette().color(QPalette::Mid);
+    const QColor btn = palette().color(QPalette::Button);
+    const QColor btnText = palette().color(QPalette::ButtonText);
+    // "Full Redeploy" (escape hatch) lives in the Tools menu, not as a dropdown on
+    // the Deploy button - a QToolButton menu can hijack the primary click on some
+    // styles, and the primary Deploy action must never be at risk.
     if (auto* deployBtn = qobject_cast<QToolButton*>(tb->widgetForAction(m_deployAction))) {
+        m_deployBtn = deployBtn;
         QFont f = deployBtn->font(); f.setBold(true); deployBtn->setFont(f);
+        if (barH > 0) deployBtn->setMinimumHeight(barH);
+        deployBtn->setStyleSheet(QString(
+            "QToolButton { background:%1; color:%2; border:1px solid %3;"
+            " border-radius:3px; padding:2px 12px; }")
+            .arg(btn.name(), btnText.name(), mid.name()));
     }
-    // "Full Redeploy" ( escape hatch) lives in the Tools menu, not as a
-    // dropdown on the Deploy button - a QToolButton menu can hijack the primary
-    // click on some styles, and the primary Deploy action must never be at risk.
     if (auto* playBtn = qobject_cast<QToolButton*>(tb->widgetForAction(m_playAction))) {
         m_playBtn = playBtn;
         QFont f = playBtn->font(); f.setBold(true); playBtn->setFont(f);
+        if (barH > 0) playBtn->setMinimumHeight(barH);
         const QColor accent = palette().color(QPalette::Highlight);
         const QColor accentText = palette().color(QPalette::HighlightedText);
         // Disabled = greyed pill (shown while the game is launching/running).
@@ -830,17 +843,19 @@ void MainWindow::setupToolbar() {
         const QColor offText = palette().color(QPalette::Disabled, QPalette::ButtonText);
         playBtn->setStyleSheet(QString(
             "QToolButton { background:%1; color:%2; border-radius:3px;"
-            " padding:2px 10px; }"
+            " padding:2px 12px; }"
             "QToolButton:disabled { background:%3; color:%4; }")
             .arg(accent.name(), accentText.name(), off.name(), offText.name()));
         // The style sheet sets WA_StyleSheet, which blocks app-font (zoom) propagation
         // and caches the resolved font. Re-assert the font and re-polish on each zoom so
-        // the Play pill scales with Ctrl +/- like the rest of the toolbar.
+        // the Deploy/Play pills scale with Ctrl +/- like the rest of the toolbar.
         connect(static_cast<Application*>(qApp), &Application::zoomChanged, this, [this] {
-            if (!m_playBtn) return;
-            QFont zf = QApplication::font(); zf.setBold(true); m_playBtn->setFont(zf);
-            m_playBtn->style()->unpolish(m_playBtn);
-            m_playBtn->style()->polish(m_playBtn);
+            for (QToolButton* b : {m_playBtn, m_deployBtn}) {
+                if (!b) continue;
+                QFont zf = QApplication::font(); zf.setBold(true); b->setFont(zf);
+                b->style()->unpolish(b);
+                b->style()->polish(b);
+            }
         });
     }
 }

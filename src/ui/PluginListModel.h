@@ -12,6 +12,9 @@ class PluginListModel : public QAbstractTableModel {
     Q_OBJECT
 public:
     enum Column { ColEnabled = 0, ColPriority, ColName, ColFlags, ColCount };
+    // Custom roles. RoleIsLight: bool on ColName, true for a light (ESL /
+    // ESL-flagged) plugin - the Name delegate paints a trailing feather for it.
+    enum Role { RoleIsLight = Qt::UserRole + 1 };
     explicit PluginListModel(QObject* parent = nullptr);
     void setProfile(Profile* profile);
     Profile* profile() const { return m_profile; }

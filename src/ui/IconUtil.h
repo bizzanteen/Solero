@@ -188,6 +188,39 @@ inline QIcon neutralStatusIcon(int size = 14) {
     p.drawLine(QPointF(px * 0.30, px * 0.50), QPointF(px * 0.70, px * 0.50));
     return QIcon(pm);
 }
+// Feather: a light, tilted quill that trails the name of a light-master
+// (ESL / ESL-flagged) plugin, so a light plugin is obvious at a glance without
+// reading the Type column. Painted (not a font glyph) to match the app's icon
+// family; a soft blue signals "light". Drawn as a pointed vane bowing out either
+// side of a central shaft.
+inline QIcon featherIcon(int size = 14, const QColor& color = QColor("#5BA3D0")) {
+    QPixmap pm = makeStatusPixmap(size);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const qreal px = size;
+    const QPointF base(px * 0.26, px * 0.82); // quill end (lower-left)
+    const QPointF tip (px * 0.80, px * 0.20); // feather tip (upper-right)
+    // Vane: two quadratics bowing out on either side of the shaft, meeting at the
+    // base and tip so the outline reads as a slim, pointed feather.
+    QPainterPath vane;
+    vane.moveTo(base);
+    vane.quadTo(QPointF(px * 0.32, px * 0.34), tip);
+    vane.quadTo(QPointF(px * 0.70, px * 0.66), base);
+    QPen edge(color);
+    edge.setWidthF(px * 0.08);
+    edge.setJoinStyle(Qt::RoundJoin);
+    edge.setCapStyle(Qt::RoundCap);
+    p.setPen(edge);
+    p.setBrush(QColor(color.red(), color.green(), color.blue(), 55)); // faint tint
+    p.drawPath(vane);
+    // Central shaft.
+    QPen shaft(color);
+    shaft.setWidthF(px * 0.08);
+    shaft.setCapStyle(Qt::RoundCap);
+    p.setPen(shaft);
+    p.drawLine(base, tip);
+    return QIcon(pm);
+}
 // Paused: an amber filled circle with two white vertical bars (a pause glyph),
 // in the same status-dot family as installed/downloading so a held download reads
 // as part of the set - "on hold" amber rather than the generic neutral grey dot.

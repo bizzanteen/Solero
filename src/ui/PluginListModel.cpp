@@ -249,6 +249,9 @@ QVariant PluginListModel::data(const QModelIndex& idx, int role) const {
         if (!dirty.isEmpty() && dirty.contains(p.filename.toLower())) return warnSignIcon();
         return {};
     }
+    // Light (ESL / ESL-flagged) marker for the Name delegate's trailing feather.
+    if (role == RoleIsLight && idx.column() == ColName)
+        return p.isLight || p.filename.endsWith(".esl", Qt::CaseInsensitive);
     if (role == Qt::ToolTipRole) {
         QStringList parts;
         const PluginList& pl = m_profile->pluginList();
@@ -261,6 +264,9 @@ QVariant PluginListModel::data(const QModelIndex& idx, int role) const {
         if (p.isOfficial)
             parts << QStringLiteral("Locked base-game plugin ") + QChar('-')
                      + QStringLiteral(" always active");
+        if (p.isLight || p.filename.endsWith(".esl", Qt::CaseInsensitive))
+            parts << QStringLiteral("Light (ESL) ") + QChar('-')
+                     + QStringLiteral(" doesn't use a full load-order slot");
         if (pl.isPinned(p.filename))
             parts << (pinGlyph() + (QStringLiteral(" Pinned ") + QChar('-')
                                     + QStringLiteral(" restored to index %1 after sorts"))

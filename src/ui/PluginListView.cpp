@@ -27,32 +27,42 @@
 #include <QToolTip>
 #include <QCursor>
 #include <QIcon>
+#include "IconUtil.h"
 #include "ElideDelegate.h"
 namespace solero {
 
 namespace {
-// The model exposes a warning via Qt::DecorationRole on the Plugin column - the
-// dirty-plugin (ITM/UDR) flag. The default delegate draws that icon to
-// the LEFT of the name; instead, suppress the leading icon and paint it
-// immediately after the text so the warning trails the plugin name. The model's
-// tooltip (the cleaning reason) is left untouched, so hovering still works.
+// The Plugin column can carry icons that trail the name: a feather for light
+// (ESL / ESL-flagged) plugins, and a dirty-plugin (ITM/UDR) warning exposed via
+// Qt::DecorationRole. The default delegate would draw a decoration on the LEFT,
+// so we suppress the leading icon and paint the trailing strip after the text.
+// The model's tooltip is left untouched, so hovering still works.
 class NameDelegate : public ElideRightDelegate {
 public:
     using ElideRightDelegate::ElideRightDelegate;
 protected:
+    // Trailing icons in left-to-right order: feather first (closest to the name),
+    // then the dirty-edit warning. Either may be absent.
+    static QList<QIcon> trailingIcons(const QModelIndex& idx) {
+        QList<QIcon> icons;
+        if (idx.data(PluginListModel::RoleIsLight).toBool())
+            icons << featherIcon(14);
+        const QIcon warn = qvariant_cast<QIcon>(idx.data(Qt::DecorationRole));
+        if (!warn.isNull()) icons << warn;
+        return icons;
+    }
     void initStyleOption(QStyleOptionViewItem* opt, const QModelIndex& idx) const override {
         QStyledItemDelegate::initStyleOption(opt, idx);
-        const bool hasWarn = !qvariant_cast<QIcon>(idx.data(Qt::DecorationRole)).isNull();
+        const int n = trailingIcons(idx).size();
         // Drop the leading decoration so the base delegate doesn't draw it on the
-        // left; we repaint it after the text in paint().
+        // left; we repaint the strip after the text in paint().
         opt->icon = QIcon();
         opt->features &= ~QStyleOptionViewItem::HasDecoration;
-        // Reserve room for the trailing warning icon (icon + gap) before eliding,
-        // so a long name shortens enough to leave the icon visible instead of
-        // being clipped off the right edge.
-        if (hasWarn) {
+        // Reserve room for the trailing icons (each icon + gap) before eliding, so
+        // a long name shortens enough to leave them visible instead of clipped.
+        if (n > 0) {
             const int sz = qMin(opt->rect.height(), 16);
-            opt->rect.setRight(opt->rect.right() - (sz + 4)); // sz + gap
+            opt->rect.setRight(opt->rect.right() - n * (sz + 4)); // n x (sz + gap)
         }
         // Elide the plugin name char-level after the decoration is removed, so the
         // text rect reflects the reserved (no leading icon) width.
@@ -61,8 +71,8 @@ protected:
     void paint(QPainter* painter, const QStyleOptionViewItem& option,
                const QModelIndex& idx) const override {
         QStyledItemDelegate::paint(painter, option, idx);
-        const QIcon icon = qvariant_cast<QIcon>(idx.data(Qt::DecorationRole));
-        if (icon.isNull()) return;
+        const QList<QIcon> icons = trailingIcons(idx);
+        if (icons.isEmpty()) return;
         // Locate where the (left-aligned) text ends, using the same font the base
         // delegate used (FontRole-aware, so bold ESM widths are correct).
         QStyleOptionViewItem opt = option;
@@ -77,10 +87,13 @@ protected:
         const int sz = qMin(textRect.height(), 16);
         const int gap = 4;
         // Hug the text for short names; for long (elided) names clamp into the
-        // reserved strip just past textRect so the icon always fits the cell.
-        const int x = qMin(textRect.left() + textW + gap, textRect.right() + gap);
+        // reserved strip just past textRect so the icons always fit the cell.
+        int x = qMin(textRect.left() + textW + gap, textRect.right() + gap);
         const int y = textRect.top() + (textRect.height() - sz) / 2;
-        icon.paint(painter, QRect(x, y, sz, sz), Qt::AlignCenter);
+        for (const QIcon& ic : icons) {
+            ic.paint(painter, QRect(x, y, sz, sz), Qt::AlignCenter);
+            x += sz + gap;
+        }
     }
 };
 } // namespace
@@ -430,6 +443,9 @@ void PluginListView::applyEslFlag(const QString& filename, bool set) {
     qCInfo(lcInstall) << "PluginListView:" << (set ? "added" : "removed")
                       << "ESL flag on" << filename;
     m_model->setPluginLight(filename, set); // refresh the row's Type/flags immediately
+    // Flipping light/full changes the ESP-vs-ESL tally (and the plugin-limit
+    // health check), so nudge the same "recompute live" channel enable toggles use.
+    emit pluginEnabledChanged();
 }
 
 QStringList PluginListView::otherPluginNames(const QString& self) const {

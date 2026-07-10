@@ -80,8 +80,11 @@ void PluginListModel::reconcile(const QStringList& available) {
         pe.isOfficial = officialRank(pe.filename) >= 0;
         const bool esmExt = pe.filename.endsWith(".esm", Qt::CaseInsensitive);
         const bool eslExt = pe.filename.endsWith(".esl", Qt::CaseInsensitive);
-        pe.isMaster = (cm.flagsOk && cm.isMaster) || esmExt;
-        pe.isLight  = (cm.flagsOk && cm.isLight)  || eslExt;
+        // "Master" (ESM) is by EXTENSION only: a master-FLAGGED .esp (e.g. USSEP) is
+        // still an ESP, so it must not read as ESM. "Light" (ESL) uses the real
+        // header flag OR the extension, so a light-flagged .esp (ESPFE) reads ESL.
+        pe.isMaster = esmExt;
+        pe.isLight  = (cm.flagsOk && cm.isLight) || eslExt;
     };
 
     // Lowercased membership sets for O(1) presence tests.
@@ -248,7 +251,8 @@ QVariant PluginListModel::data(const QModelIndex& idx, int role) const {
     // painted trailing the name by NameDelegate. The reason rides Qt::ToolTipRole.
     if (role == Qt::DecorationRole && idx.column() == ColName) {
         const auto& dirty = LootSorter::dirtyPlugins();
-        if (!dirty.isEmpty() && dirty.contains(p.filename.toLower())) return warnSignIcon();
+        if (!dirty.isEmpty() && dirty.contains(p.filename.toLower()))
+            return warnSignIcon(zoomScaledPx(16));
         return {};
     }
     // Light (ESL / ESL-flagged) marker for the Name delegate's trailing feather.

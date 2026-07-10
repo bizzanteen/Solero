@@ -95,8 +95,13 @@ private:
     // load order (profile's PluginList), or empty if none are present.
     QString firstPluginInLoadOrder(const QStringList& filenames) const;
 
+    // Recompute the enabled full-vs-light plugin tally shown beside the plugin
+    // search box (ESP count / 254, ESL count / 4096). Cheap O(n) over the list.
+    void updatePluginCounts();
+
     PluginListView* m_pluginsTab;
     QLabel*         m_pluginNotice = nullptr;
+    QLabel*         m_pluginCountLabel = nullptr;
     QPushButton*    m_sortBtn = nullptr;
     QPushButton*    m_lockBtn = nullptr;
     QLineEdit*      m_pluginSearch = nullptr;

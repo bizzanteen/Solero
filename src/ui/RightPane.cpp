@@ -39,16 +39,24 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     // "Backup LO" / "Restore LO…" / "LOOT Rules" / "Lock" / "Sort Now" buttons.
     auto* sortRow = new QHBoxLayout();
     sortRow->setContentsMargins(4, 4, 4, 4);
+    // Enabled-plugin tally against the two hard caps (full plugins / 254 load-order
+    // slots, light plugins / 4096 ESL slots). Sits at the row's left edge; kept
+    // live by updatePluginCounts().
+    m_pluginCountLabel = new QLabel(pluginsContainer);
+    m_pluginCountLabel->setToolTip(
+        QStringLiteral("Enabled plugins vs their caps:\n"
+                       "ESP = full plugins (ESM + ESP) using a load-order slot (max 254)\n"
+                       "ESL = light / ESL-flagged plugins (max 4096)"));
+    sortRow->addWidget(m_pluginCountLabel);
     m_pluginSearch = new QLineEdit(pluginsContainer);
     m_pluginSearch->setPlaceholderText(QStringLiteral("Search plugins") + QChar(0x2026));
     m_pluginSearch->setClearButtonEnabled(true);
     sortRow->addWidget(m_pluginSearch, 1); // grows to fill, pushing the buttons right
 
-    // The three rare load-order actions collapse into one "Load Order" dropdown;
-    // only the per-session "Lock Order" + "Sort Now" stay as visible buttons.
-    auto* loMenuBtn = new QToolButton(pluginsContainer);
-    loMenuBtn->setText("Load Order");
-    loMenuBtn->setPopupMode(QToolButton::InstantPopup);
+    // The three rare load-order actions collapse into one "Load Order" dropdown.
+    // A QPushButton (not QToolButton) with a menu, so it matches the Lock Order +
+    // Sort Now push buttons beside it - one button family, one size.
+    auto* loMenuBtn = new QPushButton("Load Order", pluginsContainer);
     loMenuBtn->setToolTip("Backup, restore, and LOOT-rule actions for the load order");
     auto* loMenu = new QMenu(loMenuBtn);
     loMenu->addAction("Backup Load Order", this, &RightPane::backupLoRequested)
@@ -59,7 +67,7 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     loMenu->addAction(QStringLiteral("LOOT Rules") + QChar(0x2026),
                       this, &RightPane::lootRulesRequested)
         ->setToolTip("Edit custom LOOT sorting rules");
-    loMenuBtn->setMenu(loMenu);
+    loMenuBtn->setMenu(loMenu); // QPushButton draws its own dropdown indicator
     sortRow->addWidget(loMenuBtn);
 
     m_lockBtn = new QPushButton("Lock Order", pluginsContainer);
@@ -109,6 +117,13 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
             this, &RightPane::onPluginClicked);
     connect(m_pluginsTab, &PluginListView::pluginActivated,
             this, &RightPane::onPluginActivated);
+    // Keep the ESP/ESL tally live: enable toggles + ESL-flag edits both fire
+    // pluginEnabledChanged; a reorder can't change counts but is cheap to refresh.
+    connect(m_pluginsTab, &PluginListView::pluginEnabledChanged,
+            this, &RightPane::updatePluginCounts);
+    connect(m_pluginsTab, &PluginListView::loadOrderChanged,
+            this, &RightPane::updatePluginCounts);
+    updatePluginCounts(); // seed the (empty) label before a profile is bound
 }
 
 void RightPane::showDownloadsTab() {
@@ -170,6 +185,39 @@ void RightPane::setProfile(Profile* profile, bool reconcilePlugins) {
     m_conflictsTab->setProfile(profile); // for mod-id -> name resolution
     m_downloadsTab->setProfile(profile);
     if (m_savesTab) m_savesTab->setProfile(profile); // read-only saves + missing-plugin flag
+    updatePluginCounts();
+}
+
+// ESP = enabled full plugins (ESM + ESP occupying a 00..FD load-order slot, cap
+// 254); ESL = enabled light / ESL-flagged plugins (FE xxx slots, cap 4096). The
+// counts turn amber as they near a cap and red once over it, mirroring the
+// plugin-limit health check.
+void RightPane::updatePluginCounts() {
+    if (!m_pluginCountLabel) return;
+    int esp = 0, esl = 0;
+    if (m_currentProfile) {
+        const PluginList& pl = m_currentProfile->pluginList();
+        for (int i = 0; i < pl.count(); ++i) {
+            const PluginEntry& p = pl.at(i);
+            if (!p.enabled) continue;
+            const bool light = p.isLight
+                            || p.filename.endsWith(QStringLiteral(".esl"), Qt::CaseInsensitive);
+            (light ? esl : esp)++;
+        }
+    }
+    constexpr int kEspCap = 254, kEslCap = 4096;
+    // Colour a count red at/over its cap, amber when close, else follow the theme.
+    auto tint = [](int n, int cap) -> QString {
+        if (n >= cap)            return QStringLiteral("<span style='color:#D64550'>");
+        if (n >= cap - 14)       return QStringLiteral("<span style='color:#F2C230'>");
+        return QString();
+    };
+    const QString espSpan = tint(esp, kEspCap), eslSpan = tint(esl, kEslCap);
+    const QString close = QStringLiteral("</span>");
+    m_pluginCountLabel->setText(
+        QStringLiteral("ESP %1%2/%3%4 · ESL %5%6/%7%8")
+            .arg(espSpan).arg(esp).arg(kEspCap).arg(espSpan.isEmpty() ? QString() : close)
+            .arg(eslSpan).arg(esl).arg(kEslCap).arg(eslSpan.isEmpty() ? QString() : close));
 }
 
 void RightPane::refreshPlugins(Profile* profile) {

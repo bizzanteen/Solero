@@ -4,6 +4,9 @@
 #include "core/AppConfig.h"
 #include "core/StagingFolder.h"
 #include "tools/ToolCatalog.h"
+#include "app/Application.h"
+#include <QApplication>
+#include <QFontMetrics>
 
 #include <QDir>
 #include <QHBoxLayout>
@@ -44,10 +47,6 @@ ModInfoWidget::ModInfoWidget(QWidget* parent) : QWidget(parent) {
     right->setSpacing(4);
 
     m_name = new QLabel(this);
-    QFont nf = m_name->font();
-    nf.setBold(true);
-    nf.setPointSizeF(nf.pointSizeF() + 2.0);
-    m_name->setFont(nf);
     m_name->setWordWrap(true);
     right->addWidget(m_name);
 
@@ -60,13 +59,11 @@ ModInfoWidget::ModInfoWidget(QWidget* parent) : QWidget(parent) {
     m_desc->setOpenExternalLinks(true);
     right->addWidget(m_desc, 1);
 
-    auto* noteLabel = new QLabel("Notes", this);
-    noteLabel->setStyleSheet("font-weight: bold;");
-    right->addWidget(noteLabel);
+    m_noteLabel = new QLabel("Notes", this);
+    right->addWidget(m_noteLabel);
 
     m_note = new QPlainTextEdit(this);
     m_note->setPlaceholderText("Add a personal note for this mod\xe2\x80\xa6");
-    m_note->setMaximumHeight(60);
     m_note->setTabChangesFocus(true);
     m_note->installEventFilter(this); // save on focus-out / hide
     right->addWidget(m_note);
@@ -95,7 +92,32 @@ ModInfoWidget::ModInfoWidget(QWidget* parent) : QWidget(parent) {
         if (d.modId == m_currentNexusId) applyDetails(d);
     });
 
+    applyZoomFonts();
+    connect(static_cast<Application*>(qApp), &Application::zoomChanged,
+            this, &ModInfoWidget::applyZoomFonts);
+
     clear();
+}
+
+void ModInfoWidget::applyZoomFonts() {
+    const QFont base = QApplication::font();
+    // Bold title, 2pt larger than the body - re-derived from the current app font so
+    // it grows with Ctrl +/- (an explicit font set once would otherwise freeze).
+    if (m_name) {
+        QFont nf = base;
+        nf.setBold(true);
+        nf.setPointSizeF(base.pointSizeF() + 2.0);
+        m_name->setFont(nf);
+    }
+    if (m_noteLabel) {
+        QFont bf = base;
+        bf.setBold(true);
+        m_noteLabel->setFont(bf);
+    }
+    // Note editor: ~3 lines tall, tracking the font's line height instead of a fixed
+    // 60px so it scales with zoom.
+    if (m_note)
+        m_note->setMaximumHeight(QFontMetrics(base).lineSpacing() * 3 + 12);
 }
 
 void ModInfoWidget::clear() {

@@ -586,27 +586,30 @@ QVariant ModListModel::data(const QModelIndex& idx, int role) const {
     if (role == Qt::EditRole && !isSep && idx.column() == ColName)
         return entry.name;
     if (role == Qt::DecorationRole && isSep && idx.column() == ColEnabled && !entry.icon.isEmpty()) {
-        return renderSvgIcon(entry.icon, solero::contrastText(QColor(entry.color)), 20);
+        return renderSvgIcon(entry.icon, solero::contrastText(QColor(entry.color)),
+                             solero::zoomScaledPx(20));
     }
     // Out-of-date mod entries: a yellow up-arrow next to the VERSION.
     if (role == Qt::DecorationRole && !isSep && idx.column() == ColVersion
             && entry.type == EntryType::Mod && m_updates.contains(entry.id)) {
-        return solero::yellowUpArrowIcon();
+        return solero::yellowUpArrowIcon(solero::zoomScaledPx(solero::kFlagIconPx));
     }
-    // Persistent Flags column: always-on status icons composed into one cell.
+    // Persistent Flags column: always-on status icons composed into one cell. Every
+    // icon is built at a zoom-scaled size so the strip grows with the row font.
     if (role == Qt::DecorationRole && !isSep && idx.column() == ColFlags
             && entry.type == EntryType::Mod) {
+        const int fp = solero::zoomScaledPx(solero::kFlagIconPx);
         QList<QIcon> icons;
-        if (entry.isOutputMod)                     icons << solero::outputModIcon();
-        if (m_overwritingMods.contains(entry.id)) icons << solero::greenUpTriangleIcon();
-        if (m_overwrittenMods.contains(entry.id)) icons << solero::redDownTriangleIcon();
-        if (m_depWarnings.contains(entry.id))      icons << solero::errorSignIcon(solero::kFlagIconPx);
+        if (entry.isOutputMod)                     icons << solero::outputModIcon(fp);
+        if (m_overwritingMods.contains(entry.id)) icons << solero::greenUpTriangleIcon(fp);
+        if (m_overwrittenMods.contains(entry.id)) icons << solero::redDownTriangleIcon(fp);
+        if (m_depWarnings.contains(entry.id))      icons << solero::errorSignIcon(fp);
         // The "update available" indicator lives in the Version column only (the
         // yellow up-arrow + "installed -> latest" text), not here in Flags.
-        if (!entry.note.isEmpty())                 icons << solero::noteIcon();
-        if (entry.isFomod)                         icons << solero::fomodIcon(entry.fomodStatus);
+        if (!entry.note.isEmpty())                 icons << solero::noteIcon(fp);
+        if (entry.isFomod)                         icons << solero::fomodIcon(entry.fomodStatus, fp);
         if (icons.isEmpty()) return {};
-        return solero::composeIcons(icons);
+        return solero::composeIcons(icons, fp);
     }
     if (role == Qt::FontRole && isSep) {
         QFont f; f.setBold(true); return f;

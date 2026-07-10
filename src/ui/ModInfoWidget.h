@@ -44,6 +44,10 @@ private:
     void applyDetails(const NexusApi::ModDetails& d);
     void applyImage(const QPixmap& pm);
     void fetchImage(const QString& nexusModId, const QString& url);
+    // Re-apply the app-font-relative fonts + sizes (bold title 2pt larger, bold
+    // "Notes" label, note-editor height) so they track Ctrl +/- zoom. An explicit
+    // per-widget font/stylesheet otherwise freezes at its construction size.
+    void applyZoomFonts();
 
     // Disk-cached thumbnail loader shared by regular mods and output-mod tool
     // images. Tries in-memory cache, then on-disk PNG, else fetches over the
@@ -56,6 +60,7 @@ private:
 
     QLabel*         m_image = nullptr;
     QLabel*         m_name  = nullptr;
+    QLabel*         m_noteLabel = nullptr; // "Notes" header (bold, re-fonted on zoom)
     QLabel*         m_meta  = nullptr;
     QTextBrowser*   m_desc  = nullptr;
     QPlainTextEdit* m_note  = nullptr;

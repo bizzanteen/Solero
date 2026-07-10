@@ -9,6 +9,7 @@
 #include "core/AppConfig.h"
 #include "core/Profile.h"
 #include "ui/IconUtil.h"
+#include "app/Application.h"
 #include <QMenu>
 #include <QContextMenuEvent>
 #include <QHeaderView>
@@ -151,7 +152,15 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     setSelectionMode(QAbstractItemView::ExtendedSelection); // Ctrl+click multi-select
     setSelectionBehavior(QAbstractItemView::SelectRows);
     setAlternatingRowColors(true);
-    setIconSize(QSize(20, 20));
+    // Icon size tracks the app-font zoom (separator glyphs + Flags strip). Changing
+    // it forces the view to re-fetch decorations and re-lay-out rows, so the model's
+    // zoom-scaled icons repaint at the new size on Ctrl +/-.
+    const auto applyIconZoom = [this] {
+        const int s = solero::zoomScaledPx(20);
+        setIconSize(QSize(s, s));
+    };
+    applyIconZoom();
+    connect(static_cast<Application*>(qApp), &Application::zoomChanged, this, applyIconZoom);
     setEditTriggers(QAbstractItemView::SelectedClicked | QAbstractItemView::EditKeyPressed);
     setItemDelegateForColumn(ModListModel::ColName, new RenameDelegate(this));
     setItemDelegateForColumn(ModListModel::ColFlags, new FlagsDelegate(this));

@@ -80,7 +80,7 @@ protected:
         opt.icon = QIcon();
         opt.iconAlignment = Qt::AlignCenter;
         style()->drawControl(QStyle::CE_Header, &opt, p, this);
-        const int sz = 14;
+        const int sz = solero::zoomScaledPx(14);
         QRect ir(0, 0, sz, sz);
         ir.moveCenter(rect.center());
         icon.paint(p, ir, Qt::AlignCenter);
@@ -108,7 +108,7 @@ public:
             const QWidget* w = opt.widget;
             QStyle* style = w ? w->style() : QApplication::style();
             style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, w); // bg + selection
-            const int sz = 14;
+            const int sz = solero::zoomScaledPx(14);
             QRect ir(0, 0, sz, sz);
             ir.moveCenter(option.rect.center());
             icon.paint(painter, ir, Qt::AlignCenter);
@@ -153,15 +153,16 @@ QTableWidgetItem* makeStatusItem(const QString& kind, const QString& fullText,
     it->setData(RoleStatusKind, kind);
     int rank = 4;
     QIcon icon;
+    const int sp = solero::zoomScaledPx(14); // status dot size tracks the app-font zoom
     // Downloading shows only its "N%" (no icon) - the moving percentage already reads
     // as an active transfer, and dropping the icon keeps the cell narrow. Paused gets
     // a dedicated amber pause glyph so a held transfer stands out from a live one.
     if (kind == QLatin1String("downloading"))       { rank = 0; icon = QIcon(); }
-    else if (kind == QLatin1String("paused"))       { rank = 0; icon = pauseStatusIcon(14); }
-    else if (kind == QLatin1String("failed"))       { rank = 1; icon = errorSignIcon(14); }
-    else if (kind == QLatin1String("not-installed")){ rank = 2; icon = notInstalledStatusIcon(14); }
-    else if (kind == QLatin1String("installed"))    { rank = 3; icon = installedStatusIcon(14); }
-    else /* cancelled / other terminal-neutral */   { rank = 4; icon = neutralStatusIcon(14); }
+    else if (kind == QLatin1String("paused"))       { rank = 0; icon = pauseStatusIcon(sp); }
+    else if (kind == QLatin1String("failed"))       { rank = 1; icon = errorSignIcon(sp); }
+    else if (kind == QLatin1String("not-installed")){ rank = 2; icon = notInstalledStatusIcon(sp); }
+    else if (kind == QLatin1String("installed"))    { rank = 3; icon = installedStatusIcon(sp); }
+    else /* cancelled / other terminal-neutral */   { rank = 4; icon = neutralStatusIcon(sp); }
     it->setData(Qt::UserRole, rank);
     it->setIcon(icon);
     return it;
@@ -209,7 +210,7 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     // itself on hover. Cells are centred by StatusCellDelegate below.
     if (auto* statusHdr = m_table->horizontalHeaderItem(1)) {
         statusHdr->setText(QString());
-        statusHdr->setIcon(helpStatusIcon(14));
+        statusHdr->setIcon(helpStatusIcon(solero::zoomScaledPx(14)));
         statusHdr->setToolTip(QStringLiteral("Status ") + QChar('-')
                               + QStringLiteral(" each mod's download / install state"));
         statusHdr->setTextAlignment(Qt::AlignCenter);
@@ -410,6 +411,12 @@ void DownloadsTab::applyZoomFont() {
     // QSS caches the resolved font; force a re-resolve so the new size actually paints.
     m_table->style()->unpolish(m_table);
     m_table->style()->polish(m_table);
+    // Re-scale the Status header "?" glyph to the new font.
+    if (auto* statusHdr = m_table->horizontalHeaderItem(1))
+        statusHdr->setIcon(helpStatusIcon(solero::zoomScaledPx(14)));
+    // Rebuild the rows so each status dot is regenerated at the zoom-scaled size
+    // (the icons are baked into the items, so a re-font alone wouldn't resize them).
+    refresh();
     m_table->resizeRowsToContents();
     // Column WIDTHS should track the zoom too, but only when the user hasn't set their
     // own widths: re-fitting would clobber a remembered/customised layout.

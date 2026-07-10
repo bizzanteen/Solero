@@ -1,10 +1,13 @@
 #include "BottomPanel.h"
 #include "ModInfoWidget.h"
 #include "core/AppConfig.h"
+#include "app/Application.h"
+#include "ui/IconUtil.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QToolButton>
 #include <QLabel>
+#include <QApplication>
 
 namespace solero {
 
@@ -15,6 +18,7 @@ BottomPanel::BottomPanel(QWidget* parent) : QWidget(parent) {
 
     // Always-visible header bar: collapse arrow + "Mod Info" label.
     auto* header = new QWidget(this);
+    m_header = header;
     auto* headerLayout = new QHBoxLayout(header);
     headerLayout->setContentsMargins(4, 2, 4, 2);
     headerLayout->setSpacing(4);
@@ -24,8 +28,10 @@ BottomPanel::BottomPanel(QWidget* parent) : QWidget(parent) {
     m_collapseBtn->setToolTip("Show/Hide mod info");
     headerLayout->addWidget(m_collapseBtn);
 
-    auto* title = new QLabel("Mod Info", header);
-    title->setStyleSheet("font-weight: bold;");
+    // Rich-text bold so it stays bold while still inheriting the app font (a
+    // stylesheet or explicit font would freeze at the construction-time size and
+    // not track Ctrl +/- zoom).
+    auto* title = new QLabel("<b>Mod Info</b>", header);
     headerLayout->addWidget(title);
     headerLayout->addStretch();
 
@@ -43,8 +49,6 @@ BottomPanel::BottomPanel(QWidget* parent) : QWidget(parent) {
     connect(m_modInfo, &ModInfoWidget::noteChanged, this, &BottomPanel::noteChanged);
     outer->addWidget(m_modInfo);
 
-    m_headerHeight = header->sizeHint().height();
-
     connect(m_collapseBtn, &QToolButton::clicked, this, [this]{
         bool expanded = !m_modInfo->isVisible();
         setExpanded(expanded);
@@ -52,18 +56,27 @@ BottomPanel::BottomPanel(QWidget* parent) : QWidget(parent) {
         solero::AppConfig::instance().save();
     });
 
+    // Re-evaluate the panel's height caps on zoom: the collapsed cap tracks the
+    // (now larger) header, and the expanded cap scales so the mod-info content
+    // isn't clipped at high zoom.
+    connect(static_cast<Application*>(qApp), &Application::zoomChanged, this,
+            [this]{ setExpanded(m_expanded); });
+
     // Apply persisted state (default true -> expanded).
     setExpanded(solero::AppConfig::instance().infoPanelVisible());
 }
 
 void BottomPanel::setExpanded(bool expanded) {
+    m_expanded = expanded;
     m_modInfo->setVisible(expanded);
     if (expanded) {
         m_collapseBtn->setText("\xe2\x96\xbc"); // ▼
-        setMaximumHeight(250);
+        setMaximumHeight(solero::zoomScaledPx(250)); // scales with zoom
     } else {
         m_collapseBtn->setText("\xe2\x96\xb2"); // ▲
-        setMaximumHeight(m_headerHeight);
+        // Live header height (not a construction-time cache) so the collapsed strip
+        // grows with the font.
+        setMaximumHeight(m_header ? m_header->sizeHint().height() : m_headerHeight);
     }
 }
 

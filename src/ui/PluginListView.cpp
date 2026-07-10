@@ -46,7 +46,7 @@ protected:
     static QList<QIcon> trailingIcons(const QModelIndex& idx) {
         QList<QIcon> icons;
         if (idx.data(PluginListModel::RoleIsLight).toBool())
-            icons << featherIcon(14);
+            icons << featherIcon(zoomScaledPx(16)); // scales with the row font
         const QIcon warn = qvariant_cast<QIcon>(idx.data(Qt::DecorationRole));
         if (!warn.isNull()) icons << warn;
         return icons;
@@ -61,7 +61,7 @@ protected:
         // Reserve room for the trailing icons (each icon + gap) before eliding, so
         // a long name shortens enough to leave them visible instead of clipped.
         if (n > 0) {
-            const int sz = qMin(opt->rect.height(), 16);
+            const int sz = qMin(opt->rect.height(), zoomScaledPx(16));
             opt->rect.setRight(opt->rect.right() - n * (sz + 4)); // n x (sz + gap)
         }
         // Elide the plugin name char-level after the decoration is removed, so the
@@ -84,7 +84,7 @@ protected:
         const QRect textRect = style->subElementRect(QStyle::SE_ItemViewItemText, &opt, w);
         const QString text = idx.data(Qt::DisplayRole).toString();
         const int textW = opt.fontMetrics.horizontalAdvance(text);
-        const int sz = qMin(textRect.height(), 16);
+        const int sz = qMin(textRect.height(), zoomScaledPx(16));
         const int gap = 4;
         // Hug the text for short names; for long (elided) names clamp into the
         // reserved strip just past textRect so the icons always fit the cell.

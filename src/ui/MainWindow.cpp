@@ -799,7 +799,7 @@ void MainWindow::setupToolbar() {
     m_problemsBtn = new QToolButton(tb);
     m_problemsBtn->setAutoRaise(true);
     m_problemsBtn->setToolButtonStyle(Qt::ToolButtonIconOnly);
-    m_problemsBtn->setIcon(solero::neutralSignIcon(20));
+    m_problemsBtn->setIcon(solero::neutralSignIcon(toolbarIconPx()));
     m_problemsBtn->setAccessibleName("Problems");
     m_problemsBtn->setToolTip("No problems");
     connect(m_problemsBtn, &QToolButton::clicked, this, &MainWindow::onShowProblems);
@@ -899,6 +899,12 @@ void MainWindow::applyToolbarFont() {
             px, palette().color(QPalette::HighlightedText)));
     }
     updateDeployButton(); // re-renders the deploy glyph icon + label at the new size
+    // The Problems/health indicator sits in the same bar; scale its glyph too and
+    // re-render it at the new size (refreshHealthIndicator recomputes + repaints).
+    if (m_problemsBtn) {
+        m_problemsBtn->setIconSize(isz);
+        refreshHealthIndicator();
+    }
     for (QPushButton* b : {m_playBtn, m_deployBtn}) {
         if (!b) continue;
         b->setIconSize(isz);
@@ -1949,13 +1955,14 @@ void MainWindow::recomputeHealthIndicator() {
         else if (i.severity == solero::HealthSeverity::Warning) ++warnings;
     }
     const QString dash = QStringLiteral(" ") + QChar('-') + QStringLiteral(" ");
+    const int hp = toolbarIconPx(); // scale the health glyph with the toolbar font
     if (issues.isEmpty()) {
-        m_problemsBtn->setIcon(solero::neutralSignIcon(20));
+        m_problemsBtn->setIcon(solero::neutralSignIcon(hp));
         m_problemsBtn->setToolTip(QStringLiteral("No problems") + dash + QStringLiteral("click for details"));
     } else {
         const bool hasError = errors > 0;
-        m_problemsBtn->setIcon(hasError ? solero::errorSignIcon(20)
-                                        : solero::warnSignIcon(20));
+        m_problemsBtn->setIcon(hasError ? solero::errorSignIcon(hp)
+                                        : solero::warnSignIcon(hp));
         QStringList parts;
         if (errors)   parts << QString("%1 error%2").arg(errors).arg(errors == 1 ? "" : "s");
         if (warnings) parts << QString("%1 warning%2").arg(warnings).arg(warnings == 1 ? "" : "s");

@@ -12,6 +12,16 @@
 #include <QGuiApplication>
 #include <QSvgRenderer>
 namespace solero {
+// Scale a base pixel size (chosen at zoom factor 1.0, i.e. the 10pt app font) by
+// the current app-font zoom, so painted icons track Ctrl +/- like text does. The
+// app sets zoom via QApplication::setFont(pointSize = 10 * factor), so the live
+// factor is just pointSize/10.
+inline int zoomScaledPx(int basePx) {
+    const qreal pt = QGuiApplication::font().pointSizeF();
+    const qreal factor = (pt > 0.0) ? pt / 10.0 : 1.0;
+    return qMax(1, qRound(basePx * factor));
+}
+
 // Canonical square pixel size for every Flags-column status icon. Keeping it in
 // one place lets every helper and composeIcons() lay out at the same size, so a
 // row with 1, 2 or 3 flags looks consistent. (The view must then render the

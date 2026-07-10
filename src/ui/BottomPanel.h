@@ -35,6 +35,8 @@ private:
     QLabel*          m_updateProgress = nullptr; // inline "Checking updates… N/M"
     ModInfoWidget*   m_modInfo     = nullptr;
     Profile*         m_profile     = nullptr;
-    int              m_headerHeight = 24; // collapsed max-height (header only)
+    int              m_headerHeight = 24; // fallback collapsed max-height (header only)
+    QWidget*         m_header = nullptr;  // header bar (live sizeHint for collapse)
+    bool             m_expanded = true;   // current state (re-applied on zoom)
 };
 }

@@ -338,8 +338,8 @@ private:
     QByteArray m_deployedSig;     // deploySignature() at the last successful deploy
     bool m_contentDirty = false;  // sticky dirtiness the signature can't see (rename,
                                   // reinstall, patch, ini/save toggle); cleared on deploy
-    QToolButton* m_playBtn = nullptr; // the accent-pill Play button (re-fonted on zoom)
-    QToolButton* m_deployBtn = nullptr; // the Deploy button (sized to match Play/Profile)
+    QPushButton* m_playBtn = nullptr; // the accent-pill Play button (centres its content)
+    QPushButton* m_deployBtn = nullptr; // the Deploy button (bordered pill, centred)
     QToolButton* m_browseBtn = nullptr; // the Browse Nexus toolbar button
     QLabel* m_profileLabel = nullptr;   // the "Profile:" toolbar label (font reference)
     bool m_loadOrderDirty = false; // user manually reordered plugins since last sort/deploy

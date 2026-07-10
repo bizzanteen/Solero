@@ -810,50 +810,62 @@ void MainWindow::setupToolbar() {
     // glyphs, so they can be sized proportionally to the text and scale with zoom
     // (see applyToolbarFont / toolbarIconPx). The deploy label+icon mutate at
     // runtime in updateDeployButton().
-    m_deployAction = tb->addAction("Not Deployed", this, &MainWindow::onDeployToggle);
+    // The visible controls are QPushButtons, which centre their icon+text even under
+    // a stylesheet (a styled QToolButton left-aligns its label). The QActions carry
+    // only the keyboard shortcuts + enabled state; the buttons trigger them and
+    // mirror their enabled state, so the existing enable/disable logic still works.
+    m_deployAction = new QAction("Not Deployed", this);
     m_deployAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
-    m_deployAction->setToolTip("Click to deploy mods to game directory (Ctrl+D)");
-    m_playAction = tb->addAction("Play", this, &MainWindow::onPlay);
+    connect(m_deployAction, &QAction::triggered, this, &MainWindow::onDeployToggle);
+    addAction(m_deployAction); // window-level so the shortcut fires app-wide
+    m_playAction = new QAction("Play", this);
     m_playAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_P));
-    m_playAction->setToolTip("Launch the game via Steam (Ctrl+P)");
+    connect(m_playAction, &QAction::triggered, this, &MainWindow::onPlay);
+    addAction(m_playAction);
 
     // Promote the pair so it dominates and reads as important as the Profile
-    // selector: bold both, size both to the Profile combo's height (so Deploy/Play
-    // aren't the small text-toolbuttons Qt draws by default), and give Play a
+    // selector: bold both, size both to the Profile combo's height, and give Play a
     // filled accent pill + Deploy a matching bordered pill - both from the resolved
-    // palette, no hardcoded colours. The Deploy label mutates at runtime; the
-    // buttons keep this styling across setText().
+    // palette, no hardcoded colours. The Deploy label+icon mutate at runtime in
+    // updateDeployButton(); the buttons keep this styling across setText().
     const int barH = m_profileCombo ? m_profileCombo->sizeHint().height() : 0;
     const QColor mid = palette().color(QPalette::Mid);
     const QColor btn = palette().color(QPalette::Button);
     const QColor btnText = palette().color(QPalette::ButtonText);
-    // "Full Redeploy" (escape hatch) lives in the Tools menu, not as a dropdown on
-    // the Deploy button - a QToolButton menu can hijack the primary click on some
-    // styles, and the primary Deploy action must never be at risk.
-    if (auto* deployBtn = qobject_cast<QToolButton*>(tb->widgetForAction(m_deployAction))) {
-        m_deployBtn = deployBtn;
-        deployBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        if (barH > 0) deployBtn->setMinimumHeight(barH);
-        deployBtn->setStyleSheet(QString(
-            "QToolButton { background:%1; color:%2; border:1px solid %3;"
-            " border-radius:3px; padding:2px 12px; }")
-            .arg(btn.name(), btnText.name(), mid.name()));
-    }
-    if (auto* playBtn = qobject_cast<QToolButton*>(tb->widgetForAction(m_playAction))) {
-        m_playBtn = playBtn;
-        playBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        if (barH > 0) playBtn->setMinimumHeight(barH);
+
+    m_deployBtn = new QPushButton(tb);
+    m_deployBtn->setAutoDefault(false);
+    if (barH > 0) m_deployBtn->setMinimumHeight(barH);
+    m_deployBtn->setStyleSheet(QString(
+        "QPushButton { background:%1; color:%2; border:1px solid %3;"
+        " border-radius:3px; padding:2px 12px; }")
+        .arg(btn.name(), btnText.name(), mid.name()));
+    connect(m_deployBtn, &QPushButton::clicked, m_deployAction, &QAction::trigger);
+    connect(m_deployAction, &QAction::changed, this, [this]{
+        if (m_deployBtn) m_deployBtn->setEnabled(m_deployAction->isEnabled());
+    });
+    tb->addWidget(m_deployBtn);
+
+    m_playBtn = new QPushButton(tb);
+    m_playBtn->setAutoDefault(false);
+    if (barH > 0) m_playBtn->setMinimumHeight(barH);
+    {
         const QColor accent = palette().color(QPalette::Highlight);
         const QColor accentText = palette().color(QPalette::HighlightedText);
         // Disabled = greyed pill (shown while the game is launching/running).
         const QColor off = palette().color(QPalette::Disabled, QPalette::Button);
         const QColor offText = palette().color(QPalette::Disabled, QPalette::ButtonText);
-        playBtn->setStyleSheet(QString(
-            "QToolButton { background:%1; color:%2; border-radius:3px;"
+        m_playBtn->setStyleSheet(QString(
+            "QPushButton { background:%1; color:%2; border:none; border-radius:3px;"
             " padding:2px 12px; }"
-            "QToolButton:disabled { background:%3; color:%4; }")
+            "QPushButton:disabled { background:%3; color:%4; }")
             .arg(accent.name(), accentText.name(), off.name(), offText.name()));
     }
+    connect(m_playBtn, &QPushButton::clicked, m_playAction, &QAction::trigger);
+    connect(m_playAction, &QAction::changed, this, [this]{
+        if (m_playBtn) m_playBtn->setEnabled(m_playAction->isEnabled());
+    });
+    tb->addWidget(m_playBtn);
     // Uniform toolbar text size (matching "Profile:") + font-proportional Deploy/Play
     // glyph icons, re-applied on every zoom so the whole bar scales together. The
     // Play/Deploy stylesheets set WA_StyleSheet, which blocks app-font propagation,
@@ -881,17 +893,28 @@ void MainWindow::applyToolbarFont() {
     // Size the Deploy/Play glyph icons to the font and re-render them at that size.
     const int px = toolbarIconPx();
     const QSize isz(px, px);
-    if (m_playAction) {
-        m_playAction->setIcon(solero::playTriangleIcon(
+    if (m_playBtn) {
+        m_playBtn->setText("Play");
+        m_playBtn->setIcon(solero::playTriangleIcon(
             px, palette().color(QPalette::HighlightedText)));
     }
-    updateDeployButton(); // re-renders the deploy glyph icon at the new size
-    for (QToolButton* b : {m_playBtn, m_deployBtn}) {
+    updateDeployButton(); // re-renders the deploy glyph icon + label at the new size
+    for (QPushButton* b : {m_playBtn, m_deployBtn}) {
         if (!b) continue;
         b->setIconSize(isz);
         // WA_StyleSheet caches the resolved font; re-polish so the new size paints.
         b->style()->unpolish(b);
         b->style()->polish(b);
+    }
+    // Pin Deploy to its LONGEST-label width so it doesn't jitter as the text cycles
+    // through Not Deployed / Redeploy / Deployed. A QPushButton centres its content,
+    // so every state stays centred within that stable width.
+    if (m_deployBtn) {
+        const QFontMetrics fm(bold);
+        const int w = fm.horizontalAdvance(QStringLiteral("Not Deployed"))
+                    + px + 12   // glyph icon + icon/text spacing
+                    + 28;       // left+right padding from the stylesheet
+        m_deployBtn->setMinimumWidth(w);
     }
 }
 
@@ -966,7 +989,8 @@ void MainWindow::setupCentralWidget() {
     flagFilter->addItem("Output mod",    int(solero::ModListView::FlagFilter::Output));
     flagFilter->addItem("Has note",      int(solero::ModListView::FlagFilter::HasNote));
 
-    filterRow->addWidget(modFilter, 1);
+    // The filters/combos sit on the left; the search box is added last so it's the
+    // rightmost element (mirroring the plugin pane), filling the row's stretch.
     filterRow->addWidget(stateFilter);
     filterRow->addWidget(categoryFilter);
     filterRow->addWidget(flagFilter);
@@ -990,6 +1014,7 @@ void MainWindow::setupCentralWidget() {
     m_redoBtn = redoBtn; // mirrored by Ctrl+Shift+Z
     filterRow->addWidget(undoBtn);
     filterRow->addWidget(redoBtn);
+    filterRow->addWidget(modFilter, 1); // rightmost, fills the remaining width
 
     m_modListView = new solero::ModListView(leftContainer);
     connect(modFilter, &QLineEdit::textChanged, m_modListView,
@@ -1838,23 +1863,23 @@ void MainWindow::onDeployToggle() {
 }
 
 void MainWindow::updateDeployButton() {
-    if (!m_deployAction) return;
+    if (!m_deployBtn) return;
     // Leading glyph is a real icon (sized by toolbarIconPx so it scales with zoom),
     // colour-coded by state: amber warning = pending redeploy, green check =
     // deployed, red cross = not deployed. Replaces the former inline text glyphs.
     const int px = toolbarIconPx();
     if (m_deployed && m_deployDirty) {
-        m_deployAction->setIcon(solero::warnSignIcon(px));
-        m_deployAction->setText("Redeploy");
-        m_deployAction->setToolTip("Mod changes since last deploy - click to redeploy (Ctrl+D)");
+        m_deployBtn->setIcon(solero::warnSignIcon(px));
+        m_deployBtn->setText("Redeploy");
+        m_deployBtn->setToolTip("Mod changes since last deploy - click to redeploy (Ctrl+D)");
     } else if (m_deployed) {
-        m_deployAction->setIcon(solero::checkMarkIcon(px, QColor("#4CAF50")));
-        m_deployAction->setText("Deployed");
-        m_deployAction->setToolTip("Mods are deployed - click to undeploy (Ctrl+D)");
+        m_deployBtn->setIcon(solero::checkMarkIcon(px, QColor("#4CAF50")));
+        m_deployBtn->setText("Deployed");
+        m_deployBtn->setToolTip("Mods are deployed - click to undeploy (Ctrl+D)");
     } else {
-        m_deployAction->setIcon(solero::redCrossIcon(px));
-        m_deployAction->setText("Not Deployed");
-        m_deployAction->setToolTip("Click to deploy mods to game directory (Ctrl+D)");
+        m_deployBtn->setIcon(solero::redCrossIcon(px));
+        m_deployBtn->setText("Not Deployed");
+        m_deployBtn->setToolTip("Click to deploy mods to game directory (Ctrl+D)");
     }
 }
 

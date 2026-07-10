@@ -68,10 +68,20 @@ void PluginListModel::reconcile(const QStringList& available) {
             if (fn.compare(official[i], Qt::CaseInsensitive) == 0) return i;
         return -1;
     };
-    // Refresh masters + isOfficial on an entry from the (mtime-keyed) cache.
+    // Refresh masters + isOfficial + type flags on an entry from the (mtime-keyed)
+    // cache. The persisted plugin list only stores filename + enabled, so on load
+    // isMaster/isLight are guessed from the EXTENSION alone - which mislabels a
+    // light-flagged .esp (ESPFE) as a plain "ESP". Read the real TES4 header flags
+    // here and combine with the extension (a .esl/.esm is light/master by name even
+    // if the header bit is absent), so the Type column + feather match the file.
     auto refreshMeta = [&](PluginEntry& pe) {
-        pe.masters    = cachedMeta(dataDir + "/" + pe.filename).masters;
+        const CachedMeta& cm = cachedMeta(dataDir + "/" + pe.filename);
+        pe.masters    = cm.masters;
         pe.isOfficial = officialRank(pe.filename) >= 0;
+        const bool esmExt = pe.filename.endsWith(".esm", Qt::CaseInsensitive);
+        const bool eslExt = pe.filename.endsWith(".esl", Qt::CaseInsensitive);
+        pe.isMaster = (cm.flagsOk && cm.isMaster) || esmExt;
+        pe.isLight  = (cm.flagsOk && cm.isLight)  || eslExt;
     };
 
     // Lowercased membership sets for O(1) presence tests.
@@ -97,15 +107,7 @@ void PluginListModel::reconcile(const QStringList& available) {
         PluginEntry pe;
         pe.filename = fn;
         pe.enabled  = true; // freshly installed mods default to active
-        const CachedMeta& cm = cachedMeta(dataDir + "/" + fn);
-        if (cm.flagsOk) {
-            pe.isMaster = cm.isMaster;
-            pe.isLight  = cm.isLight;
-        } else {
-            pe.isMaster = fn.endsWith(".esm", Qt::CaseInsensitive);
-            pe.isLight  = fn.endsWith(".esl", Qt::CaseInsensitive);
-        }
-        refreshMeta(pe);
+        refreshMeta(pe); // masters + official + isMaster/isLight (header flags OR extension)
 
         // Insert after the last existing entry whose band is <= this band, so a
         // new master lands among masters, a light among lights, an esp at end.
@@ -292,10 +294,14 @@ QVariant PluginListModel::data(const QModelIndex& idx, int role) const {
                     ? (pinGlyph() + QStringLiteral(" ") + p.filename)
                     : p.filename;
             case ColFlags: {
-                if (p.isMaster || p.filename.endsWith(".esm", Qt::CaseInsensitive))
-                    return QStringLiteral("ESM");
+                // Light wins over master: an ESL-flagged master is still LIGHT (it
+                // doesn't consume a full 00..FD slot), so it must read "ESL", not
+                // "ESM" - matching the feather, the ESP/ESL tally, pluginBand, and
+                // the health check, which all treat light as the salient property.
                 if (p.isLight || p.filename.endsWith(".esl", Qt::CaseInsensitive))
                     return QStringLiteral("ESL");
+                if (p.isMaster || p.filename.endsWith(".esm", Qt::CaseInsensitive))
+                    return QStringLiteral("ESM");
                 return QStringLiteral("ESP");
             }
             default: return {};
@@ -306,10 +312,10 @@ QVariant PluginListModel::data(const QModelIndex& idx, int role) const {
     if (role == Qt::FontRole && idx.row() < m_profile->pluginList().count()) {
         const auto& fp = m_profile->pluginList().at(idx.row());
         QFont f;
-        if (fp.isMaster) f.setBold(true);
-        else if (fp.isLight) f.setItalic(true);
-        else if (fp.filename.endsWith(".esm", Qt::CaseInsensitive)) f.setBold(true);
-        else if (fp.filename.endsWith(".esl", Qt::CaseInsensitive)) f.setItalic(true);
+        // Light-first (see ColFlags): a light plugin is italic even if it also
+        // carries the master bit; a plain master is bold.
+        if (fp.isLight || fp.filename.endsWith(".esl", Qt::CaseInsensitive)) f.setItalic(true);
+        else if (fp.isMaster || fp.filename.endsWith(".esm", Qt::CaseInsensitive)) f.setBold(true);
         return f;
     }
     if (role == Qt::BackgroundRole && m_profile && idx.row() < m_profile->pluginList().count()) {

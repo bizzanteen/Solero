@@ -1381,6 +1381,10 @@ void MainWindow::switchProfile(const QString& name) {
     if (wasDeployed && solero::AppConfig::instance().isConfigured()) {
         solero::DeployEngine engine(solero::AppConfig::instance().gameDir(),
                                     solero::AppConfig::instance().stagingDir());
+        // Point the orphan sweep at the outgoing profile's Overwrite dir too, so
+        // runtime-captured files it deployed are swept on undeploy.
+        if (auto* outgoing = m_profileMgr->activeProfile())
+            engine.setOverwriteDir(solero::AppConfig::overwriteDir(outgoing->name()));
         if (!engine.undeploy(solero::AppConfig::instance().gameDir(),
                         [&](int d, int t){ if (prog) { prog->setProgress(d, t); prog->pump(); } }))
             statusBar()->showMessage(
@@ -1688,11 +1692,17 @@ void MainWindow::undeployActiveAsync(std::function<void(bool)> onDone) {
 
     const QString gameDir = solero::AppConfig::instance().gameDir();
     const QString staging = solero::AppConfig::instance().stagingDir();
+    // Active profile's Overwrite dir, so the orphan sweep also catches runtime-
+    // captured files (generated during play, after the deploy record was taken).
+    QString overwrite;
+    if (auto* active = m_profileMgr ? m_profileMgr->activeProfile() : nullptr)
+        overwrite = solero::AppConfig::overwriteDir(active->name());
     QPointer<solero::ProgressModal> modal(m_deployModal);
 
     qCInfo(lcDeploy) << "undeploy dispatched to worker thread";
-    auto future = QtConcurrent::run([gameDir, staging, modal]() -> bool {
+    auto future = QtConcurrent::run([gameDir, staging, overwrite, modal]() -> bool {
         solero::DeployEngine engine(gameDir, staging);
+        engine.setOverwriteDir(overwrite);
         return engine.undeploy(gameDir, [modal](int d, int t){
             QMetaObject::invokeMethod(qApp, [modal, d, t]{
                 if (modal) modal->setProgress(d, t);

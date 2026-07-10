@@ -756,13 +756,18 @@ int DeployEngine::sweepStagingOrphans(const QString& gameDir, const QString& bac
     if (m_stagingRoot.isEmpty() || !QDir(m_stagingRoot).exists()) return 0;
     const QString normGameDir = QDir::cleanPath(gameDir);
 
-    // 1. Every (dev,inode) reachable as a real file from the staging root, following
-    //    symlinks (mods may symlink into Solero's own source trees, e.g. Wabbajack).
-    //    Skip anything that resolves INTO the game dir - never treat a vanilla /
-    //    StockGame file as a removable orphan.
+    // 1. Every (dev,inode) reachable as a real file from Solero's own source roots -
+    //    the staging tree AND the per-profile Overwrite dir (runtime-captured files
+    //    that a play session can generate AFTER the deploy record was taken, so the
+    //    record misses them). Follow symlinks (mods may symlink into Solero's own
+    //    trees, e.g. Wabbajack). Skip anything that resolves INTO the game dir - never
+    //    treat a vanilla / StockGame file as a removable orphan.
     QSet<QPair<quint64, quint64>> stagedInodes;
-    {
-        QDirIterator it(m_stagingRoot, QDir::Files | QDir::NoDotAndDotDot,
+    QStringList ownedRoots{m_stagingRoot};
+    if (!m_overwriteDir.isEmpty() && QDir(m_overwriteDir).exists())
+        ownedRoots << m_overwriteDir;
+    for (const QString& root : ownedRoots) {
+        QDirIterator it(root, QDir::Files | QDir::NoDotAndDotDot,
                         QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
         while (it.hasNext()) {
             it.next();

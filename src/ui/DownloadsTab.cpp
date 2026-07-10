@@ -153,8 +153,11 @@ QTableWidgetItem* makeStatusItem(const QString& kind, const QString& fullText,
     it->setData(RoleStatusKind, kind);
     int rank = 4;
     QIcon icon;
-    if (kind == QLatin1String("downloading"))       { rank = 0; icon = downloadingStatusIcon(14); }
-    else if (kind == QLatin1String("paused"))       { rank = 0; icon = neutralStatusIcon(14); }
+    // Downloading shows only its "N%" (no icon) - the moving percentage already reads
+    // as an active transfer, and dropping the icon keeps the cell narrow. Paused gets
+    // a dedicated amber pause glyph so a held transfer stands out from a live one.
+    if (kind == QLatin1String("downloading"))       { rank = 0; icon = QIcon(); }
+    else if (kind == QLatin1String("paused"))       { rank = 0; icon = pauseStatusIcon(14); }
     else if (kind == QLatin1String("failed"))       { rank = 1; icon = errorSignIcon(14); }
     else if (kind == QLatin1String("not-installed")){ rank = 2; icon = notInstalledStatusIcon(14); }
     else if (kind == QLatin1String("installed"))    { rank = 3; icon = installedStatusIcon(14); }
@@ -373,7 +376,7 @@ void DownloadsTab::refresh() {
         const qint64 rec = it.value().first, tot = it.value().second;
         const QString pct = (tot > 0) ? QString("%1%").arg(int(rec * 100 / tot)) : humanSize(rec);
         m_table->setItem(row, 1, makeStatusItem(QStringLiteral("paused"),
-            QStringLiteral("Paused at ") + pct, QStringLiteral("Paused ") + pct));
+            QStringLiteral("Paused at ") + pct, pct));
         auto* sz = new NumItem(QString()); sz->setData(Qt::UserRole, qint64(0));
         sz->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
         m_table->setItem(row, 2, sz);

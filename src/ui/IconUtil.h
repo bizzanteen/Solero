@@ -188,6 +188,25 @@ inline QIcon neutralStatusIcon(int size = 14) {
     p.drawLine(QPointF(px * 0.30, px * 0.50), QPointF(px * 0.70, px * 0.50));
     return QIcon(pm);
 }
+// Paused: an amber filled circle with two white vertical bars (a pause glyph),
+// in the same status-dot family as installed/downloading so a held download reads
+// as part of the set - "on hold" amber rather than the generic neutral grey dot.
+inline QIcon pauseStatusIcon(int size = 14) {
+    QPixmap pm = makeStatusPixmap(size);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const qreal px = size, m = px * 0.08;
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor("#FB8C00")); // amber - a held/paused transfer
+    p.drawEllipse(QRectF(m, m, px - 2 * m, px - 2 * m));
+    QPen bar(Qt::white);
+    bar.setWidthF(px * 0.13);
+    bar.setCapStyle(Qt::RoundCap);
+    p.setPen(bar);
+    p.drawLine(QPointF(px * 0.40, px * 0.32), QPointF(px * 0.40, px * 0.68));
+    p.drawLine(QPointF(px * 0.60, px * 0.32), QPointF(px * 0.60, px * 0.68));
+    return QIcon(pm);
+}
 // Help / "what is this?": a slate filled circle with a white question mark, in
 // the same status-dot family as installed/downloading so a column header labelled
 // with it reads as part of the set.

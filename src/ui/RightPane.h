@@ -9,6 +9,7 @@
 
 class QLabel;
 class QPushButton;
+class QAction;
 
 namespace solero {
 class PluginListView;
@@ -102,8 +103,8 @@ private:
     PluginListView* m_pluginsTab;
     QLabel*         m_pluginNotice = nullptr;
     QLabel*         m_pluginCountLabel = nullptr;
-    QPushButton*    m_sortBtn = nullptr;
-    QPushButton*    m_lockBtn = nullptr;
+    QAction*        m_sortAction = nullptr; // "Sort Now" in the Load Order menu
+    QAction*        m_lockAction = nullptr; // "Lock Order" (checkable) in that menu
     QLineEdit*      m_pluginSearch = nullptr;
     QTimer*         m_pluginSearchDebounce = nullptr;
     DataTab*        m_dataTab;

@@ -15,6 +15,7 @@
 #include <QPushButton>
 #include <QToolButton>
 #include <QMenu>
+#include <QAction>
 #include <QSignalBlocker>
 #include <QWidget>
 
@@ -35,8 +36,8 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     m_pluginNotice->hide();
     pluginsLayout->addWidget(m_pluginNotice);
 
-    // Top row: the plugin search sits inline on the left, with the right-aligned
-    // "Backup LO" / "Restore LO…" / "LOOT Rules" / "Lock" / "Sort Now" buttons.
+    // Top row: the plugin tally + a single "Load Order" dropdown on the left, with
+    // the search box as the rightmost element (filling the remaining width).
     auto* sortRow = new QHBoxLayout();
     sortRow->setContentsMargins(4, 4, 4, 4);
     // Enabled-plugin tally against the two hard caps (full plugins / 254 load-order
@@ -48,17 +49,22 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
                        "ESP = full plugins (ESM + ESP) using a load-order slot (max 254)\n"
                        "ESL = light / ESL-flagged plugins (max 4096)"));
     sortRow->addWidget(m_pluginCountLabel);
-    m_pluginSearch = new QLineEdit(pluginsContainer);
-    m_pluginSearch->setPlaceholderText(QStringLiteral("Search plugins") + QChar(0x2026));
-    m_pluginSearch->setClearButtonEnabled(true);
-    sortRow->addWidget(m_pluginSearch, 1); // grows to fill, pushing the buttons right
 
-    // The three rare load-order actions collapse into one "Load Order" dropdown.
-    // A QPushButton (not QToolButton) with a menu, so it matches the Lock Order +
-    // Sort Now push buttons beside it - one button family, one size.
+    // Every load-order action lives in one "Load Order" dropdown - the per-session
+    // Sort Now + Lock Order (checkable) join Backup / Restore / LOOT Rules here so
+    // the toolbar stays a single button. Sort Now / Lock Order are kept as members
+    // so setSortButtonEnabled() / setLockOrderChecked() can drive them.
     auto* loMenuBtn = new QPushButton("Load Order", pluginsContainer);
-    loMenuBtn->setToolTip("Backup, restore, and LOOT-rule actions for the load order");
+    loMenuBtn->setToolTip("Sort, lock, back up, restore, and LOOT-rule actions for the load order");
     auto* loMenu = new QMenu(loMenuBtn);
+    m_sortAction = loMenu->addAction("Sort Now", this, &RightPane::sortRequested);
+    m_sortAction->setToolTip("Run LOOT to auto-sort the load order");
+    m_sortAction->setEnabled(false);
+    m_lockAction = loMenu->addAction("Lock Order");
+    m_lockAction->setCheckable(true);
+    m_lockAction->setToolTip("Lock the load order: skip LOOT auto-sort and keep the current manual order");
+    connect(m_lockAction, &QAction::toggled, this, &RightPane::lockOrderToggled);
+    loMenu->addSeparator();
     loMenu->addAction("Backup Load Order", this, &RightPane::backupLoRequested)
         ->setToolTip("Snapshot the current load order + active state");
     loMenu->addAction(QStringLiteral("Restore Load Order") + QChar(0x2026),
@@ -67,19 +73,14 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     loMenu->addAction(QStringLiteral("LOOT Rules") + QChar(0x2026),
                       this, &RightPane::lootRulesRequested)
         ->setToolTip("Edit custom LOOT sorting rules");
+    loMenu->setToolTipsVisible(true);
     loMenuBtn->setMenu(loMenu); // QPushButton draws its own dropdown indicator
     sortRow->addWidget(loMenuBtn);
 
-    m_lockBtn = new QPushButton("Lock Order", pluginsContainer);
-    m_lockBtn->setCheckable(true);
-    m_lockBtn->setToolTip("Lock the load order: skip LOOT auto-sort and keep the current manual order");
-    connect(m_lockBtn, &QPushButton::toggled, this, &RightPane::lockOrderToggled);
-    sortRow->addWidget(m_lockBtn);
-    m_sortBtn = new QPushButton("Sort Now", pluginsContainer);
-    m_sortBtn->setToolTip("Run LOOT to auto-sort the load order");
-    m_sortBtn->setEnabled(false);
-    connect(m_sortBtn, &QPushButton::clicked, this, &RightPane::sortRequested);
-    sortRow->addWidget(m_sortBtn);
+    m_pluginSearch = new QLineEdit(pluginsContainer);
+    m_pluginSearch->setPlaceholderText(QStringLiteral("Search plugins") + QChar(0x2026));
+    m_pluginSearch->setClearButtonEnabled(true);
+    sortRow->addWidget(m_pluginSearch, 1); // rightmost element, fills the remaining width
     pluginsLayout->addLayout(sortRow);
 
     // Debounce the search input (mirrors the Data tab): filter once typing pauses.
@@ -153,15 +154,15 @@ void RightPane::hidePluginNotice() {
 }
 
 void RightPane::setSortButtonEnabled(bool enabled, const QString& tooltip) {
-    if (!m_sortBtn) return;
-    m_sortBtn->setEnabled(enabled);
-    if (!tooltip.isEmpty()) m_sortBtn->setToolTip(tooltip);
+    if (!m_sortAction) return;
+    m_sortAction->setEnabled(enabled);
+    if (!tooltip.isEmpty()) m_sortAction->setToolTip(tooltip);
 }
 
 void RightPane::setLockOrderChecked(bool checked) {
-    if (!m_lockBtn) return;
-    QSignalBlocker block(m_lockBtn); // reflect state without re-emitting toggled()
-    m_lockBtn->setChecked(checked);
+    if (!m_lockAction) return;
+    QSignalBlocker block(m_lockAction); // reflect state without re-emitting toggled()
+    m_lockAction->setChecked(checked);
 }
 
 void RightPane::invalidateModPluginCache(const QString& id) {

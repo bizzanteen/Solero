@@ -146,6 +146,31 @@ private slots:
         QCOMPARE(readFile(path), original);
     }
 
+    // Regression: a record signature containing an underscore ("NPC_", one of the
+    // commonest record types) must be recognised as a valid record, not treated as
+    // a corrupt signature. Before the fix, checkEslEligible bailed out on any plugin
+    // with NPCs and wrongly reported it ineligible.
+    void npc_record_is_eligible() {
+        QTemporaryDir tmp;
+        const QString path = tmp.path() + "/HasNpc.esp";
+
+        QByteArray recs;
+        recs += makeRecord("NPC_", 0x01000123); // new NPC record, objIndex 0x123
+        recs += makeRecord("WEAP", 0x01000456); // another new record
+        const QByteArray original = makeTes4({"Skyrim.esm"}) + makeGroup(recs);
+        writeFile(path, original);
+
+        const EslEligibility elig = PluginFlagEditor::checkEslEligible(path);
+        QVERIFY2(elig.eligible, qPrintable(elig.reason));
+        QCOMPARE(elig.newRecordCount, 2);
+
+        QString err;
+        QVERIFY2(PluginFlagEditor::setLightFlag(path, true, &err), qPrintable(err));
+        bool ok = false;
+        QVERIFY(PluginFlagEditor::isLight(path, &ok));
+        QVERIFY(ok);
+    }
+
     // A plugin with a new record whose object index exceeds 0xFFF must be refused,
     // and setLightFlag(set=true) must not modify the file or create a backup.
     void ineligible_is_refused_and_file_untouched() {

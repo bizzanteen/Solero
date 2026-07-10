@@ -19,10 +19,13 @@ quint32 u32le(const char* b, int o) {
 constexpr int kHeaderSize = 24;
 
 bool sigIsRecord(const char* s) {
-    // Record signatures are 4 ASCII chars in [A-Z0-9]; GRUP is handled separately.
+    // Record signatures are 4 chars in [A-Z0-9_]; GRUP is handled separately. The
+    // underscore matters: "NPC_" (non-player character) is one of the most common
+    // record types, so rejecting '_' made checkEslEligible bail out ("cannot safely
+    // analyze") on essentially any plugin with NPCs - wrongly marking it ineligible.
     for (int i = 0; i < 4; ++i) {
         const char c = s[i];
-        const bool ok = (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+        const bool ok = (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
         if (!ok) return false;
     }
     return true;

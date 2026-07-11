@@ -66,6 +66,8 @@ private:
     PluginListModel* m_model;
     QSortFilterProxyModel* m_proxy;
     bool m_didAutoSize = false;
+    double m_lastZoom = 1.0; // zoom the current column widths correspond to
+    bool m_adjustingCols = false; // guard: programmatic resizes must not persist
     bool m_filterActive = false;
 };
 }

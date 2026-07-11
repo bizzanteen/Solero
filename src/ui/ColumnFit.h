@@ -80,4 +80,28 @@ inline void assertFillMode(QHeaderView* hh, int /*fillCol*/) {
     hh->setStretchLastSection(true);
 }
 
+// Scale every non-fill column width by `ratio`, then re-fill the fill column from
+// the viewport. Used when the app zoom changes (live or across a restart): header
+// widths are absolute pixels, so they must follow the zoom-scaled font or columns
+// end up clipped (restored-at-lower-zoom) / elided (zoomed-in). Proportional, so a
+// user-customised layout keeps its shape.
+inline void scaleColumnWidths(QAbstractItemView* view, QHeaderView* hh, double ratio,
+                              int fillCol, int fillMin) {
+    if (!view || !hh || ratio <= 0.0 || qFuzzyCompare(ratio, 1.0)) return;
+    hh->setStretchLastSection(false);
+    // Scale EVERY column (fill column included) so the layout keeps its shape even
+    // when the viewport isn't laid out yet (construction-time restore, width 0).
+    for (int c = 0; c < hh->count(); ++c) {
+        if (hh->isSectionHidden(c)) continue;
+        const int w = qRound(hh->sectionSize(c) * ratio);
+        hh->resizeSection(c, qMax(hh->minimumSectionSize(), w));
+    }
+    // With a real viewport, true the fill column up to eat the remaining width so
+    // rounding drift doesn't leave a gap/scrollbar. Skipped pre-layout (width 0),
+    // where it would wrongly collapse the fill column to its floor.
+    if (view->viewport()->width() > 50)
+        fillColumnToViewport(view, hh, fillCol, fillMin);
+    hh->setStretchLastSection(true);
+}
+
 } // namespace solero

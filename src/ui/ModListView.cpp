@@ -176,15 +176,20 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     // Char-level elision for long mod names ("Some Mod Na…", not "Some…").
     setTextElideMode(Qt::ElideRight);
     setWordWrap(false);
-    hdr->resizeSection(ModListModel::ColEnabled,  28);
-    hdr->resizeSection(ModListModel::ColPriority, 40);
-    hdr->resizeSection(ModListModel::ColName,     280);
-    hdr->resizeSection(ModListModel::ColVersion,  80);
+    // Defaults are zoom-scaled: they're pixel widths that must match the (zoomed)
+    // font, or a first run at high zoom starts with elided columns. m_adjustingCols
+    // guards them from being recorded as a user layout by the save timer below.
+    m_adjustingCols = true;
+    hdr->resizeSection(ModListModel::ColEnabled,  solero::zoomScaledPx(28));
+    hdr->resizeSection(ModListModel::ColPriority, solero::zoomScaledPx(40));
+    hdr->resizeSection(ModListModel::ColName,     solero::zoomScaledPx(280));
+    hdr->resizeSection(ModListModel::ColVersion,  solero::zoomScaledPx(80));
     // Give the stretch tail (Flags) an explicit width too: stretchLastSection grows
     // it to fill any slack, and this explicit floor lets it shrink smoothly when the
     // user widens Name (without it, Qt keeps the tail pinned and Name-grow jumps
     // straight to a horizontal scrollbar).
-    hdr->resizeSection(ModListModel::ColFlags,    60);
+    hdr->resizeSection(ModListModel::ColFlags,    solero::zoomScaledPx(60));
+    m_adjustingCols = false;
     // Never let a column be dragged so narrow its content vanishes with no easy
     // way back (B-5). Keeps the checkbox/number/flags at least tap-visible.
     hdr->setMinimumSectionSize(22);
@@ -200,7 +205,33 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
         // restoreState also restores resize MODES, so re-assert ours: everything
         // Interactive, no last-section stretch. Name fills via fillColumnToViewport.
         solero::assertFillMode(hdr, ModListModel::ColName);
+        // The blob stores absolute pixel widths captured under headerStateZoom; if
+        // this session runs at a different zoom, rescale so columns match the font
+        // (otherwise Version/Flags clip at lower zoom, "#" elides at higher).
+        if (!saved.isEmpty()) {
+            const double savedZoom = AppConfig::instance().headerStateZoom();
+            const double curZoom = static_cast<Application*>(qApp)->zoomFactor();
+            if (savedZoom > 0) {
+                m_adjustingCols = true; // programmatic; must not count as a user drag
+                solero::scaleColumnWidths(this, hdr, curZoom / savedZoom,
+                                          ModListModel::ColName, 220);
+                m_adjustingCols = false;
+            }
+        }
     }
+    // Live zoom: fonts rescale via the app font, so the pixel column widths must
+    // follow proportionally or grown text elides inside unchanged columns.
+    m_lastZoom = static_cast<Application*>(qApp)->zoomFactor();
+    connect(static_cast<Application*>(qApp), &Application::zoomChanged, this, [this] {
+        const double z = static_cast<Application*>(qApp)->zoomFactor();
+        if (m_lastZoom > 0) {
+            m_adjustingCols = true;
+            solero::scaleColumnWidths(this, header(), z / m_lastZoom,
+                                      ModListModel::ColName, 220);
+            m_adjustingCols = false;
+        }
+        m_lastZoom = z;
+    });
     // Debounce column-resize saves: a drag emits sectionResized rapidly, so coalesce
     // into one AppConfig write 300ms after the user stops.
     m_headerSaveTimer = new QTimer(this);
@@ -209,7 +240,8 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     connect(m_headerSaveTimer, &QTimer::timeout, this, &ModListView::saveHeaderState);
     connect(hdr, &QHeaderView::sectionResized, this,
             [this](int, int, int){
-        if (!m_adjustingCols) m_userCols = true; // a genuine user drag stops auto-fill
+        if (m_adjustingCols) return; // programmatic resize: not a user layout, no save
+        m_userCols = true;           // a genuine user drag stops auto-fill
         m_headerSaveTimer->start();
     });
     // The list is manually ordered (drag-reorder); there's no real sort(), so
@@ -278,6 +310,11 @@ void ModListView::setProfile(Profile* profile) {
 
 void ModListView::saveHeaderState() {
     AppConfig::instance().setModListHeaderState(header()->saveState());
+    // Record the zoom these pixel widths correspond to, so a restore at a different
+    // zoom can rescale them (shared by all header-state blobs; they are all saved
+    // under the live session zoom).
+    AppConfig::instance().setHeaderStateZoom(
+        static_cast<Application*>(qApp)->zoomFactor());
     AppConfig::instance().save();
 }
 

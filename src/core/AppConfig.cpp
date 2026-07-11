@@ -125,6 +125,7 @@ bool AppConfig::load() {
         obj["downloadsHeaderState"].toString().toLatin1());
     m_savesHeaderState = QByteArray::fromBase64(
         obj["savesHeaderState"].toString().toLatin1());
+    m_headerStateZoom = obj["headerStateZoom"].toDouble(1.0);
     m_columnLayoutVersion = obj["columnLayoutVersion"].toInt(0);
     return true;
 }
@@ -169,6 +170,7 @@ bool AppConfig::save() const {
     obj["pluginListHeaderState"] = QString::fromLatin1(m_pluginListHeaderState.toBase64());
     obj["downloadsHeaderState"]  = QString::fromLatin1(m_downloadsHeaderState.toBase64());
     obj["savesHeaderState"]      = QString::fromLatin1(m_savesHeaderState.toBase64());
+    obj["headerStateZoom"]       = m_headerStateZoom;
     obj["columnLayoutVersion"]   = m_columnLayoutVersion;
     return atomicWrite(configPath(), QJsonDocument(obj).toJson(QJsonDocument::Indented));
 }

@@ -136,6 +136,7 @@ private:
     // user manually drags a divider; then their widths are respected and persisted.
     bool m_userCols = false;
     bool m_adjustingCols = false; // guard: our own resizes must not count as a user drag
+    double m_lastZoom = 1.0;      // zoom the current column widths correspond to
     // True when the given mod entry passes the active state predicate.
     bool matchesState(const ModEntry* entry) const;
     // Right-click header menu: toggle which columns are shown (Name is mandatory);

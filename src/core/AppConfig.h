@@ -111,6 +111,12 @@ public:
     void setDownloadsHeaderState(const QByteArray& v) { m_downloadsHeaderState = v; }
     const QByteArray& savesHeaderState() const       { return m_savesHeaderState; }
     void setSavesHeaderState(const QByteArray& v)     { m_savesHeaderState = v; }
+    // App zoom factor the header-state blobs were saved under. saveState() stores
+    // absolute pixel widths, so restoring at a different zoom leaves columns out of
+    // step with the (zoom-scaled) font; views rescale restored widths by
+    // currentZoom / headerStateZoom. Updated to the live zoom on every header save.
+    double headerStateZoom() const                   { return m_headerStateZoom; }
+    void setHeaderStateZoom(double z)                { m_headerStateZoom = z; }
     // Bumped when the default column layout changes, so a one-time migration can reset
     // stale persisted header widths and let the new defaults apply.
     int  columnLayoutVersion() const                 { return m_columnLayoutVersion; }
@@ -171,6 +177,7 @@ private:
     QByteArray m_pluginListHeaderState;
     QByteArray m_downloadsHeaderState;
     QByteArray m_savesHeaderState;
+    double m_headerStateZoom = 1.0;
     int        m_columnLayoutVersion = 0;
 };
 

@@ -244,9 +244,20 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     if (const QByteArray st = AppConfig::instance().downloadsHeaderState(); !st.isEmpty()) {
         hh->restoreState(st);
         solero::assertFillMode(hh, /*fillCol=*/0); // all Interactive; restoreState can change modes
+        // Pixel widths were captured under headerStateZoom; rescale to this
+        // session's zoom so columns match the (zoom-scaled) font.
+        const double savedZoom = AppConfig::instance().headerStateZoom();
+        const double curZoom = static_cast<Application*>(qApp)->zoomFactor();
+        if (savedZoom > 0) {
+            m_adjustingCols = true; // programmatic; must not count as a user drag
+            solero::scaleColumnWidths(m_table, hh, curZoom / savedZoom,
+                                      /*fillCol=*/0, /*fillMin=*/220);
+            m_adjustingCols = false;
+        }
         m_didAutoSize = true; // keep the restored widths; don't auto-size on first show
         m_userCols = true;    // a persisted layout is the user's; don't auto-fill over it
     }
+    m_lastZoom = static_cast<Application*>(qApp)->zoomFactor();
     m_headerSaveTimer = new QTimer(this);
     m_headerSaveTimer->setSingleShot(true);
     m_headerSaveTimer->setInterval(300);
@@ -418,9 +429,20 @@ void DownloadsTab::applyZoomFont() {
     // (the icons are baked into the items, so a re-font alone wouldn't resize them).
     refresh();
     m_table->resizeRowsToContents();
-    // Column WIDTHS should track the zoom too, but only when the user hasn't set their
-    // own widths: re-fitting would clobber a remembered/customised layout.
-    if (!m_userCols) { m_adjustingCols = true; applyColumnWidths(); m_adjustingCols = false; }
+    // Column WIDTHS track the zoom too. Auto-fit layouts re-fit from the font;
+    // user-customised layouts are scaled PROPORTIONALLY (keeps their shape) by the
+    // zoom ratio since the last application.
+    m_adjustingCols = true;
+    if (!m_userCols) {
+        applyColumnWidths();
+    } else {
+        const double z = static_cast<Application*>(qApp)->zoomFactor();
+        if (m_lastZoom > 0)
+            solero::scaleColumnWidths(m_table, m_table->horizontalHeader(),
+                                      z / m_lastZoom, /*fillCol=*/0, /*fillMin=*/220);
+    }
+    m_lastZoom = static_cast<Application*>(qApp)->zoomFactor();
+    m_adjustingCols = false;
 }
 
 void DownloadsTab::applyColumnWidths() {
@@ -470,6 +492,8 @@ void DownloadsTab::resizeEvent(QResizeEvent* e) {
 void DownloadsTab::saveHeaderState() {
     if (!m_table) return;
     AppConfig::instance().setDownloadsHeaderState(m_table->horizontalHeader()->saveState());
+    AppConfig::instance().setHeaderStateZoom(
+        static_cast<Application*>(qApp)->zoomFactor());
     AppConfig::instance().save();
 }
 

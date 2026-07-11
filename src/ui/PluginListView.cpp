@@ -28,6 +28,8 @@
 #include <QCursor>
 #include <QIcon>
 #include "IconUtil.h"
+#include "ColumnFit.h"
+#include "app/Application.h"
 #include "ElideDelegate.h"
 namespace solero {
 
@@ -126,13 +128,27 @@ PluginListView::PluginListView(QWidget* parent) : QTableView(parent) {
     m_headerSaveTimer->setInterval(300);
     connect(m_headerSaveTimer, &QTimer::timeout, this, &PluginListView::saveHeaderState);
     connect(horizontalHeader(), &QHeaderView::sectionResized, this,
-            [this](int, int, int){ m_headerSaveTimer->start(); });
+            [this](int, int, int){
+        if (!m_adjustingCols) m_headerSaveTimer->start(); // user drags only
+    });
     connect(horizontalHeader(), &QHeaderView::sortIndicatorChanged,
             this, &PluginListView::onSortChanged);
     connect(m_model, &PluginListModel::loadOrderChanged,
             this, &PluginListView::loadOrderChanged);
     connect(m_model, &PluginListModel::pluginEnabledChanged,
             this, &PluginListView::pluginEnabledChanged);
+    // Live zoom: fonts rescale via the app font, so the pixel column widths must
+    // follow proportionally or grown text elides / the Type column falls off-pane.
+    connect(static_cast<Application*>(qApp), &Application::zoomChanged, this, [this] {
+        const double z = static_cast<Application*>(qApp)->zoomFactor();
+        if (m_lastZoom > 0) {
+            m_adjustingCols = true;
+            solero::scaleColumnWidths(this, horizontalHeader(), z / m_lastZoom,
+                                      PluginListModel::ColName, 200);
+            m_adjustingCols = false;
+        }
+        m_lastZoom = z;
+    });
 }
 
 void PluginListView::applyHeaderLayout() {
@@ -144,13 +160,17 @@ void PluginListView::applyHeaderLayout() {
     hh->setSectionResizeMode(QHeaderView::Interactive);
     hh->setStretchLastSection(true);
     hh->setMinimumSectionSize(22); // guard against unusably narrow columns (B-5)
-    hh->resizeSection(PluginListModel::ColEnabled, 28);
-    hh->resizeSection(PluginListModel::ColPriority, 40);
-    hh->resizeSection(PluginListModel::ColName, 260);
+    // Defaults are zoom-scaled pixel widths (see ModListView); m_adjustingCols
+    // keeps these programmatic resizes out of the header-save path.
+    m_adjustingCols = true;
+    hh->resizeSection(PluginListModel::ColEnabled, solero::zoomScaledPx(28));
+    hh->resizeSection(PluginListModel::ColPriority, solero::zoomScaledPx(40));
+    hh->resizeSection(PluginListModel::ColName, solero::zoomScaledPx(260));
     // Explicit width on the stretch tail (Flags) so it shrinks smoothly when the
     // user widens Name, rather than pinning and jumping to a scrollbar. Stretch
     // still grows it to fill any slack.
-    hh->resizeSection(PluginListModel::ColFlags, 50);
+    hh->resizeSection(PluginListModel::ColFlags, solero::zoomScaledPx(50));
+    m_adjustingCols = false;
     // Restore persisted column widths (B-1). applyHeaderLayout re-runs on every
     // model swap (filter on/off), so re-apply the saved blob each time or a filter
     // toggle would reset the user's widths back to the defaults above.
@@ -160,15 +180,35 @@ void PluginListView::applyHeaderLayout() {
     // layout so an older blob can't reinstate the inverted-drag behaviour.
     hh->setSectionResizeMode(QHeaderView::Interactive);
     hh->setStretchLastSection(true);
+    // The blob stores absolute pixel widths captured under headerStateZoom; if this
+    // session runs at a different zoom, rescale so the columns match the font
+    // (otherwise Type falls off the pane at higher zoom / clips at lower).
+    if (!saved.isEmpty()) {
+        const double savedZoom = AppConfig::instance().headerStateZoom();
+        const double curZoom = static_cast<Application*>(qApp)->zoomFactor();
+        if (savedZoom > 0) {
+            m_adjustingCols = true;
+            solero::scaleColumnWidths(this, hh, curZoom / savedZoom,
+                                      PluginListModel::ColName, 200);
+            m_adjustingCols = false;
+        }
+    }
+    m_lastZoom = static_cast<Application*>(qApp)->zoomFactor();
 }
 
 void PluginListView::saveHeaderState() {
     AppConfig::instance().setPluginListHeaderState(horizontalHeader()->saveState());
+    AppConfig::instance().setHeaderStateZoom(
+        static_cast<Application*>(qApp)->zoomFactor());
     AppConfig::instance().save();
 }
 
 void PluginListView::autoSizeColumns() {
     horizontalHeader()->resizeSections(QHeaderView::ResizeToContents);
+    // Clamp the Plugin column to the pane: content-sizing to the longest plugin
+    // name can otherwise push Type off-view behind a horizontal scrollbar.
+    solero::fillColumnToViewport(this, horizontalHeader(),
+                                 PluginListModel::ColName, 200);
     horizontalHeader()->setStretchLastSection(true); // resizeSections can clear it
 }
 

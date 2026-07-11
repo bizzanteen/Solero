@@ -42,6 +42,7 @@ private:
     // divider; then their widths are respected and persisted.
     bool m_userCols = false;
     bool m_adjustingCols = false; // guard: our own resizes must not count as a user drag
+    double m_lastZoom = 1.0;      // zoom the current column widths correspond to
     QTimer* m_headerSaveTimer = nullptr;
     // Repaint the status cell for every file with a pending progress tick. Driven by
     // m_progressTimer so a burst of network-read ticks coalesces into one repaint

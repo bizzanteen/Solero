@@ -995,8 +995,9 @@ void MainWindow::setupCentralWidget() {
     flagFilter->addItem("Output mod",    int(solero::ModListView::FlagFilter::Output));
     flagFilter->addItem("Has note",      int(solero::ModListView::FlagFilter::HasNote));
 
-    // The filters/combos sit on the left; the search box is added last so it's the
-    // rightmost element (mirroring the plugin pane), filling the row's stretch.
+    // The search gets its own full-width row ABOVE the filters (biggest target,
+    // never squeezed at high zoom); the dropdown filters + undo/redo share the
+    // second row, with a stretch absorbing the leftover width.
     filterRow->addWidget(stateFilter);
     filterRow->addWidget(categoryFilter);
     filterRow->addWidget(flagFilter);
@@ -1020,7 +1021,7 @@ void MainWindow::setupCentralWidget() {
     m_redoBtn = redoBtn; // mirrored by Ctrl+Shift+Z
     filterRow->addWidget(undoBtn);
     filterRow->addWidget(redoBtn);
-    filterRow->addWidget(modFilter, 1); // rightmost, fills the remaining width
+    filterRow->addStretch(1); // filters + undo/redo hug the left; slack goes here
 
     m_modListView = new solero::ModListView(leftContainer);
     connect(modFilter, &QLineEdit::textChanged, m_modListView,
@@ -1057,6 +1058,8 @@ void MainWindow::setupCentralWidget() {
                 undoBtn->setEnabled(canUndo);
                 redoBtn->setEnabled(canRedo);
             });
+    // Search row first (own full-width line), filter row beneath it.
+    leftLayout->addWidget(modFilter);
     leftLayout->addLayout(filterRow);
     leftLayout->addWidget(m_modListView);
 

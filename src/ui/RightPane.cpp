@@ -16,6 +16,9 @@
 #include <QToolButton>
 #include <QMenu>
 #include <QAction>
+#include <QApplication>
+#include <QFontMetrics>
+#include "app/Application.h"
 #include <QSignalBlocker>
 #include <QWidget>
 
@@ -80,6 +83,16 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     m_pluginSearch = new QLineEdit(pluginsContainer);
     m_pluginSearch->setPlaceholderText(QStringLiteral("Search plugins") + QChar(0x2026));
     m_pluginSearch->setClearButtonEnabled(true);
+    // Font-derived floor so the box never collapses to "Search …" at high zoom;
+    // re-derived on zoom change since the floor is in pixels.
+    const auto searchFloor = [this] {
+        m_pluginSearch->setMinimumWidth(
+            QFontMetrics(QApplication::font())
+                .horizontalAdvance(QStringLiteral("Search plugins MM")) + 28);
+    };
+    searchFloor();
+    connect(static_cast<Application*>(qApp), &Application::zoomChanged,
+            this, searchFloor);
     sortRow->addWidget(m_pluginSearch, 1); // rightmost element, fills the remaining width
     pluginsLayout->addLayout(sortRow);
 

@@ -40,8 +40,13 @@ BottomPanel::BottomPanel(QWidget* parent) : QWidget(parent) {
     // so a long check reports where the user is already looking.
     m_updateProgress = new QLabel(header);
     m_updateProgress->setStyleSheet("color: palette(mid);");
+    // Ignored horizontal policy: the label may not force the header row wider than
+    // the window (at high zoom its text otherwise clips off the right edge); the
+    // layout shrinks it and the text elides via setUpdateProgress instead.
+    m_updateProgress->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    m_updateProgress->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     m_updateProgress->hide();
-    headerLayout->addWidget(m_updateProgress);
+    headerLayout->addWidget(m_updateProgress, 1);
 
     outer->addWidget(header);
 
@@ -87,9 +92,13 @@ void BottomPanel::setUpdateProgress(int done, int total) {
         m_updateProgress->clear();
         return;
     }
+    const QString full = QStringLiteral("Checking updates") + QChar(0x2026)
+                       + QStringLiteral(" %1/%2").arg(done).arg(total);
+    // Elide from the LEFT if squeezed (Ignored h-policy above) so the live "N/M"
+    // tail stays visible instead of the text clipping at the window edge.
+    const int avail = qMax(60, m_updateProgress->width() - 8);
     m_updateProgress->setText(
-        QStringLiteral("Checking updates") + QChar(0x2026) +
-        QStringLiteral(" %1/%2").arg(done).arg(total));
+        m_updateProgress->fontMetrics().elidedText(full, Qt::ElideLeft, avail));
     m_updateProgress->show();
 }
 

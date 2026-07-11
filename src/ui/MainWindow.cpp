@@ -4436,7 +4436,12 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     // staged output to interfere with). restoreOutput() runs before every
     // early-return and once on the normal path; it's idempotent via the guard.
     auto* tp = m_profileMgr->activeProfile();
+    // Only disable the output mod if it's actually ENABLED - if the user already
+    // disabled it, there's nothing to turn off (and no need for the extra redeploy).
+    const solero::ModEntry* outMod =
+        tp ? tp->modList().findById(resolvedOutputModId) : nullptr;
     const bool wantToggle = tp && !resolvedOutputModId.isEmpty()
+                            && outMod && outMod->enabled
                             && outputModHasStagedFiles(tp, resolvedOutputModId);
     bool toggledOutput = false;
     auto restoreOutput = [&]() {
@@ -4448,7 +4453,7 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     };
     if (wantToggle) {
         tp->modList().setEnabled(resolvedOutputModId, false);      // in memory only, no profile.save()
-        if (!redeployForTool("Preparing " + exe.name, "Temporarily removing the output mod\xe2\x80\xa6")) {
+        if (!redeployForTool("Preparing " + exe.name, "Disabling the output mod\xe2\x80\xa6")) {
             tp->modList().setEnabled(resolvedOutputModId, true);   // restore in memory
             hideRunLock(); m_toolRunning = false;
             QMessageBox::warning(this, exe.name, "Could not temporarily remove the output mod for this run. Make sure the output mod is configured in the tool's settings, then try again.");

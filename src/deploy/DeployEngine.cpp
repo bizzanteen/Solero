@@ -128,8 +128,16 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
     for (const auto& entry : profile.modList()) {
         if (entry.type != EntryType::Mod) continue;
         if (!entry.enabled) continue;
+        // Rewriting the full (12MB+) record after EVERY mod costs O(mods x
+        // record-size) - gigabytes of JSON per deploy and the dominant cost of an
+        // incremental deploy, where most mods are unchanged and touch nothing. Flush
+        // only after a mod that actually LINKED a file into the game dir: that keeps
+        // the crash-safety guarantee (a newly-linked file is always on disk in the
+        // record) while skipping the flush for the unchanged majority. Already-linked
+        // / skipped files were persisted by the deploy that first linked them.
+        const int linksBefore = m_linkCount;
         failures += deployMod(entry, m_gameDir, linker, prevRecord, record, conflicts, ciOwners);
-        flushRecord();
+        if (m_linkCount != linksBefore) flushRecord();
         ++done;
         if (onProgress) onProgress(done, total);
     }

@@ -60,7 +60,10 @@ bool DeployRecord::saveToFile(const QString& path) const {
     obj.insert("version", 2);
     obj.insert("mode", m_mode);
     obj.insert("files", files);
-    return atomicWrite(path, QJsonDocument(obj).toJson(QJsonDocument::Indented));
+    // Compact (not indented): the record is machine-only and large (12MB+ for a big
+    // list), so dropping whitespace roughly halves the bytes written/parsed on every
+    // deploy flush and every load.
+    return atomicWrite(path, QJsonDocument(obj).toJson(QJsonDocument::Compact));
 }
 
 DeployRecord DeployRecord::loadFromFile(const QString& path) {

@@ -159,6 +159,7 @@ QTableWidgetItem* makeStatusItem(const QString& kind, const QString& fullText,
     // a dedicated amber pause glyph so a held transfer stands out from a live one.
     if (kind == QLatin1String("downloading"))       { rank = 0; icon = QIcon(); }
     else if (kind == QLatin1String("paused"))       { rank = 0; icon = pauseStatusIcon(sp); }
+    else if (kind == QLatin1String("queued"))       { rank = 0; icon = queuedStatusIcon(sp); }
     else if (kind == QLatin1String("failed"))       { rank = 1; icon = errorSignIcon(sp); }
     else if (kind == QLatin1String("not-installed")){ rank = 2; icon = notInstalledStatusIcon(sp); }
     else if (kind == QLatin1String("installed"))    { rank = 3; icon = installedStatusIcon(sp); }
@@ -368,9 +369,9 @@ void DownloadsTab::refresh() {
         auto* sz = new NumItem(QString()); sz->setData(Qt::UserRole, qint64(0));
         sz->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
         m_table->setItem(row, 2, sz);
-        // Sentinel just below in-progress so failed rows pin above completed files.
+        // Sentinel just below in-progress/queued so failed rows pin above completed files.
         auto* dt = new NumItem(QString());
-        dt->setData(Qt::UserRole, std::numeric_limits<qint64>::max() - 1);
+        dt->setData(Qt::UserRole, std::numeric_limits<qint64>::max() - 2);
         dt->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
         m_table->setItem(row, 3, dt);
     }
@@ -395,6 +396,31 @@ void DownloadsTab::refresh() {
         // Pin at the top alongside live downloads so a paused item stays visible.
         auto* dt = new NumItem(QString());
         dt->setData(Qt::UserRole, std::numeric_limits<qint64>::max());
+        dt->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        m_table->setItem(row, 3, dt);
+    }
+
+    // Queued downloads: persistent rows for files waiting behind the active
+    // transfer (the worker downloads one at a time and queued items emit no
+    // signals, so without these only the active download would ever be visible).
+    // The first progress tick removes the entry and swaps in a live row.
+    for (const QString& fn : m_queuedDownloads) {
+        int row = m_table->rowCount();
+        m_table->insertRow(row);
+        auto* nameItem = new QTableWidgetItem(fn);
+        nameItem->setData(Qt::UserRole, QString());                     // no archive path yet
+        nameItem->setData(Qt::UserRole + 1, QStringLiteral("queued"));  // row-kind marker (menu)
+        nameItem->setToolTip(fn);
+        m_table->setItem(row, 0, nameItem);
+        m_table->setItem(row, 1, makeStatusItem(QStringLiteral("queued"),
+            QStringLiteral("Queued ") + QChar('-')
+                + QStringLiteral(" starts when the downloads ahead of it finish")));
+        auto* sz = new NumItem(QString()); sz->setData(Qt::UserRole, qint64(0));
+        sz->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        m_table->setItem(row, 2, sz);
+        // Pin just below live/paused downloads so the waiting items sit with them.
+        auto* dt = new NumItem(QString());
+        dt->setData(Qt::UserRole, std::numeric_limits<qint64>::max() - 1);
         dt->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
         m_table->setItem(row, 3, dt);
     }
@@ -497,10 +523,25 @@ void DownloadsTab::saveHeaderState() {
     AppConfig::instance().save();
 }
 
+void DownloadsTab::setDownloadQueued(const QString& fileName) {
+    // Already visible as live or paused (or queued twice): nothing to add.
+    if (m_queuedDownloads.contains(fileName) || m_activeRows.contains(fileName)
+        || m_pausedDownloads.contains(fileName))
+        return;
+    m_queuedDownloads.append(fileName);
+    refresh();
+}
+
 void DownloadsTab::setDownloadProgress(const QString& fileName, qint64 received, qint64 total) {
     // Paused: ignore any in-flight ticks still crossing the thread boundary, so a
     // late tick can't resurrect a live "downloading" row beside the paused one.
     if (m_pausedDownloads.contains(fileName)) return;
+
+    // First signal for a queued file: it left the queue (started, or finished
+    // without starting - open failure / cancel). Drop the persistent "Queued" row;
+    // a genuinely live download rebuilds as a transient downloading row below.
+    if (m_queuedDownloads.removeAll(fileName) > 0)
+        refresh();
 
     // Record a rate sample and the latest bytes (the latter is the snapshot used if
     // this download is paused). Trim the window to ~3s of history for the average.
@@ -637,10 +678,11 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
     menu.addSeparator();
 
     // Pause/Resume/Cancel: classify the selected row. A live download has an empty
-    // path + "downloading" status; a held one has "paused" status. fileName is col-0.
+    // path + "downloading" status; a held one has "paused" status; one waiting its
+    // turn has "queued" status. fileName is col-0.
     {
         const int row = m_table->currentRow();
-        QString activeFileName, pausedFileName;
+        QString activeFileName, pausedFileName, queuedFileName;
         if (row >= 0) {
             auto* nameItem = m_table->item(row, 0);
             auto* statusItem = m_table->item(row, 1);
@@ -650,6 +692,8 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
                 activeFileName = nameItem->text();
             if (nameItem && kind == QLatin1String("paused"))
                 pausedFileName = nameItem->text();
+            if (nameItem && kind == QLatin1String("queued"))
+                queuedFileName = nameItem->text();
         }
 
         auto* pauseAction = menu.addAction("Pause Download");
@@ -671,12 +715,15 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
             refresh(); // row reappears as "Downloading" on the next progress tick
         });
 
-        // Cancel works for either a live or a paused download.
-        const QString cancelTarget = !activeFileName.isEmpty() ? activeFileName : pausedFileName;
+        // Cancel works for a live, paused or queued download.
+        const QString cancelTarget = !activeFileName.isEmpty() ? activeFileName
+                                   : !pausedFileName.isEmpty() ? pausedFileName
+                                                               : queuedFileName;
         auto* cancelAction = menu.addAction("Cancel Download");
         cancelAction->setEnabled(!cancelTarget.isEmpty());
         connect(cancelAction, &QAction::triggered, this, [this, cancelTarget]{
-            m_pausedDownloads.remove(cancelTarget); // no-op if it was live
+            m_pausedDownloads.remove(cancelTarget);   // no-op unless it was paused
+            m_queuedDownloads.removeAll(cancelTarget); // no-op unless it was queued
             m_rateSamples.remove(cancelTarget);
             emit cancelRequested(cancelTarget);
         });

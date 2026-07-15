@@ -3,6 +3,7 @@
 #include <QHash>
 #include <QPair>
 #include <QList>
+#include <QStringList>
 #include <QElapsedTimer>
 class QTableWidget;
 class QTableWidgetItem;
@@ -18,6 +19,10 @@ public:
     void setProfile(Profile* profile); // for "installed" status
     // Show/update a transient in-progress download row at the top of the table.
     void setDownloadProgress(const QString& fileName, qint64 received, qint64 total);
+    // Mark a file as queued (waiting behind the active download). The row shows a
+    // "Queued" status until the file's first progress tick swaps it for a live
+    // downloading row, or until it finishes/cancels without ever starting.
+    void setDownloadQueued(const QString& fileName);
     // Failed downloads to show as persistent "Failed" rows ({fileName, error}).
     void setFailedDownloads(const QList<QPair<QString,QString>>& failures);
 signals:
@@ -84,5 +89,9 @@ private:
     // Held here so a refresh() rebuild keeps the row (the worker gets no progress
     // ticks while paused, so it can't self-heal like a live download row does).
     QHash<QString,QPair<qint64,qint64>> m_pausedDownloads;
+    // Queued downloads shown as persistent "Queued" rows, in enqueue order. The
+    // worker transfers one file at a time and queued items emit no signals, so
+    // without these rows only the active download would ever appear in the list.
+    QStringList m_queuedDownloads;
 };
 }

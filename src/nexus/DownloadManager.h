@@ -21,6 +21,10 @@ public:
     void pause(const QString& fileName);
     void resume(const QString& fileName);
 signals:
+    // Emitted immediately from enqueue() (GUI thread) with the sanitized file name,
+    // so the UI can show the item as queued before the worker's first progress tick
+    // (the worker downloads one file at a time; queued items are otherwise silent).
+    void queued(const QString& fileName);
     void progress(const QString& fileName, qint64 received, qint64 total);
     void finished(const QString& fileName, const QString& destPath, bool ok, const QString& error);
     // Internal: forwarded to the worker thread (queued connections).

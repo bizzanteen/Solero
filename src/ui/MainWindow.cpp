@@ -1073,6 +1073,14 @@ void MainWindow::setupCentralWidget() {
     m_splitter->setSizes({640, 640});
 
     m_downloads = new solero::DownloadManager(this);
+    // Every enqueued file shows up as a persistent "Queued" row right away, so
+    // when several downloads are requested at once the waiting ones are visible
+    // (the worker transfers one at a time; the first progress tick swaps the row
+    // for a live downloading one).
+    connect(m_downloads, &solero::DownloadManager::queued, this,
+        [this](const QString& fn){
+            m_rightPane->downloadsTab()->setDownloadQueued(fn);
+        });
     connect(m_downloads, &solero::DownloadManager::progress, this,
         [this](const QString& fn, qint64 r, qint64 t){
             m_rightPane->downloadsTab()->setDownloadProgress(fn, r, t);

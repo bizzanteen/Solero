@@ -34,6 +34,7 @@ void DownloadManager::enqueue(const QString& url, const QString& fileNameIn, con
     if (fileName.isEmpty()) fileName = QUrl(url).fileName();
     if (fileName.isEmpty()) fileName = "download.bin";
     qCInfo(lcDownload) << "enqueue" << fileName << "from" << QUrl(url).host() << "to" << destDir;
+    emit queued(fileName);
     emit requestEnqueue(url, fileName, destDir);
 }
 

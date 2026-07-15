@@ -287,6 +287,27 @@ inline QIcon pauseStatusIcon(int size = 14) {
     p.drawLine(QPointF(px * 0.60, px * 0.32), QPointF(px * 0.60, px * 0.68));
     return QIcon(pm);
 }
+// Queued: a muted-blue filled circle with white clock hands, in the same
+// status-dot family as installed/downloading/paused. The clock reads as "waiting
+// its turn" - the worker transfers one file at a time, so items behind the active
+// download sit in this state until it finishes.
+inline QIcon queuedStatusIcon(int size = 14) {
+    QPixmap pm = makeStatusPixmap(size);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const qreal px = size, m = px * 0.08;
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor("#4E7CA8")); // dimmed cousin of the downloading blue
+    p.drawEllipse(QRectF(m, m, px - 2 * m, px - 2 * m));
+    QPen hand(Qt::white);
+    hand.setWidthF(px * 0.11);
+    hand.setCapStyle(Qt::RoundCap);
+    p.setPen(hand);
+    const QPointF c(px * 0.50, px * 0.50);
+    p.drawLine(c, QPointF(px * 0.50, px * 0.26)); // minute hand at 12
+    p.drawLine(c, QPointF(px * 0.68, px * 0.58)); // hour hand at ~4
+    return QIcon(pm);
+}
 // Help / "what is this?": a slate filled circle with a white question mark, in
 // the same status-dot family as installed/downloading so a column header labelled
 // with it reads as part of the set.

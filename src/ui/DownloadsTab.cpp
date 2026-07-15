@@ -18,6 +18,10 @@
 #include <QMessageBox>
 #include <QFile>
 #include <QDir>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QFileInfo>
 #include <QFileInfoList>
 #include <QDateTime>
@@ -767,6 +771,43 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
         retryAction->setEnabled(!failedFileName.isEmpty());
         connect(retryAction, &QAction::triggered, this, [this, failedFileName]{
             emit retryRequested(failedFileName);
+        });
+    }
+
+    menu.addSeparator();
+
+    // Open the selected download's Nexus mod page. The mod id comes from the
+    // archive's Nexus sidecar; archives without one (manual adds, pre-sidecar
+    // downloads) fall back to a profile mod installed from the same archive.
+    {
+        const int row = m_table->currentRow();
+        QString game = QStringLiteral("skyrimspecialedition"), modId;
+        if (row >= 0) {
+            if (auto* it = m_table->item(row, 0)) {
+                const QString path = it->data(Qt::UserRole).toString();
+                if (!path.isEmpty()) {
+                    QFile sf(path + ".solero-nexus.json");
+                    if (sf.open(QIODevice::ReadOnly)) {
+                        const QJsonObject meta = QJsonDocument::fromJson(sf.readAll()).object();
+                        modId = meta.value("modId").toString();
+                        if (const QString g = meta.value("game").toString(); !g.isEmpty())
+                            game = g;
+                    }
+                    if (modId.isEmpty() && m_profile) {
+                        for (const ModEntry& e : m_profile->modList())
+                            if (e.sourceArchive == path && !e.nexusModId.isEmpty()) {
+                                modId = e.nexusModId;
+                                break;
+                            }
+                    }
+                }
+            }
+        }
+        auto* openNexus = menu.addAction("Open on Nexus");
+        openNexus->setEnabled(!modId.isEmpty());
+        connect(openNexus, &QAction::triggered, this, [game, modId]{
+            QDesktopServices::openUrl(QUrl(
+                "https://www.nexusmods.com/" + game + "/mods/" + modId));
         });
     }
 

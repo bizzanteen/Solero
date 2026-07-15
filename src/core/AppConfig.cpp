@@ -114,6 +114,9 @@ bool AppConfig::load() {
     m_cachedDownloadServers.clear();
     for (const auto& v : obj["cachedDownloadServers"].toArray())
         m_cachedDownloadServers.append(v.toString());
+    m_removedModArchives.clear();
+    for (const auto& v : obj["removedModArchives"].toArray())
+        m_removedModArchives.append(v.toString());
     m_hiddenColumns.clear();
     for (const auto& v : obj["hiddenColumns"].toArray())
         m_hiddenColumns.append(v.toInt());
@@ -163,6 +166,9 @@ bool AppConfig::save() const {
     QJsonArray servers;
     for (const QString& s : m_cachedDownloadServers) servers.append(s);
     obj["cachedDownloadServers"] = servers;
+    QJsonArray removedArchives;
+    for (const QString& s : m_removedModArchives) removedArchives.append(s);
+    obj["removedModArchives"] = removedArchives;
     QJsonArray hidden;
     for (int c : m_hiddenColumns) hidden.append(c);
     obj["hiddenColumns"] = hidden;
@@ -173,6 +179,16 @@ bool AppConfig::save() const {
     obj["headerStateZoom"]       = m_headerStateZoom;
     obj["columnLayoutVersion"]   = m_columnLayoutVersion;
     return atomicWrite(configPath(), QJsonDocument(obj).toJson(QJsonDocument::Indented));
+}
+
+void AppConfig::markModArchivesRemoved(const QStringList& archives) {
+    bool changed = false;
+    for (const QString& a : archives) {
+        if (a.isEmpty() || m_removedModArchives.contains(a)) continue;
+        m_removedModArchives.append(a);
+        changed = true;
+    }
+    if (changed) save();
 }
 
 QString AppConfig::toolsDir() const {

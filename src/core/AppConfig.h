@@ -97,6 +97,13 @@ public:
     // Settings combo. Updated in-memory whenever a download URL is resolved.
     const QStringList& cachedDownloadServers() const { return m_cachedDownloadServers; }
     void setCachedDownloadServers(const QStringList& v) { m_cachedDownloadServers = v; }
+    // Archives whose installed mod has since been deleted from Solero. The
+    // Downloads tab shows these as "Mod deleted" instead of plain "Not installed";
+    // reinstalling from the archive (or deleting the archive) clears the marker.
+    const QStringList& removedModArchives() const     { return m_removedModArchives; }
+    void setRemovedModArchives(const QStringList& v)  { m_removedModArchives = v; }
+    // Record archives whose mod was just deleted; persists immediately.
+    void markModArchivesRemoved(const QStringList& archives);
     // Hidden mod-list columns (ModListModel::Column indices). Name is never hidden.
     const QList<int>& hiddenColumns() const   { return m_hiddenColumns; }
     void setHiddenColumns(const QList<int>& v) { m_hiddenColumns = v; }
@@ -172,6 +179,7 @@ private:
     QString m_lastProfile;
     QString m_preferredDownloadServer;
     QStringList m_cachedDownloadServers;
+    QStringList m_removedModArchives;
     QList<int> m_hiddenColumns;
     QByteArray m_modListHeaderState;
     QByteArray m_pluginListHeaderState;

@@ -287,6 +287,26 @@ inline QIcon pauseStatusIcon(int size = 14) {
     p.drawLine(QPointF(px * 0.60, px * 0.32), QPointF(px * 0.60, px * 0.68));
     return QIcon(pm);
 }
+// Mod deleted: a muted-red filled circle with a white cross, in the same
+// status-dot family as installed/not-installed. Marks an archive whose mod was
+// installed and has since been deleted from Solero - a step beyond the quiet
+// "never installed" ring, without the urgency of the failed warning sign.
+inline QIcon removedStatusIcon(int size = 14) {
+    QPixmap pm = makeStatusPixmap(size);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const qreal px = size, m = px * 0.08;
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor("#A85454")); // dulled red - "was here, now gone"
+    p.drawEllipse(QRectF(m, m, px - 2 * m, px - 2 * m));
+    QPen bar(Qt::white);
+    bar.setWidthF(px * 0.13);
+    bar.setCapStyle(Qt::RoundCap);
+    p.setPen(bar);
+    p.drawLine(QPointF(px * 0.34, px * 0.34), QPointF(px * 0.66, px * 0.66));
+    p.drawLine(QPointF(px * 0.66, px * 0.34), QPointF(px * 0.34, px * 0.66));
+    return QIcon(pm);
+}
 // Queued: a muted-blue filled circle with white clock hands, in the same
 // status-dot family as installed/downloading/paused. The clock reads as "waiting
 // its turn" - the worker transfers one file at a time, so items behind the active

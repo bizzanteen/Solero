@@ -869,14 +869,19 @@ void ModListView::onOutdentSeparator(int visibleRow) {
 void ModListView::deleteSelectedMods() {
     if (!m_model->profile()) return;
 
-    // Gather the selected mod entries (skip separators / Overwrite).
-    QStringList ids, names;
+    // Gather the selected mod entries (skip separators / Overwrite). Also collect
+    // their source archives (every variant's) so the Downloads tab can mark them
+    // as "Mod deleted" once the mods are gone.
+    QStringList ids, names, archives;
     const auto rows = selectionModel()->selectedRows();
     for (const auto& idx : rows) {
         const auto* entry = m_model->entryAt(idx.row());
         if (!entry || entry->type != EntryType::Mod) continue;
         ids   << entry->id;
         names << entry->name;
+        if (!entry->sourceArchive.isEmpty()) archives << entry->sourceArchive;
+        for (const auto& v : entry->variants)
+            if (!v.sourceArchive.isEmpty()) archives << v.sourceArchive;
     }
     if (ids.isEmpty()) return;
 
@@ -913,6 +918,9 @@ void ModListView::deleteSelectedMods() {
         m_model->invalidateModCache(id); // its staged files are now gone
     }
     saveProfile();
+    // The mods are gone; flag their archives so the Downloads tab shows the
+    // distinct "Mod deleted" status (modsChanged refreshes the tab).
+    AppConfig::instance().markModArchivesRemoved(archives);
     m_model->rebuild();
     emit modsChanged();
 

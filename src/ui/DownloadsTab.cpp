@@ -151,7 +151,7 @@ QTableWidgetItem* makeStatusItem(const QString& kind, const QString& fullText,
     it->setToolTip(fullText);
     it->setTextAlignment(Qt::AlignCenter);
     it->setData(RoleStatusKind, kind);
-    int rank = 4;
+    int rank = 5;
     QIcon icon;
     const int sp = solero::zoomScaledPx(14); // status dot size tracks the app-font zoom
     // Downloading shows only its "N%" (no icon) - the moving percentage already reads
@@ -161,9 +161,10 @@ QTableWidgetItem* makeStatusItem(const QString& kind, const QString& fullText,
     else if (kind == QLatin1String("paused"))       { rank = 0; icon = pauseStatusIcon(sp); }
     else if (kind == QLatin1String("queued"))       { rank = 0; icon = queuedStatusIcon(sp); }
     else if (kind == QLatin1String("failed"))       { rank = 1; icon = errorSignIcon(sp); }
-    else if (kind == QLatin1String("not-installed")){ rank = 2; icon = notInstalledStatusIcon(sp); }
-    else if (kind == QLatin1String("installed"))    { rank = 3; icon = installedStatusIcon(sp); }
-    else /* cancelled / other terminal-neutral */   { rank = 4; icon = neutralStatusIcon(sp); }
+    else if (kind == QLatin1String("removed"))      { rank = 2; icon = removedStatusIcon(sp); }
+    else if (kind == QLatin1String("not-installed")){ rank = 3; icon = notInstalledStatusIcon(sp); }
+    else if (kind == QLatin1String("installed"))    { rank = 4; icon = installedStatusIcon(sp); }
+    else /* cancelled / other terminal-neutral */   { rank = 5; icon = neutralStatusIcon(sp); }
     it->setData(Qt::UserRole, rank);
     it->setIcon(icon);
     return it;
@@ -322,6 +323,23 @@ void DownloadsTab::refresh() {
                 installedSet.insert(e.sourceArchive);
     }
 
+    // Archives whose mod was deleted show a distinct "Mod deleted" status. The
+    // marker list self-heals here: reinstalling clears an entry (installed wins),
+    // and entries whose archive no longer exists on disk are pruned.
+    QStringList removedArchives = AppConfig::instance().removedModArchives();
+    bool removedChanged = false;
+    for (int i = removedArchives.size() - 1; i >= 0; --i) {
+        if (installedSet.contains(removedArchives.at(i))
+            || !QFileInfo::exists(removedArchives.at(i))) {
+            removedArchives.removeAt(i);
+            removedChanged = true;
+        }
+    }
+    if (removedChanged) {
+        AppConfig::instance().setRemovedModArchives(removedArchives);
+        AppConfig::instance().save();
+    }
+
     QString dir = AppConfig::instance().downloadsDir();
     if (!dir.isEmpty()) {
         QDir d(dir);
@@ -337,9 +355,16 @@ void DownloadsTab::refresh() {
             m_table->setItem(row, 0, nameItem);
 
             const bool installed = installedSet.contains(fi.absoluteFilePath());
+            const bool removed = !installed && removedArchives.contains(fi.absoluteFilePath());
             m_table->setItem(row, 1, makeStatusItem(
-                installed ? QStringLiteral("installed") : QStringLiteral("not-installed"),
-                installed ? QStringLiteral("Installed") : QStringLiteral("Not installed")));
+                installed ? QStringLiteral("installed")
+                : removed ? QStringLiteral("removed")
+                          : QStringLiteral("not-installed"),
+                installed ? QStringLiteral("Installed")
+                : removed ? QStringLiteral("Mod deleted ") + QChar('-')
+                            + QStringLiteral(" a mod installed from this archive was "
+                                             "later deleted from Solero")
+                          : QStringLiteral("Not installed")));
 
             auto* sizeItem = new NumItem(humanSize(fi.size()));
             sizeItem->setData(Qt::UserRole, fi.size());

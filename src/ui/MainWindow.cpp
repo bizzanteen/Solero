@@ -2319,6 +2319,9 @@ void MainWindow::onModsChanged() {
     refreshDeployDirty();
     updatePluginNotice();
     refreshHealthIndicator();
+    // Keep the Downloads tab's Installed / Mod deleted statuses in step with the
+    // mod list (fires on user actions - install, delete, enable - not on ticks).
+    m_rightPane->downloadsTab()->refresh();
 }
 
 void MainWindow::onModsReordered() {
@@ -5368,13 +5371,22 @@ void MainWindow::removeModEverywhere(const QString& id) {
     // A Keep-Both mod owns one staging folder per version variant; collect them all
     // (plus the mirror folder) so deleting the mod removes every version's files.
     QStringList folders;
+    // Also collect the mod's source archives (every variant's) so the Downloads
+    // tab can mark them as "Mod deleted" once the removal succeeds.
+    QStringList archives;
     auto captureFolders = [&](const solero::ModEntry* e) {
         if (!e) return;
         auto add = [&](const QString& f) {
             if (!f.isEmpty() && !folders.contains(f)) folders << f;
         };
         add(e->stagingFolder);
-        for (const auto& v : e->variants) add(v.stagingFolder);
+        if (!e->sourceArchive.isEmpty() && !archives.contains(e->sourceArchive))
+            archives << e->sourceArchive;
+        for (const auto& v : e->variants) {
+            add(v.stagingFolder);
+            if (!v.sourceArchive.isEmpty() && !archives.contains(v.sourceArchive))
+                archives << v.sourceArchive;
+        }
     };
     // If any holding profile fails to persist its modlist after dropping the mod,
     // we must not delete the staging - the on-disk profile still references it, and
@@ -5404,6 +5416,7 @@ void MainWindow::removeModEverywhere(const QString& id) {
             "kept so no profile is left pointing at missing files. Try again.", 8000);
         return;
     }
+    solero::AppConfig::instance().markModArchivesRemoved(archives);
     if (folders.isEmpty()) folders << id; // pre-migration mods (or unknown) used the id
     const QString stagingDir = solero::AppConfig::instance().stagingDir();
     bool anyLeftBehind = false;
@@ -5505,6 +5518,7 @@ void MainWindow::onRemoveTool(const QString& id) {
     }
     if (removedAny && profile) {
         m_modListView->setProfile(profile);
+        m_rightPane->downloadsTab()->refresh(); // pick up new "Mod deleted" markers
     }
     rebuildToolsMenu();
 }

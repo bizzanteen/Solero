@@ -27,6 +27,8 @@ public:
     void setFailedDownloads(const QList<QPair<QString,QString>>& failures);
 signals:
     void installRequested(const QString& archivePath);
+    // "Open on Nexus": full mod-page URL, opened in the in-app Nexus browser.
+    void nexusPageRequested(const QString& url);
     void cancelRequested(const QString& fileName);
     void retryRequested(const QString& fileName);
     // Pause/resume an in-progress download (wired to DownloadManager in MainWindow,

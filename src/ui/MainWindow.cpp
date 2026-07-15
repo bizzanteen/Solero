@@ -1204,6 +1204,13 @@ void MainWindow::setupCentralWidget() {
             this, [this](const QString& fn){ m_downloads->cancel(fn); });
     connect(m_rightPane->downloadsTab(), &solero::DownloadsTab::retryRequested,
             this, &MainWindow::onRetryDownload);
+    // "Open on Nexus" opens in the in-app Nexus browser (same flow as the mod
+    // list's View Nexus Page), not the system browser.
+    connect(m_rightPane->downloadsTab(), &solero::DownloadsTab::nexusPageRequested,
+            this, [this](const QString& url){
+                if (m_browseAction) m_browseAction->setChecked(true);
+                if (m_nexusWeb) m_nexusWeb->openUrl(QUrl(url));
+            });
     connect(m_modListView, &solero::ModListView::modsSelected,
             m_rightPane, &solero::RightPane::onSelectionChanged);
     connect(m_modListView, &solero::ModListView::reinstallRequested,

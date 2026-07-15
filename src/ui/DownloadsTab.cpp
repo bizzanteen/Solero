@@ -18,8 +18,6 @@
 #include <QMessageBox>
 #include <QFile>
 #include <QDir>
-#include <QDesktopServices>
-#include <QUrl>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QFileInfo>
@@ -805,9 +803,9 @@ void DownloadsTab::showContextMenu(const QPoint& pos) {
         }
         auto* openNexus = menu.addAction("Open on Nexus");
         openNexus->setEnabled(!modId.isEmpty());
-        connect(openNexus, &QAction::triggered, this, [game, modId]{
-            QDesktopServices::openUrl(QUrl(
-                "https://www.nexusmods.com/" + game + "/mods/" + modId));
+        connect(openNexus, &QAction::triggered, this, [this, game, modId]{
+            emit nexusPageRequested(
+                "https://www.nexusmods.com/" + game + "/mods/" + modId);
         });
     }
 

@@ -372,6 +372,7 @@ void BethiniWindow::onAdvancedSave() {
     pushInisToLive();
     // Reload the form widgets so the structured tabs reflect raw edits.
     for (auto& rw : m_rows) loadRow(rw);
+    resetDirty(); // everything just saved + reloaded; nothing is pending
 }
 
 int BethiniWindow::matchChoiceFromIni(const RowWidget& rw) const {
@@ -417,9 +418,25 @@ void BethiniWindow::populateResolutions(const QString& aspect) {
         rw.row.settingChoices.append(cm);
         m_resCombo->addItem(cm.choice);
     }
-    // Reselect the current INI resolution if it's in this aspect's list.
+    // Reselect the current INI resolution. A resolution outside this aspect's
+    // stock list (custom modes, absent keys) shows as a real extra item / blank
+    // rather than silently displaying the first stock entry.
     int ci = matchChoiceFromIni(rw);
-    if (ci >= 0) m_resCombo->setCurrentIndex(ci);
+    if (ci < 0) {
+        const QString w = readKey(rw.row.iniKeys.at(0)).toString();
+        const QString h = readKey(rw.row.iniKeys.at(1)).toString();
+        if (!w.isEmpty() && !h.isEmpty()) {
+            BethiniChoiceMap cm;
+            cm.choice = w + "x" + h;
+            cm.perKeyValues = { QStringList{w}, QStringList{h} };
+            rw.row.settingChoices.append(cm);
+            m_resCombo->addItem(cm.choice);
+            ci = rw.row.settingChoices.size() - 1;
+        } else {
+            m_resCombo->setPlaceholderText(QStringLiteral("(not set)"));
+        }
+    }
+    m_resCombo->setCurrentIndex(ci); // -1 clears to the placeholder
 }
 
 void BethiniWindow::loadRow(RowWidget& rw) {
@@ -427,12 +444,16 @@ void BethiniWindow::loadRow(RowWidget& rw) {
     const auto& k0 = rw.row.iniKeys.first();
     QVariant val = readKey(k0);
 
+    // Every branch must set SOME state even when the INI key is absent or holds
+    // an unrecognized value - otherwise the widget silently keeps whatever it
+    // showed before (the last pick, or another profile's value) and the editor
+    // lies about the file's actual state.
     if (auto* cb = qobject_cast<QCheckBox*>(rw.widget)) {
         QString cur = val.toString();
         if (!rw.row.onValues.isEmpty())
             cb->setChecked(rw.row.onValues.first().contains(cur));
-        else if (val.isValid())
-            cb->setChecked(cur == "1" || val.toBool());
+        else
+            cb->setChecked(val.isValid() && (cur == "1" || val.toBool()));
     } else if (auto* spin = qobject_cast<QSpinBox*>(rw.widget)) {
         if (val.isValid()) spin->setValue(val.toInt());
     } else if (auto* d = qobject_cast<QDoubleSpinBox*>(rw.widget)) {
@@ -440,13 +461,39 @@ void BethiniWindow::loadRow(RowWidget& rw) {
     } else if (auto* combo = qobject_cast<QComboBox*>(rw.widget)) {
         if (!rw.row.settingChoices.isEmpty()) {
             int ci = matchChoiceFromIni(rw);
-            if (ci >= 0) combo->setCurrentIndex(ci);
-        } else if (val.isValid()) {
-            int idx = combo->findText(val.toString());
-            if (idx >= 0) combo->setCurrentIndex(idx);
+            if (ci >= 0) {
+                combo->setCurrentIndex(ci);
+            } else {
+                // Nothing matches what's really in the INI: values were
+                // hand-tuned to a combination outside the stock tiers, or the
+                // keys aren't set at all. Show that honestly (blank + hint)
+                // instead of a stale earlier selection. Selecting a real choice
+                // still writes normally; the blank state itself never writes.
+                bool anySet = false;
+                for (const auto& k : rw.row.iniKeys)
+                    if (readKey(k).isValid()) { anySet = true; break; }
+                combo->setPlaceholderText(anySet ? QStringLiteral("(custom)")
+                                                 : QStringLiteral("(not set)"));
+                combo->setCurrentIndex(-1);
+            }
+        } else {
+            const QString cur = val.toString();
+            int idx = val.isValid() ? combo->findText(cur) : -1;
+            if (idx < 0 && val.isValid()) {
+                // The INI holds a value outside the stock list (hand-tuned):
+                // surface the real value as a selectable item.
+                combo->addItem(cur);
+                idx = combo->count() - 1;
+            }
+            if (idx >= 0) {
+                combo->setCurrentIndex(idx);
+            } else {
+                combo->setPlaceholderText(QStringLiteral("(not set)"));
+                combo->setCurrentIndex(-1);
+            }
         }
     } else if (auto* edit = qobject_cast<QLineEdit*>(rw.widget)) {
-        if (val.isValid()) edit->setText(val.toString());
+        edit->setText(val.isValid() ? val.toString() : QString());
     }
 }
 

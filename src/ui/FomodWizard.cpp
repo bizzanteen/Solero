@@ -14,6 +14,7 @@
 #include <QDir>
 #include <QResizeEvent>
 #include <QEvent>
+#include <QScreen>
 #include <QMessageBox>
 
 namespace solero {
@@ -37,7 +38,11 @@ static QString resolveCI(const QString& base, const QString& relRaw) {
 FomodWizard::FomodWizard(FomodEngine* engine, const QString& extractDir, QWidget* parent)
     : QDialog(parent), m_engine(engine), m_extractDir(extractDir) {
     setWindowTitle("Install: " + engine->module().moduleName);
-    resize(900, 600);
+    // Open at the classic wizard size, but never larger than the screen (handheld
+    // displays / high app zoom) - the option and description panes scroll instead.
+    QRect avail(0, 0, 900, 600);
+    if (const QScreen* s = screen()) avail = s->availableGeometry();
+    resize(qMin(900, avail.width() - 40), qMin(600, avail.height() - 60));
     auto* outer = new QVBoxLayout(this);
 
     m_stepTitle = new QLabel(this);
@@ -59,8 +64,14 @@ FomodWizard::FomodWizard(FomodEngine* engine, const QString& extractDir, QWidget
     m_description = new QLabel(this);
     m_description->setWordWrap(true);
     m_description->setAlignment(Qt::AlignTop);
+    // Long option descriptions (some FOMODs ship multi-paragraph blurbs) scroll
+    // instead of being clipped by the pane's fixed share of the dialog.
+    auto* descScroll = new QScrollArea(this);
+    descScroll->setWidgetResizable(true);
+    descScroll->setFrameShape(QFrame::NoFrame);
+    descScroll->setWidget(m_description);
     right->addWidget(m_image, 3);
-    right->addWidget(m_description, 1);
+    right->addWidget(descScroll, 1);
     mid->addLayout(right, 1);
     outer->addLayout(mid, 1);
 

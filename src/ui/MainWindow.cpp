@@ -1307,6 +1307,10 @@ void MainWindow::setupCentralWidget() {
     connect(m_nexusWeb, &solero::NexusWebView::nxmRequested,
             this, &MainWindow::onBrowserNxmDownload);
 
+    // Learn which mods the user tracks on Nexus so the mod list's "Track on
+    // Nexus" toggle can show the real state.
+    refreshTrackedMods();
+
     // Window-wide shortcuts for controls that aren't menu/toolbar actions
     // (Menu/toolbar actions carry their own shortcuts; these cover the search
     //  boxes and the mod-move undo/redo buttons.) NOTE: keep this list in sync
@@ -3455,6 +3459,19 @@ void MainWindow::onEndorseMod(const QString& modId) {
             res.message.isEmpty() ? QString("The endorsement could not be submitted - Nexus did not return a result. Try again from the mod page.") : res.message);
 }
 
+void MainWindow::refreshTrackedMods() {
+    if (!solero::NexusApi::keyAvailable()) return;
+    auto* w = new QFutureWatcher<solero::NexusApi::TrackedMods>(this);
+    connect(w, &QFutureWatcher<solero::NexusApi::TrackedMods>::finished, this, [this, w]{
+        const auto r = w->result();
+        w->deleteLater();
+        if (!r.ok) return; // fetch failed: keep whatever we knew (unknown != empty)
+        m_trackedNexusIds = r.modIds;
+        m_modListView->setTrackedMods(m_trackedNexusIds);
+    });
+    w->setFuture(QtConcurrent::run([]{ return solero::NexusApi::trackedMods(); }));
+}
+
 void MainWindow::onTrackMod(const QString& modId) {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) return;
@@ -3464,9 +3481,11 @@ void MainWindow::onTrackMod(const QString& modId) {
     if (!requireNexusKey("track mods")) return;
 
     auto res = solero::NexusApi::track(mod->nexusModId);
-    if (res.ok)
+    if (res.ok) {
+        m_trackedNexusIds.insert(mod->nexusModId);
+        m_modListView->setTrackedMods(m_trackedNexusIds);
         statusBar()->showMessage("Tracking " + mod->name + " on Nexus.");
-    else
+    } else
         statusBar()->showMessage(res.message.isEmpty()
             ? QString("Couldn't track %1 on Nexus.").arg(mod->name) : res.message);
 }
@@ -3480,9 +3499,11 @@ void MainWindow::onUntrackMod(const QString& modId) {
     if (!requireNexusKey("untrack mods")) return;
 
     auto res = solero::NexusApi::untrack(mod->nexusModId);
-    if (res.ok)
+    if (res.ok) {
+        m_trackedNexusIds.remove(mod->nexusModId);
+        m_modListView->setTrackedMods(m_trackedNexusIds);
         statusBar()->showMessage("Stopped tracking " + mod->name + " on Nexus.");
-    else
+    } else
         statusBar()->showMessage(res.message.isEmpty()
             ? QString("Couldn't untrack %1 on Nexus.").arg(mod->name) : res.message);
 }

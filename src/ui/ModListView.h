@@ -2,6 +2,7 @@
 #include <QTreeView>
 #include <QHash>
 #include <QPair>
+#include <QSet>
 #include "core/Profile.h"
 #include "deploy/ConflictIndex.h"
 
@@ -58,6 +59,9 @@ public:
     void setPluginOriginHighlights(const QHash<QString,int>& roles);
     // Repaint the Flags column (e.g. after a mod note was edited).
     void refreshFlags();
+    // Nexus mod ids the user currently tracks (fetched/maintained by MainWindow);
+    // drives the checked state of the "Track on Nexus" context-menu toggle.
+    void setTrackedMods(const QSet<QString>& ids) { m_trackedNexusIds = ids; }
 
 public slots:
     // Undo / redo the most recent mod-list reorder for the active profile. Wired
@@ -131,6 +135,7 @@ private:
     StateFilter m_stateFilter = StateFilter::All;
     QString m_categoryFilter;                  // empty = any category
     FlagFilter m_flagFilter = FlagFilter::All;
+    QSet<QString> m_trackedNexusIds;           // see setTrackedMods()
     bool m_didAutoSize = false;
     // The Name column auto-fills the pane (and absorbs resize/zoom slack) until the
     // user manually drags a divider; then their widths are respected and persisted.

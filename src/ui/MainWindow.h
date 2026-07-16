@@ -454,6 +454,10 @@ private:
     bool m_skseInstalling = false; // guard against re-offering while a SKSE DL is pending
     // Filenames flagged to auto-install once their download finishes (e.g. SKSE).
     QSet<QString> m_autoInstall;
+    // Nexus mod ids in the user's tracking centre (fetched once at startup, kept
+    // in sync by onTrackMod/onUntrackMod). Drives the mod-list "Track" toggle.
+    QSet<QString> m_trackedNexusIds;
+    void refreshTrackedMods(); // async fetch; no-op without an API key
     // requirement's Nexus modId -> the dependent mod's id it should be placed above,
     // applied when the requirement finishes installing (see checkRequirementsAfterInstall).
     QHash<QString, QString> m_placeAboveByModId;

@@ -733,10 +733,16 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         if (!entry->nexusModId.isEmpty()) {
             menu.addAction("Endorse on Nexus",
                            [this, id = entry->id]{ emit endorseRequested(id); });
-            menu.addAction("Track on Nexus",
-                           [this, id = entry->id]{ emit trackRequested(id); });
-            menu.addAction("Untrack on Nexus",
-                           [this, id = entry->id]{ emit untrackRequested(id); });
+            // Single toggle: checked while the mod is in the user's Nexus
+            // tracking centre; triggering flips the state.
+            auto* trackAct = menu.addAction("Track on Nexus");
+            trackAct->setCheckable(true);
+            const bool tracked = m_trackedNexusIds.contains(entry->nexusModId);
+            trackAct->setChecked(tracked);
+            connect(trackAct, &QAction::triggered, this, [this, id = entry->id, tracked]{
+                if (tracked) emit untrackRequested(id);
+                else         emit trackRequested(id);
+            });
             menu.addAction("View Nexus Page",
                            [this, id = entry->id]{ emit viewNexusPageRequested(id); });
         }

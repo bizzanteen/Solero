@@ -200,6 +200,22 @@ NexusApi::TrackResult NexusApi::untrack(const QString& modId, const QString& gam
     return setTracked(modId, game, false);
 }
 
+NexusApi::TrackedMods NexusApi::trackedMods(const QString& game) {
+    TrackedMods r;
+    qCInfo(lcNexus) << "tracked_mods" << game;
+    const QByteArray body = curlGet("https://api.nexusmods.com/v1/user/tracked_mods.json");
+    if (body.isEmpty()) return r;
+    const auto doc = QJsonDocument::fromJson(body);
+    if (!doc.isArray()) return r; // auth/rate-limit errors come back as an object
+    for (const QJsonValue& v : doc.array()) {
+        const QJsonObject o = v.toObject();
+        if (o["domain_name"].toString() == game)
+            r.modIds.insert(QString::number(o["mod_id"].toVariant().toLongLong()));
+    }
+    r.ok = true;
+    return r;
+}
+
 NexusApi::Md5Match NexusApi::md5Search(const QString& md5, const QString& game) {
     Md5Match r;
     if (md5.isEmpty()) return r;

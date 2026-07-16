@@ -1,6 +1,7 @@
 #pragma once
 #include <QString>
 #include <QList>
+#include <QSet>
 
 namespace solero {
 
@@ -30,6 +31,12 @@ public:
     struct TrackResult { bool ok = false; QString message; };
     static TrackResult track(const QString& modId, const QString& game = kDefaultGame);
     static TrackResult untrack(const QString& modId, const QString& game = kDefaultGame);
+
+    // The user's tracking-centre entries for `game` (GET /v1/user/tracked_mods.json).
+    // ok stays false on a network/auth failure so "unknown" is distinguishable
+    // from "tracks nothing".
+    struct TrackedMods { bool ok = false; QSet<QString> modIds; };
+    static TrackedMods trackedMods(const QString& game = kDefaultGame);
 
     struct Md5Match { bool ok = false; QString modId, fileId, version, modName; };
     static Md5Match md5Search(const QString& md5, const QString& game = kDefaultGame);

@@ -123,6 +123,7 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <memory>
+#include <filesystem>
 
 namespace {
 using solero::isVersionNewer;   // robust version compare (handles MO2 ".0SE"/".0c" tails)
@@ -163,6 +164,46 @@ QString normalizeName(const QString& s) {
     QString r;
     for (QChar c : s) if (c.isLetterOrNumber()) r += c.toLower();
     return r;
+}
+
+// Mirror every file under srcRoot's SUBDIRECTORIES into dstRoot (hardlink,
+// fallback copy), recording each file created in outCreated so the caller can
+// remove the mirror afterwards. Root-level loose files (tool icons, sidecars)
+// are skipped. Paths that already exist at the destination (e.g. deployed by a
+// mod) are left alone and NOT recorded, so cleanup never touches them.
+bool mirrorToolTreeInto(const QString& srcRoot, const QString& dstRoot,
+                        QStringList* outCreated) {
+    bool allOk = true;
+    QDir src(srcRoot);
+    for (const QString& sub : src.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        QDirIterator it(srcRoot + "/" + sub, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString f = it.next();
+            const QString dst = dstRoot + "/" + src.relativeFilePath(f);
+            if (QFile::exists(dst)) continue;
+            QDir().mkpath(QFileInfo(dst).path());
+            std::error_code ec;
+            std::filesystem::create_hard_link(f.toStdString(), dst.toStdString(), ec);
+            if (ec && !QFile::copy(f, dst)) { allOk = false; continue; }
+            outCreated->append(dst);
+        }
+    }
+    return allOk;
+}
+
+// Remove mirrored files and prune any directories the removals emptied, walking
+// each file's parent chain up to (not including) stopDir.
+void removeMirroredFiles(const QStringList& files, const QString& stopDir) {
+    const QString stop = QDir(stopDir).absolutePath();
+    for (const QString& f : files) {
+        QFile::remove(f);
+        QDir d = QFileInfo(f).dir();
+        while (d.absolutePath().startsWith(stop + "/")) {
+            const QString cur = d.absolutePath();
+            if (!d.cdUp()) break;
+            if (!QDir().rmdir(cur)) break; // non-empty: stop pruning
+        }
+    }
 }
 
 QString cleanModName(const QString& raw, const QString& nexusModId) {
@@ -4559,15 +4600,48 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
             wf.write(QJsonDocument(merged).toJson(QJsonDocument::Indented));
     }
 
+    // Nemesis refuses to run outside the game's Data folder - it locates Data by
+    // walking up from its own exe and aborts with ERROR(1008) otherwise. Solero
+    // is VFS-less, so mirror the tool's payload (Nemesis_Engine, meshes, ...)
+    // into Data for the run (hardlinks - instant) and launch the mirrored exe.
+    // Files the run WRITES are swept into the output mod by the normal post-run
+    // capture; the mirror itself is removed again right after the run.
+    QString nemesisRunBinary;
+    QStringList nemesisMirror; // files we created in Data; removed after the run
+    if (exe.id == "nemesis") {
+        const QString toolRoot = QFileInfo(QFileInfo(exe.binaryPath).path()).path();
+        const QString dataDir = solero::AppConfig::instance().gameDir() + "/Data";
+        mirrorToolTreeInto(toolRoot, dataDir, &nemesisMirror);
+        const QString mirroredExe =
+            dataDir + "/" + QDir(toolRoot).relativeFilePath(exe.binaryPath);
+        if (!QFile::exists(mirroredExe)) {
+            removeMirroredFiles(nemesisMirror, dataDir);
+            hideRunLock(); m_toolRunning = false;
+            QMessageBox::warning(this, "Nemesis",
+                "Could not place Nemesis inside the game's Data folder for the run. "
+                "Check that the game folder is writable, then try again.");
+            return;
+        }
+        nemesisRunBinary = mirroredExe;
+    }
+
     auto* owP = m_profileMgr->activeProfile();
     solero::Executable runExe = exe;
     if (runExe.id == "pgpatcher" && !runExe.arguments.contains("--ignore-mo2vfscheck"))
         runExe.arguments = (runExe.arguments.trimmed() + " --ignore-mo2vfscheck").trimmed();
+    if (!nemesisRunBinary.isEmpty()) runExe.binaryPath = nemesisRunBinary;
     auto res = solero::ToolRunner::run(runExe, solero::AppConfig::instance().gameDir(),
                                        solero::AppConfig::instance().stagingDir(), outFolder,
                                        owP ? solero::AppConfig::overwriteDir(owP->name()) : QString());
     hideRunLock();
     m_toolRunning = false;
+
+    // Drop the temporary Nemesis mirror. Runs after ToolRunner's capture, which
+    // already moved everything the run wrote out of Data into the output mod, so
+    // only the untouched mirrored files remain to remove.
+    if (!nemesisMirror.isEmpty())
+        removeMirroredFiles(nemesisMirror,
+                            solero::AppConfig::instance().gameDir() + "/Data");
 
     if (res.launched) {
         // The tool ran and may have captured fresh output. Make sure the output

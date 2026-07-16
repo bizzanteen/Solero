@@ -110,6 +110,8 @@ public:
         return m_overwritingMods.contains(id) || m_overwrittenMods.contains(id);
     }
     bool modHasUpdate(const QString& id) const     { return m_updates.contains(id); }
+    // Latest known version for a mod flagged by setUpdateInfo (empty if none).
+    QString updateLatestVersion(const QString& id) const { return m_updates.value(id).second; }
     bool modHasMissingDep(const QString& id) const { return m_depWarnings.contains(id); }
 
     // Invalidate cached disk scans (empty-mod / Overwrite "has files"). Call only

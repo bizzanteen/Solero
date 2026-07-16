@@ -662,23 +662,56 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
                 m_model->index(idx.row(), 0),
                 QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
         }
-        menu.addAction("Open in File Manager", [this, id = entry->id]{
+        // Selection facts drive the menu: selection-wide actions pluralize with
+        // the count, single-target actions grey out when several mods are
+        // selected, and Enable/Disable offer only the direction(s) that apply.
+        const int selCount = qMax(1, int(selectedModIds().size()));
+        const bool single = (selCount == 1);
+        int enabledCount = 0;
+        for (const auto& sIdx : selectionModel()->selectedRows()) {
+            const auto* e = m_model->entryAt(sIdx.row());
+            if (e && e->type == EntryType::Mod && e->enabled) ++enabledCount;
+        }
+
+        auto* openAct = menu.addAction("Open Mod Folder", [this, id = entry->id]{
             const QString folder = m_model->profile() ? m_model->profile()->stagingFolderFor(id) : id;
             QString dir = AppConfig::instance().stagingDir() + "/" + folder;
             QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
         });
+        openAct->setEnabled(single);
 
-        // Enable/Disable - most-used actions, kept near the top.
+        // Enable/Disable - most-used actions, kept near the top. A uniform
+        // selection shows one direction (with the Space hint, which does the
+        // same); a mixed selection shows both, unhinted (Space converges on the
+        // topmost mod's state, which the menu can't express in one label).
         menu.addSeparator();
-        menu.addAction("Enable Selected",  [this]{ setSelectedModsEnabled(true); });
-        menu.addAction("Disable Selected", [this]{ setSelectedModsEnabled(false); });
+        const QString countTail = single ? QString() : QString(" %1 Mods").arg(selCount);
+        if (enabledCount < selCount) {
+            auto* a = menu.addAction("Enable" + countTail, [this]{ setSelectedModsEnabled(true); });
+            if (enabledCount == 0) {
+                a->setShortcut(Qt::Key_Space);
+                a->setShortcutVisibleInContextMenu(true);
+            }
+        }
+        if (enabledCount > 0) {
+            auto* a = menu.addAction("Disable" + countTail, [this]{ setSelectedModsEnabled(false); });
+            if (enabledCount == selCount) {
+                a->setShortcut(Qt::Key_Space);
+                a->setShortcutVisibleInContextMenu(true);
+            }
+        }
 
         menu.addSeparator();
-        menu.addAction("Rename", [this, row = idx.row()]{ edit(m_model->index(row, ModListModel::ColName)); });
-        menu.addAction(entry->hasFomodChoices
+        auto* renameAct = menu.addAction("Rename",
+            [this, row = idx.row()]{ edit(m_model->index(row, ModListModel::ColName)); });
+        renameAct->setShortcut(Qt::Key_F2);
+        renameAct->setShortcutVisibleInContextMenu(true);
+        renameAct->setEnabled(single);
+        auto* reinstallAct = menu.addAction(entry->hasFomodChoices
                            ? QStringLiteral("Reinstall (FOMOD)") + QChar(0x2026)
                            : QStringLiteral("Reinstall") + QChar(0x2026),
                        [this, id = entry->id]{ emit reinstallRequested(id); });
+        reinstallAct->setEnabled(single);
 
         // Grouping + placement.
         menu.addSeparator();
@@ -722,29 +755,38 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
         }
         menu.addAction("Add Separator Above", [this, row = idx.row()]{ onAddSeparatorAt(row); });
 
-        // Nexus operations. Update/Endorse/View need a known Nexus mod id;
-        // Redownload is always offered (handler identifies by MD5 if needed).
+        // Nexus operations - all single-target. "Update to X" appears only when
+        // a newer version is actually known (setUpdateInfo); Endorse/Track/Open
+        // need a known Nexus mod id; Redownload is always offered (the handler
+        // identifies by MD5 if needed).
         menu.addSeparator();
-        if (!entry->nexusModId.isEmpty())
-            menu.addAction("Update Mod",
-                           [this, id = entry->id]{ emit updateRequested(id); });
-        menu.addAction("Redownload from Nexus",
+        if (!entry->nexusModId.isEmpty() && m_model->modHasUpdate(entry->id)) {
+            const QString latest = m_model->updateLatestVersion(entry->id);
+            auto* updateAct = menu.addAction(
+                latest.isEmpty() ? QStringLiteral("Update")
+                                 : QString("Update to %1").arg(latest),
+                [this, id = entry->id]{ emit updateRequested(id); });
+            updateAct->setEnabled(single);
+        }
+        auto* redownloadAct = menu.addAction("Redownload from Nexus",
                        [this, id = entry->id]{ emit redownloadRequested(id); });
+        redownloadAct->setEnabled(single);
         if (!entry->nexusModId.isEmpty()) {
-            menu.addAction("Endorse on Nexus",
+            auto* endorseAct = menu.addAction("Endorse on Nexus",
                            [this, id = entry->id]{ emit endorseRequested(id); });
-            // Single toggle: checked while the mod is in the user's Nexus
-            // tracking centre; triggering flips the state.
-            auto* trackAct = menu.addAction("Track on Nexus");
-            trackAct->setCheckable(true);
+            endorseAct->setEnabled(single);
+            // Single toggle whose label reflects the current tracking state.
             const bool tracked = m_trackedNexusIds.contains(entry->nexusModId);
-            trackAct->setChecked(tracked);
-            connect(trackAct, &QAction::triggered, this, [this, id = entry->id, tracked]{
-                if (tracked) emit untrackRequested(id);
-                else         emit trackRequested(id);
-            });
-            menu.addAction("View Nexus Page",
+            auto* trackAct = menu.addAction(
+                tracked ? "Untrack on Nexus" : "Track on Nexus",
+                [this, id = entry->id, tracked]{
+                    if (tracked) emit untrackRequested(id);
+                    else         emit trackRequested(id);
+                });
+            trackAct->setEnabled(single);
+            auto* openNexusAct = menu.addAction("Open on Nexus",
                            [this, id = entry->id]{ emit viewNexusPageRequested(id); });
+            openNexusAct->setEnabled(single);
         }
 
         // Community Shaders base mod: offer to wipe its compiled shader cache.
@@ -754,14 +796,19 @@ void ModListView::contextMenuEvent(QContextMenuEvent* event) {
             const QString clearLabel = entry->version.isEmpty()
                 ? QStringLiteral("Clear Shader Cache")
                 : QString("Clear Shader Cache (%1)").arg(entry->version);
-            menu.addAction(clearLabel,
+            auto* clearAct = menu.addAction(clearLabel,
                            [this, id = entry->id]{ emit clearShaderCacheRequested(id); });
+            clearAct->setEnabled(single);
         }
 
-        // Destructive - always last.
+        // Destructive - always last. Del does the same from the keyboard.
         menu.addSeparator();
-        menu.addAction(QStringLiteral("Delete Mod") + QChar(0x2026),
-                       [this]{ deleteSelectedMods(); });
+        auto* deleteAct = menu.addAction(
+            (single ? QStringLiteral("Delete") : QString("Delete %1 Mods").arg(selCount))
+                + QChar(0x2026),
+            [this]{ deleteSelectedMods(); });
+        deleteAct->setShortcut(QKeySequence::Delete);
+        deleteAct->setShortcutVisibleInContextMenu(true);
     }
     menu.exec(event->globalPos());
 }

@@ -165,17 +165,6 @@ QString normalizeName(const QString& s) {
     return r;
 }
 
-// True iff the tool's output mod has at least one staged file under its Data/.
-// On first run (nothing produced yet) the dir is empty/absent - return false so
-// the disable+redeploy dance is skipped (there's nothing in the deployed Data to
-// remove). p may be null; modId may be empty.
-bool outputModHasStagedFiles(solero::Profile* p, const QString& modId) {
-    if (!p || modId.isEmpty()) return false;
-    const QString dir = solero::AppConfig::instance().stagingDir() + "/" +
-                        p->stagingFolderFor(modId) + "/Data";
-    return solero::dirHasFiles(dir);
-}
-
 QString cleanModName(const QString& raw, const QString& nexusModId) {
     if (nexusModId.isEmpty())
         return raw;
@@ -4470,42 +4459,12 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     if (auto* p = m_profileMgr->activeProfile(); p && !resolvedOutputModId.isEmpty())
         outFolder = p->stagingFolderFor(resolvedOutputModId);
 
-    // Tools read the deployed (merged) game Data. If the tool's own output mod is
-    // deployed, the tool ingests its own prior output (double-patching, re-scanning
-    // already-processed plugins/assets). MO2 users disable a tool's output mod
-    // before re-running it; Solero is VFS-less, so "disable" only takes effect
-    // after a redeploy removes the output mod's files from the game Data. For ANY
-    // tool with an output mod, toggle it off in memory (never persisted - a mid-run
-    // crash leaves the on-disk profile enabled), redeploy, run, then re-enable +
-    // redeploy to bring the fresh output back. Skip entirely on first run (no
-    // staged output to interfere with). restoreOutput() runs before every
-    // early-return and once on the normal path; it's idempotent via the guard.
+    // NOTE: Solero used to disable the tool's output mod (in memory) + redeploy
+    // before the run so the tool wouldn't ingest its own prior output, then
+    // restore after. That flow proved unreliable and is removed for now - tools
+    // run against the deployed Data as-is. If a tool double-ingests its previous
+    // output, disable its output mod and deploy manually before running it.
     auto* tp = m_profileMgr->activeProfile();
-    // Only disable the output mod if it's actually ENABLED - if the user already
-    // disabled it, there's nothing to turn off (and no need for the extra redeploy).
-    const solero::ModEntry* outMod =
-        tp ? tp->modList().findById(resolvedOutputModId) : nullptr;
-    const bool wantToggle = tp && !resolvedOutputModId.isEmpty()
-                            && outMod && outMod->enabled
-                            && outputModHasStagedFiles(tp, resolvedOutputModId);
-    bool toggledOutput = false;
-    auto restoreOutput = [&]() {
-        if (toggledOutput && tp) {
-            tp->modList().setEnabled(resolvedOutputModId, true);   // in memory only, no save
-            redeployForTool("Restoring output mod", "Re-deploying with the output mod\xe2\x80\xa6");
-            toggledOutput = false;
-        }
-    };
-    if (wantToggle) {
-        tp->modList().setEnabled(resolvedOutputModId, false);      // in memory only, no profile.save()
-        if (!redeployForTool("Preparing " + exe.name, "Disabling the output mod\xe2\x80\xa6")) {
-            tp->modList().setEnabled(resolvedOutputModId, true);   // restore in memory
-            hideRunLock(); m_toolRunning = false;
-            QMessageBox::warning(this, exe.name, "Could not temporarily remove the output mod for this run. Make sure the output mod is configured in the tool's settings, then try again.");
-            return;
-        }
-        toggledOutput = true;
-    }
 
     // Radium expects an MO2 layout. Solero hardlink-deploys into Data/, so feed
     // it a generated fake-mo2 + a settings.json pointing at the live Data/ and the
@@ -4516,7 +4475,6 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
         // Radium writes into its output mod's staging Data/; without an output
         // mod wired we'd misdirect its result to the staging root. Fail clearly.
         if (outFolder.isEmpty()) {
-            restoreOutput();
             hideRunLock();
             m_toolRunning = false;
             QMessageBox::warning(this, "Radium Textures",
@@ -4532,7 +4490,6 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
                                                outDataDir,
                                                solero::RadiumPrep::defaultSettingsPath(),
                                                &err)) {
-            restoreOutput();
             hideRunLock();
             m_toolRunning = false;
             QMessageBox::warning(this, "Radium Textures",
@@ -4574,7 +4531,6 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
         if (!p || !solero::RadiumPrep::writeFakeMo2(
                 *p, solero::AppConfig::instance().gameDir(), fakeMo2, &err,
                 /*populateMods=*/false)) {
-            restoreOutput();
             hideRunLock(); m_toolRunning = false;
             QMessageBox::warning(this, "PGPatcher",
                 err.isEmpty() ? "Could not prepare PGPatcher's working files. Make sure the tool's install folder is writable." : err);
@@ -4614,23 +4570,18 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     m_toolRunning = false;
 
     if (res.launched) {
-        // The tool ran and may have captured fresh output. Re-enable the output mod
-        // (if we toggled it off for the run) and persist that, but deliberately do
-        // NOT redeploy: the output is staged and ready, so leaving the deploy pending
-        // lets the user enable anything else and deploy once, instead of being forced
-        // to deploy here and again after their next change. The deploy button reflects
-        // the pending state.
+        // The tool ran and may have captured fresh output. Make sure the output
+        // mod is enabled and persist that, but deliberately do NOT redeploy: the
+        // output is staged and ready, so leaving the deploy pending lets the user
+        // enable anything else and deploy once, instead of being forced to deploy
+        // here and again after their next change. The deploy button reflects the
+        // pending state.
         if (tp && !resolvedOutputModId.isEmpty()) {
             tp->modList().setEnabled(resolvedOutputModId, true);
             tp->save();
         }
-        toggledOutput = false; // handled here; keep restoreOutput() a no-op
         m_contentDirty = true;
         refreshDeployDirty();
-    } else {
-        // The tool never launched, so nothing new was produced - cleanly restore the
-        // pre-run deployed state (re-enable + redeploy only if we toggled it off).
-        restoreOutput();
     }
 
     if (!res.launched) {

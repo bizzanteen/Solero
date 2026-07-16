@@ -15,11 +15,13 @@ struct FomodPreset {
 };
 
 // Pure mapping helper. `savedChoices` is the parsed {modId}.json:
-//   { "steps": [ { "step": "<name>", "selected": ["<optName>", ...] }, ... ] }
-// For each saved step, match it to a FomodStep by (trimmed, case-insensitive)
-// name, then each selected option name to a FomodOption by name within that
-// step. Matched (step,group,opt) indices get selection[selKey]=true and the key
-// added to priorKeys. Names that don't resolve are skipped.
+//   { "steps": [ { "step": "<name>", "stepIndex": N, "selected": [...] }, ... ] }
+// Each saved step maps to a FomodStep by stepIndex when present (newer logs), else
+// by (trimmed, case-insensitive) name with each module step consumed at most once
+// (modules repeat step names). Each selected option name maps to a FomodOption
+// within that step, scanning groups in logged order. Matched indices get
+// selection[selKey]=true and the key added to priorKeys; in pick-one groups only
+// the LAST recorded pick is kept. Names that don't resolve are skipped.
 FomodPreset buildFomodPreset(const FomodModule& mod, const QJsonObject& savedChoices);
 
 } // namespace solero

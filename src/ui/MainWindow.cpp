@@ -2651,6 +2651,9 @@ void MainWindow::installFromArchive(const QString& archive) {
                             picks.append(mod.steps[si].groups[gi].options[oi].name);
                 QJsonObject stepObj;
                 stepObj["step"] = mod.steps[si].name;
+                // Modules may repeat step names (conditionally-visible twins);
+                // the index makes recall unambiguous (buildFomodPreset).
+                stepObj["stepIndex"] = si;
                 stepObj["selected"] = picks;
                 choiceLog.append(stepObj);
             }

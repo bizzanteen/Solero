@@ -106,6 +106,91 @@ private slots:
         QVERIFY(p.selection.isEmpty());
         QVERIFY(p.priorKeys.isEmpty());
     }
+
+    // Modules often repeat step names (conditionally-visible twins). The saved
+    // entries must map onto DIFFERENT module steps in order, not both onto the
+    // first one (which used to double-mark its pick-one group).
+    void sameNamedTwinStepsMapInOrder() {
+        FomodModule m;
+        for (int i = 0; i < 2; ++i) {
+            FomodStep s; s.name = "Rift Leaf Texture";
+            FomodGroup g; g.name = "Color"; g.type = GroupType::ExactlyOne;
+            g.options.append(FomodOption{"Yellow"});
+            g.options.append(FomodOption{"Orange"});
+            s.groups.append(g);
+            m.steps.append(s);
+        }
+        QJsonArray steps;
+        steps.append(step("Rift Leaf Texture", {"Yellow"}));
+        steps.append(step("Rift Leaf Texture", {"Orange"}));
+        QJsonObject saved; saved["steps"] = steps;
+
+        FomodPreset p = buildFomodPreset(m, saved);
+
+        QVERIFY(p.priorKeys.contains(FomodEngine::selKey(0, 0, 0))); // step 0: Yellow
+        QVERIFY(p.priorKeys.contains(FomodEngine::selKey(1, 0, 1))); // step 1: Orange
+        QCOMPARE(p.priorKeys.size(), 2);
+    }
+
+    // A log that accumulated two picks for one pick-one group (older bug) must
+    // resolve to a single "previously chosen": the LAST recorded pick.
+    void lastPickWinsInExclusiveGroup() {
+        FomodModule m = sampleModel();
+        QJsonArray steps;
+        steps.append(step("Main", {"Full", "Lite"})); // Core is ExactlyOne
+        QJsonObject saved; saved["steps"] = steps;
+
+        FomodPreset p = buildFomodPreset(m, saved);
+
+        QCOMPARE(p.priorKeys.size(), 1);
+        QVERIFY(p.priorKeys.contains(FomodEngine::selKey(0, 0, 1))); // Lite (last)
+        QVERIFY(!p.selection.value(FomodEngine::selKey(0, 0, 0), false));
+    }
+
+    // Newer logs carry the exact step index; it wins over first-name matching.
+    void stepIndexDisambiguates() {
+        FomodModule m;
+        for (int i = 0; i < 2; ++i) {
+            FomodStep s; s.name = "Options";
+            FomodGroup g; g.type = GroupType::ExactlyOne;
+            g.options.append(FomodOption{"A"});
+            g.options.append(FomodOption{"B"});
+            s.groups.append(g);
+            m.steps.append(s);
+        }
+        QJsonObject o = step("Options", {"B"});
+        o["stepIndex"] = 1;
+        QJsonArray steps; steps.append(o);
+        QJsonObject saved; saved["steps"] = steps;
+
+        FomodPreset p = buildFomodPreset(m, saved);
+
+        QCOMPARE(p.priorKeys.size(), 1);
+        QVERIFY(p.priorKeys.contains(FomodEngine::selKey(1, 0, 1))); // second step's B
+    }
+
+    // The same option name in several groups of one step ("2K" per texture):
+    // picks were logged in group order, so they map to successive groups.
+    void duplicateOptionNamesAcrossGroups() {
+        FomodModule m;
+        FomodStep s; s.name = "Textures";
+        for (int i = 0; i < 2; ++i) {
+            FomodGroup g; g.type = GroupType::ExactlyOne;
+            g.options.append(FomodOption{"1K"});
+            g.options.append(FomodOption{"2K"});
+            s.groups.append(g);
+        }
+        m.steps.append(s);
+        QJsonArray steps;
+        steps.append(step("Textures", {"2K", "1K"}));
+        QJsonObject saved; saved["steps"] = steps;
+
+        FomodPreset p = buildFomodPreset(m, saved);
+
+        QVERIFY(p.priorKeys.contains(FomodEngine::selKey(0, 0, 1))); // group 0: 2K
+        QVERIFY(p.priorKeys.contains(FomodEngine::selKey(0, 1, 0))); // group 1: 1K
+        QCOMPARE(p.priorKeys.size(), 2);
+    }
 };
 
 QTEST_MAIN(TestFomodChoiceRecall)

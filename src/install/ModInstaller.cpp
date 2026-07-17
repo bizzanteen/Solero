@@ -158,9 +158,11 @@ InstallPrep ModInstaller::prepare(const QString& archivePath,
         };
         locate();
         if (prep.fomodConfigPath.isEmpty()) {
-            // Fast path missed it; fall back to a full extraction.
+            // Fast path missed it; fall back to a full extraction. Keep the
+            // progress callback - for a multi-GB archive this is the long part,
+            // and without it the install dialog sits frozen at zero.
             qCWarning(lcInstall) << "prepare: ModuleConfig.xml not found in partial extract, full-extracting" << archivePath;
-            if (!ArchiveTool::extract(archivePath, prep.extractDir)) { prep.errorMessage = "Could not extract the archive - it may be corrupt, an unsupported format, or too large for the available space. Try re-downloading the mod."; qCWarning(lcInstall) << "prepare: fallback full extract failed" << archivePath; return prep; }
+            if (!ArchiveTool::extract(archivePath, prep.extractDir, onProgress)) { prep.errorMessage = "Could not extract the archive - it may be corrupt, an unsupported format, or too large for the available space. Try re-downloading the mod."; qCWarning(lcInstall) << "prepare: fallback full extract failed" << archivePath; return prep; }
             prep.fullyExtracted = true;
             locate();
         }

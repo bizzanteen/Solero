@@ -10,6 +10,22 @@
 
 namespace solero {
 
+namespace {
+// Forward an extractor's "...  84%" stdout chatter to onProgress. Both 7z
+// (-bsp1) and unrar print percentages this way; parsing the latest match per
+// chunk keeps the install dialog's bar moving on multi-GB archives.
+void connectPercentProgress(QProcess& proc, const std::function<void(int)>& onProgress) {
+    static const QRegularExpression rePct("(\\d+)%");
+    QObject::connect(&proc, &QProcess::readyReadStandardOutput, &proc, [&proc, onProgress]{
+        const QString chunk = QString::fromLatin1(proc.readAllStandardOutput());
+        auto it = rePct.globalMatch(chunk);
+        int last = -1;
+        while (it.hasNext()) last = it.next().captured(1).toInt();
+        if (last >= 0 && onProgress) onProgress(last);
+    });
+}
+} // namespace
+
 QString ArchiveTool::sevenZipBinary() {
     for (const QString& cand : {"7z", "7za", "7zr"}) {
         QString full = QStandardPaths::findExecutable(cand);
@@ -165,32 +181,32 @@ bool ArchiveTool::extract(const QString& archivePath, const QString& destDir,
     qCInfo(lcInstall) << "extract:" << archivePath << "->" << destDir;
     if (archivePath.endsWith(".rar", Qt::CaseInsensitive)) {
         QDir().mkpath(destDir);
+        // unrar first: it prints whole-archive percentages, so the install
+        // dialog shows real progress. unar (the old primary) is silent under
+        // -q, which left the bar frozen at zero for multi-GB rars.
         QProcess proc;
         QEventLoop loop;
-        QObject::connect(&proc, &QProcess::readyReadStandardOutput, &proc, [&]{
-            proc.readAllStandardOutput();
-            if (onProgress) onProgress(-1); // indeterminate
-        });
+        connectPercentProgress(proc, onProgress);
         QObject::connect(&proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
                          &loop, &QEventLoop::quit);
-        proc.start("unar", {"-q", "-D", "-f", "-o", destDir, archivePath});
-        if (!proc.waitForStarted(15000)) {
-            // unar not available; fall back to unrar.
-            qCWarning(lcInstall) << "unar unavailable, falling back to unrar for" << archivePath;
-            QProcess pr;
-            QEventLoop loop2;
-            QObject::connect(&pr, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-                             &loop2, &QEventLoop::quit);
-            pr.start("unrar", {"x", "-o+", "-y", archivePath, destDir + "/"});
-            if (!pr.waitForStarted(15000)) { qCWarning(lcInstall) << "unrar unavailable - cannot extract" << archivePath; return false; }
-            loop2.exec();
-            bool okRar = pr.exitStatus() == QProcess::NormalExit && pr.exitCode() == 0;
-            if (!okRar) qCWarning(lcInstall) << "unrar extract failed (exit" << pr.exitCode() << ") for" << archivePath;
+        proc.start("unrar", {"x", "-o+", "-y", archivePath, destDir + "/"});
+        if (proc.waitForStarted(15000)) {
+            loop.exec();
+            bool okRar = proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
+            if (!okRar) qCWarning(lcInstall) << "unrar extract failed (exit" << proc.exitCode() << ") for" << archivePath;
             return finalizeExtract(destDir, okRar);
         }
-        loop.exec();
-        bool okUnar = proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
-        if (!okUnar) qCWarning(lcInstall) << "unar extract failed (exit" << proc.exitCode() << ") for" << archivePath;
+        // unrar not available; fall back to unar (no progress output).
+        qCWarning(lcInstall) << "unrar unavailable, falling back to unar for" << archivePath;
+        QProcess pr;
+        QEventLoop loop2;
+        QObject::connect(&pr, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                         &loop2, &QEventLoop::quit);
+        pr.start("unar", {"-q", "-D", "-f", "-o", destDir, archivePath});
+        if (!pr.waitForStarted(15000)) { qCWarning(lcInstall) << "unar unavailable - cannot extract" << archivePath; return false; }
+        loop2.exec();
+        bool okUnar = pr.exitStatus() == QProcess::NormalExit && pr.exitCode() == 0;
+        if (!okUnar) qCWarning(lcInstall) << "unar extract failed (exit" << pr.exitCode() << ") for" << archivePath;
         return finalizeExtract(destDir, okUnar);
     }
 
@@ -199,14 +215,7 @@ bool ArchiveTool::extract(const QString& archivePath, const QString& destDir,
     QDir().mkpath(destDir);
     QProcess proc;
     QEventLoop loop;
-    static const QRegularExpression rePct("(\\d+)%");
-    QObject::connect(&proc, &QProcess::readyReadStandardOutput, &proc, [&]{
-        QString chunk = QString::fromLatin1(proc.readAllStandardOutput());
-        auto it = rePct.globalMatch(chunk);
-        int last = -1;
-        while (it.hasNext()) last = it.next().captured(1).toInt();
-        if (last >= 0 && onProgress) onProgress(last);
-    });
+    connectPercentProgress(proc, onProgress);
     QObject::connect(&proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
                      &loop, &QEventLoop::quit);
     proc.start(bin, {"x", archivePath, "-o" + destDir, "-y", "-bsp1"});
@@ -236,20 +245,41 @@ bool ArchiveTool::isSolid(const QString& archivePath) {
 bool ArchiveTool::extractPaths(const QString& archivePath, const QString& destDir,
                                const QStringList& paths, bool recursive,
                                const std::function<void(int)>& onProgress) {
+    // rar goes through unrar: distro builds of 7z often ship without the
+    // (unfree) RAR codec, so the 7z path below fails on every rar and forced a
+    // full extract just to peek at fomod/. Each requested path becomes a
+    // root-level and an any-depth mask, mirroring 7z's -r name matching.
+    if (archivePath.endsWith(".rar", Qt::CaseInsensitive)) {
+        qCInfo(lcInstall) << "extractPaths (unrar):" << paths << "from" << archivePath << "->" << destDir;
+        QDir().mkpath(destDir);
+        QStringList args{"x", "-o+", "-y", archivePath};
+        for (const QString& p : paths) {
+            args << p << p + "/*";
+            if (recursive) args << "*/" + p + "/*";
+        }
+        args << destDir + "/";
+        QProcess proc;
+        QEventLoop loop;
+        connectPercentProgress(proc, onProgress);
+        QObject::connect(&proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                         &loop, &QEventLoop::quit);
+        proc.start("unrar", args);
+        if (!proc.waitForStarted(15000)) { qCWarning(lcInstall) << "unrar failed to start for" << archivePath; return false; }
+        loop.exec();
+        // Non-zero also covers "no files matched" - the caller's full-extract
+        // fallback handles that.
+        bool ok = proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
+        if (!ok) qCWarning(lcInstall) << "unrar extractPaths failed (exit" << proc.exitCode() << ") for" << archivePath;
+        return ok;
+    }
+
     QString bin = sevenZipBinary();
     if (bin.isEmpty()) { qCWarning(lcInstall) << "7z unavailable - cannot extract paths from" << archivePath; return false; }
     qCInfo(lcInstall) << "extractPaths:" << paths << "from" << archivePath << "->" << destDir;
     QDir().mkpath(destDir);
     QProcess proc;
     QEventLoop loop;
-    static const QRegularExpression rePct("(\\d+)%");
-    QObject::connect(&proc, &QProcess::readyReadStandardOutput, &proc, [&]{
-        QString chunk = QString::fromLatin1(proc.readAllStandardOutput());
-        auto it = rePct.globalMatch(chunk);
-        int last = -1;
-        while (it.hasNext()) last = it.next().captured(1).toInt();
-        if (last >= 0 && onProgress) onProgress(last);
-    });
+    connectPercentProgress(proc, onProgress);
     QObject::connect(&proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
                      &loop, &QEventLoop::quit);
     QStringList args{"x", archivePath, "-o" + destDir, "-y", "-bsp1"};

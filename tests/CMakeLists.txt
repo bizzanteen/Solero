@@ -79,6 +79,17 @@ target_include_directories(test_DirHasFiles PRIVATE ../src ${CMAKE_BINARY_DIR}/i
 target_link_libraries(test_DirHasFiles PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_DirHasFiles COMMAND test_DirHasFiles)
 
+# PrefixCertFix does cert/registry serialization; it links AppConfig for Proton
+# detection and Log, but the tests exercise the pure parts and a temp prefix.
+add_executable(test_PrefixCertFix test_PrefixCertFix.cpp
+  ../src/tools/PrefixCertFix.cpp
+  ../src/core/AppConfig.cpp
+  ../src/core/StagingFolder.cpp
+  ../src/core/Log.cpp)
+target_include_directories(test_PrefixCertFix PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_PrefixCertFix PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_PrefixCertFix COMMAND test_PrefixCertFix)
+
 # contentLengthFromHeaders is header-only (tools/ContentLength.h).
 add_executable(test_ContentLength test_ContentLength.cpp)
 target_include_directories(test_ContentLength PRIVATE ../src ${CMAKE_BINARY_DIR}/include)

@@ -119,13 +119,21 @@ static bool installDotNetSdkIntoPrefix(const QString& winePrefix, QWidget* paren
     // deliberately tracks LTS rather than a pinned 8.0: patchers target whatever
     // framework their author used, and Synthesis hard-fails ("SDK Out of Date")
     // when a patcher targets a newer one than any installed SDK.
-    QString ver;
-    {
+    // builds.dotnet.microsoft.com is Microsoft's CDN; dotnetcli.blob.core.windows.net
+    // is the raw Azure blob ORIGIN behind it. Both serve the same bytes, but the
+    // origin is unaccelerated and measured ~7x slower from here (1.2 MB/s vs
+    // 9.0 MB/s), which turns this into a multi-minute wait. Prefer the CDN and keep
+    // the origin as a fallback.
+    static const QString kCdn    = "https://builds.dotnet.microsoft.com/dotnet";
+    static const QString kOrigin = "https://dotnetcli.blob.core.windows.net/dotnet";
+
+    QString ver, base;
+    for (const QString& host : {kCdn, kOrigin}) {
         QProcess curlVer;
-        curlVer.start("curl", QStringList{"-fsSL",
-            "https://dotnetcli.blob.core.windows.net/dotnet/Sdk/LTS/latest.version"});
+        curlVer.start("curl", QStringList{"-fsSL", host + "/Sdk/LTS/latest.version"});
         if (curlVer.waitForFinished(15000))
             ver = QString::fromUtf8(curlVer.readAllStandardOutput()).trimmed();
+        if (!ver.isEmpty()) { base = host; break; }
     }
     if (ver.isEmpty()) return false; // caller handles user-facing messaging
 
@@ -137,8 +145,8 @@ static bool installDotNetSdkIntoPrefix(const QString& winePrefix, QWidget* paren
             .entryList(QDir::Dirs | QDir::NoDotAndDotDot);
     if (highestSdkMajor(haveSdks) >= sdkMajor(ver)) return true;
 
-    const QString url = "https://dotnetcli.blob.core.windows.net/dotnet/Sdk/"
-        + ver + "/dotnet-sdk-" + ver + "-win-x64.exe";
+    const QString relUrl = "/Sdk/" + ver + "/dotnet-sdk-" + ver + "-win-x64.exe";
+    const QString url = base + relUrl;
     const QString dest =
         AppConfig::instance().downloadsDir() + "/dotnet-sdk-win-x64.exe";
 
@@ -195,6 +203,25 @@ static bool installDotNetSdkIntoPrefix(const QString& winePrefix, QWidget* paren
 
         bool dlOk = dl.exitStatus() == QProcess::NormalExit && dl.exitCode() == 0
                     && QFileInfo(dest).size() > 0;
+        // If the CDN failed, fall back to the origin - slower, but it's the same
+        // file and a slow install beats no install.
+        if (!dlOk && base == kCdn) {
+            QFile::remove(dest);
+            prog.setMessage("Retrying the .NET SDK download\xe2\x80\xa6");
+            prog.pump();
+            QProcess retry;
+            retry.setProcessChannelMode(QProcess::MergedChannels);
+            QEventLoop rloop;
+            QObject::connect(&retry, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+                             &rloop, &QEventLoop::quit);
+            QObject::connect(&retry, &QProcess::readyReadStandardOutput, parent, [&]{ prog.pump(); });
+            retry.start("curl", QStringList{"-L", "--fail", "-o", dest, kOrigin + relUrl});
+            if (retry.waitForStarted(15000)) {
+                rloop.exec();
+                dlOk = retry.exitStatus() == QProcess::NormalExit && retry.exitCode() == 0
+                       && QFileInfo(dest).size() > 0;
+            }
+        }
         if (!dlOk) {
             QFile::remove(dest); // drop any partial download
             prog.close();

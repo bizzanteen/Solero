@@ -175,6 +175,37 @@ private slots:
             "error NU3037: ... The repository countersignature validity period has expired."));
     }
 
+    // Synthesis is a GUI app that logs through Serilog to logs/Current.log, so the
+    // NuGet errors never reach stdout - checking only the captured output would
+    // mean the detection never fires for the one tool that needs it.
+    void findsTheFailureInAToolLogWrittenDuringTheRun() {
+        QTemporaryDir tmp;
+        const QString installDir = tmp.path() + "/synthesis";
+        writeFile(installDir + "/logs/Current.log",
+            "2026-08-04 13:17:35.534 +07:00 [ERR] VersionQuery.csproj : error NU3028: "
+            "Package 'Mutagen.Bethesda' ... is not trusted by the trust provider.\n");
+        const QDateTime before = QFileInfo(installDir + "/logs/Current.log")
+                                     .lastModified().addSecs(-5);
+        QVERIFY(PrefixCertFix::toolLogShowsNuGetTrustFailure(installDir, before));
+    }
+
+    // A log left over from an earlier run must not re-trigger the offer: the run
+    // that just happened may have failed for a completely different reason.
+    void ignoresAToolLogFromABeforeTheRun() {
+        QTemporaryDir tmp;
+        const QString installDir = tmp.path() + "/synthesis";
+        writeFile(installDir + "/logs/Current.log", "error NU3028: stale failure\n");
+        const QDateTime after = QFileInfo(installDir + "/logs/Current.log")
+                                    .lastModified().addSecs(60);
+        QVERIFY(!PrefixCertFix::toolLogShowsNuGetTrustFailure(installDir, after));
+    }
+
+    void handlesToolsWithNoLogsAtAll() {
+        QTemporaryDir tmp;
+        QVERIFY(!PrefixCertFix::toolLogShowsNuGetTrustFailure(
+            tmp.path() + "/no-such-tool", QDateTime::currentDateTime().addSecs(-60)));
+    }
+
     void ignoresOutputWithoutThatFailure() {
         QVERIFY(!PrefixCertFix::outputShowsNuGetTrustFailure(""));
         QVERIFY(!PrefixCertFix::outputShowsNuGetTrustFailure(

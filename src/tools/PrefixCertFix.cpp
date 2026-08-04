@@ -306,5 +306,21 @@ bool outputShowsNuGetTrustFailure(const QString& output) {
     return re.match(output).hasMatch();
 }
 
+bool toolLogShowsNuGetTrustFailure(const QString& installDir, const QDateTime& since) {
+    QDir logs(installDir + "/logs");
+    if (!logs.exists()) return false;
+    for (const QFileInfo& fi : logs.entryInfoList({"*.log"}, QDir::Files)) {
+        if (fi.lastModified() < since) continue; // left over from an earlier run
+        QFile f(fi.absoluteFilePath());
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+        // These logs run to hundreds of KB and the restore errors are at the end,
+        // so read the tail rather than the whole file.
+        constexpr qint64 kTail = 256 * 1024;
+        if (f.size() > kTail) f.seek(f.size() - kTail);
+        if (outputShowsNuGetTrustFailure(QString::fromUtf8(f.readAll()))) return true;
+    }
+    return false;
+}
+
 } // namespace PrefixCertFix
 } // namespace solero

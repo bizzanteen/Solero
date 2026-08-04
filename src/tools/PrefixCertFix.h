@@ -1,5 +1,6 @@
 #pragma once
 #include <QByteArray>
+#include <QDateTime>
 #include <QString>
 
 namespace solero {
@@ -57,6 +58,13 @@ Result install(const QString& winePrefix, QString* log = nullptr);
 // Matches the two codes that appear together in that specific failure and nothing
 // else, so an unrelated NuGet error doesn't get offered a certificate fix.
 bool outputShowsNuGetTrustFailure(const QString& output);
+
+// Same check against a tool's own log files. Synthesis is a GUI app that logs via
+// Serilog to <installDir>/logs/Current.log and writes nothing useful to stdout, so
+// the captured output alone would never show the failure. Only considers logs
+// modified at or after `since` (the start of the run), so a stale log from an
+// earlier failure can't re-trigger the offer.
+bool toolLogShowsNuGetTrustFailure(const QString& installDir, const QDateTime& since);
 
 } // namespace PrefixCertFix
 } // namespace solero

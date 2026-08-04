@@ -4664,6 +4664,10 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     if (runExe.id == "pgpatcher" && !runExe.arguments.contains("--ignore-mo2vfscheck"))
         runExe.arguments = (runExe.arguments.trimmed() + " --ignore-mo2vfscheck").trimmed();
     if (!nemesisRunBinary.isEmpty()) runExe.binaryPath = nemesisRunBinary;
+    // Floored to the second: file mtimes have second granularity, so a log written
+    // in the same second as the start would otherwise read as older than the run.
+    const QDateTime toolRunStart =
+        QDateTime::fromSecsSinceEpoch(QDateTime::currentSecsSinceEpoch());
     auto res = solero::ToolRunner::run(runExe, solero::AppConfig::instance().gameDir(),
                                        solero::AppConfig::instance().stagingDir(), outFolder,
                                        owP ? solero::AppConfig::overwriteDir(owP->name()) : QString());
@@ -4702,8 +4706,11 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     }
     // A NuGet restore that failed for want of a trusted root is a known, fixable
     // Proton problem with a wall of unhelpful errors - catch it here rather than
-    // leaving the user to read 300 NU3028s.
-    if (solero::PrefixCertFix::outputShowsNuGetTrustFailure(res.output))
+    // leaving the user to read 300 NU3028s. Synthesis logs to a file instead of
+    // stdout, so check its log too, limited to what this run wrote.
+    if (solero::PrefixCertFix::outputShowsNuGetTrustFailure(res.output)
+        || solero::PrefixCertFix::toolLogShowsNuGetTrustFailure(
+               QFileInfo(runExe.binaryPath).path(), toolRunStart))
         offerPrefixCertFix(exe.name, runExe.winePrefix);
     // A tool may have captured output into an output mod, changing staged files -
     // invalidate all cached scans so empties/highlights re-read fresh.

@@ -3,6 +3,7 @@
 #include "tools/ToolDownloader.h"
 #include "tools/ToolSetup.h"
 #include "tools/ToolStore.h"
+#include "tools/ContentLength.h"
 #include "ui/ProgressModal.h"
 #include "ui/ExecutableDialog.h"
 #include "nexus/NexusApi.h"
@@ -27,6 +28,7 @@
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QEventLoop>
+#include <QTimer>
 #include <QStandardPaths>
 
 namespace solero {
@@ -132,6 +134,18 @@ static bool installDotNetSdkIntoPrefix(const QString& winePrefix, QWidget* paren
         "Downloading the .NET SDK (~220 MB)\xe2\x80\xa6");
     prog.show(); prog.pump();
 
+    // Ask for the real size up front so the download can show a determinate bar.
+    // A ~220 MB transfer behind a barber-pole bar is indistinguishable from a hung
+    // one, and this step is slow enough that people give up on it. -1 (server
+    // didn't say) just leaves the bar indeterminate.
+    qint64 totalBytes = -1;
+    {
+        QProcess head;
+        head.start("curl", QStringList{"-sIL", url});
+        if (head.waitForFinished(15000))
+            totalBytes = contentLengthFromHeaders(QString::fromUtf8(head.readAllStandardOutput()));
+    }
+
     // Download the installer
     {
         QProcess dl;
@@ -142,9 +156,30 @@ static bool installDotNetSdkIntoPrefix(const QString& winePrefix, QWidget* paren
         QObject::connect(&dl, &QProcess::readyReadStandardOutput, parent, [&]{ prog.pump(); });
         QObject::connect(&dl, &QProcess::readyReadStandardError,  parent, [&]{ prog.pump(); });
 
+        // curl's own progress meter isn't machine-readable when stdout is a pipe, so
+        // track the growing file instead - it needs no cooperation from curl and
+        // stays accurate if it resumes or stalls.
+        QTimer tick;
+        const auto mib = [](qint64 b) { return double(b) / (1024.0 * 1024.0); };
+        QObject::connect(&tick, &QTimer::timeout, parent, [&]{
+            const qint64 got = QFileInfo(dest).size();
+            if (totalBytes > 0) {
+                prog.setMessage(QString("Downloading the .NET SDK\xe2\x80\xa6 %1 of %2 MB")
+                                    .arg(mib(got), 0, 'f', 0).arg(mib(totalBytes), 0, 'f', 0));
+                prog.setProgress(int(got / 1024), int(totalBytes / 1024));
+            } else {
+                prog.setMessage(QString("Downloading the .NET SDK\xe2\x80\xa6 %1 MB")
+                                    .arg(mib(got), 0, 'f', 0));
+            }
+            prog.pump();
+        });
+        tick.start(500);
+
         dl.start("curl", QStringList{"-L", "--fail", "-o", dest, url});
         if (!dl.waitForStarted(15000)) { prog.close(); return false; }
         loop.exec();
+        tick.stop();
+        prog.setProgress(0, 0); // back to indeterminate for the install step below
 
         bool dlOk = dl.exitStatus() == QProcess::NormalExit && dl.exitCode() == 0
                     && QFileInfo(dest).size() > 0;

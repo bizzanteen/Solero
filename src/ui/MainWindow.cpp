@@ -20,6 +20,7 @@
 #include "install/ModInstaller.h"
 #include "install/InstallConflict.h"
 #include "deploy/DeployEngine.h"
+#include "deploy/ProfileArtifacts.h"
 #include "core/DeploySignature.h"
 #include <QStyle>
 #include "deploy/DeployRecord.h"
@@ -1638,6 +1639,35 @@ bool MainWindow::ensureDeployed(const QString& reason) {
         return false;
     }
     return true;
+}
+
+void MainWindow::syncGeneratedArtifacts(const QString& reason) {
+    auto* prof = m_profileMgr->activeProfile();
+    if (!prof) return;
+    const QString gameDir = solero::AppConfig::instance().gameDir();
+    if (gameDir.isEmpty()) return;
+
+    const auto res = solero::writeProfileArtifacts(*prof, gameDir);
+    if (!res.ok) {
+        QMessageBox::warning(this, "Load Order",
+            QString("Solero couldn't update the files the game reads before %1:\n\n%2")
+                .arg(reason, res.errors.join("\n")));
+        return;
+    }
+    qCInfo(lcDeploy) << "synced" << res.written.size()
+                     << "generated artifact(s) before" << reason;
+
+    // Read back the Plugins.txt the game will actually load. A difference here means
+    // the game is about to run a load order that isn't the one on screen - the exact
+    // failure this sync exists to prevent, and one that's invisible from in-game (it
+    // just looks like a mod misbehaving), so it's worth interrupting for.
+    const QString mismatch = solero::liveLoadOrderMismatch(*prof, gameDir);
+    if (!mismatch.isEmpty()) {
+        qCWarning(lcDeploy) << "live load order still differs after sync:" << mismatch;
+        QMessageBox::warning(this, "Load Order Mismatch",
+            QString("The game's load order doesn't match this profile, so it may not "
+                    "load the plugins you expect.\n\n%1").arg(mismatch));
+    }
 }
 
 bool MainWindow::deployCurrent() {
@@ -4459,6 +4489,9 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     }
     // Tools operate on the live Data/ folder, so the modlist must be deployed & current.
     if (!ensureDeployed("running this tool")) return;
+    // Most tools (xEdit, Nemesis, the patchers) read the load order from the prefix,
+    // so it has to be current for them too - not just for the game.
+    syncGeneratedArtifacts("running this tool");
 
     // Lock the UI (MO2-style) while the tool runs. m_toolRunning stays true for
     // the whole run - even if the user dismisses the overlay via "Unlock Solero" -
@@ -5178,38 +5211,7 @@ void MainWindow::onPlay() {
     // Mods must be deployed to play with them (same as running a tool).
     if (!ensureDeployed("playing")) return;
 
-    // Reconcile the active profile's INIs to the live (prefix Documents) copies
-    // on every launch. Deploy syncs them, but deploy is skipped above when the
-    // modlist is already deployed-and-clean - and the game reads the live copy,
-    // not the profile. Without this, a stale live SkyrimPrefs.ini (e.g. one an
-    // in-game graphics-settings save overwrote) silently overrides the BethINI
-    // preset the user applied. Idempotent if deploy just did the same copy.
-    if (auto* prof = m_profileMgr->activeProfile()) {
-        QString docs = solero::AppConfig::instance().documentsDir();
-        QString iniDir = docs.isEmpty() ? solero::AppConfig::instance().gameDir() : docs;
-        if (!iniDir.isEmpty()) {
-            QDir().mkpath(iniDir);
-            // Only push the profile's INIs when it owns them (localInis); otherwise
-            // leave the live/shared INIs alone.
-            if (prof->localInis()) {
-                const QStringList iniSrc = { prof->skyrimIniPath(), prof->skyrimPrefsPath(), prof->skyrimCustomPath() };
-                const QStringList iniDst = { iniDir + "/Skyrim.ini", iniDir + "/SkyrimPrefs.ini", iniDir + "/SkyrimCustom.ini" };
-                for (int i = 0; i < iniSrc.size(); ++i)
-                    if (QFile::exists(iniSrc[i])) solero::copyOverwrite(iniSrc[i], iniDst[i]);
-            }
-            // Keep the save redirect in sync too, since deploy may have been skipped.
-            const QString saveIni = iniDir + "/Skyrim.ini";
-            solero::IniFile ini;
-            if (prof->localSaves()) {
-                ini.load(saveIni);
-                ini.setValue("General", "SLocalSavePath", "Saves\\" + prof->saveFolderName() + "\\");
-                if (ini.save(saveIni)) QDir().mkpath(iniDir + "/Saves/" + prof->saveFolderName());
-            } else if (QFile::exists(saveIni)) {
-                ini.load(saveIni);
-                if (ini.has("General", "SLocalSavePath")) { ini.remove("General", "SLocalSavePath"); ini.save(saveIni); }
-            }
-        }
-    }
+    syncGeneratedArtifacts("playing");
 
     // Re-assert the Community Shaders shader cache into the live game dir on every
     // launch, for the same reason as the INI re-sync above: Community Shaders OWNS

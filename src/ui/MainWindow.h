@@ -242,6 +242,13 @@ private:
     // AppConfig::autoDeployBeforeLaunch (silent deploy + skip the modal). `reason`
     // is a short phrase shown in the prompt (e.g. "launching the game").
     bool ensureDeployed(const QString& reason);
+    // Push everything the game reads out of the profile and into the live prefix:
+    // the load order (Plugins.txt / loadorder.txt), the profile's INIs and the save
+    // redirect. ensureDeployed() returns early whenever the modlist is deployed and
+    // clean, so without this a reordered load order or an edited INI never leaves
+    // the profile and the game keeps loading what the last deploy wrote. Cheap and
+    // idempotent, so every launch runs it. `reason` is a short phrase for messages.
+    void syncGeneratedArtifacts(const QString& reason);
     // SKSE bootstrap: after a Wabbajack import, detect whether SKSE64 is present
     // and, if not, offer to install it from Nexus (mod 30379, Steam build).
     bool skseInstalledFor(solero::Profile* profile) const;

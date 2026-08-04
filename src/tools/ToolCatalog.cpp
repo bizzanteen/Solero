@@ -56,9 +56,11 @@ const QList<ToolPreset>& ToolCatalog::presets() {
         }
 
         {
+            // 5.8.x is 64-bit only and ships plain BodySlide.exe; the "BodySlide
+            // x64.exe" name belongs to older releases.
             ToolPreset t = nexus("bodyslide", "BodySlide and Outfit Studio",
                                  "Ousnius & Caliente", "201",
-                                 "CalienteTools/BodySlide/BodySlide x64.exe", "");
+                                 "CalienteTools/BodySlide/BodySlide.exe", "");
             t.description = "Build body meshes and outfits to your chosen shape and presets.";
             t.docsUrl = "https://github.com/ousnius/BodySlide-and-Outfit-Studio";
             t.authorUrl = "https://www.nexusmods.com/users/4448560";
@@ -69,6 +71,10 @@ const QList<ToolPreset>& ToolCatalog::presets() {
             // builds back into Data. Mirroring it into Data puts it alongside that
             // mod data, which is exactly the layout it expects.
             t.runsFromDataDir = true;
+            // Outfit Studio ships alongside it and needs the same Data placement.
+            t.extraActions = {{ "Open Outfit Studio",
+                                "CalienteTools/BodySlide/OutfitStudio.exe", "",
+                                "BodySlide Output" }};
             v << t;
         }
 

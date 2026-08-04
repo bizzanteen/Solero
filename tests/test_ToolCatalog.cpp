@@ -20,6 +20,11 @@ private slots:
         QVERIFY(bs != nullptr);
         QCOMPARE(bs->runsFromDataDir, true);
         QCOMPARE(bs->producesOutput, true);
+        // 5.8.x dropped the " x64" suffix; resolveToolExe matches on file NAME, so
+        // getting this wrong fails the install outright ("archive doesn't contain").
+        QCOMPARE(bs->exeRelPath, QString("CalienteTools/BodySlide/BodySlide.exe"));
+        QCOMPARE(bs->extraActions.size(), 1);
+        QVERIFY(bs->extraActions[0].exeRelPath.endsWith("OutfitStudio.exe"));
         QVERIFY(ToolCatalog::byId("nemesis")->runsFromDataDir);
         // Nothing else should be mirrored into Data - it is an invasive thing to do.
         for (const auto& t : ToolCatalog::presets())

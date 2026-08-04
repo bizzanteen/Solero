@@ -19,6 +19,10 @@ namespace solero {
 struct ArtifactWriteResult {
     bool ok = true;
     QStringList written;  // absolute paths actually written this call
+    // Artifacts that are in place but were deliberately left untouched (see the
+    // empty-plugin-list guard below). Callers that track artifacts must treat these
+    // as current, not stale - the deploy sweep would otherwise delete them.
+    QStringList inPlace;
     QStringList errors;   // human-readable failures, one per artifact
 };
 
@@ -26,6 +30,8 @@ struct ArtifactWriteResult {
 // (localAppDataDir for the load order, documentsDir for the INIs); `gameDir`
 // supplies the fallback location for each when AppConfig doesn't know it.
 // Does NOT sort with LOOT and does NOT save the profile - callers own that.
+// Refuses to overwrite a non-empty live Plugins.txt from an empty plugin list, so
+// an unpopulated profile can't leave the game loading nothing.
 ArtifactWriteResult writeProfileArtifacts(Profile& profile, const QString& gameDir);
 
 // Where writeProfileArtifacts() puts Plugins.txt / loadorder.txt and the INIs.

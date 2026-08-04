@@ -6,6 +6,7 @@
 #include "bethini/IniFile.h"
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 
 namespace solero {
 
@@ -38,13 +39,27 @@ ArtifactWriteResult writeProfileArtifacts(Profile& profile, const QString& gameD
 
     const QString orderDir = loadOrderDir(gameDir);
     QDir().mkpath(orderDir);
-    wrote(orderDir + "/Plugins.txt",
-          profile.pluginList().saveToFile(orderDir + "/Plugins.txt"), "the load order");
-    // loadorder.txt records the full order (all plugins, no prefix) so the game and
-    // tools agree on the master/light/esp ordering, not just what's active.
-    wrote(orderDir + "/loadorder.txt",
-          profile.pluginList().saveLoadOrderToFile(orderDir + "/loadorder.txt"),
-          "the full load order");
+    // Guard: an empty plugin list would write an EMPTY Plugins.txt, and the game
+    // would then load no mods at all. A profile whose plugins haven't been scanned
+    // yet must never clobber a live load order that lists real plugins. Keyed on
+    // parsed entries, not file size, so a plugin-less profile can still rewrite the
+    // one-newline file it wrote itself.
+    if (profile.pluginList().count() == 0 &&
+        PluginList::loadFromFile(orderDir + "/Plugins.txt").count() > 0) {
+        qCWarning(lcDeploy) << "skipping load-order write: profile has no plugins but"
+                            << orderDir + "/Plugins.txt" << "lists some";
+        result.inPlace.append(orderDir + "/Plugins.txt");
+        if (QFile::exists(orderDir + "/loadorder.txt"))
+            result.inPlace.append(orderDir + "/loadorder.txt");
+    } else {
+        wrote(orderDir + "/Plugins.txt",
+              profile.pluginList().saveToFile(orderDir + "/Plugins.txt"), "the load order");
+        // loadorder.txt records the full order (all plugins, no prefix) so the game
+        // and tools agree on the master/light/esp ordering, not just what's active.
+        wrote(orderDir + "/loadorder.txt",
+              profile.pluginList().saveLoadOrderToFile(orderDir + "/loadorder.txt"),
+              "the full load order");
+    }
 
     const QString inis = iniDir(gameDir);
     QDir().mkpath(inis);

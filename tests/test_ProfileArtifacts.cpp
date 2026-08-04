@@ -113,6 +113,60 @@ private slots:
         QVERIFY(QFileInfo::exists(e.game + "/Data/Plugins.txt"));
     }
 
+    // A profile whose plugin list hasn't been populated must never blank out a live
+    // load order - an empty Plugins.txt makes the game load no mods at all. Launch
+    // writes the artifacts on EVERY start, so this has to be safe.
+    void neverBlanksLiveOrderWithAnEmptyPluginList() {
+        Env e; setup(e);
+        writeFile(e.appdata + "/Plugins.txt", "*Skyrim.esm\n*Real.esp\n");
+        writeFile(e.appdata + "/loadorder.txt", "Skyrim.esm\nReal.esp\n");
+        Profile p("T", e.profiles);
+        QCOMPARE(p.pluginList().count(), 0);
+
+        const auto r = writeProfileArtifacts(p, e.game);
+        QVERIFY2(r.ok, qPrintable(r.errors.join("; ")));
+        QCOMPARE(readAll(e.appdata + "/Plugins.txt"), QString("*Skyrim.esm\n*Real.esp\n"));
+        QCOMPARE(readAll(e.appdata + "/loadorder.txt"), QString("Skyrim.esm\nReal.esp\n"));
+        QVERIFY(!r.written.contains(e.appdata + "/Plugins.txt"));
+    }
+
+    // ...but an empty plugin list with no live order yet (a fresh install) still
+    // writes, so the file exists for the game and for LOOT.
+    void emptyPluginListStillWritesWhenNoLiveOrder() {
+        Env e; setup(e);
+        Profile p("T", e.profiles);
+
+        const auto r = writeProfileArtifacts(p, e.game);
+        QVERIFY(r.ok);
+        QVERIFY(r.written.contains(e.appdata + "/Plugins.txt"));
+    }
+
+    // The guard keys on real plugin entries, not on the file being non-empty: a
+    // plugin-less profile writes a one-newline Plugins.txt, and writing that again
+    // on the next deploy must not count as clobbering anything.
+    void emptyPluginListRewritesItsOwnEmptyFile() {
+        Env e; setup(e);
+        Profile p("T", e.profiles);
+
+        QVERIFY(writeProfileArtifacts(p, e.game).ok);
+        const auto again = writeProfileArtifacts(p, e.game);
+        QVERIFY(again.written.contains(e.appdata + "/Plugins.txt"));
+    }
+
+    // A preserved artifact is still reported as being in place. DeployEngine records
+    // what this call leaves behind, and an unreported file looks stale to the deploy
+    // sweep - which would delete the very load order the guard just protected.
+    void reportsPreservedArtifactsSoTheyAreNotSweptAway() {
+        Env e; setup(e);
+        AppConfig::instance().setLocalAppDataDir({}); // artifacts land inside gameDir
+        writeFile(e.game + "/Data/Plugins.txt", "*Skyrim.esm\n*Real.esp\n");
+        Profile p("T", e.profiles);
+
+        const auto r = writeProfileArtifacts(p, e.game);
+        QVERIFY(r.written.isEmpty() || !r.written.contains(e.game + "/Data/Plugins.txt"));
+        QVERIFY(r.inPlace.contains(e.game + "/Data/Plugins.txt"));
+    }
+
     // localInis ON: the profile's own INIs are pushed to My Games on every write,
     // so a BethINI change reaches the game without a deploy.
     void copiesProfileInisWhenLocal() {

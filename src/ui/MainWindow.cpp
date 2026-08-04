@@ -5628,7 +5628,11 @@ void MainWindow::onRemoveTool(const QString& id) {
         modNames << name;
     }
 
-    QList<QCheckBox*> boxes;
+    // Whether to delete each mod in modIds. Read out of the checkboxes WHILE the
+    // dialog is alive - the boxes are parented to it and die with it at the end of
+    // the block below, so keeping the pointers around and querying them afterwards
+    // is a use-after-free (it segfaulted on any tool with an output mod).
+    QList<bool> alsoRemove;
     if (modIds.isEmpty()) {
         auto ret = QMessageBox::question(this, "Remove Tool",
             QString("Remove tool '%1'? (The downloaded files stay on disk.)").arg(toolName),
@@ -5639,6 +5643,7 @@ void MainWindow::onRemoveTool(const QString& id) {
         dlg.setWindowTitle("Remove Tool");
         auto* lay = new QVBoxLayout(&dlg);
         lay->addWidget(new QLabel(QString("Remove tool '%1'?").arg(toolName), &dlg));
+        QList<QCheckBox*> boxes;
         for (const QString& name : modNames) {
             auto* cb = new QCheckBox(QString("Also remove mod: \"%1\"").arg(name), &dlg);
             cb->setChecked(true);
@@ -5650,6 +5655,7 @@ void MainWindow::onRemoveTool(const QString& id) {
         connect(btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
         lay->addWidget(btns);
         if (dlg.exec() != QDialog::Accepted) return;
+        for (auto* cb : boxes) alsoRemove << cb->isChecked();
     }
 
     auto& tools = activeTools();
@@ -5659,7 +5665,7 @@ void MainWindow::onRemoveTool(const QString& id) {
 
     bool removedAny = false;
     for (int i = 0; i < modIds.size(); ++i) {
-        if (i < boxes.size() && !boxes[i]->isChecked()) continue;
+        if (i < alsoRemove.size() && !alsoRemove[i]) continue;
         removeModEverywhere(modIds[i]);   // deletes staging + removes from whichever profile holds it
         removedAny = true;
     }

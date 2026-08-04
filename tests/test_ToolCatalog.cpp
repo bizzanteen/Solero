@@ -4,7 +4,7 @@ using namespace solero;
 class TestToolCatalog : public QObject { Q_OBJECT
 private slots:
     void hasCommonTools() {
-        QCOMPARE(ToolCatalog::presets().size(), 8);
+        QCOMPARE(ToolCatalog::presets().size(), 9);
         QVERIFY(ToolCatalog::byId("xedit") != nullptr);
         QCOMPARE(ToolCatalog::byId("xedit")->source, ToolSource::Nexus);
         QVERIFY(!ToolCatalog::byId("xedit")->author.isEmpty());
@@ -14,6 +14,17 @@ private slots:
         QVERIFY(pandora != nullptr);
         QCOMPARE(pandora->proton, true);
         QCOMPARE(pandora->producesOutput, true);
+        // BodySlide only finds the SliderSets that body mods install into Data,
+        // so it has to be mirrored in there for the run like Nemesis is.
+        auto* bs = ToolCatalog::byId("bodyslide");
+        QVERIFY(bs != nullptr);
+        QCOMPARE(bs->runsFromDataDir, true);
+        QCOMPARE(bs->producesOutput, true);
+        QVERIFY(ToolCatalog::byId("nemesis")->runsFromDataDir);
+        // Nothing else should be mirrored into Data - it is an invasive thing to do.
+        for (const auto& t : ToolCatalog::presets())
+            if (t.id != "bodyslide" && t.id != "nemesis")
+                QVERIFY2(!t.runsFromDataDir, qPrintable(t.id));
     }
     void presetsHaveDescriptionAndDocs() {
         auto* xe = ToolCatalog::byId("xedit");

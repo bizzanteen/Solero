@@ -22,6 +22,7 @@
 #include "deploy/DeployEngine.h"
 #include "deploy/ProfileArtifacts.h"
 #include "tools/PrefixCertFix.h"
+#include "tools/DotNetSdk.h"
 #include "core/DeploySignature.h"
 #include <QStyle>
 #include "deploy/DeployRecord.h"
@@ -4642,8 +4643,15 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     // capture; the mirror itself is removed again right after the run.
     QString nemesisRunBinary;
     QStringList nemesisMirror; // files we created in Data; removed after the run
-    if (exe.id == "nemesis") {
-        const QString toolRoot = QFileInfo(QFileInfo(exe.binaryPath).path()).path();
+    const auto* runPreset = solero::ToolCatalog::byId(exe.id);
+    if (runPreset && runPreset->runsFromDataDir) {
+        // The tool's own install dir, not a walk up from the exe: how deeply the
+        // exe is nested varies per tool (Nemesis_Engine/... vs
+        // CalienteTools/BodySlide/...), and mirroring the wrong root would drop
+        // the payload into Data at the wrong depth.
+        QString toolRoot = solero::AppConfig::instance().toolsDir() + "/" + exe.id;
+        if (!QDir(toolRoot).exists())
+            toolRoot = QFileInfo(QFileInfo(exe.binaryPath).path()).path();
         const QString dataDir = solero::AppConfig::instance().gameDir() + "/Data";
         mirrorToolTreeInto(toolRoot, dataDir, &nemesisMirror);
         const QString mirroredExe =
@@ -4651,9 +4659,9 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
         if (!QFile::exists(mirroredExe)) {
             removeMirroredFiles(nemesisMirror, dataDir);
             hideRunLock(); m_toolRunning = false;
-            QMessageBox::warning(this, "Nemesis",
-                "Could not place Nemesis inside the game's Data folder for the run. "
-                "Check that the game folder is writable, then try again.");
+            QMessageBox::warning(this, exe.name,
+                "Could not place " + exe.name + " inside the game's Data folder for "
+                "the run. Check that the game folder is writable, then try again.");
             return;
         }
         nemesisRunBinary = mirroredExe;
@@ -4708,10 +4716,26 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     // Proton problem with a wall of unhelpful errors - catch it here rather than
     // leaving the user to read 300 NU3028s. Synthesis logs to a file instead of
     // stdout, so check its log too, limited to what this run wrote.
+    const QString runLogDir = QFileInfo(runExe.binaryPath).path();
     if (solero::PrefixCertFix::outputShowsNuGetTrustFailure(res.output)
-        || solero::PrefixCertFix::toolLogShowsNuGetTrustFailure(
-               QFileInfo(runExe.binaryPath).path(), toolRunStart))
+        || solero::PrefixCertFix::toolLogShowsNuGetTrustFailure(runLogDir, toolRunStart))
         offerPrefixCertFix(exe.name, runExe.winePrefix);
+    // A patcher targeting a newer framework than the prefix's SDK fails with a
+    // build error that says nothing about how to fix it. Setting the tool up again
+    // installs the current LTS SDK alongside the old one.
+    else if (solero::showsSdkTooOld(res.output)
+             || solero::sdkTooOldInToolLogs(runLogDir, toolRunStart)) {
+        const QStringList sdks =
+            QDir(runExe.winePrefix + "/pfx/drive_c/Program Files/dotnet/sdk")
+                .entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+        QMessageBox::information(this, ".NET SDK Out of Date",
+            exe.name + " couldn't build a patcher: it targets a newer .NET version "
+            "than the SDK installed in the game's Proton prefix"
+            + (sdks.isEmpty() ? QString() : " (" + sdks.join(", ") + ")") + ".\n\n"
+            "Run Tools \xe2\x86\x92 Set Up a Tool and set " + exe.name + " up again. "
+            "Solero will install the current LTS .NET SDK next to the old one, which "
+            "leaves patchers built against older versions working.");
+    }
     // A tool may have captured output into an output mod, changing staged files -
     // invalidate all cached scans so empties/highlights re-read fresh.
     m_modListView->invalidateModCache();

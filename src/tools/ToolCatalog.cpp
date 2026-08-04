@@ -51,6 +51,24 @@ const QList<ToolPreset>& ToolCatalog::presets() {
             t.authorUrl = "https://www.nexusmods.com/users/16675984";
             t.producesOutput = true;
             t.outputModName = "Nemesis Output";
+            t.runsFromDataDir = true; // ERROR(1008) unless it runs from inside Data
+            v << t;
+        }
+
+        {
+            ToolPreset t = nexus("bodyslide", "BodySlide and Outfit Studio",
+                                 "Ousnius & Caliente", "201",
+                                 "CalienteTools/BodySlide/BodySlide x64.exe", "");
+            t.description = "Build body meshes and outfits to your chosen shape and presets.";
+            t.docsUrl = "https://github.com/ousnius/BodySlide-and-Outfit-Studio";
+            t.authorUrl = "https://www.nexusmods.com/users/4448560";
+            t.producesOutput = true;
+            t.outputModName = "BodySlide Output";
+            // BodySlide reads the SliderSets/ShapeData that body mods (CBBE, HIMBO)
+            // install into Data/CalienteTools/BodySlide, and writes the meshes it
+            // builds back into Data. Mirroring it into Data puts it alongside that
+            // mod data, which is exactly the layout it expects.
+            t.runsFromDataDir = true;
             v << t;
         }
 

@@ -27,6 +27,11 @@ struct ToolPreset {
     // staging Data/) rather than into the game Data/. Suppresses the post-run
     // mtime-capture walk; the output mod is still assigned for path resolution.
     bool writesOutputDirectly = false;
+    // Tool only works from inside the game's Data folder: it finds the game (or
+    // the mod data it operates on) by walking up from its own exe. MO2 gets this
+    // free from its VFS; Solero deploys real files, so it hardlink-mirrors the
+    // tool into Data for the run and removes the mirror afterwards.
+    bool runsFromDataDir = false;
     struct PresetAction { QString label, exeRelPath, args, outputModName; };
     QList<PresetAction> extraActions;
 };

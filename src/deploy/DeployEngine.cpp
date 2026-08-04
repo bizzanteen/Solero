@@ -171,12 +171,15 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
         if (onProgress) onProgress(done, total);
     }
 
-    // Sort plugins with LOOT (if enabled) before writing plugins.txt. The mod
-    // files must already be deployed above so LOOT can read the plugin headers.
-    // A locked load order skips the auto-sort entirely and deploys the current
-    // manual order as-is.
+    // Sort plugins with LOOT (if enabled). The mod files must already be deployed
+    // above so LOOT can read the plugin headers. A locked load order skips the
+    // auto-sort entirely and deploys the current manual order as-is.
     QString lootSortError; // non-empty => append to the deploy warning below
     if (m_lootEnabled && !profile.pluginList().loadOrderLocked()) {
+        // libloot's LoadCurrentLoadOrderState() reads Plugins.txt off disk to learn
+        // which plugins are active, so push this profile's load order out FIRST -
+        // otherwise the sort is informed by whatever the previous deploy wrote.
+        writeProfileArtifacts(profile, m_gameDir);
         auto sortResult = LootSorter::sort(
             profile.pluginList(),
             m_gameDir,
@@ -205,7 +208,9 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
     };
 
     // Write the generated artifacts through the same helper the launch path uses,
-    // so a deploy and a plain Play produce byte-identical files.
+    // so a deploy and a plain Play produce byte-identical files. This is the write
+    // that counts - the pre-sort one above only exists to inform libloot, and the
+    // sort/applyPins step reorders the list after it.
     const ArtifactWriteResult artifacts = writeProfileArtifacts(profile, m_gameDir);
     // inPlace as well as written: an artifact the writer deliberately preserved is
     // current, and leaving it out of the record would let the stale sweep below

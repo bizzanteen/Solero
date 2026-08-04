@@ -75,6 +75,36 @@ private slots:
         IniFile ini; ini.load(e.docs + "/Skyrim.ini");
         QCOMPARE(ini.value("Display", "iSize W"), QString("800")); // unchanged
     }
+
+    // Deploy writes the load order TWICE: once before the LOOT step, so libloot reads
+    // this profile's active set instead of the previous deploy's, and once after, so
+    // the sorted/pinned result is what actually lands. The second write must win -
+    // otherwise deploy would leave the game reading a pre-sort order, which is the
+    // very bug the launch-time sync exists to prevent.
+    void deploy_writesTheOrderTheSortEndsWith() {
+        Env e; setup(e);
+        const QString appdata = e.tmp.path() + "/appdata";
+        QDir().mkpath(appdata);
+        AppConfig::instance().setLocalAppDataDir(appdata);
+
+        Profile p("T", e.tmp.path() + "/profiles");
+        auto& pl = p.pluginList();
+        for (const QString& n : {"A.esp", "B.esp", "C.esp"}) {
+            PluginEntry pe; pe.filename = n; pe.enabled = true;
+            pl.append(pe);
+        }
+        pl.setPinned("C.esp", true); // pinned at index 2
+        pl.move(2, 0);               // dragged to the top: C, A, B
+
+        DeployEngine eng(e.game, e.staging);
+        QVERIFY(eng.deploy(p, DeployMode::Copy).success);
+
+        // applyPins() runs inside the LOOT step and puts C back at its pinned slot.
+        QFile f(appdata + "/Plugins.txt");
+        QVERIFY(f.open(QIODevice::ReadOnly | QIODevice::Text));
+        QCOMPARE(QString::fromUtf8(f.readAll()), QString("*A.esp\n*B.esp\n*C.esp\n"));
+        AppConfig::instance().setLocalAppDataDir({});
+    }
 };
 QTEST_MAIN(TestProfileDeployFiles)
 #include "test_ProfileDeployFiles.moc"

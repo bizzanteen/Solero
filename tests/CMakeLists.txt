@@ -143,6 +143,25 @@ add_solero_deploy_test(test_DeployEngine)
 add_solero_deploy_test(test_DeployIncremental)
 add_solero_deploy_test(test_ProfileDeployFiles)
 
+# The generated-artifact writer shared by deploy and launch. Pure file writing, so
+# it needs the profile/config/ini sources but none of the deploy or LOOT machinery.
+add_executable(test_ProfileArtifacts test_ProfileArtifacts.cpp
+  ../src/deploy/ProfileArtifacts.cpp
+  ../src/bethini/IniFile.cpp
+  ../src/core/ModList.cpp
+  ../src/core/PluginList.cpp
+  ../src/core/Profile.cpp
+  ../src/core/ShaderCache.cpp
+  ../src/core/ProfileManager.cpp
+  ../src/ai/AITransaction.cpp
+  ../src/core/AppConfig.cpp
+  ../src/core/StagingFolder.cpp
+  ../src/core/Log.cpp
+)
+target_include_directories(test_ProfileArtifacts PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_ProfileArtifacts PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_ProfileArtifacts COMMAND test_ProfileArtifacts)
+
 # ToolRunner's capture helper depends on the deploy record/engine, so reuse the
 # deploy source/link set plus ToolRunner.cpp itself.
 add_executable(test_ToolRunner test_ToolRunner.cpp

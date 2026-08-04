@@ -143,6 +143,7 @@ set(SOLERO_SOURCES
   src/deploy/DeployRecord.cpp
   src/deploy/ConflictIndex.cpp
   src/deploy/DeployEngine.cpp
+  src/deploy/ProfileArtifacts.cpp
   src/deploy/UnmanagedScanner.cpp
   src/ui/RightPane.cpp
   src/ui/ProgressModal.cpp

@@ -21,6 +21,7 @@
 #include "install/InstallConflict.h"
 #include "deploy/DeployEngine.h"
 #include "deploy/ProfileArtifacts.h"
+#include "tools/PrefixCertFix.h"
 #include "core/DeploySignature.h"
 #include <QStyle>
 #include "deploy/DeployRecord.h"
@@ -4699,12 +4700,69 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
         // Surface tool output (helps diagnose e.g. wine 'Not implemented').
         statusBar()->showMessage(exe.name + " finished.");
     }
+    // A NuGet restore that failed for want of a trusted root is a known, fixable
+    // Proton problem with a wall of unhelpful errors - catch it here rather than
+    // leaving the user to read 300 NU3028s.
+    if (solero::PrefixCertFix::outputShowsNuGetTrustFailure(res.output))
+        offerPrefixCertFix(exe.name, runExe.winePrefix);
     // A tool may have captured output into an output mod, changing staged files -
     // invalidate all cached scans so empties/highlights re-read fresh.
     m_modListView->invalidateModCache();
     m_rightPane->invalidateModPluginCache();
     if (auto* p = m_profileMgr->activeProfile()) { m_rightPane->refreshPlugins(p); m_modListView->setProfile(p); }
     updatePluginNotice();
+}
+
+void MainWindow::offerPrefixCertFix(const QString& toolName, const QString& winePrefix) {
+    const QByteArray der = solero::PrefixCertFix::universalRootDer();
+    // Already fixed (or fixed by hand): the failure was something else, so don't
+    // offer a no-op.
+    if (solero::PrefixCertFix::isInstalled(winePrefix, der)) return;
+
+    QMessageBox box(this);
+    box.setIcon(QMessageBox::Warning);
+    box.setWindowTitle("NuGet Can't Verify Its Packages");
+    box.setText(toolName + " couldn't download the packages it needs to build. Every "
+                "package was rejected because this Proton prefix can't verify "
+                "nuget.org's signatures.");
+    box.setInformativeText(
+        "Those signatures chain to the VeriSign Universal Root certificate, which "
+        "Fedora, Debian and Arch have all removed from their system certificate "
+        "bundles. Wine builds a prefix's trust store from the system bundle, so this "
+        "prefix has no copy of it \xe2\x80\x94 and .NET under Proton reports itself as "
+        "running on Windows, where it enforces the signature check it would skip on "
+        "Linux.\n\n"
+        "Solero can add that certificate to this Proton prefix only. Your system "
+        "certificate store is not touched and nothing outside the prefix changes. "
+        "Note that the distributions above dropped this root deliberately, so this is "
+        "your call to make.");
+    box.setDetailedText(
+        "Certificate: VeriSign Universal Root Certification Authority\n"
+        "SHA1:        " + solero::PrefixCertFix::thumbprint(der) + "\n"
+        "Valid until: 2037-12-01\n"
+        "Prefix:      " + winePrefix + "\n\n"
+        "Installed into HKEY_LOCAL_MACHINE\\Software\\Microsoft\\SystemCertificates"
+        "\\Root\\Certificates inside the prefix.");
+    auto* addBtn = box.addButton("Add to This Prefix", QMessageBox::AcceptRole);
+    box.addButton("Not Now", QMessageBox::RejectRole);
+    box.setDefaultButton(addBtn);
+    box.exec();
+    if (box.clickedButton() != addBtn) return;
+
+    QString log;
+    const auto r = solero::PrefixCertFix::install(winePrefix, &log);
+    if (!r.ok) {
+        QMessageBox fail(QMessageBox::Critical, "Certificate Not Installed",
+                         r.error, QMessageBox::Ok, this);
+        if (!log.isEmpty()) fail.setDetailedText(log);
+        fail.exec();
+        return;
+    }
+    QMessageBox::information(this, "Certificate Installed",
+        r.alreadyPresent
+            ? "This prefix already trusted the certificate; nothing was changed."
+            : "The certificate was added to the prefix. Run " + toolName
+              + " again \xe2\x80\x94 its packages should download this time.");
 }
 
 void MainWindow::showRunLock(const QString& toolName) {

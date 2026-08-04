@@ -249,6 +249,11 @@ private:
     // the profile and the game keeps loading what the last deploy wrote. Cheap and
     // idempotent, so every launch runs it. `reason` is a short phrase for messages.
     void syncGeneratedArtifacts(const QString& reason);
+    // A .NET tool's NuGet restore failed because the Proton prefix can't validate
+    // nuget.org's repository signatures (a root certificate Linux distros dropped).
+    // Explains the situation and offers the prefix-scoped fix. Never applies it
+    // unasked: the root was distrusted deliberately, so it's the user's call.
+    void offerPrefixCertFix(const QString& toolName, const QString& winePrefix);
     // SKSE bootstrap: after a Wabbajack import, detect whether SKSE64 is present
     // and, if not, offer to install it from Nexus (mod 30379, Steam build).
     bool skseInstalledFor(solero::Profile* profile) const;

@@ -1,5 +1,6 @@
 #include "DeployEngine.h"
 #include "Linker.h"
+#include "ProfileArtifacts.h"
 #include "loot/LootSorter.h"
 #include "core/Profile.h"
 #include "core/AppConfig.h"
@@ -189,8 +190,6 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
         profile.save(); // persist the sorted order back to the profile
     }
 
-    // Plugins.txt belongs in the game's local appdata folder (inside the Proton
-    // prefix), where Skyrim actually reads it. Fall back to Data/ if unknown.
     // Record generated artifacts (Plugins.txt/loadorder.txt, copied INIs) under a
     // sentinel owner WHEN they land inside gameDir (the appdata/docs-not-found
     // fallback), so undeploy() removes them instead of orphaning them. Artifacts
@@ -205,70 +204,16 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
         }
     };
 
-    QString localAppData = AppConfig::instance().localAppDataDir();
-    QString pluginsDir = localAppData.isEmpty() ? (m_gameDir + "/Data") : localAppData;
-    QDir().mkpath(pluginsDir);
-    profile.pluginList().saveToFile(pluginsDir + "/Plugins.txt");
-    // loadorder.txt records the full order (all plugins, no prefix) so the game
-    // and tools agree on the master/light/esp ordering, not just what's active.
-    profile.pluginList().saveLoadOrderToFile(pluginsDir + "/loadorder.txt");
-    recordIfInGameDir(pluginsDir + "/Plugins.txt");
-    recordIfInGameDir(pluginsDir + "/loadorder.txt");
-
-    // INIs belong in the game's My Games documents folder. Fall back to gameDir.
-    QString docsDir = AppConfig::instance().documentsDir();
-    QString iniDir = docsDir.isEmpty() ? m_gameDir : docsDir;
-    QDir().mkpath(iniDir);
-    // INIs: only when the profile owns its INIs (localInis), and only the ones it
-    // actually has. When off, the live/shared My Games INIs are left untouched.
-    if (profile.localInis()) {
-        const QStringList inis = {
-            profile.skyrimIniPath(),
-            profile.skyrimPrefsPath(),
-            profile.skyrimCustomPath()
-        };
-        const QStringList iniTargets = {
-            iniDir + "/Skyrim.ini",
-            iniDir + "/SkyrimPrefs.ini",
-            iniDir + "/SkyrimCustom.ini"
-        };
-        for (int i = 0; i < inis.size(); ++i) {
-            if (QFile::exists(inis[i])) {
-                copyOverwrite(inis[i], iniTargets[i]);
-                recordIfInGameDir(iniTargets[i]);
-            }
-        }
-    }
-
-    // Per-profile local saves. On: redirect Skyrim's SLocalSavePath (read relative to
-    // My Games/Skyrim SE/) to a per-profile "Saves\<name>\" subfolder, patching the
-    // live Skyrim.ini (or creating a minimal one) and making sure the folder exists.
-    // Off: strip any SLocalSavePath we (or a previously-active profile) left, so saves
-    // return to the shared folder. The per-profile Saves folder is left on disk.
-    const QString saveIniPath = iniDir + "/Skyrim.ini";
-    if (profile.localSaves()) {
-        const QString sub = profile.saveFolderName();
-        IniFile ini;
-        ini.load(saveIniPath); // tolerant when the file doesn't exist yet
-        ini.setValue("General", "SLocalSavePath", "Saves\\" + sub + "\\");
-        if (ini.save(saveIniPath)) {
-            recordIfInGameDir(saveIniPath);
-            QDir().mkpath(iniDir + "/Saves/" + sub);
-            qCInfo(lcDeploy) << "per-profile saves: SLocalSavePath -> Saves/" << sub;
-        } else {
-            qCWarning(lcDeploy) << "per-profile saves: failed to write SLocalSavePath to" << saveIniPath;
-        }
-    } else if (QFile::exists(saveIniPath)) {
-        IniFile ini;
-        ini.load(saveIniPath);
-        if (ini.has("General", "SLocalSavePath")) {
-            ini.remove("General", "SLocalSavePath");
-            if (ini.save(saveIniPath)) {
-                recordIfInGameDir(saveIniPath);
-                qCInfo(lcDeploy) << "per-profile saves off: cleared SLocalSavePath";
-            }
-        }
-    }
+    // Write the generated artifacts through the same helper the launch path uses,
+    // so a deploy and a plain Play produce byte-identical files.
+    const ArtifactWriteResult artifacts = writeProfileArtifacts(profile, m_gameDir);
+    // inPlace as well as written: an artifact the writer deliberately preserved is
+    // current, and leaving it out of the record would let the stale sweep below
+    // delete it.
+    for (const QString& path : artifacts.written) recordIfInGameDir(path);
+    for (const QString& path : artifacts.inPlace) recordIfInGameDir(path);
+    if (!artifacts.ok)
+        qCWarning(lcDeploy) << "artifact write problems:" << artifacts.errors;
 
     // JContainers compatibility: it crashes at load (boost::filesystem
     // directory_iterator::construct) if Data/SKSE/Plugins/JCData/Domains is

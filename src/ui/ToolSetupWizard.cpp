@@ -4,6 +4,7 @@
 #include "tools/ToolSetup.h"
 #include "tools/ToolStore.h"
 #include "tools/ContentLength.h"
+#include "tools/DotNetSdk.h"
 #include "ui/ProgressModal.h"
 #include "ui/ExecutableDialog.h"
 #include "nexus/NexusApi.h"
@@ -114,16 +115,27 @@ static bool installDotNetSdkIntoPrefix(const QString& winePrefix, QWidget* paren
     if (QStandardPaths::findExecutable("umu-run").isEmpty()) return false;
     if (AppConfig::instance().detectProtonDir().isEmpty()) return false;
 
-    // Resolve the latest 8.0 SDK version, then the win-x64 installer URL.
+    // Resolve the current LTS SDK version, then the win-x64 installer URL. This
+    // deliberately tracks LTS rather than a pinned 8.0: patchers target whatever
+    // framework their author used, and Synthesis hard-fails ("SDK Out of Date")
+    // when a patcher targets a newer one than any installed SDK.
     QString ver;
     {
         QProcess curlVer;
         curlVer.start("curl", QStringList{"-fsSL",
-            "https://dotnetcli.blob.core.windows.net/dotnet/Sdk/8.0/latest.version"});
+            "https://dotnetcli.blob.core.windows.net/dotnet/Sdk/LTS/latest.version"});
         if (curlVer.waitForFinished(15000))
             ver = QString::fromUtf8(curlVer.readAllStandardOutput()).trimmed();
     }
     if (ver.isEmpty()) return false; // caller handles user-facing messaging
+
+    // SDKs install side by side, so an older one already being present says
+    // nothing - compare majors and skip only when the prefix is already at least
+    // as new as the LTS we'd install.
+    const QStringList haveSdks =
+        QDir(winePrefix + "/pfx/drive_c/Program Files/dotnet/sdk")
+            .entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    if (highestSdkMajor(haveSdks) >= sdkMajor(ver)) return true;
 
     const QString url = "https://dotnetcli.blob.core.windows.net/dotnet/Sdk/"
         + ver + "/dotnet-sdk-" + ver + "-win-x64.exe";
@@ -131,7 +143,7 @@ static bool installDotNetSdkIntoPrefix(const QString& winePrefix, QWidget* paren
         AppConfig::instance().downloadsDir() + "/dotnet-sdk-win-x64.exe";
 
     ProgressModal prog(parent, "Installing .NET SDK",
-        "Downloading the .NET SDK (~220 MB)\xe2\x80\xa6");
+        "Downloading the .NET SDK\xe2\x80\xa6");
     prog.show(); prog.pump();
 
     // Ask for the real size up front so the download can show a determinate bar.
@@ -213,7 +225,10 @@ static bool installDotNetSdkIntoPrefix(const QString& winePrefix, QWidget* paren
     prog.close();
     // Verify by the installed SDK folder, not the installer's exit code (Windows
     // installers under Proton can return non-zero on success).
-    const bool installed = dirHasEntries(winePrefix + "/pfx/drive_c/Program Files/dotnet/sdk");
+    const QStringList nowSdks =
+        QDir(winePrefix + "/pfx/drive_c/Program Files/dotnet/sdk")
+            .entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    const bool installed = highestSdkMajor(nowSdks) >= sdkMajor(ver);
     // Drop the ~220 MB installer once the SDK is verifiably in place; keep it if
     // the install couldn't be verified so it can be retried without re-downloading.
     if (installed) QFile::remove(dest);

@@ -90,6 +90,12 @@ target_include_directories(test_PrefixCertFix PRIVATE ../src ${CMAKE_BINARY_DIR}
 target_link_libraries(test_PrefixCertFix PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_PrefixCertFix COMMAND test_PrefixCertFix)
 
+# .NET SDK version helpers are header-only (tools/DotNetSdk.h).
+add_executable(test_DotNetSdk test_DotNetSdk.cpp)
+target_include_directories(test_DotNetSdk PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_DotNetSdk PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_DotNetSdk COMMAND test_DotNetSdk)
+
 # contentLengthFromHeaders is header-only (tools/ContentLength.h).
 add_executable(test_ContentLength test_ContentLength.cpp)
 target_include_directories(test_ContentLength PRIVATE ../src ${CMAKE_BINARY_DIR}/include)

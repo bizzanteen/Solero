@@ -177,6 +177,7 @@ add_solero_deploy_test(test_DeployRecord)
 add_solero_deploy_test(test_ConflictIndex)
 add_solero_deploy_test(test_DeployEngine)
 add_solero_deploy_test(test_DeployIncremental)
+add_solero_deploy_test(test_DeployOrphans)
 add_solero_deploy_test(test_ProfileDeployFiles)
 
 # The generated-artifact writer shared by deploy and launch. Pure file writing, so

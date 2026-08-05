@@ -322,10 +322,18 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         m_deployed = result.success;
         m_deployDirty = false;
         if (m_deployed) captureDeployedSignature();
-        statusBar()->showMessage(
+        QString deploySummary =
             QString("Deployed %1 files. %2 conflicts. Plugins sorted by LOOT.")
                 .arg(result.filesDeployed)
-                .arg(result.conflicts.conflictedPaths().size()));
+                .arg(result.conflicts.conflictedPaths().size());
+        // Files an interrupted earlier deploy left in the game dir without
+        // recording them. Worth saying out loud: they were live in the game until
+        // now, which is why a disabled mod could still look installed.
+        if (result.filesOrphansSwept > 0)
+            deploySummary += QString(" Also removed %1 leftover file(s) from mods "
+                                     "that are no longer deployed.")
+                                 .arg(result.filesOrphansSwept);
+        statusBar()->showMessage(deploySummary);
         m_lastConflicts = result.conflicts;
         m_rightPane->setConflictIndex(result.conflicts);
         m_modListView->setConflictIndex(result.conflicts);

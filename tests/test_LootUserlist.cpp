@@ -30,6 +30,18 @@ class TestLootUserlist : public QObject {
             "      - \"default\"\n");
     }
 
+    // A real profile's userlist: the whole root mapping sits at indent 2, and
+    // scalars are single-quoted.
+    static QString indented() {
+        return QStringLiteral(
+            "  plugins:\n"
+            "    - name: 'Sentinel.esp'\n"
+            "      group: 'Late Loaders'\n"
+            "    - name: 'KiNRefined.esp'\n"
+            "      after:\n"
+            "        - 'RSChildren.esp'\n");
+    }
+
 private slots:
     // ---- rule type names (the wire vocabulary the MCP speaks) ----
 
@@ -89,6 +101,18 @@ private slots:
         QCOMPARE(parseGroups(canonical()), QStringList{"Late Loaders"});
     }
 
+    // A document whose single root mapping is uniformly indented is still valid
+    // YAML, and LOOT reads it happily - the userlist in the author's own profile
+    // looks exactly like this. Anchoring on column 0 would report it as empty.
+    void parsesAFileWhoseTopLevelBlockIsIndented() {
+        const auto plugins = parsePlugins(indented());
+        QCOMPARE(plugins.size(), 2);
+        QCOMPARE(plugins[0].name,  QStringLiteral("Sentinel.esp"));
+        QCOMPARE(plugins[0].group, QStringLiteral("Late Loaders"));
+        QCOMPARE(plugins[1].name,  QStringLiteral("KiNRefined.esp"));
+        QCOMPARE(plugins[1].after, QStringList{"RSChildren.esp"});
+    }
+
     // ---- adding ----
 
     void addsARuleToAFileThatHasNone() {
@@ -129,6 +153,38 @@ private slots:
         y = addRule(y, "A.esp", LootRuleType::After, "C.esp");
         QCOMPARE(parsePlugins(y).size(), 1);
         QCOMPARE(parsePlugins(y)[0].after, (QStringList{"B.esp", "C.esp"}));
+    }
+
+    // Missing the indented block would mean appending a second `plugins:` at
+    // column 0 - a duplicate top-level key, which LOOT rejects outright. The
+    // rule would look saved and the whole userlist would stop working.
+    void addsIntoAnIndentedBlockRatherThanStartingASecondOne() {
+        const QString out = addRule(indented(), "New.esp", LootRuleType::After, "Old.esp");
+        int headers = 0;
+        for (const QString& line : out.split('\n'))
+            if (line.trimmed() == QStringLiteral("plugins:")) ++headers;
+        QCOMPARE(headers, 1);
+
+        const auto plugins = parsePlugins(out);
+        QCOMPARE(plugins.size(), 3);
+        QCOMPARE(plugins[2].name,  QStringLiteral("New.esp"));
+        QCOMPARE(plugins[2].after, QStringList{"Old.esp"});
+        // and the entries that were already there are untouched
+        QCOMPARE(plugins[0].group, QStringLiteral("Late Loaders"));
+        QCOMPARE(plugins[1].after, QStringList{"RSChildren.esp"});
+    }
+
+    // Splicing fixed 2/4/6-space indents into a block that starts deeper would
+    // put the new lines at the wrong nesting level.
+    void matchesTheIndentationTheBlockAlreadyUses() {
+        const QString out = addRule(indented(), "KiNRefined.esp", LootRuleType::After,
+                                    "RSChildren - Patch.esp");
+        QCOMPARE(parsePlugins(out).size(), 2);
+        QCOMPARE(parsePlugins(out)[1].after,
+                 (QStringList{"RSChildren.esp", "RSChildren - Patch.esp"}));
+
+        const QString withGroup = addRule(out, "KiNRefined.esp", LootRuleType::Group, "Late Loaders");
+        QCOMPARE(parsePlugins(withGroup)[1].group, QStringLiteral("Late Loaders"));
     }
 
     // ---- removing ----

@@ -3,15 +3,26 @@
 namespace solero {
 namespace {
 
-// The canonical shape we splice into:
+// The shape we splice into:
 //   plugins:
 //     - name: "Plugin.esp"
 //       after:
 //         - "Other.esp"
 //       group: "GroupName"
-const QString kEntryIndent = QStringLiteral("  ");     // "  - name:"
-const QString kKeyIndent   = QStringLiteral("    ");   // "    after:"
-const QString kItemIndent  = QStringLiteral("      "); // "      - \"x\""
+// The absolute indents are taken from the file rather than fixed, because a
+// document whose whole root mapping is indented is still valid YAML and LOOT
+// reads it fine - so real userlists in the wild start deeper than column 0.
+struct Indents {
+    QString entry; // "  - name:"
+    QString key;   // "    after:"
+    QString item;  // "      - \"x\""
+};
+
+Indents indentsFor(int entryIndent) {
+    return { QString(entryIndent, ' '),
+             QString(entryIndent + 2, ' '),   // keys line up under `name`
+             QString(entryIndent + 4, ' ') };
+}
 
 int leadingSpaces(const QString& l) {
     int i = 0;
@@ -37,21 +48,31 @@ QString yamlUnquote(const QString& raw) {
     return s;
 }
 
-// Line span of the top-level block `key` as {headerIndex, endExclusive}, where
-// the end is the next column-0 line (or EOF). {-1, -1} when there is no such
-// block.
-QPair<int, int> blockRange(const QStringList& lines, const QString& key) {
+// The root-level block named `key`: its header line, the line after its last,
+// and the header's own indent. hdr is -1 when there is no such block.
+struct Block {
+    int hdr    = -1;
+    int end    = -1;
+    int indent = 0;
+};
+
+Block blockRange(const QStringList& lines, const QString& key) {
     const QString header = key + QStringLiteral(":");
-    int hdr = -1;
-    for (int i = 0; i < lines.size(); ++i)
-        if (lines[i].startsWith(header)) { hdr = i; break; }
-    if (hdr < 0) return {-1, -1};
-    int end = lines.size();
-    for (int i = hdr + 1; i < lines.size(); ++i) {
-        const QString& l = lines[i];
-        if (!l.isEmpty() && !l[0].isSpace()) { end = i; break; }
+    Block b;
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString s = lines[i].trimmed();
+        if (!s.startsWith(header) || s.startsWith(QStringLiteral("- "))) continue;
+        b.hdr    = i;
+        b.indent = leadingSpaces(lines[i]);
+        break;
     }
-    return {hdr, end};
+    if (b.hdr < 0) return b;
+    b.end = lines.size();
+    for (int i = b.hdr + 1; i < lines.size(); ++i) {
+        if (lines[i].trimmed().isEmpty()) continue;
+        if (leadingSpaces(lines[i]) <= b.indent) { b.end = i; break; }
+    }
+    return b;
 }
 
 // Indent of the block's own entries. List items nested under a rule key are
@@ -84,17 +105,18 @@ QString listItemValue(const QString& trimmedLine) {
     return yamlUnquote(item);
 }
 
-QStringList freshKeyBlock(LootRuleType kind, const QString& target) {
+QStringList freshKeyBlock(LootRuleType kind, const QString& target, const Indents& ind) {
     if (kind == LootRuleType::Group)
-        return { kKeyIndent + QStringLiteral("group: ") + yamlQuote(target) };
-    return { kKeyIndent + LootUserlist::ruleTypeName(kind) + QStringLiteral(":"),
-             kItemIndent + QStringLiteral("- ") + yamlQuote(target) };
+        return { ind.key + QStringLiteral("group: ") + yamlQuote(target) };
+    return { ind.key  + LootUserlist::ruleTypeName(kind) + QStringLiteral(":"),
+             ind.item + QStringLiteral("- ") + yamlQuote(target) };
 }
 
-QStringList freshEntry(const QString& plugin, LootRuleType kind, const QString& target) {
+QStringList freshEntry(const QString& plugin, LootRuleType kind, const QString& target,
+                       const Indents& ind) {
     QStringList out;
-    out << kEntryIndent + QStringLiteral("- name: ") + yamlQuote(plugin);
-    out += freshKeyBlock(kind, target);
+    out << ind.entry + QStringLiteral("- name: ") + yamlQuote(plugin);
+    out += freshKeyBlock(kind, target, ind);
     return out;
 }
 
@@ -104,16 +126,16 @@ QStringList freshEntry(const QString& plugin, LootRuleType kind, const QString& 
 QString pruneEmpty(const QStringList& in) {
     QStringList lines = in;
     auto range = blockRange(lines, QStringLiteral("plugins"));
-    if (range.first < 0) return lines.join('\n');
+    if (range.hdr < 0) return lines.join('\n');
 
-    const int ind = entryIndent(lines, range.first, range.second);
+    const int ind = entryIndent(lines, range.hdr, range.end);
     if (ind >= 0) {
         QList<int> starts;
-        for (int i = range.first + 1; i < range.second; ++i)
+        for (int i = range.hdr + 1; i < range.end; ++i)
             if (isEntryStart(lines, i, ind)) starts << i;
         for (int k = starts.size() - 1; k >= 0; --k) {
             const int start = starts[k];
-            const int stop  = (k + 1 < starts.size()) ? starts[k + 1] : range.second;
+            const int stop  = (k + 1 < starts.size()) ? starts[k + 1] : range.end;
             bool hasRules = false;
             for (int i = start + 1; i < stop; ++i)
                 if (!lines[i].trimmed().isEmpty()) { hasRules = true; break; }
@@ -123,8 +145,8 @@ QString pruneEmpty(const QStringList& in) {
     }
 
     range = blockRange(lines, QStringLiteral("plugins"));
-    if (range.first >= 0 && entryIndent(lines, range.first, range.second) < 0)
-        lines.removeAt(range.first);
+    if (range.hdr >= 0 && entryIndent(lines, range.hdr, range.end) < 0)
+        lines.removeAt(range.hdr);
     return lines.join('\n');
 }
 
@@ -155,12 +177,12 @@ QList<LootPluginRules> parsePlugins(const QString& yaml) {
     QList<LootPluginRules> out;
     const QStringList lines = yaml.split('\n');
     const auto range = blockRange(lines, QStringLiteral("plugins"));
-    if (range.first < 0) return out;
-    const int ind = entryIndent(lines, range.first, range.second);
+    if (range.hdr < 0) return out;
+    const int ind = entryIndent(lines, range.hdr, range.end);
     if (ind < 0) return out;
 
     QString listKey; // the rule key whose items we are currently collecting
-    for (int i = range.first + 1; i < range.second; ++i) {
+    for (int i = range.hdr + 1; i < range.end; ++i) {
         const QString s = lines[i].trimmed();
         if (s.isEmpty() || s.startsWith('#')) continue;
 
@@ -205,10 +227,10 @@ QStringList parseGroups(const QString& yaml) {
     QStringList out;
     const QStringList lines = yaml.split('\n');
     const auto range = blockRange(lines, QStringLiteral("groups"));
-    if (range.first < 0) return out;
-    const int ind = entryIndent(lines, range.first, range.second);
+    if (range.hdr < 0) return out;
+    const int ind = entryIndent(lines, range.hdr, range.end);
     if (ind < 0) return out;
-    for (int i = range.first + 1; i < range.second; ++i) {
+    for (int i = range.hdr + 1; i < range.end; ++i) {
         if (!isEntryStart(lines, i, ind)) continue;
         const QString s = lines[i].trimmed();
         if (!s.startsWith(QStringLiteral("- name:"))) continue;
@@ -223,14 +245,16 @@ QString addRule(const QString& yaml, const QString& plugin, LootRuleType kind,
     QStringList lines = yaml.isEmpty() ? QStringList() : yaml.split('\n');
 
     auto range = blockRange(lines, QStringLiteral("plugins"));
-    if (range.first < 0) {
+    if (range.hdr < 0) {
         if (!lines.isEmpty() && !lines.last().trimmed().isEmpty()) lines << QString();
         lines << QStringLiteral("plugins:");
-        lines += freshEntry(plugin, kind, target);
+        lines += freshEntry(plugin, kind, target, indentsFor(2));
         return lines.join('\n');
     }
-    const int hdr = range.first, blockEnd = range.second;
-    const int ind = entryIndent(lines, hdr, blockEnd);
+    const int hdr = range.hdr, blockEnd = range.end;
+    // Follow the block's own indentation; an empty block sets the convention.
+    int ind = entryIndent(lines, hdr, blockEnd);
+    const Indents indents = indentsFor(ind >= 0 ? ind : range.indent + 2);
 
     int entryLine = -1;
     if (ind >= 0) {
@@ -238,8 +262,11 @@ QString addRule(const QString& yaml, const QString& plugin, LootRuleType kind,
             if (isEntryStart(lines, i, ind) && isNameLine(lines[i], plugin)) { entryLine = i; break; }
     }
     if (entryLine < 0) {
-        const QStringList entry = freshEntry(plugin, kind, target);
-        for (int j = 0; j < entry.size(); ++j) lines.insert(blockEnd + j, entry[j]);
+        // Append after the block's last rule, not after any trailing blank lines.
+        int at = blockEnd;
+        while (at > hdr + 1 && lines[at - 1].trimmed().isEmpty()) --at;
+        const QStringList entry = freshEntry(plugin, kind, target, indents);
+        for (int j = 0; j < entry.size(); ++j) lines.insert(at + j, entry[j]);
         return lines.join('\n');
     }
 
@@ -254,11 +281,11 @@ QString addRule(const QString& yaml, const QString& plugin, LootRuleType kind,
         // stacking a second one.
         for (int i = entryLine + 1; i < entryEnd; ++i) {
             if (lines[i].trimmed().startsWith(QStringLiteral("group:"))) {
-                lines[i] = kKeyIndent + QStringLiteral("group: ") + yamlQuote(target);
+                lines[i] = indents.key + QStringLiteral("group: ") + yamlQuote(target);
                 return lines.join('\n');
             }
         }
-        lines.insert(entryLine + 1, kKeyIndent + QStringLiteral("group: ") + yamlQuote(target));
+        lines.insert(entryLine + 1, indents.key + QStringLiteral("group: ") + yamlQuote(target));
         return lines.join('\n');
     }
 
@@ -268,7 +295,7 @@ QString addRule(const QString& yaml, const QString& plugin, LootRuleType kind,
         if (lines[i].trimmed() == key + QStringLiteral(":")) { keyLine = i; break; }
 
     if (keyLine < 0) {
-        const QStringList block = freshKeyBlock(kind, target);
+        const QStringList block = freshKeyBlock(kind, target, indents);
         for (int j = 0; j < block.size(); ++j) lines.insert(entryLine + 1 + j, block[j]);
         return lines.join('\n');
     }
@@ -284,7 +311,7 @@ QString addRule(const QString& yaml, const QString& plugin, LootRuleType kind,
         }
         if (!s.isEmpty() && leadingSpaces(lines[i]) <= keyIndent) { listEnd = i; break; }
     }
-    lines.insert(listEnd, kItemIndent + QStringLiteral("- ") + yamlQuote(target));
+    lines.insert(listEnd, indents.item + QStringLiteral("- ") + yamlQuote(target));
     return lines.join('\n');
 }
 
@@ -293,17 +320,17 @@ QString removeRule(const QString& yaml, const QString& plugin, LootRuleType kind
     if (removed) *removed = false;
     QStringList lines = yaml.split('\n');
     const auto range = blockRange(lines, QStringLiteral("plugins"));
-    if (range.first < 0) return yaml;
-    const int ind = entryIndent(lines, range.first, range.second);
+    if (range.hdr < 0) return yaml;
+    const int ind = entryIndent(lines, range.hdr, range.end);
     if (ind < 0) return yaml;
 
     int entryLine = -1;
-    for (int i = range.first + 1; i < range.second; ++i)
+    for (int i = range.hdr + 1; i < range.end; ++i)
         if (isEntryStart(lines, i, ind) && isNameLine(lines[i], plugin)) { entryLine = i; break; }
     if (entryLine < 0) return yaml;
 
-    int entryEnd = range.second;
-    for (int i = entryLine + 1; i < range.second; ++i)
+    int entryEnd = range.end;
+    for (int i = entryLine + 1; i < range.end; ++i)
         if (isEntryStart(lines, i, ind)) { entryEnd = i; break; }
 
     if (kind == LootRuleType::Group) {

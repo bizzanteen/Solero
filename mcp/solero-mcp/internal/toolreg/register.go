@@ -43,4 +43,29 @@ func Register(server *mcp.Server) {
 		Name:        "move_mod",
 		Description: "Move a mod to a different priority position (0 = lowest priority). Higher priority mods overwrite lower priority mods' files. Tracked - revert with ai_revert.",
 	}, tools.MoveMod(client))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "list_loot_rules",
+		Description: "List the active profile's LOOT userlist rules: per-plugin after/req/inc targets and group assignments, " +
+			"plus availableGroups - every group name a group rule may legally use. Read this before calling set_loot_rule with type=group.",
+	}, tools.ListLootRules(client))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "set_loot_rule",
+		Description: "Add or update one LOOT rule for a plugin (type: after, req, inc or group). Idempotent - re-adding an existing rule is a no-op. " +
+			"Group names are case-sensitive and are rejected unless they exactly match a name from list_loot_rules' availableGroups, because an " +
+			"undefined group makes LOOT abort the entire sort. Rules only take effect on the next sort_plugins. Tracked - revert with ai_revert.",
+	}, tools.SetLootRule(client))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "delete_loot_rule",
+		Description: "Remove one LOOT rule, identified by plugin + type + target. Removing a rule that isn't there reports changed=false rather than failing. Tracked - revert with ai_revert.",
+	}, tools.DeleteLootRule(client))
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "sort_plugins",
+		Description: "Run a LOOT sort now and return the resulting load order, or the error if it failed. Saving a rule does not re-sort, so call this to apply " +
+			"what set_loot_rule just wrote. Needs the profile deployed (LOOT reads the plugins in the game's Data folder). Snapshots the pre-sort order first, " +
+			"restorable from Solero's Restore Load Order.",
+	}, tools.SortPlugins(client))
 }

@@ -14,6 +14,13 @@ import (
 // is what a real socket does with a large payload.
 func fakeSolero(t *testing.T, resp map[string]any) string {
 	t.Helper()
+	return fakeSoleroRecording(t, resp, nil)
+}
+
+// fakeSoleroRecording additionally hands the decoded request to `record` before
+// answering, so a test can assert on what went over the wire.
+func fakeSoleroRecording(t *testing.T, resp map[string]any, record chan<- map[string]any) string {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "ipc")
 	ln, err := net.Listen("unix", path)
 	if err != nil {
@@ -33,8 +40,14 @@ func fakeSolero(t *testing.T, resp map[string]any) string {
 			return
 		}
 		defer conn.Close()
-		if _, err := bufio.NewReader(conn).ReadBytes('\n'); err != nil {
+		reqLine, err := bufio.NewReader(conn).ReadBytes('\n')
+		if err != nil {
 			return
+		}
+		if record != nil {
+			var got map[string]any
+			json.Unmarshal(reqLine, &got)
+			record <- got
 		}
 		for off := 0; off < len(body); off += 4096 {
 			end := min(off+4096, len(body))
@@ -102,5 +115,69 @@ func TestErrorResponsesSurfaceTheMessage(t *testing.T) {
 		t.Fatal("want an error")
 	} else if got := err.Error(); got != "solero error: no active profile" {
 		t.Errorf("got %q", got)
+	}
+}
+
+// The action names and parameter keys have to match the C++ dispatch table in
+// src/ipc/IPCServer.cpp exactly; a typo here comes back as "unknown action".
+func TestLootRequestsUseTheActionNamesTheServerDispatchesOn(t *testing.T) {
+	cases := []struct {
+		name string
+		call func(*Client) (map[string]any, error)
+		want map[string]any
+	}{
+		{
+			name: "list_loot_rules",
+			call: func(c *Client) (map[string]any, error) { return c.ListLootRules() },
+			want: map[string]any{"action": "list_loot_rules"},
+		},
+		{
+			name: "set_loot_rule",
+			call: func(c *Client) (map[string]any, error) {
+				return c.SetLootRule("SonS_HDT_patch.esp", "after", "NW_Sons_of_Skyrim.esp")
+			},
+			want: map[string]any{
+				"action": "set_loot_rule",
+				"plugin": "SonS_HDT_patch.esp",
+				"type":   "after",
+				"target": "NW_Sons_of_Skyrim.esp",
+			},
+		},
+		{
+			name: "delete_loot_rule",
+			call: func(c *Client) (map[string]any, error) {
+				return c.DeleteLootRule("SonS_HDT_patch.esp", "group", "Late Loaders")
+			},
+			want: map[string]any{
+				"action": "delete_loot_rule",
+				"plugin": "SonS_HDT_patch.esp",
+				"type":   "group",
+				"target": "Late Loaders",
+			},
+		},
+		{
+			name: "sort_plugins",
+			call: func(c *Client) (map[string]any, error) { return c.SortPlugins() },
+			want: map[string]any{"action": "sort_plugins"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			seen := make(chan map[string]any, 1)
+			c := New(fakeSoleroRecording(t, map[string]any{"ok": true}, seen))
+			if _, err := tc.call(c); err != nil {
+				t.Fatalf("call: %v", err)
+			}
+			got := <-seen
+			if len(got) != len(tc.want) {
+				t.Errorf("request has %d keys, want %d: %#v", len(got), len(tc.want), got)
+			}
+			for k, want := range tc.want {
+				if got[k] != want {
+					t.Errorf("%s = %v, want %v", k, got[k], want)
+				}
+			}
+		})
 	}
 }

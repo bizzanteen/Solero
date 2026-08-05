@@ -98,3 +98,30 @@ func (c *Client) EnableMod(modID string, enabled bool) (map[string]any, error) {
 func (c *Client) MoveMod(from, to int) (map[string]any, error) {
 	return c.call(map[string]any{"action": "move_mod", "from": from, "to": to})
 }
+
+func (c *Client) ListLootRules() (map[string]any, error) {
+	return c.call(map[string]any{"action": "list_loot_rules"})
+}
+
+// ruleType is one of after / req / inc / group.
+func (c *Client) SetLootRule(plugin, ruleType, target string) (map[string]any, error) {
+	return c.call(map[string]any{
+		"action": "set_loot_rule",
+		"plugin": plugin,
+		"type":   ruleType,
+		"target": target,
+	})
+}
+
+func (c *Client) DeleteLootRule(plugin, ruleType, target string) (map[string]any, error) {
+	return c.call(map[string]any{
+		"action": "delete_loot_rule",
+		"plugin": plugin,
+		"type":   ruleType,
+		"target": target,
+	})
+}
+
+func (c *Client) SortPlugins() (map[string]any, error) {
+	return c.call(map[string]any{"action": "sort_plugins"})
+}

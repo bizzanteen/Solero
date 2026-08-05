@@ -13,6 +13,7 @@
 #include <QDirIterator>
 #include "deploy/DeployEngine.h"
 #include "deploy/DeployRecord.h"
+#include "deploy/DeployJournal.h"
 #include "core/Profile.h"
 using namespace solero;
 
@@ -185,6 +186,47 @@ private slots:
         QVERIFY(e.deploy(p, DeployMode::HardLink).success);
         QVERIFY(!QFile::exists(game + "/Data/b1.esp"));
         QVERIFY(QFile::exists(game + "/Data/a1.esp"));
+    }
+
+    // What an interrupted deploy actually leaves: the record from before it, plus a
+    // journal of what it managed to link. Both halves have to come back, or the
+    // files linked by the interrupted run are untracked from then on.
+    void anInterruptedDeployIsRecoveredFromItsJournal() {
+        QTemporaryDir tmp;
+        const QString staging = tmp.path() + "/staging";
+        const QString game    = tmp.path() + "/game";
+        QDir().mkpath(game);
+        writeFile(staging + "/A/Data/a1.esp", "one");
+
+        Profile p("T", tmp.path() + "/profiles");
+        p.modList().append(mod("A", "ModA"));
+        p.save();
+
+        DeployEngine e(game, staging);
+        QVERIFY(e.deploy(p, DeployMode::HardLink).success);
+
+        // Stand in for the tail of an interrupted deploy: a file linked into the
+        // game dir and journalled, with the record still describing the run before.
+        const QString recPath = DeployEngine::recordPath(game);
+        writeFile(game + "/Data/late.esp", "late");
+        {
+            DeployJournal j;
+            QVERIFY(j.begin(recPath));
+            j.append("Data/late.esp", "A", 4, 1234);
+            j.flush();
+        }
+
+        const DeployRecord rec = DeployRecord::loadFromFile(recPath);
+        QVERIFY2(rec.contains("Data/a1.esp"), "lost the record's own entries");
+        QVERIFY2(rec.contains("Data/late.esp"), "lost the journalled entry");
+        QCOMPARE(rec.ownerOf("Data/late.esp"), QStringLiteral("A"));
+
+        // And a clean undeploy takes the journal with the record, so its entries
+        // can't come back to haunt the next deploy.
+        QVERIFY(e.undeploy(game));
+        QVERIFY(!QFile::exists(recPath));
+        QVERIFY(!QFile::exists(DeployJournal::pathFor(recPath)));
+        QVERIFY(DeployRecord::loadFromFile(recPath).allPaths().isEmpty());
     }
 
     // The sweep is structural, so it has to be narrow: a file this deploy legitimately

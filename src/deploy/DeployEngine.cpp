@@ -747,8 +747,13 @@ bool DeployEngine::undeploy(const QString& gameDir, const std::function<void(int
     }
 
     // Keep the record if anything remained so a later undeploy can retry those
-    // paths; only drop it once the game dir is fully cleaned.
-    if (failures == 0) QFile::remove(recPath);
+    // paths; only drop it once the game dir is fully cleaned. The journal goes with
+    // it - on the failure path its entries are still needed, since they were folded
+    // into the record above but never written back to the record file.
+    if (failures == 0) {
+        QFile::remove(recPath);
+        QFile::remove(DeployJournal::pathFor(recPath));
+    }
     qCInfo(lcDeploy) << "undeploy done:" << (total - failures) << "of" << total
                      << "recorded files removed," << failures << "failure(s)";
     return failures == 0;

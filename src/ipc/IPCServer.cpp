@@ -6,6 +6,7 @@
 #include "ai/AITransaction.h"
 #include "loot/LootSorter.h"
 #include "loot/LootUserlist.h"
+#include "ui/SortGate.h"
 #include <QDateTime>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -334,11 +335,8 @@ QByteArray IPCServer::editLootRule(const QJsonObject& req, bool removing) {
     return ok(res);
 }
 
-QByteArray IPCServer::handleSortPlugins(const QJsonObject&) {
+QByteArray IPCServer::handleSortPlugins(const QJsonObject& req) {
     if (!m_profile) return err("no active profile");
-    if (m_profile->pluginList().loadOrderLocked())
-        return err("the load order is locked - unlock it in Solero before sorting");
-
     const QString gameDir = AppConfig::instance().gameDir();
     if (gameDir.isEmpty()) return err("no game directory is configured");
 
@@ -348,9 +346,23 @@ QByteArray IPCServer::handleSortPlugins(const QJsonObject&) {
     int onDisk = 0;
     for (int i = 0; i < m_profile->pluginList().count(); ++i)
         if (QFile::exists(dataDir + "/" + m_profile->pluginList().at(i).filename)) ++onDisk;
-    if (onDisk == 0)
+
+    const bool locked = m_profile->pluginList().loadOrderLocked();
+    switch (sortGate(onDisk > 0, locked)) {
+    case SortGate::NeedsDeploy:
         return err("none of this profile's plugins are in " + dataDir +
                    " - deploy in Solero first, then sort");
+    case SortGate::ConfirmLocked:
+        // The UI asks before overriding a lock; over IPC there is nobody to ask,
+        // so make the caller say so explicitly rather than doing it silently.
+        if (!req["force"].toBool(false))
+            return err("this profile's load order is locked, so LOOT normally leaves it "
+                       "alone. Pass force=true to sort it anyway - the lock stays on, and "
+                       "the previous order is snapshotted for Restore Load Order.");
+        break;
+    case SortGate::Go:
+        break;
+    }
 
     LoadOrderBackup::create(*m_profile, QString("Auto (pre-LOOT %1)")
         .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm")));
@@ -373,6 +385,7 @@ QByteArray IPCServer::handleSortPlugins(const QJsonObject&) {
     QJsonObject res;
     res["sorted"]        = true;
     res["pluginsOnDisk"] = onDisk;
+    if (locked) res["sortedALockedOrder"] = true;
     res["order"]         = order;
     if (!result.warnings.isEmpty())
         res["warnings"] = QJsonArray::fromStringList(result.warnings);

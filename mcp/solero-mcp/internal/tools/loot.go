@@ -54,9 +54,13 @@ func DeleteLootRule(client *soleroclient.Client) func(context.Context, *mcp.Call
 	}
 }
 
-func SortPlugins(client *soleroclient.Client) func(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, any, error) {
-	return func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
-		resp, err := client.SortPlugins()
+type sortPluginsArgs struct {
+	Force bool `json:"force" jsonschema:"Sort even when the profile's load order is locked. Locking exists to protect a hand-tuned order, so only pass true when the user has asked for the sort."`
+}
+
+func SortPlugins(client *soleroclient.Client) func(context.Context, *mcp.CallToolRequest, sortPluginsArgs) (*mcp.CallToolResult, any, error) {
+	return func(_ context.Context, _ *mcp.CallToolRequest, in sortPluginsArgs) (*mcp.CallToolResult, any, error) {
+		resp, err := client.SortPlugins(in.Force)
 		if err != nil {
 			return toolErr(err.Error()), nil, nil
 		}

@@ -157,8 +157,8 @@ func TestLootRequestsUseTheActionNamesTheServerDispatchesOn(t *testing.T) {
 		},
 		{
 			name: "sort_plugins",
-			call: func(c *Client) (map[string]any, error) { return c.SortPlugins() },
-			want: map[string]any{"action": "sort_plugins"},
+			call: func(c *Client) (map[string]any, error) { return c.SortPlugins(true) },
+			want: map[string]any{"action": "sort_plugins", "force": true},
 		},
 	}
 

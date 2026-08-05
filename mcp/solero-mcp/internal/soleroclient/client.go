@@ -122,6 +122,7 @@ func (c *Client) DeleteLootRule(plugin, ruleType, target string) (map[string]any
 	})
 }
 
-func (c *Client) SortPlugins() (map[string]any, error) {
-	return c.call(map[string]any{"action": "sort_plugins"})
+// force overrides a locked load order; without it a locked profile is refused.
+func (c *Client) SortPlugins(force bool) (map[string]any, error) {
+	return c.call(map[string]any{"action": "sort_plugins", "force": force})
 }

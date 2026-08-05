@@ -65,7 +65,8 @@ func Register(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "sort_plugins",
 		Description: "Run a LOOT sort now and return the resulting load order, or the error if it failed. Saving a rule does not re-sort, so call this to apply " +
-			"what set_loot_rule just wrote. Needs the profile deployed (LOOT reads the plugins in the game's Data folder). Snapshots the pre-sort order first, " +
-			"restorable from Solero's Restore Load Order.",
+			"what set_loot_rule just wrote. Needs the profile deployed (LOOT reads the plugins in the game's Data folder). If the profile's load order is locked " +
+			"this refuses unless force=true; only force when the user asked for the sort. Snapshots the pre-sort order first, restorable from Solero's " +
+			"Restore Load Order.",
 	}, tools.SortPlugins(client))
 }

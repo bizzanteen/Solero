@@ -409,15 +409,15 @@ void PluginListView::contextMenuEvent(QContextMenuEvent* event) {
             // : per-plugin LOOT rules
             menu.addSeparator();
             QMenu* loot = menu.addMenu("LOOT Rule");
-            using LR = LootRulesEditor::LootRule;
+            using LR = LootRuleType;
             loot->addAction("Load After" + QString(QChar(0x2026)),
-                            [this, fn]{ addLootRuleFor(fn, int(LR::LoadAfter)); });
+                            [this, fn]{ addLootRuleFor(fn, int(LR::After)); });
             loot->addAction("Requires" + QString(QChar(0x2026)),
-                            [this, fn]{ addLootRuleFor(fn, int(LR::Requires)); });
+                            [this, fn]{ addLootRuleFor(fn, int(LR::Req)); });
             loot->addAction("Incompatible With" + QString(QChar(0x2026)),
-                            [this, fn]{ addLootRuleFor(fn, int(LR::Incompatible)); });
+                            [this, fn]{ addLootRuleFor(fn, int(LR::Inc)); });
             loot->addAction("Set LOOT Group" + QString(QChar(0x2026)),
-                            [this, fn]{ addLootRuleFor(fn, int(LR::SetGroup)); });
+                            [this, fn]{ addLootRuleFor(fn, int(LR::Group)); });
         }
     }
 
@@ -503,12 +503,12 @@ QStringList PluginListView::otherPluginNames(const QString& self) const {
 void PluginListView::addLootRuleFor(const QString& filename, int rule) {
     Profile* profile = m_model->profile();
     if (!profile) return;
-    using LR = LootRulesEditor::LootRule;
+    using LR = LootRuleType;
     const LR kind = static_cast<LR>(rule);
 
     QString target;
     bool okDlg = false;
-    if (kind == LR::SetGroup) {
+    if (kind == LR::Group) {
         target = QInputDialog::getText(this, "Set LOOT Group",
             QStringLiteral("Group name for %1:").arg(filename),
             QLineEdit::Normal, QString(), &okDlg).trimmed();
@@ -519,13 +519,13 @@ void PluginListView::addLootRuleFor(const QString& filename, int rule) {
                 "There are no other plugins to reference.");
             return;
         }
-        const QString title = kind == LR::LoadAfter ? "Load After"
-                            : kind == LR::Requires  ? "Requires"
+        const QString title = kind == LR::After ? "Load After"
+                            : kind == LR::Req  ? "Requires"
                             :                         "Incompatible With";
         target = QInputDialog::getItem(this, title,
             QStringLiteral("%1 %2:").arg(filename,
-                kind == LR::LoadAfter ? "loads after"
-              : kind == LR::Requires  ? "requires"
+                kind == LR::After ? "loads after"
+              : kind == LR::Req  ? "requires"
               :                         "is incompatible with"),
             others, 0, false, &okDlg).trimmed();
     }

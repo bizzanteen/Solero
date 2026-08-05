@@ -155,6 +155,7 @@ set(SOLERO_SOURCES
   src/ui/YamlHighlighter.cpp
   src/ui/LootRulesEditor.cpp
   src/loot/LootSorter.cpp
+  src/loot/LootUserlist.cpp
   src/bethini/BethiniData.cpp
   src/bethini/BethiniWindow.cpp
   src/bethini/IniFile.cpp

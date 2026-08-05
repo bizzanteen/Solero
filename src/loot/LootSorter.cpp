@@ -52,6 +52,33 @@ QString LootSorter::masterlistPath() {
     return masterlistDir() + "/masterlist.yaml";
 }
 
+LootSorter::GroupsResult LootSorter::groups(const QString& gameDir,
+                                            const QString& userlistPath) {
+    GroupsResult result;
+    try {
+        auto handle = loot::CreateGameHandle(
+            loot::GameType::tes5se,
+            std::filesystem::path(gameDir.toStdString()),
+            std::filesystem::path(AppConfig::instance().localAppDataDir().toStdString()));
+        auto& db = handle->GetDatabase();
+        const QString mlPath = masterlistPath();
+        if (QFile::exists(mlPath))
+            db.LoadMasterlist(std::filesystem::path(mlPath.toStdString()));
+        if (!userlistPath.isEmpty() && QFile::exists(userlistPath))
+            db.LoadUserlist(std::filesystem::path(userlistPath.toStdString()));
+        for (const auto& g : db.GetGroups(true))
+            result.names << QString::fromStdString(g.GetName());
+        result.success = true;
+    } catch (const std::exception& e) {
+        result.errorMessage = QString::fromStdString(e.what());
+        qCWarning(lcLoot) << "reading LOOT groups failed:" << result.errorMessage;
+    } catch (...) {
+        result.errorMessage = QStringLiteral("An unexpected LOOT error occurred.");
+        qCWarning(lcLoot) << "reading LOOT groups failed: unknown error";
+    }
+    return result;
+}
+
 LootSorter::SortResult LootSorter::sort(PluginList& pluginList,
                                         const QString& gameDir,
                                         const QString& userlistPath) {

@@ -18,6 +18,17 @@ public:
         QHash<QString, QString> dirtyPlugins;
     };
 
+    struct GroupsResult {
+        bool success = false;
+        QString errorMessage;
+        QStringList names; // in the order libloot reports them
+    };
+
+    // Every group name a rule may reference: the masterlist's plus any the
+    // userlist defines. Assigning a plugin to a group that isn't in here aborts
+    // the whole sort, so it is worth checking before writing such a rule.
+    static GroupsResult groups(const QString& gameDir, const QString& userlistPath);
+
     // Sort pluginList in place using LOOT (masterlist + optional userlist).
     // gameDir: the Skyrim SE install directory (plugins live in gameDir/Data).
     // userlistPath: path to the profile's loot-userlist.yaml (may not exist).

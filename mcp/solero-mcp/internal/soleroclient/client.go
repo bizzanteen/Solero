@@ -1,10 +1,17 @@
 package soleroclient
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 )
+
+// Solero frames every response as one line of JSON. A full list_mods on a large
+// profile runs to hundreds of KB, so the only real limit is a backstop against
+// a peer that never sends the newline.
+const maxResponseBytes = 64 << 20 // 64 MiB
 
 type Client struct {
 	socketPath string
@@ -24,17 +31,27 @@ func (c *Client) call(req map[string]any) (map[string]any, error) {
 	}
 	defer conn.Close()
 
-	data, _ := json.Marshal(req)
-	conn.Write(append(data, '\n'))
-
-	buf := make([]byte, 65536)
-	n, err := conn.Read(buf)
+	data, err := json.Marshal(req)
 	if err != nil {
+		return nil, fmt.Errorf("encoding request: %w", err)
+	}
+	if _, err := conn.Write(append(data, '\n')); err != nil {
+		return nil, fmt.Errorf("sending request: %w", err)
+	}
+
+	// Read to the end of the frame rather than taking whatever the first read
+	// happened to return: a single fixed read truncated large responses, and
+	// the leftover bytes are not valid JSON.
+	line, err := bufio.NewReader(io.LimitReader(conn, maxResponseBytes)).ReadBytes('\n')
+	if err != nil {
+		if int64(len(line)) >= maxResponseBytes {
+			return nil, fmt.Errorf("response exceeded %d bytes", maxResponseBytes)
+		}
 		return nil, fmt.Errorf("reading response: %w", err)
 	}
 
 	var resp map[string]any
-	if err := json.Unmarshal(buf[:n], &resp); err != nil {
+	if err := json.Unmarshal(line, &resp); err != nil {
 		return nil, fmt.Errorf("parsing response: %w", err)
 	}
 	if ok, _ := resp["ok"].(bool); !ok {

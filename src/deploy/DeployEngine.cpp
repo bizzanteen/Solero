@@ -904,6 +904,15 @@ int DeployEngine::sweepUndeployedModOrphans(const Profile& profile,
                 realSrc = canon;
             }
 
+            // Cheap pre-filter before the (directory-scanning) case resolution
+            // below: a staged file with a single link is not deployed anywhere, so
+            // it cannot be an orphan. On a real staging tree this rejects the vast
+            // majority, and it also makes the whole sweep a no-op in Copy mode,
+            // where nothing shares an inode.
+            struct stat ss;
+            if (::stat(QFile::encodeName(realSrc).constData(), &ss) != 0) continue;
+            if (ss.st_nlink < 2) continue;
+
             const QString destRel = canonicalizeRelPath(normGameDir,
                                                         srcPath.mid(root.length() + 1));
             if (newRecord.contains(destRel)) continue;  // this deploy owns it - not an orphan

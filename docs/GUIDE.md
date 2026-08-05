@@ -475,6 +475,17 @@ The tools it exposes include:
 - `get_profile_summary` for an overview of the active profile.
 - `enable_mod` to enable or disable a mod.
 - `move_mod` to change a mod's priority in the list.
+- `list_loot_rules`, `set_loot_rule` and `delete_loot_rule` to read and edit the profile's
+  LOOT rules without opening the userlist file.
+- `sort_plugins` to run a LOOT sort and get the resulting order back.
+
+The LOOT tools do some checking on your behalf. Group names are case-sensitive, and a rule
+naming a group that doesn't exist makes LOOT abandon the whole sort rather than skip the
+one rule, so `set_loot_rule` refuses a group name that isn't an exact match and tells you
+what the real names are. Saving a rule doesn't re-sort by itself; that is what
+`sort_plugins` is for, and it refuses to run against an undeployed profile instead of
+reporting success without having sorted anything. It also snapshots the previous order
+first, so `Restore Load Order` can undo it.
 
 Every change made through the server is recorded as an AI transaction, and two more tools
 make that safe: `list_ai_transactions` shows what an assistant has done, and `ai_revert`

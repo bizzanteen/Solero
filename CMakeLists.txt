@@ -141,6 +141,7 @@ set(SOLERO_SOURCES
   src/core/HostProcess.cpp
   src/deploy/Linker.cpp
   src/deploy/DeployRecord.cpp
+  src/deploy/DeployJournal.cpp
   src/deploy/ConflictIndex.cpp
   src/deploy/DeployEngine.cpp
   src/deploy/ProfileArtifacts.cpp

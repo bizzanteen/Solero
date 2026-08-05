@@ -1,4 +1,5 @@
 #include "DeployRecord.h"
+#include "DeployJournal.h"
 #include "core/FileUtil.h"
 #include <QFile>
 #include <QJsonDocument>
@@ -67,9 +68,15 @@ bool DeployRecord::saveToFile(const QString& path) const {
 }
 
 DeployRecord DeployRecord::loadFromFile(const QString& path) {
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return {};
     DeployRecord rec;
+    QFile f(path);
+    // A missing record file is still worth a journal check: a full redeploy
+    // deletes the record up front, so after an interrupted one the journal is the
+    // only trace of what got linked.
+    if (!f.open(QIODevice::ReadOnly)) {
+        DeployJournal::mergeInto(rec, path);
+        return rec;
+    }
     const auto obj = QJsonDocument::fromJson(f.readAll()).object();
 
     // v2 records wrap the paths in a "files" object alongside version/mode. A
@@ -97,6 +104,9 @@ DeployRecord DeployRecord::loadFromFile(const QString& path) {
         for (auto it = obj.constBegin(); it != obj.constEnd(); ++it)
             rec.add(it.key(), it.value().toString());
     }
+    // Fold in anything an interrupted deploy linked after this record was written,
+    // so the loaded record stays a superset of what is physically deployed.
+    DeployJournal::mergeInto(rec, path);
     return rec;
 }
 

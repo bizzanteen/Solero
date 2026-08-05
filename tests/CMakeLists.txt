@@ -50,7 +50,8 @@ add_test(NAME check_no_mojibake
 
 # UnmanagedScanner (core): pure; links DeployRecord + UnmanagedScanner only.
 add_executable(test_UnmanagedScanner test_UnmanagedScanner.cpp
-  ../src/deploy/UnmanagedScanner.cpp ../src/deploy/DeployRecord.cpp)
+  ../src/deploy/UnmanagedScanner.cpp ../src/deploy/DeployRecord.cpp
+  ../src/deploy/DeployJournal.cpp)
 target_include_directories(test_UnmanagedScanner PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_UnmanagedScanner PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_UnmanagedScanner COMMAND test_UnmanagedScanner)
@@ -150,6 +151,7 @@ function(add_solero_deploy_test name)
   add_executable(${name} ${name}.cpp
     ../src/deploy/Linker.cpp
     ../src/deploy/DeployRecord.cpp
+    ../src/deploy/DeployJournal.cpp
     ../src/deploy/ConflictIndex.cpp
     ../src/deploy/DeployEngine.cpp
     ../src/deploy/ProfileArtifacts.cpp
@@ -207,6 +209,7 @@ add_executable(test_ToolRunner test_ToolRunner.cpp
   ../src/tools/ToolCatalog.cpp
   ../src/deploy/Linker.cpp
   ../src/deploy/DeployRecord.cpp
+  ../src/deploy/DeployJournal.cpp
   ../src/deploy/ConflictIndex.cpp
   ../src/deploy/DeployEngine.cpp
   ../src/deploy/ProfileArtifacts.cpp

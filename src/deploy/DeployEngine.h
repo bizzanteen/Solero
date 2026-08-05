@@ -1,6 +1,7 @@
 #pragma once
 #include "DeployMode.h"
 #include "DeployRecord.h"
+#include "DeployJournal.h"
 #include "ConflictIndex.h"
 #include "Linker.h"
 #include <QString>
@@ -29,6 +30,10 @@ struct DeployResult {
     int filesUnchanged = 0;    // skipped as already-correct (fingerprint or inode)
     int filesAlreadyLinked = 0; // subset of filesUnchanged caught by the inode check
     int filesRemoved = 0;
+    // Files an EARLIER deploy left in the game dir without recording them, cleaned
+    // up structurally by this one. Non-zero means a previous deploy was interrupted
+    // (or predates the journal), not that anything is wrong with this one.
+    int filesOrphansSwept = 0;
 };
 
 class DeployEngine {
@@ -130,6 +135,17 @@ private:
     int removeStalePaths(const DeployRecord& prevRecord, DeployRecord& newRecord,
                          const QString& gameDir, int& failures);
 
+    // Deploy-time self-healing sweep. Removes game-dir files that are physically
+    // the same file as content staged by a mod this profile does NOT deploy
+    // (disabled, or gone from the mod list) and that this deploy didn't record.
+    // These are orphans an interrupted deploy left behind: the record can't see
+    // them - that is what makes them orphans - so they're identified by inode
+    // instead. Their bytes stay in staging, so removal is lossless. Only meaningful
+    // in HardLink mode, the only one where a deployed file shares its source's
+    // identity; a copy is indistinguishable from a vanilla file. Returns the count.
+    int sweepUndeployedModOrphans(const Profile& profile, const DeployRecord& newRecord,
+                                  const Linker& linker, const QString& gameDir);
+
     // Undeploy safety net: remove any game-dir file that is a hardlink to content
     // reachable from the staging root but which the deploy record didn't track
     // (record orphans from legacy/migration drift or a winner-change edge). Their
@@ -141,6 +157,17 @@ private:
     // Source-file fingerprint (size + mtime ms) used for the incremental skip test
     // and stored in the record. Follows symlinks so it reflects real content.
     DeployRecord::Fingerprint fingerprintOf(const QFileInfo& srcInfo) const;
+
+    // Note a deployed path in both the in-memory record and the on-disk journal.
+    // Every record.add() during a deploy must go through here, or an interrupted
+    // deploy leaves the file untracked. size < 0 = no fingerprint (see DeployRecord).
+    void recordFile(DeployRecord& record, const QString& relPath, const QString& modId,
+                    qint64 size = -1, qint64 mtimeMs = -1);
+
+    // On-disk journal of paths linked during the current deploy. See DeployJournal:
+    // the record file itself is left alone until the deploy finishes, so it never
+    // stops describing a file that is still in the game dir.
+    DeployJournal m_journal;
 
     // Per-deploy link/skip tallies (reset at the top of deploy()).
     int m_linkCount = 0;      // relinked (actual unlink+hardlink)

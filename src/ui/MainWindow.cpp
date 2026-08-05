@@ -261,6 +261,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     m_ipcServer = new solero::IPCServer(this);
     m_ipcServer->setTransactionLog(m_txLog);
     m_ipcServer->start("solero-ipc");
+    // An IPC request (MCP) can reorder plugins or toggle mods under the open
+    // window. sort_plugins replaces the plugin list wholesale, so a view still
+    // bound to the old one would write a stale order back on the next save.
+    connect(m_ipcServer, &solero::IPCServer::profileMutated, this, [this] {
+        auto* profile = m_profileMgr->activeProfile();
+        if (!profile) return;
+        m_modListView->setProfile(profile);
+        m_rightPane->setProfile(profile);
+        updateSortButton();
+    });
 
     setupMenuBar();
     setupToolbar();

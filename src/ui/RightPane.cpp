@@ -56,13 +56,14 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     // Every load-order action lives in one "Load Order" dropdown - the per-session
     // Sort Now + Lock Order (checkable) join Backup / Restore / LOOT Rules here so
     // the toolbar stays a single button. Sort Now / Lock Order are kept as members
-    // so setSortButtonEnabled() / setLockOrderChecked() can drive them.
+    // so setSortTooltip() / setLockOrderChecked() can drive them.
     auto* loMenuBtn = new QPushButton("Load Order", pluginsContainer);
     loMenuBtn->setToolTip("Sort, lock, back up, restore, and LOOT-rule actions for the load order");
     auto* loMenu = new QMenu(loMenuBtn);
+    // Always enabled - see ui/SortGate.h for why the reasons it might not apply
+    // are handled when it is clicked rather than by greying it out.
     m_sortAction = loMenu->addAction("Sort Now", this, &RightPane::sortRequested);
     m_sortAction->setToolTip("Run LOOT to auto-sort the load order");
-    m_sortAction->setEnabled(false);
     m_lockAction = loMenu->addAction("Lock Order");
     m_lockAction->setCheckable(true);
     m_lockAction->setToolTip("Lock the load order: skip LOOT auto-sort and keep the current manual order");
@@ -166,10 +167,8 @@ void RightPane::hidePluginNotice() {
     m_pluginNotice->hide();
 }
 
-void RightPane::setSortButtonEnabled(bool enabled, const QString& tooltip) {
-    if (!m_sortAction) return;
-    m_sortAction->setEnabled(enabled);
-    if (!tooltip.isEmpty()) m_sortAction->setToolTip(tooltip);
+void RightPane::setSortTooltip(const QString& tooltip) {
+    if (m_sortAction && !tooltip.isEmpty()) m_sortAction->setToolTip(tooltip);
 }
 
 void RightPane::setLockOrderChecked(bool checked) {

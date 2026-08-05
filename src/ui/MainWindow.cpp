@@ -39,6 +39,7 @@
 #include "ui/NexusWebView.h"
 #include "ui/RequirementsDialog.h"
 #include "ui/LootRulesEditor.h"
+#include "ui/SortGate.h"
 #include "ui/PatchWizardDialog.h"
 #include "tools/ToolRunner.h"
 #include "tools/ToolCatalog.h"
@@ -2199,14 +2200,13 @@ void MainWindow::updatePluginNotice() {
 }
 
 void MainWindow::updateSortButton() {
-    // LOOT reads plugin headers from the deployed Data folder, so sorting only
-    // makes sense when deployed; only offer it when the user dirtied the order
-    // and the load order isn't locked (locking disables LOOT auto-sort).
+    // "Sort Now" is always available - see ui/SortGate.h. Only the hint changes,
+    // and onSortRequested() deals with the rest when it is actually clicked.
     auto* profile = m_profileMgr->activeProfile();
     const bool locked = profile && profile->pluginList().loadOrderLocked();
-    m_rightPane->setSortButtonEnabled(
-        m_deployed && m_loadOrderDirty && !locked,
-        locked ? QStringLiteral("Load order is locked")
+    m_rightPane->setSortTooltip(
+        locked ? QStringLiteral("Run LOOT to auto-sort the load order "
+                                "(the order is locked - you'll be asked first)")
                : QStringLiteral("Run LOOT to auto-sort the load order"));
 }
 
@@ -2230,13 +2230,27 @@ void MainWindow::onLoadOrderChanged() {
 void MainWindow::onSortRequested() {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) { statusBar()->showMessage("No active profile."); return; }
-    if (profile->pluginList().loadOrderLocked()) {
-        statusBar()->showMessage("Load order is locked - unlock to sort.");
+
+    switch (solero::sortGate(m_deployed, profile->pluginList().loadOrderLocked())) {
+    case solero::SortGate::NeedsDeploy:
+        QMessageBox::information(this, "Sort Now",
+            "LOOT sorts the plugins in the game's Data folder, and this profile isn't "
+            "deployed yet.\n\nDeploy first, then sort.");
         return;
+    case solero::SortGate::ConfirmLocked: {
+        // A lock exists to stop the automatic sort on deploy from undoing a
+        // hand-tuned order. Asking for a sort outright is a different thing, so
+        // offer it rather than refusing - but say what is about to happen.
+        const auto answer = QMessageBox::question(this, "Sort Now",
+            "This profile's load order is locked, so LOOT normally leaves it alone.\n\n"
+            "Sort it anyway? The order stays locked afterwards, and you can undo the "
+            "sort with Restore Load Order.",
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (answer != QMessageBox::Yes) return;
+        break;
     }
-    if (!m_deployed) {
-        statusBar()->showMessage("Deploy first - LOOT needs plugins in the game's Data folder.");
-        return;
+    case solero::SortGate::Go:
+        break;
     }
 
     // Auto-snapshot the current (pre-sort) order so "Restore Load Order" can undo

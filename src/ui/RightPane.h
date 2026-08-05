@@ -41,7 +41,8 @@ public:
     void hidePluginNotice();
     // Enable/disable the Plugins-tab "Sort Now" (LOOT) button. An empty tooltip
     // leaves the current one in place.
-    void setSortButtonEnabled(bool enabled, const QString& tooltip = QString());
+    // "Sort Now" is always enabled (see ui/SortGate.h); only its hint changes.
+    void setSortTooltip(const QString& tooltip);
     // Reflect the profile's "Lock Order" flag on the toggle without re-emitting.
     void setLockOrderChecked(bool checked);
     // Forwarded from the Plugins view: a manual reorder dirtied the load order.

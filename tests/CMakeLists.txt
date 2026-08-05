@@ -73,6 +73,12 @@ target_include_directories(test_ReportPayload PRIVATE ../src ${CMAKE_BINARY_DIR}
 target_link_libraries(test_ReportPayload PRIVATE Qt6::Core Qt6::Network Qt6::Test)
 add_test(NAME test_ReportPayload COMMAND test_ReportPayload)
 
+# sortGate is header-only (ui/SortGate.h), so no extra sources to compile.
+add_executable(test_SortGate test_SortGate.cpp)
+target_include_directories(test_SortGate PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_SortGate PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_SortGate COMMAND test_SortGate)
+
 # menuFilterMatch is header-only (ui/MenuFilter.h), so no extra sources to compile.
 add_executable(test_MenuFilter test_MenuFilter.cpp)
 target_include_directories(test_MenuFilter PRIVATE ../src ${CMAKE_BINARY_DIR}/include)

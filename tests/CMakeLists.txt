@@ -26,6 +26,12 @@ add_solero_test(test_Profile)
 add_solero_test(test_DeploySignature)
 add_solero_test(test_LoadOrderBackup)
 
+# LootUserlist is pure line-based YAML editing - no libloot, no Qt Widgets.
+add_executable(test_LootUserlist test_LootUserlist.cpp ../src/loot/LootUserlist.cpp)
+target_include_directories(test_LootUserlist PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_LootUserlist PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_LootUserlist COMMAND test_LootUserlist)
+
 add_executable(test_MirrorPick test_MirrorPick.cpp ../src/nexus/MirrorPick.cpp)
 target_include_directories(test_MirrorPick PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_MirrorPick PRIVATE Qt6::Core Qt6::Test)

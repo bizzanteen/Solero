@@ -3,24 +3,19 @@
 #include <QHeaderView>
 #include <QList>
 
-// Shared column-sizing for the MO2-style tables (Mods, Downloads, Saves).
+// Shared column sizing for the MO2-style tables (Mods, Downloads, Saves).
 //
-// The columns must always span the pane exactly: no empty gap on the right, no
-// horizontal scrollbar from under-filling. Qt only guarantees that with
-// stretchLastSection(true) (the rightmost column absorbs the leftover) or a Stretch
-// section (which is not user-resizable). We want the fill column (Name, or Location
-// for Saves) to be the big, still-resizable default, so:
+// The columns have to span the pane exactly, and Qt only guarantees that via
+// stretchLastSection or a Stretch section, which isn't resizable. We want the fill
+// column resizable, so:
 //
-//   - every column is Interactive (draggable),
-//   - stretchLastSection(true), so the rightmost column absorbs slack -> never a gap,
-//   - on layout the fill column is sized to eat the viewport, which squeezes the last
-//     column down to its floor (so it never looks "massive" by default),
-//   - on a pane resize the fill column is re-maximized (refillFillColumn) so widen-slack
-//     goes to it, not the last column.
+//   - every column Interactive,
+//   - stretchLastSection(true) so the rightmost absorbs slack,
+//   - the fill column sized to eat the viewport, squeezing the last to its floor,
+//   - refillFillColumn on a pane resize so new slack goes to the fill column.
 //
-// The unavoidable Qt trade-off: the sanctioned auto-absorber is the *last* column, so
-// if the user drags the fill column narrower, the last column widens to keep the pane
-// full instead of leaving a gap. Persisted user widths are restored and take precedence.
+// The trade-off: drag the fill column narrower and the last one widens to keep the
+// pane full. Persisted widths win over all of this.
 
 namespace solero {
 
@@ -88,11 +83,9 @@ inline void assertSortable(QHeaderView* hh) {
     hh->setSortIndicatorShown(true);
 }
 
-// Scale every non-fill column width by `ratio`, then re-fill the fill column from
-// the viewport. Used when the app zoom changes (live or across a restart): header
-// widths are absolute pixels, so they must follow the zoom-scaled font or columns
-// end up clipped (restored-at-lower-zoom) / elided (zoomed-in). Proportional, so a
-// user-customised layout keeps its shape.
+// Scale the non-fill columns by `ratio`, then re-fill from the viewport. Header
+// widths are absolute pixels, so they have to follow the zoom-scaled font or the
+// columns end up clipped or elided. Proportional, so a custom layout keeps shape.
 inline void scaleColumnWidths(QAbstractItemView* view, QHeaderView* hh, double ratio,
                               int fillCol, int fillMin) {
     if (!view || !hh || ratio <= 0.0 || qFuzzyCompare(ratio, 1.0)) return;

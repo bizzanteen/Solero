@@ -254,11 +254,9 @@ void RightPane::showDataFor(const QString& modId) {
     setCurrentWidget(m_dataTab);
 }
 
-// True if the mod's staging root holds at least one deployable LOOSE file - i.e.
-// any real file that is not a plugin (.esp/.esm/.esl, shown in the Plugins tab)
-// and not per-mod metadata (.solero* markers, legacy fomod-choices.json). When
-// false, the Data tab would be empty/useless for this mod, so the caller can
-// auto-switch to the more useful Plugins tab. Mirrors DeployEngine's skip rules.
+// True if the mod stages any loose file that isn't a plugin or per-mod metadata.
+// False means the Data tab would be empty, so the caller can switch to Plugins.
+// Mirrors DeployEngine's skip rules.
 bool RightPane::modHasLooseData(const QString& modId) const {
     if (!m_currentProfile) return false;
     const QString folder = m_currentProfile->stagingFolderFor(modId);
@@ -267,12 +265,9 @@ bool RightPane::modHasLooseData(const QString& modId) const {
     QDir dir(modRoot);
     if (!dir.exists()) return false;
 
-    // Cheap, NON-recursive top-level check. This runs on every selection, so it
-    // must not walk the whole staging tree - a recursive walk here froze the UI
-    // for large mods. A subdirectory at the top level (textures/, meshes/, …)
-    // means loose data; a top-level non-plugin, non-metadata file also counts.
-    // Plugin-only mods have just an .esp/.esm/.esl at the root -> reported as no
-    // loose data, so the caller lands the user on the Plugins tab.
+    // Non-recursive: this runs on every selection, and walking the whole staging
+    // tree froze the UI on large mods. A top-level subdirectory means loose data,
+    // as does a top-level non-plugin file.
     const auto entries = dir.entryInfoList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot);
     for (const QFileInfo& fi : entries) {
         const QString fn = fi.fileName();

@@ -60,12 +60,10 @@ public:
     // Toggle the collapsed state of a group-PARENT mod (mirrors toggleCollapse,
     // which is for separators). No-op if the entry isn't a group parent.
     void toggleModCollapse(int visibleRow);
-    // Make the entry at raw index `rawIndex` a visible row by clearing the
-    // collapsed flag on every ancestor that hides it: the governing separator(s)
-    // (walking the nested-separator ancestry, mirroring rebuildVisibleRows) and a
-    // collapsed group-parent mod when the target is one of its children. Persists +
-    // rebuilds. Returns true iff any collapsed flag was cleared (nothing else moves,
-    // so unrelated collapsed sections stay collapsed). Used by the jump-to-mod flow.
+    // Reveal the entry at rawIndex by clearing the collapsed flag on every
+    // ancestor hiding it - the governing separators and a collapsed group parent.
+    // Persists and rebuilds. True if anything was cleared; unrelated sections
+    // stay collapsed.
     bool expandToReveal(int rawIndex);
 
     // Multi-file group helpers (operate on raw ModList indices).
@@ -178,11 +176,8 @@ private:
 
     void rebuildVisibleRows();
     bool isModEmpty(const QString& id) const;
-    // Emit a targeted dataChanged for each currently-visible row whose mod id is in
-    // `ids` (collapsed/hidden rows need no repaint), optionally limited to `roles`.
-    // Adjacent affected rows coalesce into one span. Replaces the old full-table
-    // dataChanged in the highlight/flag setters so a selection no longer repaints
-    // the whole list.
+    // dataChanged for just the visible rows in `ids`, coalescing adjacent ones.
+    // The highlight/flag setters used to reset the whole table on every selection.
     void emitRowsChanged(const QSet<QString>& ids, const QList<int>& roles = {});
 
     // Visible-coordinate span for a contiguous RAW block move [from, from+count) to
@@ -198,11 +193,9 @@ private:
     // its unit (mod / group block / separator section), lift them all and drop
     // them as one contiguous block at dstVisible. Returns true iff anything moved.
     bool moveSelection(const QList<int>& srcVisibleRows, int dstVisible);
-    // Shared tail for the multi-unit reorders (moveSelection / moveModsToSeparatorEnd):
-    // lift the already-expanded, sorted raw units and reinsert them at dstRaw. A
-    // single contiguous run is announced incrementally (beginMoveRows); anything else
-    // keeps the reset. Records undo (only if the order changed), persists modlist-only
-    // and emits modsReordered. Returns true iff the order changed.
+    // Shared tail for the multi-unit reorders: lift the sorted raw units and
+    // reinsert at dstRaw. A single contiguous run goes through beginMoveRows;
+    // anything else resets. Records undo and persists. True if the order changed.
     bool reorderUnits(const QList<int>& orderedSrcRaws, int dstRaw,
                       const QStringList& beforeOrder);
 };

@@ -157,11 +157,9 @@ QColor DataTab::accentColor() const {
 QString DataTab::stagingRootFor(const QString& modId) const {
     if (modId == "__overwrite__")
         return AppConfig::overwriteDir(m_profile ? m_profile->name() : QString()); // per-profile Overwrite
-    // Resolve to the mod's ACTUAL staging folder, exactly as the deploy engine and
-    // every other caller do (stagingFolderFor). Migrated profiles use named folders
-    // (e.g. "SSE Display Tweaks"), not the raw id - using the id pointed the Data
-    // pane at a nonexistent/wrong directory, so edits never reached the deployed
-    // copy and appeared to revert to default.
+    // Resolve via stagingFolderFor like everything else. Migrated profiles use
+    // named folders, not the raw id, and using the id pointed this pane at a
+    // directory that didn't exist - edits looked like they reverted.
     const QString folder = m_profile ? m_profile->stagingFolderFor(modId) : modId;
     return AppConfig::instance().stagingDir() + "/" + folder;
 }
@@ -221,11 +219,9 @@ void DataTab::refresh() {
     }
     const bool hasMods = !modIds.isEmpty();
 
-    // A separator has no files of its own. Selecting one used to fall through to
-    // "no mods -> show the whole game dir", which eagerly rebuilt the entire merged
-    // Data tree (thousands of files) on every separator click - the source of the
-    // lag. Show a cheap placeholder instead. (A truly empty selection - m_selection
-    // empty - still falls through to the all-files view below.)
+    // A separator has no files. Selecting one used to fall through to the whole
+    // game dir and rebuild the merged tree on every click, which is where the lag
+    // came from. A genuinely empty selection still falls through.
     if (onlySeparators) {
         m_showAllBtn->setEnabled(false);
         updateShowAllText();
@@ -376,12 +372,9 @@ void DataTab::onHideToggled(const QString& modId, const QString& relPath, bool h
     m_profile->setFileHidden(modId, relPath, hide);
     m_profile->save();          // persist filerules.json immediately
     emit fileRulesChanged();    // -> MainWindow marks the deployment dirty
-    // In the merged game-dir view the ModFileTree already restyled the clicked
-    // row in place (see contextMenuEvent), so skip the expensive full-tree
-    // rebuild - re-reading the DeployRecord and re-walking the whole game Data
-    // dir on every click is what made hiding slow. The single-mod/split views
-    // are tiny, so their cheap rebuild (restoring conflict/edited decoration) is
-    // fine.
+    // The tree already restyled the clicked row in place, so skip the full
+    // rebuild - re-reading the record and re-walking game Data is what made hiding
+    // slow. The single-mod views are small enough to rebuild.
     if (!m_gameDirView)
         scheduleRefresh();      // repaint the tree with the new hidden state
 }

@@ -34,11 +34,9 @@
 namespace solero {
 
 namespace {
-// The Plugin column can carry icons that trail the name: a feather for light
-// (ESL / ESL-flagged) plugins, and a dirty-plugin (ITM/UDR) warning exposed via
-// Qt::DecorationRole. The default delegate would draw a decoration on the LEFT,
-// so we suppress the leading icon and paint the trailing strip after the text.
-// The model's tooltip is left untouched, so hovering still works.
+// The Plugin column trails icons after the name: a feather for light plugins and
+// a dirty-plugin warning. The default delegate draws decorations on the left, so
+// suppress that and paint the strip after the text.
 class NameDelegate : public ElideRightDelegate {
 public:
     using ElideRightDelegate::ElideRightDelegate;
@@ -312,11 +310,9 @@ void PluginListView::setProfile(Profile* profile) {
 void PluginListView::reconcileWith(Profile* profile, const QString& stagingRoot) {
     m_model->setProfile(profile);
     if (profile) {
-        // Plugins available to this profile = base/official + whatever's in the
-        // live Data, UNION the plugins provided by this profile's enabled staged
-        // mods. Without the staged half, an imported-but-not-yet-deployed profile
-        // loses every mod plugin (their ESPs aren't in live Data yet), so deploy
-        // would write a vanilla-only Plugins.txt and the game would load no mods.
+        // Available = what's in live Data, plus what this profile's enabled mods
+        // stage. Without the staged half an imported-but-undeployed profile has no
+        // mod plugins yet, and deploy would write a vanilla-only Plugins.txt.
         auto available = PluginScanner::scanGameData(AppConfig::instance().gameDir());
         const QStringList staged = PluginScanner::scan(profile->modList(), stagingRoot);
         QSet<QString> availableLower; // O(1) case-insensitive presence test

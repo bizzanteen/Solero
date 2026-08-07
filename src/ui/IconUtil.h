@@ -39,12 +39,9 @@ inline QIcon redCrossIcon(int px = 26) {
     p.drawLine(QPointF(px - m, m), QPointF(m, px - m));
     return QIcon(pm);
 }
-// Shared "road-sign" severity glyph: an equilateral, point-up triangle with
-// softly rounded corners and a bold exclamation mark painted (not a font glyph,
-// which would misalign against the sloped sides). Colour signals severity -
-// warm yellow = warning, red = error, dim grey = neutral/no problems. Every
-// health surface (toolbar indicator, Problems panel, Flags column) shares this
-// one shape so a warning always reads as a warning.
+// Road-sign severity glyph: a rounded point-up triangle with a painted
+// exclamation mark (a font glyph misaligns against the sloped sides). Yellow
+// warns, red errors, grey is neutral. Shared by every health surface.
 inline QIcon signTriangleIcon(int size, const QColor& fill,
                               const QColor& border, const QColor& mark) {
     const qreal dpr = qApp ? qApp->devicePixelRatio() : 1.0;
@@ -104,11 +101,9 @@ inline QIcon neutralSignIcon(int size = 20) {
     return signTriangleIcon(size, QColor("#5a5f66"), QColor("#42464c"), QColor("#3a3d42"));
 }
 
-// Downloads "status dot" icons
-// Small DPR-aware circles for the Downloads list Status column. A filled circle
-// carries a white glyph (check / down-arrow / en-dash); "not installed" is a
-// quiet hollow grey ring with no glyph. Same painted-QPixmap approach as the
-// sign icons so the whole app's status family stays visually consistent.
+// Status dots for the Downloads list: a filled circle with a white glyph, or a
+// hollow grey ring for "not installed". Painted like the sign icons so the whole
+// status family matches.
 
 // Shared setup: a transparent DPR-scaled pixmap + an antialiased painter on it.
 // Returns the pixmap by reference; the caller keeps the QPainter alive locally.
@@ -235,11 +230,8 @@ inline QIcon checkMarkIcon(int size, const QColor& color) {
     p.drawPath(tick);
     return QIcon(pm);
 }
-// Feather: a light, tilted quill that trails the name of a light-master
-// (ESL / ESL-flagged) plugin, so a light plugin is obvious at a glance without
-// reading the Type column. Painted (not a font glyph) to match the app's icon
-// family; a soft blue signals "light". Drawn as a pointed vane bowing out either
-// side of a central shaft.
+// A tilted quill trailing the name of a light (ESL-flagged) plugin, so it reads
+// at a glance without checking the Type column. Painted to match the icon family.
 inline QIcon featherIcon(int size = 14, const QColor& color = QColor("#5BA3D0")) {
     QPixmap pm = makeStatusPixmap(size);
     QPainter p(&pm);

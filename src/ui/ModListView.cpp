@@ -102,11 +102,9 @@ public:
     }
 };
 
-// The Flags column carries a horizontal strip of status icons composed into one
-// QIcon. The default delegate squeezes that whole strip into the square
-// iconSize(), shrinking each icon when a row has 2-3 flags. Render the composed
-// icon at its natural size instead so every flag stays at the canonical pixel
-// size regardless of how many a row has.
+// Flags is a strip of icons composed into one QIcon, and the default delegate
+// squeezes the whole strip into a square iconSize(), shrinking each one when a
+// row has several. Render at natural size instead.
 class FlagsDelegate : public QStyledItemDelegate {
 public:
     using QStyledItemDelegate::QStyledItemDelegate;
@@ -165,12 +163,10 @@ ModListView::ModListView(QWidget* parent) : QTreeView(parent) {
     setItemDelegateForColumn(ModListModel::ColName, new RenameDelegate(this));
     setItemDelegateForColumn(ModListModel::ColFlags, new FlagsDelegate(this));
     setItemDelegateForColumn(ModListModel::ColVersion, new VersionDelegate(this));
-    // Column-resize model: the data columns are content-fit (Interactive) and Name is
-    // the Stretch column, so Name eats the remaining pane width while Priority/Version/
-    // Flags stay tight to their content. assertFillMode() (below, and after any
-    // restoreState) keeps that arrangement. Trade-off: with the flex column in the
-    // middle, columns to Name's right are less freely resizable (Qt gives the space to
-    // the stretch column) - accepted so Name always fills.
+    // Data columns content-fit, Name stretches, so Name eats the slack and the
+    // rest stay tight. assertFillMode keeps that after any restoreState. Trade-off:
+    // with the flex column in the middle, the columns right of Name resize less
+    // freely - accepted so Name always fills.
     auto* hdr = header();
     hdr->setSectionResizeMode(QHeaderView::Interactive);
     // Char-level elision for long mod names ("Some Mod Na…", not "Some…").
@@ -339,11 +335,9 @@ void ModListView::selectModById(const QString& id) {
     int row = m_model->rawToVisible(raw);
     auto shown = [&] { return row >= 0 && !isRowHidden(row, rootIndex()); };
 
-    // 1) Hidden by an active name/state FILTER. Clear it via the widgets (they live
-    //    in MainWindow's left pane) so the filter box stays in sync with the list.
-    //    While a filter is active the model shows every entry (searchExpandAll), so
-    //    a collapsed target still has a visible row - but it may be filter-hidden,
-    //    or, once the filter clears, collapse-hidden (handled by step 2 below).
+    // 1) Hidden by a filter. Clear it through the widgets so the filter box stays
+    //    in sync. A filter makes the model show every entry, so a collapsed target
+    //    still has a row - it may just be filter-hidden.
     if (!shown() && (!m_filter.isEmpty() || m_stateFilter != StateFilter::All)) {
         emit filterCleared(); // MainWindow resets the search box + state combo,
                               // which synchronously re-runs applyFilter()

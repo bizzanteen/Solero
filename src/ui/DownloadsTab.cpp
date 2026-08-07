@@ -89,11 +89,9 @@ protected:
     }
 };
 
-// Centres the Status column's icon. A plain QTableWidgetItem draws its icon
-// left-aligned regardless of textAlignment, so an icon-only status cell looked
-// stuck to the left. For icon-only cells this paints the style background (so
-// selection still shows) then the icon centred; cells that also carry side text
-// (a live download's "rate <dot> ETA") fall back to the normal icon+text layout.
+// A QTableWidgetItem draws its icon left-aligned whatever textAlignment says, so
+// an icon-only status cell looked stuck to the left. Paints the background then
+// the icon centred; cells with side text use the normal layout.
 class StatusCellDelegate : public ElideRightDelegate {
 public:
     using ElideRightDelegate::ElideRightDelegate;
@@ -233,14 +231,10 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     m_table->setStyleSheet("QTableWidget::item { padding: 2px 8px; }");
     auto* hh = m_table->horizontalHeader();
     hh->setMinimumSectionSize(24);
-    // Column-resize model (see ModListView for the proven rationale): every column
-    // Interactive + the last section stretches (Downloaded, a right-aligned date, is
-    // the tail). The absorbing column is rightmost, so every divider drag follows
-    // the cursor, Name is directly resizable, and the columns span the full pane.
-    // Status/Size/Downloaded/Name defaults derive from the font (applyColumnWidths)
-    // so they scale with Ctrl +/- zoom. They're Interactive (not ResizeToContents)
-    // because refresh() runs on every progress tick and ResizeToContents made the
-    // columns visibly jump (B-3).
+    // Every column Interactive, last section stretches (see ModListView). The
+    // absorber being rightmost is what makes divider drags follow the cursor.
+    // Defaults are font-derived so they scale with zoom, and Interactive rather
+    // than ResizeToContents because refresh() runs on every progress tick.
     hh->setSectionResizeMode(QHeaderView::Interactive);
     hh->setStretchLastSection(true);
     // Restore persisted widths if the user customised them; otherwise the defaults
@@ -501,11 +495,9 @@ void DownloadsTab::applyZoomFont() {
 
 void DownloadsTab::applyColumnWidths() {
     if (!m_table) return;
-    // Content-fit the data columns to the current rows (clamped to sensible floors so
-    // an empty/short table still fits the widest values), and give Name (col 0) the
-    // remaining width so it's the big default. stretchLastSection keeps Downloaded
-    // absorbing later pane-resize slack. Floors are font-derived so they scale with
-    // Ctrl +/- zoom. Persisted user widths (restored in the ctor) take precedence.
+    // Fit the data columns to their rows (with floors, so a short table still fits
+    // the widest values) and give Name the rest. Floors are font-derived so they
+    // scale with zoom. Persisted widths win.
     const QFontMetrics fm(m_table->font());
     const int nameFloor   = qMax(220, fm.horizontalAdvance(QStringLiteral("A reasonably long example mod file name")) + 20);
     const int statusFloor = qMax(40,  fm.horizontalAdvance(QStringLiteral("100%")) + 30);

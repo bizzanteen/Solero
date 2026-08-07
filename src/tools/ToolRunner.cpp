@@ -52,11 +52,9 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
     Result r;
     bool capture = exe.isCapturingOutput;
 
-    // Custom tools (not in the preset catalog) have unknown output. When one isn't
-    // already configured to capture into an output mod, roll in directly:
-    // snapshot the game dir just before the run and, afterwards, capture anything
-    // loose (unmanaged by the active deployment) it left into Overwrite - no menu,
-    // no per-deploy baseline. Preset tools have known output, so they're excluded.
+    // A custom tool's output is unknown, so if it has no output mod, snapshot the
+    // game dir before the run and sweep whatever loose files it leaves into
+    // Overwrite. Preset tools have known output and are excluded.
     const bool customLooseCapture = !capture && !exe.suppressLooseCapture
                                     && (ToolCatalog::byId(exe.id) == nullptr);
     QSet<QString> looseBaseline;
@@ -237,18 +235,13 @@ int ToolRunner::captureNewFiles(const QString& captureBase, const QString& destB
     QDir dataDir(captureBase);
     QDir gameRoot(gameDir);
     int moved = 0, failures = 0;
-    // Floor runStart to whole seconds: runStart has ms precision but many
-    // filesystems store mtimes at whole-second granularity, so a file written at
-    // 10.8s gets mtime 10.0s, which would compare < a runStart of 10.5s and be
-    // skipped. Widening the window is safe - the deploy-record owner check below
-    // still prevents re-capturing pre-existing managed files.
+    // Floor to whole seconds: many filesystems store mtimes that way, so a file
+    // written at 10.8s gets 10.0s and would sort before a 10.5s runStart. The
+    // owner check below still keeps managed files out.
     const QDateTime cutoff = runStart.addMSecs(-runStart.time().msec());
-    // Single walk: capture every file touched at or after runStart. This catches
-    // both newly created files (e.g. Community Shaders' runtime shader cache) and
-    // in-place modifications (e.g. xEdit cleaning a master), which the old
-    // before/after-set approach missed. Note: a file modified through a hardlink
-    // also changes the staging master - a VFS-less limitation that's acceptable;
-    // we still capture the result to the target.
+    // One walk over everything touched at or after runStart, so in-place edits
+    // (xEdit cleaning a master) count as well as new files. A file edited through
+    // a hardlink also changes the staging master - a VFS-less limitation.
     QDirIterator it(captureBase, QDir::Files, QDirIterator::Subdirectories);
     while (it.hasNext()) {
         QString f = it.next();

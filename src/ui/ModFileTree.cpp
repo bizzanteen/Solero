@@ -293,11 +293,9 @@ void ModFileTree::showGameDir(const QString& gameDir,
     m_gameOwnerName = ownerByRelPath;
     m_accent = accent;
     setAcceptDrops(false);
-    // The game Data folder can hold thousands of files. Build it eagerly (with
-    // view updates suspended during the build - see buildTree) so the whole tree
-    // is present for searching; a lazy tree made the toggle fast but forced a
-    // full synchronous materialize the moment the user typed in the filter, which
-    // froze the UI. ownerByRelPath is captured by value for the decorator.
+    // Build eagerly with updates suspended, so the whole tree is there to search.
+    // A lazy tree made the toggle fast but froze the UI on the first keystroke in
+    // the filter.
     buildTree(gameDir, [ownerByRelPath, accent, this]
                   (QTreeWidgetItem* item, const QString& relPath) {
         // A hidden file takes visual precedence (matching showModFiles): show it
@@ -422,11 +420,9 @@ void ModFileTree::dropEvent(QDropEvent* e) {
 }
 
 void ModFileTree::contextMenuEvent(QContextMenuEvent* e) {
-    // Game-dir (merged "show all files") mode: m_modId/m_stagingRoot are empty.
-    // The mod-editing actions (rename/delete) don't apply, but a deployed file's
-    // owner is known via m_gameOwnerModId, so offer the same Hide/Unhide action,
-    // emitting hideToggled against that owner. Loose/Overwrite/ownerless rows and
-    // folder rows get nothing.
+    // Merged game-dir mode: no mod id, so rename/delete don't apply, but a
+    // deployed file's owner is known, so Hide/Unhide still works against it.
+    // Ownerless and folder rows get nothing.
     if (m_modId.isEmpty()) {
         QTreeWidgetItem* item = itemAt(e->pos());
         if (!item) return;

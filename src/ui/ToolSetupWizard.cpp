@@ -105,25 +105,19 @@ static bool installDotNetIntoPrefix(const QString& winePrefix, QWidget* parent) 
         || dirHasEntries(winePrefix + "/pfx/drive_c/Program Files/dotnet/shared/Microsoft.WindowsDesktop.App");
 }
 
-// Install the full .NET SDK into the Skyrim Proton prefix. Synthesis builds
-// patchers with the .NET SDK (its BuildHost/MSBuild), so the Desktop Runtime
-// alone is not enough. winetricks has no modern-SDK verb, so we download the
-// official Windows SDK installer and run it silently through Proton. Returns
-// true on a clean (exit 0) install.
+// Install the .NET SDK into the Skyrim prefix. Synthesis builds patchers with
+// MSBuild, so the Desktop Runtime isn't enough, and winetricks has no modern-SDK
+// verb - so run Microsoft's Windows installer silently through Proton.
 static bool installDotNetSdkIntoPrefix(const QString& winePrefix, QWidget* parent) {
     if (winePrefix.isEmpty()) return false; // no prefix -> nothing to do
     if (QStandardPaths::findExecutable("umu-run").isEmpty()) return false;
     if (AppConfig::instance().detectProtonDir().isEmpty()) return false;
 
-    // Resolve the current LTS SDK version, then the win-x64 installer URL. This
-    // deliberately tracks LTS rather than a pinned 8.0: patchers target whatever
-    // framework their author used, and Synthesis hard-fails ("SDK Out of Date")
-    // when a patcher targets a newer one than any installed SDK.
-    // builds.dotnet.microsoft.com is Microsoft's CDN; dotnetcli.blob.core.windows.net
-    // is the raw Azure blob ORIGIN behind it. Both serve the same bytes, but the
-    // origin is unaccelerated and measured ~7x slower from here (1.2 MB/s vs
-    // 9.0 MB/s), which turns this into a multi-minute wait. Prefer the CDN and keep
-    // the origin as a fallback.
+    // Track LTS rather than a pinned 8.0: patchers target whatever their author
+    // used, and Synthesis hard-fails when that's newer than any installed SDK.
+    // builds.dotnet.microsoft.com is the CDN, dotnetcli.blob.core.windows.net the
+    // Azure origin behind it - same bytes, but the origin measured ~7x slower from
+    // here, so prefer the CDN and keep the origin as a fallback.
     static const QString kCdn    = "https://builds.dotnet.microsoft.com/dotnet";
     static const QString kOrigin = "https://dotnetcli.blob.core.windows.net/dotnet";
 

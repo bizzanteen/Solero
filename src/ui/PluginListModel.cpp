@@ -68,12 +68,9 @@ void PluginListModel::reconcile(const QStringList& available) {
             if (fn.compare(official[i], Qt::CaseInsensitive) == 0) return i;
         return -1;
     };
-    // Refresh masters + isOfficial + type flags on an entry from the (mtime-keyed)
-    // cache. The persisted plugin list only stores filename + enabled, so on load
-    // isMaster/isLight are guessed from the EXTENSION alone - which mislabels a
-    // light-flagged .esp (ESPFE) as a plain "ESP". Read the real TES4 header flags
-    // here and combine with the extension (a .esl/.esm is light/master by name even
-    // if the header bit is absent), so the Type column + feather match the file.
+    // The persisted list stores only filename + enabled, so on load isMaster and
+    // isLight are guessed from the extension, which calls a light-flagged .esp a
+    // plain ESP. Read the real TES4 header flags and combine with the extension.
     auto refreshMeta = [&](PluginEntry& pe) {
         const CachedMeta& cm = cachedMeta(dataDir + "/" + pe.filename);
         pe.masters    = cm.masters;
@@ -445,12 +442,10 @@ bool PluginListModel::dropMimeData(const QMimeData* data, Qt::DropAction, int ro
     // it from finalTo for the call.
     const int insertion = (finalTo >= src) ? finalTo + 1 : finalTo;
 
-    // Use beginMoveRows (not beginResetModel): resetting the model from inside the
-    // view's drop event invalidates the persistent indexes the view still holds,
-    // which crashes on the next move. moveRows updates them correctly.
-    // Capture the dragged plugin's name before the move so a pinned plugin can
-    // have its pinned index updated to the slot the user just dragged it to
-    // (pins follow the user's own moves; only sorts/reconciles restore them).
+    // beginMoveRows, not beginResetModel: resetting from inside the view's drop
+    // event invalidates the persistent indexes it still holds and crashes on the
+    // next move. Capture the name first so a pinned plugin's index follows the
+    // drag - pins track the user's own moves, and only sorts restore them.
     const QString movedFn = m_profile->pluginList().at(src).filename;
 
     if (!beginMoveRows(QModelIndex(), src, src, QModelIndex(), insertion))

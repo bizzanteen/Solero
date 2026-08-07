@@ -14,6 +14,7 @@
 #include "core/OutputModMigration.h"
 #include "install/StagingPathRepair.h"
 #include "install/InstallGrouping.h"
+#include "install/GroupExistingMods.h"
 #include "nexus/FileSuccessor.h"
 #include "core/FileUtil.h"
 #include "core/ShaderCache.h"
@@ -481,6 +482,30 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // only (gated by toolsMigratedToPerProfile). Must run after switchProfile so
     // there's an active profile; rebuild the menu to show any migrated tools.
     migrateToolsToActiveProfileOnce();
+    // one-time: nest the extra files of a multi-file Nexus mod under the first
+    // entry for that mod. Auto-grouping only started working across separators
+    // recently, so existing lists carry these as unrelated top-level rows.
+    if (!solero::AppConfig::instance().multiFileModsGrouped()) {
+        if (auto* p = m_profileMgr->activeProfile()) {
+            // Grouping moves a child next to its parent, which changes deploy order
+            // and so can change conflict winners. Keep a copy to fall back on.
+            const QString backup = p->modlistPath() + ".bak-grouping";
+            if (!QFile::exists(backup)) QFile::copy(p->modlistPath(), backup);
+            const int n = solero::groupExistingMultiFileMods(p->modList());
+            if (n > 0) {
+                p->save();
+                m_modListView->setProfile(p);
+                statusBar()->showMessage(
+                    QString("Grouped %1 mod(s) under the mod they belong to. This changes "
+                            "their deploy order; the previous list is saved next to "
+                            "modlist.json.").arg(n), 20000);
+            } else {
+                QFile::remove(backup);
+            }
+            solero::AppConfig::instance().setMultiFileModsGrouped(true);
+            solero::AppConfig::instance().save();
+        }
+    }
     rebuildToolsMenu();
     migrateLegacyOverwrite();   // one-time: fold legacy global Overwrite into this profile
     refreshDeployState(); // reflect any existing deployment from a previous run

@@ -92,6 +92,7 @@ bool AppConfig::load() {
     m_toolsMigratedToPerProfile = obj["toolsMigratedToPerProfile"].toBool(false);
     m_outputModsProfileQualified = obj["outputModsProfileQualified"].toBool(false);
     m_stagingWindowsPathsRepaired = obj["stagingWindowsPathsRepaired"].toBool(false);
+    m_multiFileModsGrouped = obj["multiFileModsGrouped"].toBool(false);
     m_cycleSeparatorColors = obj["cycleSeparatorColors"].toBool(true);
     m_dataShowAllFiles     = obj["dataShowAllFiles"].toBool(false);
     m_promptAfterBrowserDownload = obj["promptAfterBrowserDownload"].toBool(true);
@@ -146,6 +147,7 @@ bool AppConfig::save() const {
     obj["toolsMigratedToPerProfile"] = m_toolsMigratedToPerProfile;
     obj["outputModsProfileQualified"] = m_outputModsProfileQualified;
     obj["stagingWindowsPathsRepaired"] = m_stagingWindowsPathsRepaired;
+    obj["multiFileModsGrouped"] = m_multiFileModsGrouped;
     obj["cycleSeparatorColors"] = m_cycleSeparatorColors;
     obj["dataShowAllFiles"]     = m_dataShowAllFiles;
     obj["promptAfterBrowserDownload"] = m_promptAfterBrowserDownload;

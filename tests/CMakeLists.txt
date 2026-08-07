@@ -21,6 +21,14 @@ add_solero_test(test_ModVariants)
 add_solero_test(test_InstallConflict)
 add_solero_test(test_InstallGrouping)
 
+add_executable(test_GroupExistingMods test_GroupExistingMods.cpp
+  ../src/install/GroupExistingMods.cpp
+  ../src/core/ModList.cpp
+  ../src/core/Log.cpp)
+target_include_directories(test_GroupExistingMods PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_GroupExistingMods PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_GroupExistingMods COMMAND test_GroupExistingMods)
+
 # nexusSuccessorFileId is header-only (nexus/FileSuccessor.h) but pulls in NexusApi.
 add_executable(test_FileSuccessor test_FileSuccessor.cpp)
 target_include_directories(test_FileSuccessor PRIVATE ../src ${CMAKE_BINARY_DIR}/include)

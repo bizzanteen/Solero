@@ -17,6 +17,7 @@ public:
     void enableCancel();
     bool wasCancelled() const { return m_cancelled; }
 private:
+    void fitToMessage(const QString& message);
     QLabel* m_label;
     QProgressBar* m_bar;
     QPushButton* m_cancelBtn = nullptr;

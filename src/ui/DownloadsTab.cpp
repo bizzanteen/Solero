@@ -248,6 +248,7 @@ DownloadsTab::DownloadsTab(QWidget* parent) : QWidget(parent) {
     if (const QByteArray st = AppConfig::instance().downloadsHeaderState(); !st.isEmpty()) {
         hh->restoreState(st);
         solero::assertFillMode(hh, /*fillCol=*/0); // all Interactive; restoreState can change modes
+        solero::assertSortable(hh);                 // and it can restore clicks-dead
         // Pixel widths were captured under headerStateZoom; rescale to this
         // session's zoom so columns match the (zoom-scaled) font.
         const double savedZoom = AppConfig::instance().headerStateZoom();

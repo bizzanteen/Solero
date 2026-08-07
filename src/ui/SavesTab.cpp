@@ -126,6 +126,7 @@ SavesTab::SavesTab(QWidget* parent) : QWidget(parent) {
     if (const QByteArray st = AppConfig::instance().savesHeaderState(); !st.isEmpty()) {
         hh->restoreState(st);
         solero::assertFillMode(hh, ColLocation); // all Interactive; restoreState can change modes
+        solero::assertSortable(hh);
         m_didAutoSize = true; // keep restored widths; skip fit-fill defaults on show
         m_userCols = true;    // a persisted layout is the user's; don't auto-fill over it
     } else {

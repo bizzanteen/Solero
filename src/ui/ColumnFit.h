@@ -80,6 +80,14 @@ inline void assertFillMode(QHeaderView* hh, int /*fillCol*/) {
     hh->setStretchLastSection(true);
 }
 
+// restoreState also restores sectionsClickable / sortIndicatorShown, so a stored
+// state with clicks off makes the table permanently unsortable. Re-assert both.
+inline void assertSortable(QHeaderView* hh) {
+    if (!hh) return;
+    hh->setSectionsClickable(true);
+    hh->setSortIndicatorShown(true);
+}
+
 // Scale every non-fill column width by `ratio`, then re-fill the fill column from
 // the viewport. Used when the app zoom changes (live or across a restart): header
 // widths are absolute pixels, so they must follow the zoom-scaled font or columns

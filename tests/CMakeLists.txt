@@ -662,9 +662,17 @@ set_tests_properties(test_ColumnResize PROPERTIES
 # not Stretch, while still filling the pane. Self-contained; needs only Qt Widgets.
 add_executable(test_ColumnFit test_ColumnFit.cpp)
 target_include_directories(test_ColumnFit PRIVATE ../src)
-target_link_libraries(test_ColumnFit PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
+target_link_libraries(test_ColumnFit PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
 add_test(NAME test_ColumnFit COMMAND test_ColumnFit)
 set_tests_properties(test_ColumnFit PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${_qt_plugins}")
+
+# Header sortability across restoreState. Needs only Qt Widgets.
+add_executable(test_HeaderSortable test_HeaderSortable.cpp)
+target_include_directories(test_HeaderSortable PRIVATE ../src)
+target_link_libraries(test_HeaderSortable PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Test)
+add_test(NAME test_HeaderSortable COMMAND test_HeaderSortable)
+set_tests_properties(test_HeaderSortable PROPERTIES
   ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=${_qt_plugins}")
 
 # ThemeAdapter::buildPalette: pure palette logic (needs QGuiApplication for QPalette).

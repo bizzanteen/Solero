@@ -38,11 +38,12 @@ static QString resolveCI(const QString& base, const QString& relRaw) {
 FomodWizard::FomodWizard(FomodEngine* engine, const QString& extractDir, QWidget* parent)
     : QDialog(parent), m_engine(engine), m_extractDir(extractDir) {
     setWindowTitle("Install: " + engine->module().moduleName);
-    // Open at the classic wizard size, but never larger than the screen (handheld
-    // displays / high app zoom) - the option and description panes scroll instead.
-    QRect avail(0, 0, 900, 600);
+    // Roomy by default so option names and descriptions are readable without a
+    // resize, but never larger than the screen - the panes scroll instead.
+    QRect avail(0, 0, 1200, 800);
     if (const QScreen* s = screen()) avail = s->availableGeometry();
-    resize(qMin(900, avail.width() - 40), qMin(600, avail.height() - 60));
+    resize(qMin(1200, avail.width() - 40), qMin(800, avail.height() - 60));
+    setSizeGripEnabled(true);
     auto* outer = new QVBoxLayout(this);
 
     m_stepTitle = new QLabel(this);

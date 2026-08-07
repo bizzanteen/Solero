@@ -50,12 +50,8 @@ QList<ModEntry> Mo2Importer::parseModlist(const QString& modlistTxt) {
     return out;
 }
 
-// Normalize a ModOrganizer.ini binary/path value into a native absolute path:
-// MO2 (under Proton) stores Windows-style values like
-//   Z:/var/home/.../tools/xEdit/SSEEdit.exe   or
-//   Z:\\var\\home\\...\\StockGame\\skse64_loader.exe
-// Strip a leading Wine drive letter ("Z:") and convert backslashes to forward
-// slashes so the result is a Unix path. Leaves an already-Unix path untouched.
+// MO2 under Proton stores paths as "Z:/var/home/..." or "Z:\\var\\home\\...".
+// Strip the Wine drive letter and flip the slashes. Unix paths pass through.
 static QString normalizeWinePath(QString v) {
     v = v.trimmed();
     v.replace('\\', '/');
@@ -65,13 +61,9 @@ static QString normalizeWinePath(QString v) {
     return v;
 }
 
-// Resolve a normalized ModOrganizer.ini binary path to where it will live after
-// import. The ini's paths point into the original instance dir; rebase any path
-// that sits under that original prefix onto `instanceDir` (the staged/installed
-// instance). The original prefix is inferred as the leading portion of the path
-// that ends just before a known instance-relative segment (tools/, mods/,
-// StockGame/, Stock Game/, Game Root/, Root/, profiles/, overwrite/,
-// downloads/). If nothing matches, return the path unchanged.
+// The ini's paths point into the original instance dir, so rebase them onto
+// instanceDir. The old prefix is whatever precedes a known instance-relative
+// segment (tools/, mods/, StockGame/, profiles/, ...). No match, no change.
 static QString rebaseInstanceBinary(const QString& normPath, const QString& instanceDir) {
     if (instanceDir.isEmpty()) return normPath;
     static const char* kSegs[] = {
@@ -163,11 +155,8 @@ static bool clearDest(const QString& dst) {
     return QFile::remove(dst);
 }
 
-// Link or copy a single top-level entry (file or directory) of a mod into the
-// staging tree. `src` is the absolute source path; `dst` the absolute target.
-// In symlink mode we create a symlink (the deployer follows symlinks, including
-// for directories); in copy mode we recursively copy files. Returns the number
-// of failures (0 == OK).
+// Link or copy one top-level entry of a mod into staging. Returns the failure
+// count. The deployer follows symlinks, directories included.
 static int placeEntry(const QString& src, const QString& dst, bool symlink) {
     QDir().mkpath(QFileInfo(dst).path());
     if (symlink) {
@@ -200,22 +189,14 @@ static int placeEntry(const QString& src, const QString& dst, bool symlink) {
     return 1;
 }
 
-// Stage one mod folder into <destUuidDir>, classifying each top-LEVEL entry as
-// game-root vs Data/ content so binaries that must sit next to SkyrimSE.exe
-// (SKSE loader, ENB/ASI DLLs, d3dx9_42.dll) land at the staging root while
-// normal mod content (meshes/, textures/, *.esp, *.bsa, …) lands under Data/.
-//
-// Classification, per top-level entry (skipping meta.ini, *.modgroups, dotfiles):
-//   1. dir named "Root" (case-insensitive)  -> Root Builder: each child -> root.
-//   2. else if mod has a top-level "Data" subdir -> mod is game-root-relative:
-//        place the entry AS-IS at the staging root (its own Data subdir maps to
-//        <game>/Data; root *.dll/*.exe map to game root).
-//   3. else if entry is a file with a root suffix (dll/exe/asi/bin) -> root.
-//   4. else (normal Data-relative content) -> under Data/.
-//
-// On copy mode returns the number of files that FAILED to copy (0 == fully OK,
-// including an empty mod). On symlink mode returns the number of links that
-// could not be created.
+// Stage one mod folder, sorting each top-level entry into game-root or Data/ so
+// binaries land next to SkyrimSE.exe and content lands under Data. Per entry
+// (meta.ini, *.modgroups and dotfiles skipped):
+//   1. a "Root" dir      -> Root Builder, each child goes to the root
+//   2. a top-level "Data" -> the mod is game-root-relative, place it as-is
+//   3. a dll/exe/asi/bin  -> root
+//   4. anything else      -> Data/
+// Returns the number of copies or links that failed.
 static int stageModClassified(const QString& srcDir, const QString& destUuidDir, bool symlink) {
     QDir().mkpath(destUuidDir);
 
@@ -271,11 +252,9 @@ static int stageModClassified(const QString& srcDir, const QString& destUuidDir,
     return failed; // empty mod folder is a valid (empty) mod -> 0 failures
 }
 
-// A Wabbajack-built list ships a separator named after the modlist itself
-// (e.g. "A Dragonborn's Fate 10.2.26" == the list title + version). That header
-// is redundant with the Solero profile name and just clutters the list, so we
-// skip any separator whose name starts with the modlist title. Guard against an
-// empty listTitle (would otherwise match every separator).
+// Wabbajack lists ship a separator named after the list itself, which duplicates
+// the profile name. Skip any separator starting with the title (empty title would
+// match everything, so guard it).
 static bool isListTitleSeparator(const QString& sepName, const QString& listTitle) {
     if (listTitle.trimmed().isEmpty()) return false;
     return sepName.trimmed().startsWith(listTitle.trimmed(), Qt::CaseInsensitive);
@@ -290,15 +269,9 @@ static bool isMo2Artifact(const QString& modName) {
         || modName.compare("Backup",    Qt::CaseInsensitive) == 0;
 }
 
-// Read Nexus identity + version from a mod's <modsDir>/<ModName>/meta.ini.
-// MO2 writes e.g.:
-//   [General]
-//   modid=149975
-//   version=1.7.1.0
-//   repository=Nexus
-// Sets e.nexusModId only when modid is a positive integer and repository is
-// empty or "Nexus". Sets e.version from the General/version key. Robust to a
-// missing file (most mods have one; some won't).
+// Nexus identity + version from a mod's meta.ini ([General] modid/version/
+// repository). modid only counts when it's a positive integer and repository is
+// empty or "Nexus". The file may be missing.
 static void applyModMeta(const QString& modDir, ModEntry& e) {
     const QString metaIni = modDir + "/meta.ini";
     if (!QFileInfo::exists(metaIni)) return;
@@ -320,11 +293,9 @@ static void applyModMeta(const QString& modDir, ModEntry& e) {
     }
 }
 
-// Assign a unique, name-based staging folder to `e` (from its current name),
-// reserving it in `taken` (lowercased) so siblings can't collide. Returns the
-// absolute on-disk staging path the mod's files should be written to. Use this
-// before staging so import produces name-based folders directly (no UUID dirs
-// left for migrateStagingFolders() to rename on the next load).
+// Reserve a unique name-based staging folder for `e` and return its absolute
+// path. Called before staging, so import writes name-based folders directly
+// rather than UUID dirs for a later migration to rename.
 static QString assignStagingFolder(ModEntry& e, const QString& stagingRoot,
                                    QSet<QString>& taken) {
     e.stagingFolder =
@@ -333,11 +304,9 @@ static QString assignStagingFolder(ModEntry& e, const QString& stagingRoot,
     return stagingRoot + "/" + e.stagingFolder;
 }
 
-// Stage a single MO2 mod by name into stagingRoot, returning a ModEntry that
-// references the staged copy (fresh UUID + name + name-based staging folder). On
-// copy mode, copyFailures is incremented by the number of files that failed to
-// copy. The source folder is assumed to exist (callers check QDir(src).exists()
-// first). `taken` carries reserved (lowercased) folder names across the import.
+// Stage one MO2 mod into stagingRoot and return a ModEntry for the staged copy.
+// Callers check the source exists first. `taken` carries reserved folder names
+// across the import.
 static ModEntry stageMod(const QString& modName, const QString& mo2ModsDir,
                          const QString& stagingRoot, bool symlink, int& copyFailures,
                          QSet<QString>& taken) {
@@ -352,11 +321,8 @@ static ModEntry stageMod(const QString& modName, const QString& mo2ModsDir,
     return e;
 }
 
-// Read a separator colour from <modsDir>/<sepFolder>_separator/meta.ini.
-// MO2 stores the colour under [General] color= in one of two forms:
-//   1. A Qt-serialised QColor variant:  color=@Variant(\0\0\0\x43\x1\xff\xff...)
-//   2. A plain hex/name string:         color=#rrggbb  (older / hand-edited)
-// Returns an empty string if no usable colour is found.
+// Separator colour from meta.ini's [General] color=, which MO2 writes either as
+// a Qt-serialised QColor variant or as plain #rrggbb. Empty if neither parses.
 static QString readSeparatorColor(const QString& metaIniPath) {
     // NOTE: we do not use QSettings here. QSettings tries to natively decode
     // MO2's `color=@Variant(...)` value as a serialised QVariant, but without
@@ -389,11 +355,9 @@ static QString readSeparatorColor(const QString& metaIniPath) {
         return QString();
     }
 
-    // Form 1: a Qt-serialised QColor variant. MO2 writes:
-    //   color=@Variant(\0\0\0\x43\x1<spec:1><a:2><r:2><g:2><b:2><pad:2>)
-    // where 0x43 == QMetaType::QColor and each 16-bit channel duplicates its
-    // 8-bit value (e.g. 0x6d6d -> 0x6d). Decode the C-escaped byte payload and
-    // pull out r/g/b without needing QtGui's QColor.
+    // @Variant(\0\0\0\x43\x1<spec:1><a:2><r:2><g:2><b:2><pad:2>), where 0x43 is
+    // QMetaType::QColor and each 16-bit channel repeats its 8-bit value
+    // (0x6d6d -> 0x6d). Decoded by hand to avoid pulling in QtGui.
     if (!raw.startsWith(QStringLiteral("@Variant"), Qt::CaseInsensitive)) return QString();
     int open = raw.indexOf('(');
     int close = raw.lastIndexOf(')');
@@ -431,11 +395,9 @@ static QString readSeparatorColor(const QString& metaIniPath) {
     return QString::asprintf("#%02x%02x%02x", r, g, b);
 }
 
-// Apply an MO2 profile's plugin load order + enabled state onto a Solero
-// profile. MO2 stores the full load order in loadorder.txt (one plugin per
-// line, top = first to load) and the active set in plugins.txt. We use
-// loadorder.txt for order and plugins.txt only to decide enabled state. If
-// loadorder.txt is missing, fall back to plugins.txt order ('*' = enabled).
+// Copy an MO2 profile's load order and enabled state across. Order comes from
+// loadorder.txt, enabled state from plugins.txt; if loadorder.txt is missing,
+// fall back to plugins.txt order ('*' = enabled).
 static void applyPlugins(const QString& mo2ProfileDir, Profile* p) {
     auto baseName = [](QString line) -> QString {
         line = line.trimmed();
@@ -696,12 +658,9 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
         sharedMods.insert(name.toLower(), staged);
     }
 
-    // FIX 2: import the engine's "__Files Requiring Manual Install" folder (the
-    // literal name, with leading double underscore) as an extra mod. It holds
-    // the game-root binaries the engine couldn't auto-place (skse64_loader.exe,
-    // skse64_*.dll, d3dx9_42.dll) plus any Data/ content. Stage it once via the
-    // same classifier and reference it (enabled, near the top of the load order)
-    // in every created profile, so other mods can override it.
+    // "__Files Requiring Manual Install" holds the game-root binaries the engine
+    // couldn't place (skse64_loader.exe, d3dx9_42.dll) plus Data content. Stage it
+    // once and reference it near the top of every profile, so mods can override.
     ModEntry manualInstallMod;
     bool haveManualInstall = false;
     {
@@ -859,12 +818,9 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
     else
         r.primaryProfile = r.profileNames.isEmpty() ? QString() : r.profileNames.first();
 
-    // Reject a zero-mod import: a partial/failed Wabbajack install can produce a
-    // valid MO2 profile layout that references ZERO real mods (the engine staged
-    // no mods/ content). Treating that as success would write an orphaned profile
-    // whose modlist.json is "[]". Self-clean any profiles this call created (they
-    // are exactly the ones in r.profileNames - never pre-existing) so no orphan is
-    // left behind.
+    // A failed Wabbajack install leaves a valid profile layout referencing zero
+    // mods. Calling that a success writes a profile with an empty modlist, so bin
+    // the profiles this call created.
     if (r.modsStaged == 0) {
         for (const QString& name : r.profileNames) profiles.deleteProfile(name);
         r.profileNames.clear();

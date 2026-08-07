@@ -55,11 +55,8 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
     m_skipCount = 0;
     m_alreadyCorrect = 0;
 
-    // decide full vs incremental. Load the prior on-disk record; an
-    // incremental deploy diffs against it and only touches the delta. Fall back to
-    // a full teardown+relink when there is nothing safe to diff against: no/empty
-    // record, a legacy v1 record (no fingerprints), a record written in a different
-    // DeployMode (every file's physical form would change), or a forced Full Redeploy.
+    // Full teardown when there's nothing safe to diff against: no record, a v1 one
+    // (no fingerprints), a different DeployMode, or a forced Full Redeploy.
     const QString recPath = recordPath(m_gameDir);
     DeployRecord prevRecord = DeployRecord::loadFromFile(recPath);
     const bool fullRedeploy = forceFull
@@ -144,13 +141,9 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
     failures += applyWinnerOverrides(profile, m_gameDir, linker, prevRecord, record, conflicts, ciOwners);
     flushRecord();
 
-    // Deploy the per-profile Overwrite layer LAST so runtime-captured files win
-    // every conflict and are re-linked into the game dir on each deploy. Without
-    // this, files captured out of Data after a play session (offset/shader caches,
-    // logs) would never return, so the game would regenerate them every launch.
-    // Modelled as a synthetic top-priority mod whose source root IS the Overwrite
-    // dir (its contents are already gameDir-relative), so it flows through the same
-    // incremental-skip, backup, conflict and stale-sweep machinery as any mod.
+    // Overwrite goes last so runtime-captured files win every conflict and come
+    // back each deploy instead of being regenerated. Modelled as a synthetic
+    // top-priority mod so it reuses deployMod's machinery.
     if (willDeployOverwrite) {
         ModEntry ow;
         ow.type    = EntryType::Mod;
@@ -186,11 +179,9 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
         profile.save(); // persist the sorted order back to the profile
     }
 
-    // Record generated artifacts (Plugins.txt/loadorder.txt, copied INIs) under a
-    // sentinel owner WHEN they land inside gameDir (the appdata/docs-not-found
-    // fallback), so undeploy() removes them instead of orphaning them. Artifacts
-    // written into the Proton prefix (localAppData/docs) are outside gameDir and
-    // are intentionally not recorded (their relPath isn't gameDir-relative).
+    // Record generated artifacts under a sentinel owner when they land inside
+    // gameDir, so undeploy removes them. Ones written into the prefix are outside
+    // gameDir and deliberately not recorded.
     const QString normGameDirForRec = QDir::cleanPath(m_gameDir);
     auto recordIfInGameDir = [&](const QString& target) {
         const QString norm = QDir::cleanPath(target);
@@ -213,23 +204,19 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
     if (!artifacts.ok)
         qCWarning(lcDeploy) << "artifact write problems:" << artifacts.errors;
 
-    // JContainers compatibility: it crashes at load (boost::filesystem
-    // directory_iterator::construct) if Data/SKSE/Plugins/JCData/Domains is
-    // missing. MO2's VFS provides that folder virtually, but the mod doesn't ship
-    // it and a file-only deploy can't create an empty directory - so create it
-    // when JContainers is present. (ryobg/JContainers#38.)
+    // JContainers crashes at load without JCData/Domains, and it doesn't ship the
+    // empty dir - MO2's VFS provides it virtually. (ryobg/JContainers#38.)
     {
         const QString jcData = m_gameDir + "/Data/SKSE/Plugins/JCData";
         if (QDir(jcData).exists()) QDir().mkpath(jcData + "/Domains");
     }
 
-    // stale sweep: remove every path the previous deployment had that this
-    // one doesn't (disabled mods, changed conflict winners, deleted files) and
-    // restore any originals they covered. must run after the generated artifacts
-    // above are recorded so they aren't mistaken for stale. No-op in full-redeploy
-    // mode (prevRecord was cleared, so undeploy already did the teardown).
-    // What the sweep ought to remove. "0 removed" right after disabling mods used
-    // to pass silently, and that's exactly the orphaning bug's signature.
+    // Stale sweep: drop what the previous deployment had and this one doesn't, and
+    // restore the originals they covered. Must run after the artifacts above are
+    // recorded so they aren't mistaken for stale.
+    //
+    // First work out what it ought to remove. "0 removed" right after disabling
+    // mods used to pass silently, and that's the orphaning bug's signature.
     QSet<QString> deployedOwners{overwriteOwnerId(), kGeneratedArtifactOwner};
     for (const auto& e : profile.modList())
         if (e.type == EntryType::Mod && e.enabled) deployedOwners.insert(e.id);
@@ -400,21 +387,15 @@ int DeployEngine::deployMod(const ModEntry& mod,
                 continue;
         }
 
-        // Resolve the destination against existing on-disk directory casing so
-        // all mods funnel into a single case per directory (Wine/Proton is
-        // case-insensitive). Also lets the backup check below find a pre-existing
-        // vanilla file of differing case. ciKey stays the lowercased relPath
-        // (== destRel.toLower()); conflict/hidden rules keep the staged relPath.
+        // Funnel every mod into one on-disk casing per directory, and let the
+        // backup check below find a vanilla file of differing case.
         const QString destRel = canonicalizeRelPath(gameDir, relPath);
         QString dstPath = gameDir + "/" + destRel;
 
         const QString ciKey = relPath.toLower();
 
-        // Skip loser candidates: another mod wins this path (resolved up front in
-        // computeWinners). Record the conflict for the UI, but do not link - only the
-        // winner links, so a conflicted path is touched once per deploy, not once per
-        // providing mod. (A forced per-file override winner is applied afterwards by
-        // applyWinnerOverrides, which deploys from that mod's staging directly.)
+        // Another mod wins this path. Record the conflict but don't link, so a
+        // conflicted path is touched once per deploy rather than once per provider.
         {
             const QString winnerId = m_winners.value(ciKey);
             if (!winnerId.isEmpty() && winnerId != modId) {
@@ -426,11 +407,8 @@ int DeployEngine::deployMod(const ModEntry& mod,
         const QString priorRel = ciOwners.value(ciKey);   // earlier-deployed path at this CI path, if any
         QString previousOwner = priorRel.isEmpty() ? QString() : record.ownerOf(priorRel);
 
-        // The conflict index is keyed by the CANONICAL case-folded path so a
-        // case-variant collision (QUI.dll vs qui.dll) maps to one conflict entry,
-        // matching the case-insensitive on-disk collapse. Keying by the raw staged
-        // relPath would split a case-variant pair into two entries and leave a stale
-        // setWinner(loser) under the variant the Conflicts tab then shows winning.
+        // Case-folded, so QUI.dll and qui.dll map to one conflict entry rather
+        // than two, one of which would show the loser as winning.
         const QString conflictKey = ciKey;
 
         // Source fingerprint (size + mtime) for the incremental skip test and for
@@ -439,13 +417,10 @@ int DeployEngine::deployMod(const ModEntry& mod,
         const QFileInfo srcInfo = it.fileInfo();
         const DeployRecord::Fingerprint srcFp = fingerprintOf(srcInfo);
 
-        // incremental skip: if this is the first provider of the path in this
-        // pass (priorRel empty => no conflict yet, so the file on disk is the one we
-        // would link), and the previous deployment already had this mod owning this
-        // exact canonical path with an UNCHANGED source, and the file is still on
-        // disk, reuse it - no link needed. Recording still happens so the new record
-        // is complete. When priorRel is non-empty another mod already wrote this path
-        // this pass, so we must link to establish the correct winner (never skip).
+        // First provider this pass, same owner as last time, source unchanged, file
+        // still there: reuse it. Still recorded, so the new record stays complete.
+        // A non-empty priorRel means another mod already wrote here, so never skip -
+        // the link is what establishes the winner.
         if (priorRel.isEmpty() && prevRecord.ownerOf(destRel) == modId
             && QFile::exists(dstPath)) {
             const auto pfp = prevRecord.fingerprintOf(destRel);
@@ -458,23 +433,16 @@ int DeployEngine::deployMod(const ModEntry& mod,
             }
         }
 
-        // Wine/Proton is case-insensitive: a file already deployed at a case-variant
-        // of this path (e.g. QUI.dll vs qui.dll) would both be visible to the game and
-        // load twice. The current mod is later in the load order = higher priority =
-        // winner, so drop the stale variant and let this file take its place. Because
-        // the conflict index already keys by conflictKey, the prior owner is recorded
-        // as a real loser below (no stale setWinner under the displaced variant).
+        // Both case-variants would be visible to the game and load twice. This mod
+        // is later in the order, so it wins; drop the stale variant.
         if (!priorRel.isEmpty() && priorRel != destRel) {
             QFile::remove(gameDir + "/" + priorRel);
             record.remove(priorRel);
         }
 
-        // First Solero owner of this path and something already lives there:
-        // it's a genuine pre-existing original. Move it to the backup tree so
-        // undeploy can restore it later. The prevRecord.contains() guard is the
-        // incremental case: a path already Solero-owned by the PREVIOUS deployment
-        // holds our own link, not a vanilla original, so it must never be backed up
-        // (that would capture our link and, on restore, resurrect a stale mod file).
+        // Something already here and no Solero owner: a real pre-existing original,
+        // so back it up for undeploy. The prevRecord guard stops us capturing our own
+        // link from the previous deployment and resurrecting it on restore.
         if (previousOwner.isEmpty() && !prevRecord.contains(destRel)
             && QFile::exists(dstPath)) {
             QString backupPath = gameDir + "/" + backupDirName() + "/" + destRel;
@@ -500,12 +468,9 @@ int DeployEngine::deployMod(const ModEntry& mod,
             }
         }
 
-        // Resolve symlinks so we hardlink/copy the real file. Symlink-staged mods
-        // (and the StockGame overlay) point back into their source; deploying the
-        // symlink itself makes executables like skse64_loader.exe run FROM that
-        // source dir and launch the wrong game instance (StockGame's vanilla copy).
-        // canonicalFilePath() is a per-file syscall; only pay it when the
-        // source is actually a symlink - regular files need no resolution.
+        // Link the real file, not the symlink: deploying the link itself makes
+        // skse64_loader.exe run from the source dir and launch the wrong game.
+        // canonicalFilePath is a syscall, so only pay it for actual symlinks.
         QString realSrc = srcPath;
         if (srcInfo.isSymLink()) {
             const QString canon = srcInfo.canonicalFilePath();
@@ -696,12 +661,8 @@ bool DeployEngine::undeploy(const QString& gameDir, const std::function<void(int
         if (onProgress && (done % 20 == 0 || done == total)) onProgress(done, total);
     }
 
-    // Safety net: remove deploy-record ORPHANS - files Solero hardlinked into the
-    // game dir that never made it into the record (legacy/migration drift, a
-    // winner-change edge, or content that predated a record fix). The record loop
-    // above can't see them, so without this they'd survive undeploy and read as
-    // "not vanilla". They're identified structurally (a hardlink whose inode is a
-    // real staged file), so this needs no record and self-heals however they arose.
+    // Files Solero hardlinked in but never recorded. The loop above can't see them,
+    // so they're found structurally instead - no record needed, however they arose.
     const int swept = sweepStagingOrphans(normGameDir, backupRoot);
     if (swept > 0)
         qCInfo(lcDeploy) << "undeploy: swept" << swept << "untracked staging orphan(s)";
@@ -747,12 +708,10 @@ int DeployEngine::sweepStagingOrphans(const QString& gameDir, const QString& bac
     if (m_stagingRoot.isEmpty() || !QDir(m_stagingRoot).exists()) return 0;
     const QString normGameDir = QDir::cleanPath(gameDir);
 
-    // 1. Every (dev,inode) reachable as a real file from Solero's own source roots -
-    //    the staging tree AND the per-profile Overwrite dir (runtime-captured files
-    //    that a play session can generate AFTER the deploy record was taken, so the
-    //    record misses them). Follow symlinks (mods may symlink into Solero's own
-    //    trees, e.g. Wabbajack). Skip anything that resolves INTO the game dir - never
-    //    treat a vanilla / StockGame file as a removable orphan.
+    // 1. Every (dev,inode) reachable from Solero's own roots: staging plus the
+    //    Overwrite dir, whose files a play session can create after the record was
+    //    taken. Follow symlinks, but skip anything resolving into the game dir - a
+    //    vanilla file is never a removable orphan.
     QSet<QPair<quint64, quint64>> stagedInodes;
     QStringList ownedRoots{m_stagingRoot};
     if (!m_overwriteDir.isEmpty() && QDir(m_overwriteDir).exists())

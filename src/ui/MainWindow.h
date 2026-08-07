@@ -86,34 +86,22 @@ private:
     void setupStatusBar();
     void setupCentralWidget();
     void switchProfile(const QString& name);
-    // After a profile is newly created (manual, Wabbajack, or MO2 import), ask
-    // whether to switch to it. Yes -> switchProfile(newName); No -> keep the
-    // current profile (the new one only appears in the dropdown). The first
-    // profile (no active profile yet) switches immediately without a prompt.
-    // priorActiveName names the profile that was active *before* the create; it
-    // matters only for the import path, where the importer already made the new
-    // profile active and freed the old one, so a "No" must reload priorActiveName.
+    // Ask whether to switch to a newly created profile. The very first profile
+    // switches without asking. priorActiveName matters only for imports, where the
+    // importer already made the new profile active, so "No" has to reload it.
     void promptSwitchToNewProfile(const QString& newName,
                                   const QString& priorActiveName = QString());
     void refreshProfileCombo();
     void onDeployToggle();
     bool deployCurrent();        // perform a deploy of the active profile; returns success
-    // run deploy/undeploy of the active profile off the UI thread
-    // (QtConcurrent::run + QFutureWatcher). onDone (if set) runs on the UI thread
-    // after all result handling. The Deploy toolbar button drives these
-    // fire-and-forget; deployCurrent() bridges deployActiveAsync back to a
-    // synchronous bool (local event loop) for Play / tool-run callers whose
-    // surrounding flow is synchronous. finishDeployJob() tears the job UI down.
-    // forceFull requests a full teardown+relink (the "Full Redeploy" escape hatch)
-    // instead of the default incremental diff.
+    // Deploy/undeploy off the UI thread. onDone runs on the UI thread afterwards.
+    // The toolbar drives these fire-and-forget; deployCurrent() bridges back to a
+    // synchronous bool for Play and tool runs. forceFull = full teardown+relink.
     void deployActiveAsync(std::function<void(bool)> onDone, bool forceFull = false);
     void undeployActiveAsync(std::function<void(bool)> onDone);
     void finishDeployJob();
-    // Like deployCurrent but for use INSIDE a tool run: deploys the active profile
-    // (honoring any in-memory ModList toggle) under a ProgressModal and updates
-    // deploy/conflict state, without running post-deploy tools or popping the
-    // AppData warning. Returns deploy success. Used to push the output-mod toggle
-    // through to the deployed game Data around PGPatcher/Radium runs.
+    // deployCurrent for use inside a tool run: no post-deploy tools, no AppData
+    // warning. Pushes the output-mod toggle through around PGPatcher/Radium.
     bool redeployForTool(const QString& title, const QString& message);
     void showRunLock(const QString& toolName);
     void hideRunLock();
@@ -126,11 +114,9 @@ private:
     // Square size for the Deploy/Play glyph icons, derived from the current app font
     // so they stay proportional to the button text across zoom levels.
     int toolbarIconPx() const;
-    // Recompute m_deployDirty after a mod-list change: compare the current deploy
-    // signature to the one captured at deploy. A net-zero structural change (disable
-    // then re-enable, reorder then back) clears the dirty flag; sticky content
-    // dirtiness (m_contentDirty) keeps it set. Call this instead of setting
-    // m_deployDirty = true for structural mutations.
+    // Recompute m_deployDirty against the signature captured at deploy, so a
+    // net-zero change (disable then re-enable) clears it. Use this for structural
+    // mutations instead of setting the flag directly.
     void refreshDeployDirty();
     // Snapshot the deploy signature (and clear content dirtiness) after a deploy.
     void captureDeployedSignature();
@@ -211,13 +197,12 @@ private:
     void onViewNexusPage(const QString& modId);
     void onUpdateMod(const QString& modId);
     void onCheckUpdates();
-    // Walk the active profile's enabled mods, locate each source archive, detect
-    // FOMOD (fomod/ModuleConfig.xml), set sourceArchive + isFomod, and back-fill
-    // fomod-choices.json where the selection is reconstructable. Runs synchronously
-    // behind a cancellable ProgressModal (it extracts ~dozens of archives).
-    // Launch the async (off-UI-thread) Nexus update check. silentIfNone=true is
-    // used by the auto-check-on-profile-load path: it no-ops quietly when there's
-    // no API key, no mods with Nexus metadata, or a check is already running.
+    // Find each enabled mod's source archive, detect FOMOD, and back-fill
+    // fomod-choices.json where the selection can be reconstructed. Synchronous
+    // behind a cancellable modal, since it extracts dozens of archives.
+
+    // Async Nexus update check. silentIfNone is for the on-profile-load path: it
+    // no-ops when there's no API key, no Nexus metadata, or a check is running.
     void runUpdateCheck(bool silentIfNone);
     // After a profile finishes loading, fire an auto update check if enabled and
     // not throttled (>6h since the last check) and a key is available.
@@ -242,12 +227,9 @@ private:
     // AppConfig::autoDeployBeforeLaunch (silent deploy + skip the modal). `reason`
     // is a short phrase shown in the prompt (e.g. "launching the game").
     bool ensureDeployed(const QString& reason);
-    // Push everything the game reads out of the profile and into the live prefix:
-    // the load order (Plugins.txt / loadorder.txt), the profile's INIs and the save
-    // redirect. ensureDeployed() returns early whenever the modlist is deployed and
-    // clean, so without this a reordered load order or an edited INI never leaves
-    // the profile and the game keeps loading what the last deploy wrote. Cheap and
-    // idempotent, so every launch runs it. `reason` is a short phrase for messages.
+    // Push the load order, INIs and save redirect into the live prefix.
+    // ensureDeployed() returns early when the modlist is clean, so without this a
+    // reorder never reaches the game. Cheap and idempotent; runs every launch.
     void syncGeneratedArtifacts(const QString& reason);
     // A .NET tool's NuGet restore failed because the Proton prefix can't validate
     // nuget.org's repository signatures (a root certificate Linux distros dropped).
@@ -304,11 +286,9 @@ private:
     // Pick a tool's output mod: suggest an existing load-order mod whose name
     // matches (so imported lists' output mods are reused), else create one.
     QString chooseOutputMod(const QString& defaultName, const QString& toolName);
-    // Auto-configure a freshly-imported Wabbajack modlist's tools (discovered from
-    // ModOrganizer.ini [customExecutables]) against the now-active profile: map
-    // each to a ToolCatalog preset (or register a custom executable), wire output
-    // mods, add to the global ToolStore, then show a summary. Idempotent: skips
-    // tools already present in the ToolStore.
+    // Configure an imported modlist's tools from ModOrganizer.ini
+    // [customExecutables]: map each to a preset or register it custom, wire output
+    // mods, add to the ToolStore. Skips tools already there.
     void setUpImportedTools(const QList<solero::ImportedTool>& tools);
     // Tools are global but their output mods live in whichever profile was active
     // at setup - so resolve/remove a mod across all profiles, not just the active one.
@@ -367,11 +347,9 @@ private:
     QString m_lastDeployError;                     // last failed DeployResult::errorMessage (empty on success)
     bool m_lastDeployHadFailures = false;          // true when last deploy had file-link failures
     solero::ConflictIndex m_lastConflicts;         // last deployed/loaded conflict index
-    // off-thread deploy/undeploy state. m_deploying is a hard re-entrancy
-    // guard - while a job is in flight, a second deploy / Play / mutating action
-    // bails so nothing runs against half-written game Data. Progress is marshaled to
-    // m_deployModal on the UI thread; result handling runs in the watchers' finished
-    // handlers. The saved-*-enabled flags restore the toolbar controls on finish.
+    // m_deploying is a re-entrancy guard: while a job is in flight, a second
+    // deploy or Play bails rather than running against half-written game Data.
+    // The saved-*-enabled flags restore the toolbar controls on finish.
     bool m_deploying = false;
     QFutureWatcher<solero::DeployResult> m_deployWatcher;
     QFutureWatcher<bool>                 m_undeployWatcher;

@@ -229,6 +229,73 @@ private slots:
         QVERIFY(DeployRecord::loadFromFile(recPath).allPaths().isEmpty());
     }
 
+    // Output mods (Nemesis, PGPatcher, Radium, Synthesis) are the highest-stakes
+    // case for the sweep: their content exists nowhere else, and deleting Nemesis's
+    // behaviour files breaks every animation in the game. So an enabled output mod's
+    // files must survive even when the record has lost track of them - the sweep may
+    // never fall back on "in the game dir, not in the record" as its test.
+    void theSweepNeverTouchesAnEnabledOutputModsFiles() {
+        QTemporaryDir tmp;
+        const QString staging = tmp.path() + "/staging";
+        const QString game    = tmp.path() + "/game";
+        QDir().mkpath(game);
+        writeFile(staging + "/A/Data/a1.esp", "one");
+        // Captured tool output: staged only here, provided by no other mod.
+        writeFile(staging + "/Nemesis Output/Data/meshes/actors/character/behaviors/0_master.hkx",
+                  "behaviour");
+        writeFile(staging + "/Nemesis Output/Data/meshes/animationdatasinglefile.txt", "anim");
+        // A disabled mod, so the sweep has something to walk and actually runs.
+        writeFile(staging + "/Old/Data/old.esp", "old");
+
+        Profile p("T", tmp.path() + "/profiles");
+        p.modList().append(mod("A", "ModA"));
+        p.modList().append(mod("NEM", "Nemesis Output"));
+        p.modList().append(mod("Old", "Old", false));
+        p.modList().findById("NEM")->stagingFolder = "Nemesis Output";
+        p.save();
+
+        DeployEngine e(game, staging);
+        QVERIFY(e.deploy(p, DeployMode::HardLink).success);
+        const QString behaviour = game + "/Data/meshes/actors/character/behaviors/0_master.hkx";
+        QVERIFY(QFile::exists(behaviour));
+
+        // Record drift: whatever the cause, the record no longer knows these are
+        // Nemesis's. The mod is still enabled, so they are still live game content.
+        forgetModInRecord(game, "NEM");
+        auto r = e.deploy(p, DeployMode::HardLink);
+        QVERIFY(r.success);
+        QVERIFY2(QFile::exists(behaviour), "swept a live Nemesis behaviour file");
+        QVERIFY2(QFile::exists(game + "/Data/meshes/animationdatasinglefile.txt"),
+                 "swept a live Nemesis output file");
+    }
+
+    // Loose files that no mod provides - an old tool run that wrote straight into
+    // the game folder, or a leftover from a previous manager. Solero does not own
+    // them, so it must not delete them just because they are unrecorded.
+    void theSweepLeavesUnmanagedLooseFilesAlone() {
+        QTemporaryDir tmp;
+        const QString staging = tmp.path() + "/staging";
+        const QString game    = tmp.path() + "/game";
+        QDir().mkpath(game);
+        writeFile(staging + "/A/Data/a1.esp", "one");
+        writeFile(staging + "/Old/Data/old.esp", "old");   // disabled, gives the sweep work
+        // Provided by nothing in staging, and a single link, so no inode ties it to
+        // Solero. Mirrors the ancient loose behaviour files in a real game dir.
+        writeFile(game + "/Data/meshes/actors/character/_1stperson/behaviors/0_master.hkx",
+                  "ancient");
+
+        Profile p("T", tmp.path() + "/profiles");
+        p.modList().append(mod("A", "ModA"));
+        p.modList().append(mod("Old", "Old", false));
+        p.save();
+
+        DeployEngine e(game, staging);
+        QVERIFY(e.deploy(p, DeployMode::HardLink).success);
+        QVERIFY(e.deploy(p, DeployMode::HardLink).success);
+        QVERIFY2(QFile::exists(game + "/Data/meshes/actors/character/_1stperson/behaviors/0_master.hkx"),
+                 "swept a loose file Solero never deployed");
+    }
+
     // The sweep is structural, so it has to be narrow: a file this deploy legitimately
     // put there must survive even when the record lost track of it, and a vanilla file
     // that never came from staging must never be touched.

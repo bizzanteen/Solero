@@ -464,11 +464,9 @@ void BethiniWindow::loadRow(RowWidget& rw) {
             if (ci >= 0) {
                 combo->setCurrentIndex(ci);
             } else {
-                // Nothing matches what's really in the INI: values were
-                // hand-tuned to a combination outside the stock tiers, or the
-                // keys aren't set at all. Show that honestly (blank + hint)
-                // instead of a stale earlier selection. Selecting a real choice
-                // still writes normally; the blank state itself never writes.
+                // The INI doesn't match any stock tier - hand-tuned, or the keys
+                // aren't set. Show blank rather than a stale selection; the blank
+                // state itself never writes.
                 bool anySet = false;
                 for (const auto& k : rw.row.iniKeys)
                     if (readKey(k).isValid()) { anySet = true; break; }

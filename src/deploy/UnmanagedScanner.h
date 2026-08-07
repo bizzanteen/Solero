@@ -24,11 +24,9 @@ QStringList findUnmanagedFiles(const QString& gameDir,
                                const DeployRecord& record,
                                const QSet<QString>& baseline);
 
-// MOVE every unmanaged file (findUnmanagedFiles) out of `gameDir` into `destStagingDir`,
-// preserving each relPath, and prune emptied parent dirs in the game dir. Returns the
-// relPaths actually captured (sorted). Skips - and omits from the result - any file it
-// can't move so it's never lost. This is the destructive "capture into a mod" step; the
-// caller should confirm with the user and re-deploy afterwards.
+// Move every unmanaged file out of gameDir into destStagingDir, keeping relPaths,
+// and prune emptied dirs. Anything it can't move is skipped, never lost. This is
+// the destructive step - confirm with the user and re-deploy afterwards.
 QStringList captureUnmanagedInto(const QString& gameDir,
                                  const DeployRecord& record,
                                  const QSet<QString>& baseline,

@@ -8,12 +8,9 @@ namespace solero {
 
 class Profile;
 
-// A load-order snapshot stored under <profile>/lo-backups/. Each backup is a
-// JSON file capturing the full plugin load order (filename + enabled) and the
-// ordered mod list (id + enabled + separator flag) at the time it was taken, so
-// a risky LOOT sort / manual reorder / bad install can be reversed. Older
-// plugin-only snapshots (no "mods" section) still restore - their mod list is
-// left untouched (see LoadOrderSnapshot::hasMods).
+// A snapshot under <profile>/lo-backups/: the plugin load order and the mod list
+// as they were, so a bad sort or install can be reversed. Older plugin-only
+// snapshots still restore and leave the mod list alone (see hasMods).
 
 // Metadata about a backup on disk (cheap to enumerate, no full lists).
 struct LoadOrderBackupInfo {

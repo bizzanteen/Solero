@@ -13,11 +13,9 @@ static bool nameEq(const QString& a, const QString& b) {
 FomodPreset buildFomodPreset(const FomodModule& mod, const QJsonObject& savedChoices) {
     FomodPreset out;
     const QJsonArray steps = savedChoices.value("steps").toArray();
-    // Modules often repeat step names (conditionally-visible twins), so matching
-    // by name alone piled several installs' picks into the first same-named step
-    // and marked more than one option "previously chosen" in a pick-one group.
-    // Newer logs carry the exact stepIndex; for older logs each module step is
-    // consumed at most once so same-named steps map 1:1 in order.
+    // Modules repeat step names, so matching by name alone piled several installs'
+    // picks into the first match. Newer logs carry stepIndex; for older ones each
+    // module step is consumed once so same-named steps map 1:1 in order.
     QSet<int> used;
     for (const QJsonValue& sv : steps) {
         const QJsonObject stepObj = sv.toObject();

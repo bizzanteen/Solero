@@ -7,11 +7,9 @@ namespace solero {
 
 class DeployRecord {
 public:
-    // Source-file fingerprint captured at link time. Lets an incremental
-    // deploy tell whether a mod's staged content changed since it was deployed
-    // (reinstall / variant switch / external tool edit) without re-linking. size < 0
-    // means "no fingerprint recorded" (legacy v1 record, or a generated artifact
-    // added via the two-arg add()).
+    // Captured at link time, so an incremental deploy can tell whether a mod's
+    // staged content changed without re-linking. size < 0 means no fingerprint:
+    // a v1 record, or a generated artifact.
     struct Fingerprint {
         qint64 size = -1;
         qint64 mtimeMs = -1;

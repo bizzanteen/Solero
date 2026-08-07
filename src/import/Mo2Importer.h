@@ -40,12 +40,10 @@ public:
     // Parse modlist.txt content into a Solero-ordered ModList (index0 = lowest priority).
     static QList<ModEntry> parseModlist(const QString& modlistTxt);
 
-    // Parse a ModOrganizer.ini's [customExecutables] section into ImportedTool
-    // entries (one per `N\title` / `N\binary` / `N\arguments` group), in index
-    // order. `instanceDir` (if non-empty) is used to resolve each binary to its
-    // post-import path: an MO2 "%baseDir%"/instance-relative binary is rewritten
-    // to live inside `instanceDir`. Binaries that resolve to an absolute existing
-    // path are kept as-is. Entries with an empty title or binary are skipped.
+    // [customExecutables] -> ImportedTool, one per N\title / N\binary /
+    // N\arguments group, in index order. instanceDir rebases %baseDir% and
+    // instance-relative binaries; absolute existing paths are kept. Empty
+    // title or binary is skipped.
     static QList<ImportedTool> parseCustomExecutables(const QString& iniContent,
                                                       const QString& instanceDir = {});
 
@@ -58,23 +56,20 @@ public:
                                          const QString& newProfileName,
                                          bool symlinkMods);
 
-    // Import an ENTIRE installed MO2/Wabbajack instance: create one Solero profile
-    // per MO2 profile (each has its own load order / enabled set / separators),
-    // while staging each unique referenced mod folder exactly once and sharing it
-    // (same Solero mod id) across all created profiles.
-    //   mo2InstanceDir : dir containing mods/ + profiles/ + ModOrganizer.ini
-    //   listTitle      : used to disambiguate Solero profile names on collision
+    // Import a whole MO2/Wabbajack instance: one Solero profile per MO2 profile,
+    // with each unique mod folder staged once and shared across them.
+    //   mo2InstanceDir : holds mods/, profiles/ and ModOrganizer.ini
+    //   listTitle      : disambiguates profile names on collision
     static Mo2InstanceImportResult importInstance(const QString& mo2InstanceDir,
                                                   const QString& stagingRoot,
                                                   ProfileManager& profiles,
                                                   const QString& listTitle,
                                                   bool symlinkMods);
 
-    // If `instanceDir` contains a game-root overlay folder (StockGame / "Stock Game" /
-    // "Game Root" / "Root"), stage its mod-added root-level loose files (dll/exe/asi/ini,
-    // excluding vanilla game files + Proton cache) into a new ModEntry whose files sit at
-    // the staging root (so they deploy to <game>/, not <game>/Data). Returns an invalid/
-    // empty-id ModEntry if there's no overlay or nothing mod-added to stage.
+    // Stage a game-root overlay folder (StockGame / Game Root / Root), if there is
+    // one, into a ModEntry whose files sit at the staging root so they deploy to
+    // <game>/ rather than <game>/Data. Vanilla files and the Proton cache are
+    // excluded. Empty-id entry when there's nothing to stage.
     static ModEntry stageGameRootOverlay(const QString& instanceDir,
                                          const QString& stagingRoot, bool symlink,
                                          QSet<QString>& taken);

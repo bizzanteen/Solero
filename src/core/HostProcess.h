@@ -3,11 +3,9 @@
 #include <QStringList>
 #include <QMap>
 
-// Flatpak sandbox awareness. Solero's whole job is launching HOST processes - Steam,
-// umu-run/Proton, the game exe, external tools, gsettings, curl - none of which exist
-// inside a Flatpak sandbox. Inside Flatpak we run them on the host via
-// `flatpak-spawn --host` (which needs `--talk-name=org.freedesktop.Flatpak` in the
-// manifest). Outside Flatpak everything is unchanged.
+// Solero launches host processes (Steam, Proton, the game, tools, curl), none of
+// which exist inside a Flatpak sandbox. In one, run them via `flatpak-spawn
+// --host`, which needs --talk-name=org.freedesktop.Flatpak in the manifest.
 
 namespace solero {
 

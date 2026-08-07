@@ -81,11 +81,9 @@ private:
     static bool isSafeRelPath(const QString& rel);
     static bool copyDirInto(const QString& srcDir, const QString& dstDir);
     static bool extractFull(InstallPrep& prep, const std::function<void(int)>& onProgress = {});
-    // Copy FOMOD source->destination entries (priority-ordered, last-writer-wins)
-    // into modDir/Data. fomodBase is the archive root that the FOMOD `source`
-    // paths are relative to (the parent of the `fomod` folder).
-    // Returns false if any entry was rejected (unsafe path), had a missing
-    // source, or failed to copy - so callers can propagate install failure.
+    // Copy FOMOD source->destination entries into modDir/Data, priority-ordered,
+    // last writer wins. fomodBase is the parent of the `fomod` folder. False if
+    // any entry was rejected, missing or failed to copy.
     static bool copyFomodFiles(const QString& fomodBase, const QList<FomodFile>& files,
                                const QString& modDir);
     // Locate the FOMOD config inside an extracted tree and return the archive root

@@ -6,17 +6,13 @@
 
 namespace solero {
 
-// A stable fingerprint of everything about a profile that determines WHAT a deploy
-// links into the game dir: the ordered enabled mods (plus each mod's active version
-// variant) and the per-file hide rules and forced conflict winners. Two profiles
-// with equal signatures deploy the same set of files, so the UI can flip back to
-// "Deployed" after a net-zero change (disable then re-enable a mod, reorder then
-// reorder back, hide then unhide a file). The Community Shaders cache rides along
-// inside the CS mod, so its enabled/disabled state is already covered by the mod list.
+// Fingerprint of what a deploy would link: the ordered enabled mods with their
+// active variants, the per-file hide rules and the forced winners. Equal
+// signatures deploy the same files, so the UI can go back to "Deployed" after a
+// net-zero change.
 //
-// Deliberately NOT included: INI/save redirection and staged file CONTENT (a data
-// rename, reinstall, patch run, ini toggle). Those change the deployment without
-// changing this signature, so callers track them as sticky "content" dirtiness.
+// Not included: INI/save redirection and staged file content. Those change the
+// deployment without changing this, so callers track them separately.
 inline QByteArray deploySignature(const Profile& p) {
     QByteArray s;
     for (const auto& e : p.modList()) {

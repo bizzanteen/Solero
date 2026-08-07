@@ -52,11 +52,8 @@ bool ProfileManager::createProfile(const QString& name, const QString& cloneFrom
         }
         qCInfo(lcProfile) << "creating profile" << name << "cloned from" << cloneFrom
                           << "(full directory copy)";
-        // Filesystem-copy the whole profile dir so the clone reproduces EVERYTHING:
-        // modlist, plugins, executables, file-rules (hidden files + winner overrides),
-        // load-order state (pins + lock), shader cache, and the three INIs - not just
-        // the three lists the old field-by-field copy handled. Each file is a fresh
-        // copy, so the cloned profile is fully independent of its source.
+        // Copy the whole profile dir rather than field-by-field, so the clone gets
+        // the file rules, load-order state and INIs too, and is fully independent.
         const bool ok = copyDirContents(srcPath, path);
         if (!ok) qCWarning(lcProfile) << "createProfile:" << name << "clone copy had failures";
         return ok;

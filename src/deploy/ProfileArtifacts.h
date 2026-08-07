@@ -6,15 +6,13 @@ namespace solero { class Profile; }
 
 namespace solero {
 
-// The files Solero GENERATES for the game to read, as opposed to the mod files it
-// links: the load order (Plugins.txt / loadorder.txt in the game's local appdata,
-// i.e. inside the Proton prefix), and - when the profile owns them - its INIs and
-// the per-profile save redirect in My Games.
+// The files Solero generates for the game to read, rather than the mod files it
+// links: the load order in the prefix's local appdata, and the profile's INIs and
+// save redirect in My Games.
 //
-// The game reads these files, never the profile, so anything that starts the game
-// (or a tool that reads the load order) must write them first. They are derived
-// entirely from the in-memory profile and cost milliseconds, so both deploy and
-// launch write them unconditionally rather than only when the mod files change.
+// The game reads these, never the profile, so anything that starts the game writes
+// them first. They cost milliseconds, so deploy and launch both write them
+// unconditionally.
 
 struct ArtifactWriteResult {
     bool ok = true;
@@ -26,12 +24,9 @@ struct ArtifactWriteResult {
     QStringList errors;   // human-readable failures, one per artifact
 };
 
-// Writes every generated artifact for `profile`. Targets come from AppConfig
-// (localAppDataDir for the load order, documentsDir for the INIs); `gameDir`
-// supplies the fallback location for each when AppConfig doesn't know it.
-// Does NOT sort with LOOT and does NOT save the profile - callers own that.
-// Refuses to overwrite a non-empty live Plugins.txt from an empty plugin list, so
-// an unpopulated profile can't leave the game loading nothing.
+// Writes every generated artifact. Targets come from AppConfig, with gameDir as
+// the fallback. Does not sort with LOOT and does not save the profile. Refuses to
+// overwrite a non-empty Plugins.txt from an empty plugin list.
 ArtifactWriteResult writeProfileArtifacts(Profile& profile, const QString& gameDir);
 
 // Where writeProfileArtifacts() puts Plugins.txt / loadorder.txt and the INIs.

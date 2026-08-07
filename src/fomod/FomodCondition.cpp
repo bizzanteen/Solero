@@ -41,11 +41,9 @@ bool FomodCondition::evalLeaf(const QHash<QString, QString>& flags,
     switch (m_leafKind) {
         case LeafKind::Flag:         return flags.value(m_key) == m_value;
         case LeafKind::FileActive:   return filePresent(m_key);
-        // Limitation: at wizard time Solero only knows present-vs-absent, not
-        // active-vs-inactive. We model "Active" == present. "Inactive" means
-        // "present but not active", which we cannot observe, so it never
-        // matches (returns false) rather than aliasing Active. "Missing" is the
-        // logical negation of present.
+        // At wizard time we only know present vs absent, so Active == present and
+        // Inactive (present but not active) can't be observed - it never matches
+        // rather than aliasing Active.
         case LeafKind::FileInactive: return false;
         case LeafKind::FileMissing:  return !filePresent(m_key);
         default:                     return true;

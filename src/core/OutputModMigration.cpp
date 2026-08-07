@@ -42,11 +42,8 @@ int migrateOutputModsProfileQualified(const QString& profilesRoot,
             const QString desired =
                 sanitizeStagingFolder(profileName + " - " + e.name);
 
-            // Already profile-qualified (its folder already starts with
-            // "<Profile> - <name>", possibly with a "(N)" uniqueness suffix) -> skip
-            // before computing a fresh unique name (which would otherwise always
-            // differ and re-migrate it). Compare case-insensitively to match the
-            // taken-set / uniqueStagingFolder semantics.
+            // Already qualified. Skip before computing a fresh unique name, which
+            // would always differ and re-migrate it every run.
             if (e.stagingFolder.compare(desired, Qt::CaseInsensitive) == 0)
                 continue;
 

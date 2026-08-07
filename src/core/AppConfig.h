@@ -144,11 +144,8 @@ public:
     static QString overwriteDir(const QString& profileName);
     static QString configPath();
     static QStringList detectSkyrimPaths();
-    // Pure parser: extract every Steam library "path" value from the textual VDF
-    // contents of steamapps/libraryfolders.vdf. Returns library root paths (the
-    // dir that contains steamapps/). Tolerant of both the legacy flat form and the
-    // modern nested ("libraryfolders" -> "0" -> {"path": ...}) form. Exposed for
-    // unit testing.
+    // Library roots (the dir containing steamapps/) out of libraryfolders.vdf.
+    // Handles both the flat and the nested ("libraryfolders" -> "0" -> path) forms.
     static QStringList parseLibraryFoldersVdf(const QString& vdfContents);
 
     // Derive the Proton-prefix local appdata + documents dirs from a game dir

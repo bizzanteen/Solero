@@ -39,11 +39,9 @@ ArtifactWriteResult writeProfileArtifacts(Profile& profile, const QString& gameD
 
     const QString orderDir = loadOrderDir(gameDir);
     QDir().mkpath(orderDir);
-    // Guard: an empty plugin list would write an EMPTY Plugins.txt, and the game
-    // would then load no mods at all. A profile whose plugins haven't been scanned
-    // yet must never clobber a live load order that lists real plugins. Keyed on
-    // parsed entries, not file size, so a plugin-less profile can still rewrite the
-    // one-newline file it wrote itself.
+    // An empty plugin list would write an empty Plugins.txt and the game would
+    // load nothing, so a profile whose plugins aren't scanned yet must not clobber
+    // a live order. Keyed on parsed entries, not file size.
     if (profile.pluginList().count() == 0 &&
         PluginList::loadFromFile(orderDir + "/Plugins.txt").count() > 0) {
         qCWarning(lcDeploy) << "skipping load-order write: profile has no plugins but"
@@ -82,11 +80,9 @@ ArtifactWriteResult writeProfileArtifacts(Profile& profile, const QString& gameD
                 wrote(dst[i], copyOverwrite(src[i], dst[i]), "an INI");
     }
 
-    // Per-profile local saves. On: redirect Skyrim's SLocalSavePath (read relative to
-    // My Games/Skyrim SE/) to a per-profile "Saves\<name>\" subfolder, patching the
-    // live Skyrim.ini (or creating a minimal one) and making sure the folder exists.
-    // Off: strip any SLocalSavePath we (or a previously-active profile) left, so saves
-    // return to the shared folder. The per-profile Saves folder is left on disk.
+    // On: point SLocalSavePath at a per-profile "Saves\<name>\", patching the live
+    // Skyrim.ini. Off: strip the one we left, so saves go back to the shared
+    // folder. The per-profile folder stays on disk either way.
     const QString saveIniPath = inis + "/Skyrim.ini";
     if (profile.localSaves()) {
         const QString sub = profile.saveFolderName();

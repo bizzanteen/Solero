@@ -67,13 +67,10 @@ int captureShaderCache(const QString& gameDir, const QString& cacheStagingDir,
         const QString rel = srcPath.mid(gameData.length() + 1); // e.g. ShaderCache/foo.bin
         const QString dstPath = stagingData + "/" + rel;
 
-        // Info.ini is CS's disk-cache VALIDATION file (per-feature enabled-state +
-        // version + plugin version). CS rewrites it whenever feature state changes,
-        // so a stale staged copy makes CS invalidate the cache and recompile every
-        // shader on every launch. It must be refreshed, not skipped. The shader
-        // blobs, by contrast, are immutable (content-hashed by descriptor) and
-        // already share an inode with the staged master under hardlink deploy -
-        // skip those so we don't needlessly churn them.
+        // Info.ini validates CS's disk cache and is rewritten whenever feature
+        // state changes, so a stale staged copy means a full recompile every
+        // launch - always refresh it. The shader blobs are immutable and already
+        // share an inode with the staged master, so skip those.
         const bool isValidationFile =
             QFileInfo(srcPath).fileName().compare("Info.ini", Qt::CaseInsensitive) == 0;
         if (QFile::exists(dstPath)) {

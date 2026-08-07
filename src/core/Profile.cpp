@@ -111,11 +111,9 @@ bool Profile::saveModListOnly() const {
 }
 
 bool Profile::migrateAwayFromManagedCache() {
-    // The shader cache used to live in separate "managed cache" staging folders
-    // tracked by shadercache.json (and, older still, a hidden isManagedCache mod-list
-    // entry). It now lives inside the Community Shaders mod's own staging folder, so
-    // retire the old machinery: gather the old folder names, move them to Trash
-    // (reversible - never a hard delete), and remove the bookkeeping.
+    // The cache used to live in separate managed-cache folders tracked by
+    // shadercache.json; it now sits inside the CS mod. Retire the old folders to
+    // Trash (reversible) and drop the bookkeeping.
     QStringList oldFolders;
 
     QFile f(shaderCachePath());
@@ -193,12 +191,9 @@ bool Profile::seedExecutablesFrom(
         // (e.g. Overwrite) stays empty.
         if (!e.outputModId.isEmpty())
             e.outputModId = resolveOutputMod(e);
-        // extraActions[].outputModId can't be re-resolved here: the resolver is
-        // keyed on the main Executable, and the template's per-action output-mod
-        // name isn't available in this context. Clear them so seeded actions
-        // don't point at the template's (foreign-profile) ids; they're recreated
-        // on demand when the action is set up. The main outputModId above is the
-        // one that matters for the frictionless-output flow.
+        // The resolver is keyed on the main Executable, so per-action output mods
+        // can't be resolved here. Clear them rather than leave them pointing at
+        // another profile's ids; they're recreated when the action is set up.
         for (auto& a : e.extraActions)
             a.outputModId.clear();
         m_executables.append(e);

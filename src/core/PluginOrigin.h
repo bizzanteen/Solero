@@ -5,11 +5,9 @@
 
 namespace solero::PluginOrigin {
 
-// Build a reverse index: plugin filename (lowercased) -> the mod ids that ship a
-// plugin of that name. `orderedModIds` must be in LOW->HIGH priority order (mod-
-// list order: later = higher priority = conflict winner), so each result list is
-// likewise ordered low->high and its last entry is the winning provider.
-// `pluginsByMod` maps each mod id to its staged plugin filenames.
+// Reverse index: lowercased plugin filename -> the mod ids shipping it.
+// orderedModIds must be low->high priority, so each result is too and its last
+// entry is the winning provider.
 inline QHash<QString, QStringList> buildIndex(
         const QStringList& orderedModIds,
         const QHash<QString, QStringList>& pluginsByMod) {

@@ -96,12 +96,9 @@ EslEligibility PluginFlagEditor::checkEslEligible(const QString& path) {
         }
     }
 
-    // Walk every record, descending into every group
-    // Groups are laid out contiguously with their contents immediately after the
-    // 24-byte GRUP header, so a linear scan that steps 24 bytes into each group
-    // (rather than skipping it) visits every record in the file without needing to
-    // track group boundaries. FormIDs live in the record header, so compressed
-    // records are read the same as any other.
+    // Group contents sit immediately after the 24-byte GRUP header, so stepping
+    // into each group rather than over it visits every record without tracking
+    // boundaries. FormIDs are in the record header, so compression doesn't matter.
     qint64 pos = tes4End;
     int newRecords = 0;
     while (pos + kHeaderSize <= size) {

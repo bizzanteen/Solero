@@ -30,11 +30,9 @@ inline QString normalizeVersion(const QString& in) {
     return parts.join(QLatin1Char('.')) + suffix;
 }
 
-// True only if `latest` is a strictly newer version than `installed`. Both are
-// normalized first (so trailing-zero padding like "1.0.1.0" == "1.0.1" never
-// flags an update). Components are compared numerically; on any non-numeric
-// component mismatch (e.g. a "SE"/"c" suffix) we conservatively report not newer,
-// so odd MO2 version strings don't produce false "update available" flags.
+// True only if `latest` is strictly newer. Both normalized first, so "1.0.1.0"
+// and "1.0.1" match. Components compare numerically; a non-numeric mismatch (a
+// "SE"/"c" suffix) reports not-newer rather than risk a false update flag.
 inline bool isVersionNewer(const QString& installed, const QString& latest) {
     const QString a = normalizeVersion(installed);
     const QString b = normalizeVersion(latest);

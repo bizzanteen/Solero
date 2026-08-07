@@ -31,11 +31,8 @@ public:
 private:
     QHash<QString, FileConflict> m_conflicts;
 
-    // reverse index modId -> its winning / losing conflicted paths, so
-    // winningFilesOf/losingFilesOf are O(files of that mod), not a full scan of
-    // every conflicted path on each call. Built lazily on first query and
-    // invalidated by any mutation (setWinner/recordConflict/clear), so it always
-    // reflects m_conflicts.
+    // modId -> its winning/losing paths, so the lookups don't rescan every
+    // conflicted path. Built lazily and dropped on any mutation.
     void buildReverse() const;
     mutable bool m_reverseBuilt = false;
     mutable QHash<QString, QStringList> m_winningByMod; // modId -> paths it wins (with losers)

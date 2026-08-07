@@ -49,11 +49,9 @@ struct ModEntry {
     // (ManagedShaderCache / Profile::shaderCache). Profile::load() still READS this
     // to lift such an entry out of the list; it is never written back.
     bool isManagedCache = false;
-    // FOMOD detection (back-filled by the load-order FOMOD scan). isFomod is true
-    // when the mod's source archive carries a fomod/ModuleConfig.xml. fomodStatus
-    // tracks how its choices were recovered: "" (unknown/none), "reconstructed"
-    // (choices recovered by file-diff), "needs-rerun" (flag-driven; not
-    // reconstructable - re-run the installer to record), or "manual".
+    // isFomod: the source archive carries a fomod/ModuleConfig.xml. fomodStatus is
+    // how the choices were recovered: "" unknown, "reconstructed" (by file-diff),
+    // "needs-rerun" (flag-driven, not reconstructable), or "manual".
     bool isFomod = false;
     QString fomodStatus;
     QStringList tags;

@@ -78,11 +78,9 @@ bool AITransactionLog::revertTransaction(const QString& txId,
             return false;
         }
 
-        // Swap stage: move each staged temp into place atomically. Because every
-        // temp was written successfully above, this stage only performs renames,
-        // so a mid-loop failure cannot leave a file truncated/half-written.
-        // (`writer` is accepted for API compatibility; the durable write is done
-        // here via atomicWrite so callers can't undermine atomicity.)
+        // Every temp was written above, so this stage is renames only and a
+        // mid-loop failure can't leave a file half-written. `writer` is taken for
+        // API compatibility; the durable write happens here.
         Q_UNUSED(writer);
         bool swapped = true;
         for (int i = 0; i < temps.size(); ++i) {

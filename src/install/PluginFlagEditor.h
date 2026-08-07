@@ -12,12 +12,9 @@ struct EslEligibility {
     int     newRecordCount = 0;
 };
 
-// Reads and (carefully) rewrites the TES4 record header flags of a Skyrim plugin.
-//
-// The only mutation this class performs is an in-place rewrite of the 4-byte record
-// flags field at file offset 8 (little-endian uint32). It never touches record data,
-// never rewrites the whole file, and always backs the file up to <path>.bak-solero
-// first, so a partial/failed write cannot silently corrupt a plugin.
+// Reads and rewrites a plugin's TES4 record header flags. The only mutation is
+// the 4-byte flags field at offset 8; record data is never touched, and the file
+// is copied to <path>.bak-solero first.
 class PluginFlagEditor {
 public:
     // The ESL / "light master" record-header flag on the TES4 record.
@@ -43,11 +40,9 @@ public:
     // eligible=false with an explanatory reason rather than a guess.
     static EslEligibility checkEslEligible(const QString& path);
 
-    // Set (`set`=true) or clear (`set`=false) the ESL flag, rewriting only the
-    // 4-byte flags field in place after copying the file to <path>.bak-solero.
-    // When setting, this re-runs checkEslEligible() and REFUSES (returns false,
-    // *error set) if the plugin is not eligible - the UI gate is defence-in-depth,
-    // this is the hard guard. Returns false + sets *error on any failure.
+    // Set or clear the ESL flag in place, after backing the file up. Setting
+    // re-runs checkEslEligible() and refuses if the plugin isn't eligible - the UI
+    // gate is defence in depth, this is the hard one.
     static bool setLightFlag(const QString& path, bool set, QString* error = nullptr);
 };
 

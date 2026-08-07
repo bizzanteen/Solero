@@ -20,13 +20,9 @@ QString ModInstaller::baseName(const QString& archivePath) {
     return base.isEmpty() ? "New Mod" : base;
 }
 
-// Template path for extraction temp dirs. The system temp dir (/tmp) is often a
-// small tmpfs (e.g. 7 GB on this box) - large texture archives like Skyland AIO
-// unpack to >10 GB and overflow it, surfacing as "Extraction failed.". Root the
-// temp dir alongside the staging tree instead: it's on the big modding disk, so
-// extraction has room and the final stage becomes a same-filesystem rename
-// rather than a cross-device copy. Falls back to the system temp dir if no
-// staging dir is configured yet.
+// /tmp is often a small tmpfs and a big texture archive overflows it, surfacing
+// as "Extraction failed." Root the temp dir next to staging instead: room to
+// unpack, and the final stage becomes a same-filesystem rename.
 QString ModInstaller::extractTmpTemplate() {
     const QString staging = AppConfig::instance().stagingDir();
     QString base = staging;
@@ -53,11 +49,8 @@ bool ModInstaller::moveNormalized(const QString& extractDir,
         }
         if (stripped.isEmpty()) continue;
 
-        // Never stage FOMOD installer metadata into the mod: a top-level "fomod"
-        // path component (case-insensitive) holds ModuleConfig.xml/info.xml and
-        // installer images, which would otherwise leak into the game's Data dir
-        // (e.g. on the parse-failure fallback that stages all files). Match a
-        // leading "fomod/" in the stripped path.
+        // A top-level "fomod" holds ModuleConfig.xml and installer images, which
+        // would leak into Data on the fallback that stages everything.
         {
             const int slash = stripped.indexOf('/');
             const QString topComp = slash < 0 ? stripped : stripped.left(slash);
@@ -166,11 +159,9 @@ InstallPrep ModInstaller::prepare(const QString& archivePath,
             prep.fullyExtracted = true;
             locate();
         }
-        // The module root that the FOMOD's image/source paths are relative to is
-        // the PARENT of the `fomod` folder - which is extractDir for a flat
-        // archive but a wrapper subdir (e.g. "Skyland AIO/") when the archive
-        // nests everything one level deep. Derive it from the located config so
-        // the wizard resolves images against the right base.
+        // FOMOD source paths are relative to the parent of the `fomod` folder,
+        // which is extractDir for a flat archive but a wrapper subdir when the
+        // archive nests. Derive it from the config we found.
         if (!prep.fomodConfigPath.isEmpty()) {
             QDir fd(QFileInfo(prep.fomodConfigPath).absolutePath()); // .../fomod
             fd.cdUp();                                               // module root

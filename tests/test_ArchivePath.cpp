@@ -1,6 +1,5 @@
-// Archive entry names come from whatever wrote the archive, so they can carry
-// Windows separators, drive letters and traversal segments. Everything that
-// reaches the filesystem goes through sanitizeArchiveEntryPath first.
+// Entry names come from whatever wrote the archive: Windows separators, drive
+// letters, traversal segments.
 #include <QtTest>
 #include "install/ArchivePath.h"
 using namespace solero;
@@ -14,7 +13,7 @@ private slots:
         QCOMPARE(sanitizeArchiveEntryPath("readme.txt"), QStringLiteral("readme.txt"));
     }
 
-    // The Main Menu Randomizer case: one entry name, three path components.
+    // One entry name, three path components.
     void turnsWindowsSeparatorsIntoDirectories() {
         QCOMPARE(sanitizeArchiveEntryPath("SKSE\\Plugins\\main_menu_randomizer.dll"),
                  QStringLiteral("SKSE/Plugins/main_menu_randomizer.dll"));
@@ -50,7 +49,7 @@ private slots:
         QVERIFY(sanitizeArchiveEntryPath("/../evil.dll").isEmpty());
     }
 
-    // A name that survives normalisation but points at nothing can't be written.
+    // Normalises to nothing, so there's nowhere to write it.
     void rejectsAnEntryThatNormalisesToNothing() {
         QVERIFY(sanitizeArchiveEntryPath("").isEmpty());
         QVERIFY(sanitizeArchiveEntryPath("/").isEmpty());
@@ -58,7 +57,7 @@ private slots:
         QVERIFY(sanitizeArchiveEntryPath("./").isEmpty());
     }
 
-    // A dot-prefixed name is a normal file, not a traversal segment.
+    // Dot-prefixed names are files, not traversal.
     void keepsDotFiles() {
         QCOMPARE(sanitizeArchiveEntryPath("Data\\.soleromarker"),
                  QStringLiteral("Data/.soleromarker"));

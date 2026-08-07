@@ -1,6 +1,4 @@
-// The one-time repair for mods that were staged before extraction expanded
-// Windows path separators. Nobody re-installs a mod that reports no problem, so
-// without this those mods stay silently inert forever.
+// One-time repair for mods staged before extraction expanded Windows separators.
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QFile>
@@ -29,7 +27,7 @@ static QStringList filesUnder(const QString& dir) {
 class TestStagingPathRepair : public QObject {
     Q_OBJECT
 private slots:
-    // Main Menu Randomizer SE as it sits on disk today.
+    // Main Menu Randomizer SE as it sat on disk.
     void expandsABackslashNamedFileInAModFolder() {
         QTemporaryDir tmp;
         const QString staging = tmp.path() + "/mods";
@@ -48,8 +46,7 @@ private slots:
         QCOMPARE(f.readAll(), QByteArray("DLL"));
     }
 
-    // The overwhelming majority of mods are fine and must not be touched, and the
-    // pass has to be safe to run again on an already-repaired staging tree.
+    // Healthy mods untouched, and safe to run twice.
     void leavesHealthyModsAloneAndIsIdempotent() {
         QTemporaryDir tmp;
         const QString staging = tmp.path() + "/mods";
@@ -64,7 +61,7 @@ private slots:
         QCOMPARE(filesUnder(staging + "/Bad Mod"), (QStringList{"Data/SKSE/Plugins/x.dll"}));
     }
 
-    // Repair must never destroy a user's file, even one it cannot place safely.
+    // Never destroy a file, even one it can't place.
     void leavesAnUnsafeNameWhereItIsRatherThanDeletingIt() {
         QTemporaryDir tmp;
         const QString staging = tmp.path() + "/mods";

@@ -1,6 +1,5 @@
-// Choosing the group head for a newly installed file of an already-installed
-// Nexus mod, so "Cool Armour" and "Cool Armour PBR Textures" end up as one group
-// rather than two unrelated rows.
+// Group head for a new file of an already-installed mod, so "Cool Armour" and
+// "Cool Armour PBR Textures" end up as one group.
 #include <QtTest>
 #include "install/InstallGrouping.h"
 using namespace solero;
@@ -34,9 +33,8 @@ private slots:
         QCOMPARE(installGroupParent(l, "pbr", "111"), QStringLiteral("armour"));
     }
 
-    // The one that matters in a real list. Separators sit between the installed
-    // mod and the freshly appended one, because new installs land at the bottom
-    // under "NEW & UNSORTED" while the mod they belong to is sorted away above.
+    // The real case: new installs land under "NEW & UNSORTED" at the bottom while
+    // the mod they belong to is sorted away above.
     void groupsAcrossSeparators() {
         ModList l;
         l.append(separator("s1", "05. ----- ARMOUR -----"));
@@ -46,7 +44,7 @@ private slots:
         QCOMPARE(installGroupParent(l, "pbr", "111"), QStringLiteral("armour"));
     }
 
-    // A third file joins the existing group instead of nesting under a child.
+    // A third file joins the group, it doesn't nest under a child.
     void groupsUnderTheHeadWhenTheMatchIsAlreadyAChild() {
         ModList l;
         l.append(mod("armour", "Cool Armour", "111"));
@@ -63,8 +61,7 @@ private slots:
         QVERIFY(installGroupParent(l, "other", "222").isEmpty());
     }
 
-    // Identity is the Nexus mod id. Two entries with no id are not the same mod
-    // however similar their names are.
+    // Identity is the Nexus id, not the name.
     void neverGroupsEntriesWithoutANexusId() {
         ModList l;
         l.append(mod("a", "Hand Installed Thing"));
@@ -85,8 +82,7 @@ private slots:
         QVERIFY(installGroupParent(l, "pbr", "111").isEmpty());
     }
 
-    // The head that comes back has to be usable: groupUnder must place the child
-    // directly after the parent, which is what moves it out of the unsorted bucket.
+    // groupUnder puts the child straight after the parent, out of the unsorted bucket.
     void theChosenHeadMovesTheChildNextToIt() {
         ModList l;
         l.append(separator("s1", "05. ----- ARMOUR -----"));

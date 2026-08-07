@@ -28,9 +28,7 @@ void DeployJournal::append(const QString& relPath, const QString& modId,
     QJsonObject o;
     o.insert(QStringLiteral("p"), relPath);
     o.insert(QStringLiteral("m"), modId);
-    // Mirror DeployRecord: a size below zero means "no fingerprint" (generated
-    // artifacts), so leave the pair out entirely rather than storing -1.
-    if (size >= 0) {
+    if (size >= 0) { // size < 0 means no fingerprint; omit rather than store -1
         o.insert(QStringLiteral("s"), double(size));
         o.insert(QStringLiteral("t"), double(mtimeMs));
     }

@@ -13,6 +13,7 @@
 #include "core/StagingFolder.h"
 #include "core/OutputModMigration.h"
 #include "install/StagingPathRepair.h"
+#include "install/InstallGrouping.h"
 #include "core/FileUtil.h"
 #include "core/ShaderCache.h"
 #include "core/VersionUtil.h"
@@ -327,9 +328,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             QString("Deployed %1 files. %2 conflicts. Plugins sorted by LOOT.")
                 .arg(result.filesDeployed)
                 .arg(result.conflicts.conflictedPaths().size());
-        // Files an interrupted earlier deploy left in the game dir without
-        // recording them. Worth saying out loud: they were live in the game until
-        // now, which is why a disabled mod could still look installed.
+        // These were live in the game until now, so say so.
         if (result.filesOrphansSwept > 0)
             deploySummary += QString(" Also removed %1 leftover file(s) from mods "
                                      "that are no longer deployed.")
@@ -462,10 +461,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         solero::AppConfig::instance().save();
     }
 
-    // one-time: repair mods staged before extraction expanded Windows path
-    // separators, i.e. files literally named "SKSE\Plugins\foo.dll". Such a mod
-    // installs, deploys and launches without a word of complaint and does nothing,
-    // and re-installing is the only other cure - so it has to be fixed in place.
+    // one-time: fix mods staged with Windows separators baked into the filename
+    // ("SKSE\Plugins\foo.dll"). They install and deploy fine and do nothing.
     if (!solero::AppConfig::instance().stagingWindowsPathsRepaired()) {
         QStringList repaired;
         const int n = solero::repairWindowsPathsInStaging(
@@ -2891,31 +2888,10 @@ void MainWindow::installFromArchive(const QString& archive) {
         // contiguously right after the parent - groupUnder handles the repositioning.
         // (A same-name/same-mod re-install never reaches here - it went through the
         // Replace branch above - so this only fires for genuine multi-file additions.)
-        if (!mod.nexusModId.isEmpty()) {
-            const auto& list = profile->modList();
-            // The new mod was appended at the END, so it lives in the trailing
-            // separator section (after the last separator). Only auto-group it under
-            // a candidate that lives in that same section; grouping across a separator
-            // would pull the child out of its section and break the "children are
-            // contiguous with their parent in the same section" invariant.
-            int lastSeparatorRaw = -1;
-            for (int i = 0; i < list.count(); ++i)
-                if (list.at(i).type == solero::EntryType::Separator)
-                    lastSeparatorRaw = i;
-
-            QString parentId;
-            for (int i = 0; i < list.count(); ++i) {
-                const auto& e = list.at(i);
-                if (e.type != solero::EntryType::Mod) continue;
-                if (e.id == mod.id) continue;
-                if (e.nexusModId != mod.nexusModId) continue;
-                // Same trailing section only (a candidate in the trailing section has
-                // its parent, if any, in that same section too).
-                if (i <= lastSeparatorRaw) continue;
-                // Group head = the existing mod's parent if it's a child, else itself.
-                parentId = e.parentId.isEmpty() ? e.id : e.parentId;
-                break;
-            }
+        {
+            const QString parentId = solero::installGroupParent(
+                profile->modList(), mod.id, mod.nexusModId);
+            // Moves it next to the mod it belongs to, out of the unsorted section.
             if (!parentId.isEmpty())
                 profile->modList().groupUnder(mod.id, parentId);
         }

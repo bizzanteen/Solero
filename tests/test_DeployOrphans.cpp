@@ -1,11 +1,5 @@
-// Orphaned deployed files. Two halves of one invariant:
-//
-//  1. The deploy record must never be pruned of a file that is still physically
-//     in the game dir. If it is, and the deploy stops there (crash, OOM kill,
-//     power loss), the file becomes permanently invisible to Solero - no later
-//     deploy or undeploy can find it, because both work from the record.
-//  2. A deploy must clean up files an EARLIER deploy already orphaned that way,
-//     since users have them on disk today.
+// The deploy record must never forget a file that is still in the game dir, and
+// a deploy must clean up files an earlier one already orphaned that way.
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QFile>
@@ -42,9 +36,8 @@ static QStringList gameFiles(const QString& dir) {
     return out;
 }
 
-// Drop every path a given mod owns from the on-disk record, leaving the files
-// themselves in place. This is exactly the state a deploy leaves behind when it
-// flushes the pruned record and then stops before the stale sweep runs.
+// The state a deploy leaves when it flushes the pruned record then stops before
+// the sweep: files on disk, no record entries.
 static void forgetModInRecord(const QString& game, const QString& modId) {
     const QString path = DeployEngine::recordPath(game);
     DeployRecord rec = DeployRecord::loadFromFile(path);
@@ -59,9 +52,7 @@ class TestDeployOrphans : public QObject {
 private slots:
     void initTestCase() { qputenv("HOME", m_home.path().toLocal8Bit()); }
 
-    // The record on disk must cover every file in the game dir at every point a
-    // deploy could be interrupted. Sampled from the progress callback, which fires
-    // after each mod - i.e. after the record flushes that pruning happens in.
+    // Sampled from the progress callback, which fires after each mod.
     void recordNeverForgetsAFileThatIsStillInTheGameDir() {
         QTemporaryDir tmp;
         const QString staging = tmp.path() + "/staging";
@@ -98,8 +89,7 @@ private slots:
                             + forgotten.join(", ")));
     }
 
-    // The plain case, for both an asset and a plugin: disable, deploy, and the
-    // files are gone from the game dir AND from the record.
+    // Disable, deploy: gone from the game dir and from the record.
     void disablingAModRemovesItsFilesFromDiskAndFromTheRecord() {
         QTemporaryDir tmp;
         const QString staging = tmp.path() + "/staging";
@@ -130,9 +120,7 @@ private slots:
         QVERIFY(QFile::exists(game + "/Data/a1.esp"));
     }
 
-    // The state users already have: a previous deploy pruned the record but never
-    // unlinked the files. The record can no longer see them, so the fix has to be
-    // structural - a hardlink into the game dir from a mod that isn't deployed.
+    // The record can't see these, so the cleanup has to be structural.
     void deployCleansUpFilesAnEarlierDeployOrphaned() {
         QTemporaryDir tmp;
         const QString staging = tmp.path() + "/staging";
@@ -161,8 +149,7 @@ private slots:
         QVERIFY(QFile::exists(game + "/Data/a1.esp"));
     }
 
-    // Same, for a mod removed from the profile outright rather than disabled -
-    // its staging folder is still on disk but nothing references it.
+    // Removed from the profile rather than disabled; staging is still there.
     void deployCleansUpFilesLeftByAModThatIsGoneFromTheProfile() {
         QTemporaryDir tmp;
         const QString staging = tmp.path() + "/staging";
@@ -188,9 +175,7 @@ private slots:
         QVERIFY(QFile::exists(game + "/Data/a1.esp"));
     }
 
-    // What an interrupted deploy actually leaves: the record from before it, plus a
-    // journal of what it managed to link. Both halves have to come back, or the
-    // files linked by the interrupted run are untracked from then on.
+    // An interrupted deploy leaves the old record plus a journal. Both must load.
     void anInterruptedDeployIsRecoveredFromItsJournal() {
         QTemporaryDir tmp;
         const QString staging = tmp.path() + "/staging";
@@ -205,8 +190,7 @@ private slots:
         DeployEngine e(game, staging);
         QVERIFY(e.deploy(p, DeployMode::HardLink).success);
 
-        // Stand in for the tail of an interrupted deploy: a file linked into the
-        // game dir and journalled, with the record still describing the run before.
+        // Tail of an interrupted deploy: linked and journalled, record unchanged.
         const QString recPath = DeployEngine::recordPath(game);
         writeFile(game + "/Data/late.esp", "late");
         {
@@ -221,19 +205,15 @@ private slots:
         QVERIFY2(rec.contains("Data/late.esp"), "lost the journalled entry");
         QCOMPARE(rec.ownerOf("Data/late.esp"), QStringLiteral("A"));
 
-        // And a clean undeploy takes the journal with the record, so its entries
-        // can't come back to haunt the next deploy.
+        // A clean undeploy takes the journal with the record.
         QVERIFY(e.undeploy(game));
         QVERIFY(!QFile::exists(recPath));
         QVERIFY(!QFile::exists(DeployJournal::pathFor(recPath)));
         QVERIFY(DeployRecord::loadFromFile(recPath).allPaths().isEmpty());
     }
 
-    // Output mods (Nemesis, PGPatcher, Radium, Synthesis) are the highest-stakes
-    // case for the sweep: their content exists nowhere else, and deleting Nemesis's
-    // behaviour files breaks every animation in the game. So an enabled output mod's
-    // files must survive even when the record has lost track of them - the sweep may
-    // never fall back on "in the game dir, not in the record" as its test.
+    // Tool output exists nowhere else, and deleting Nemesis's behaviour files
+    // breaks every animation. Must survive even when the record forgets them.
     void theSweepNeverTouchesAnEnabledOutputModsFiles() {
         QTemporaryDir tmp;
         const QString staging = tmp.path() + "/staging";
@@ -259,8 +239,7 @@ private slots:
         const QString behaviour = game + "/Data/meshes/actors/character/behaviors/0_master.hkx";
         QVERIFY(QFile::exists(behaviour));
 
-        // Record drift: whatever the cause, the record no longer knows these are
-        // Nemesis's. The mod is still enabled, so they are still live game content.
+        // The record no longer knows these are Nemesis's. Still enabled, still live.
         forgetModInRecord(game, "NEM");
         auto r = e.deploy(p, DeployMode::HardLink);
         QVERIFY(r.success);
@@ -269,9 +248,7 @@ private slots:
                  "swept a live Nemesis output file");
     }
 
-    // Loose files that no mod provides - an old tool run that wrote straight into
-    // the game folder, or a leftover from a previous manager. Solero does not own
-    // them, so it must not delete them just because they are unrecorded.
+    // Files no mod provides. Solero doesn't own them, so it can't delete them.
     void theSweepLeavesUnmanagedLooseFilesAlone() {
         QTemporaryDir tmp;
         const QString staging = tmp.path() + "/staging";
@@ -279,8 +256,7 @@ private slots:
         QDir().mkpath(game);
         writeFile(staging + "/A/Data/a1.esp", "one");
         writeFile(staging + "/Old/Data/old.esp", "old");   // disabled, gives the sweep work
-        // Provided by nothing in staging, and a single link, so no inode ties it to
-        // Solero. Mirrors the ancient loose behaviour files in a real game dir.
+        // Single link, no provider - nothing ties it to Solero.
         writeFile(game + "/Data/meshes/actors/character/_1stperson/behaviors/0_master.hkx",
                   "ancient");
 
@@ -296,9 +272,7 @@ private slots:
                  "swept a loose file Solero never deployed");
     }
 
-    // The sweep is structural, so it has to be narrow: a file this deploy legitimately
-    // put there must survive even when the record lost track of it, and a vanilla file
-    // that never came from staging must never be touched.
+    // A file this deploy put there survives a record gap; vanilla is never touched.
     void theSweepLeavesDeployedAndVanillaFilesAlone() {
         QTemporaryDir tmp;
         const QString staging = tmp.path() + "/staging";
@@ -316,8 +290,7 @@ private slots:
         DeployEngine e(game, staging);
         QVERIFY(e.deploy(p, DeployMode::HardLink).success);
 
-        // B stays enabled, so this deploy re-records its files - the sweep must not
-        // mistake them for orphans just because the previous record forgot them.
+        // B stays enabled, so this deploy re-records its files.
         forgetModInRecord(game, "B");
         QVERIFY(e.deploy(p, DeployMode::HardLink).success);
 

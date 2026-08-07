@@ -139,9 +139,7 @@ bool ArchiveTool::expandWindowsPaths(const QString& rootDirPath, QStringList* ex
     const QString root = QDir::cleanPath(rootDirPath);
     QDir rootDir(root);
 
-    // Collect first: moving files while the iterator walks the same tree is not
-    // safe, and a move can create directories the walk would then revisit.
-    QStringList wrong;
+    QStringList wrong; // collect first - moving during the walk isn't safe
     {
         QDirIterator it(root, QDir::Files | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot,
                         QDirIterator::Subdirectories);
@@ -157,8 +155,6 @@ bool ArchiveTool::expandWindowsPaths(const QString& rootDirPath, QStringList* ex
         const QString rel  = rootDir.relativeFilePath(abs);
         const QString safe = sanitizeArchiveEntryPath(rel);
         if (safe.isEmpty()) {
-            // Traversal or an otherwise unwritable name. Nothing here is worth
-            // installing, so let the caller throw the whole extraction away.
             qCWarning(lcInstall) << "archive entry cannot be made safe, rejecting:" << rel;
             ok = false;
             continue;
@@ -166,9 +162,7 @@ bool ArchiveTool::expandWindowsPaths(const QString& rootDirPath, QStringList* ex
         const QString dst = root + "/" + safe;
         if (QDir::cleanPath(dst) == QDir::cleanPath(abs)) continue;
         QDir().mkpath(QFileInfo(dst).path());
-        // A real entry at the same path wins the collision the way an extractor
-        // resolves one: last write wins.
-        if (QFile::exists(dst)) QFile::remove(dst);
+        if (QFile::exists(dst)) QFile::remove(dst); // last write wins, as 7z does
         if (!QFile::rename(abs, dst)) {
             qCWarning(lcInstall) << "could not expand Windows path" << rel << "->" << safe;
             ok = false;
@@ -178,8 +172,7 @@ bool ArchiveTool::expandWindowsPaths(const QString& rootDirPath, QStringList* ex
         qCDebug(lcInstall) << "expanded Windows path" << rel << "->" << safe;
     }
 
-    // Drop the backslash-named directories the files came out of, deepest first so
-    // a nested one empties before its parent is considered.
+    // Deepest first, so a nested dir empties before its parent is checked.
     QStringList dirs;
     {
         QDirIterator it(root, QDir::Dirs | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot,
@@ -234,8 +227,7 @@ bool ArchiveTool::validateExtraction(const QString& destDir) {
 
 bool ArchiveTool::finalizeExtract(const QString& destDir, bool extractOk) {
     if (!extractOk) return false;
-    // Expand first: a "..\evil" entry is a harmless filename until the separators
-    // are normalised, so validateExtraction has to see the real destinations.
+    // Expand first: "..\evil" is only a traversal once the separators are real.
     if (expandWindowsPaths(destDir) && validateExtraction(destDir)) return true;
     qCWarning(lcInstall) << "extraction failed path-safety validation, removing" << destDir;
     QDir(destDir).removeRecursively();

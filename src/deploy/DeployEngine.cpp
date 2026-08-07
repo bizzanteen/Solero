@@ -111,15 +111,10 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
     int done = 0;
     if (onProgress) onProgress(0, total);
 
-    // At every point a deploy can be interrupted, the on-disk tracking must still
-    // cover every file physically in the game dir - otherwise the untracked ones
-    // are orphaned for good, since both a later deploy and undeploy work from the
-    // record. That means the record file must NOT be rewritten here: the new
-    // record legitimately omits the files a disabled mod left behind, and those
-    // aren't unlinked until removeStalePaths() at the end. So the old record stays
-    // put (it covers the previous deployment) and newly linked paths are appended
-    // to the journal, which loadFromFile() folds back in. The record is rewritten
-    // once, after the sweep, and the journal is dropped only then.
+    // The record file is NOT rewritten here. It still describes the previous
+    // deployment, whose files aren't unlinked until removeStalePaths() below; a
+    // deploy that stopped in between would leave them untracked for good. New links
+    // go to the journal instead. See DeployJournal.
     bool recordSaveFailed = false;
     if (!m_journal.begin(recPath))
         qCWarning(lcDeploy) << "could not open the deploy journal at"
@@ -132,10 +127,8 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
     for (const auto& entry : profile.modList()) {
         if (entry.type != EntryType::Mod) continue;
         if (!entry.enabled) continue;
-        // Push the journal out after a mod that actually LINKED something, so a
-        // newly linked file is on disk in the journal before the next mod starts.
-        // Already-linked / skipped files were persisted by the deploy that first
-        // linked them, so the unchanged majority costs nothing.
+        // Flush only after a mod that linked something; the unchanged majority
+        // was already persisted by the deploy that first linked it.
         const int linksBefore = m_linkCount;
         failures += deployMod(entry, m_gameDir, linker, prevRecord, record, conflicts, ciOwners);
         if (m_linkCount != linksBefore) flushRecord();
@@ -235,10 +228,8 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
     // restore any originals they covered. must run after the generated artifacts
     // above are recorded so they aren't mistaken for stale. No-op in full-redeploy
     // mode (prevRecord was cleared, so undeploy already did the teardown).
-    // Work out what the sweep OUGHT to remove before running it. Every path the
-    // previous deployment recorded under a mod that is no longer deployed has to
-    // go; "0 removed" right after disabling mods is the signature of the record
-    // being pruned without the files being unlinked, and it used to pass silently.
+    // What the sweep ought to remove. "0 removed" right after disabling mods used
+    // to pass silently, and that's exactly the orphaning bug's signature.
     QSet<QString> deployedOwners{overwriteOwnerId(), kGeneratedArtifactOwner};
     for (const auto& e : profile.modList())
         if (e.type == EntryType::Mod && e.enabled) deployedOwners.insert(e.id);
@@ -264,19 +255,15 @@ DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
                                    "that are no longer deployed";
     }
 
-    // Self-healing pass for orphans an EARLIER deploy left behind - files whose
-    // record entries are already gone, so the sweep above cannot see them. Runs
-    // after it so anything the record could account for has been dealt with first.
+    // Orphans an earlier deploy left behind, which the record can no longer see.
     result.filesOrphansSwept = sweepUndeployedModOrphans(profile, record, linker, m_gameDir);
     if (result.filesOrphansSwept > 0)
         qCWarning(lcDeploy) << "removed" << result.filesOrphansSwept
                             << "untracked file(s) left in the game dir by an earlier "
                                "deploy (their mods are no longer deployed)";
 
-    // The record is written ONCE, here: it now describes exactly what is in the
-    // game dir, because every removal above has already happened. Only then is the
-    // journal dropped - until this succeeds it is the only record of what this
-    // deploy linked.
+    // Written once, here: every removal above has happened, so the record now
+    // matches the game dir. The journal goes only after this succeeds.
     if (!record.saveToFile(recPath)) {
         recordSaveFailed = true;
         qCWarning(lcDeploy) << "failed to persist deploy record to" << recPath;
@@ -746,10 +733,7 @@ bool DeployEngine::undeploy(const QString& gameDir, const std::function<void(int
         QDir(backupRoot).removeRecursively();
     }
 
-    // Keep the record if anything remained so a later undeploy can retry those
-    // paths; only drop it once the game dir is fully cleaned. The journal goes with
-    // it - on the failure path its entries are still needed, since they were folded
-    // into the record above but never written back to the record file.
+    // Keep both if anything remained, so a later undeploy can retry those paths.
     if (failures == 0) {
         QFile::remove(recPath);
         QFile::remove(DeployJournal::pathFor(recPath));
@@ -815,8 +799,7 @@ int DeployEngine::sweepStagingOrphans(const QString& gameDir, const QString& bac
     for (const QString& p : orphans) {
         if (!QFile::remove(p)) continue;
         ++removed;
-        // Prune now-empty parent dirs up to (not including) the game dir; never the
-        // backup tree.
+        // Prune emptied parent dirs, never the backup tree.
         QDir dir(QFileInfo(p).path());
         while (QDir::cleanPath(dir.path()) != normGameDir
                && !QDir::cleanPath(dir.path()).startsWith(backupRoot)
@@ -875,9 +858,8 @@ int DeployEngine::sweepUndeployedModOrphans(const Profile& profile,
     const QString normGameDir = QDir::cleanPath(gameDir);
     const QString backupRoot  = normGameDir + "/" + backupDirName();
 
-    // Staging folders this deploy sourced from. Everything else under the staging
-    // root belongs to a mod that is disabled, absent from this profile, or a
-    // retired version variant - none of which should have files in the game dir.
+    // Anything else under the staging root is disabled, gone from the profile, or
+    // a retired variant, and has no business having files in the game dir.
     QSet<QString> deployedRoots;
     for (const auto& e : profile.modList())
         if (e.type == EntryType::Mod && e.enabled)
@@ -897,9 +879,8 @@ int DeployEngine::sweepUndeployedModOrphans(const Profile& profile,
             const QString fn = QFileInfo(srcPath).fileName();
             if (fn.startsWith(".solero")) continue;   // per-mod metadata, never deployed
 
-            // A symlink-staged mod (e.g. a StockGame overlay) can point back into
-            // the game dir; following it would make a vanilla file look like this
-            // mod's content. Mirrors the undeploy sweep.
+            // A symlink-staged mod can point back into the game dir; following it
+            // would make a vanilla file look like mod content.
             const QFileInfo srcInfo = it.fileInfo();
             QString realSrc = srcPath;
             if (srcInfo.isSymLink()) {
@@ -909,23 +890,18 @@ int DeployEngine::sweepUndeployedModOrphans(const Profile& profile,
                 realSrc = canon;
             }
 
-            // Cheap pre-filter before the (directory-scanning) case resolution
-            // below: a staged file with a single link is not deployed anywhere, so
-            // it cannot be an orphan. On a real staging tree this rejects the vast
-            // majority, and it also makes the whole sweep a no-op in Copy mode,
-            // where nothing shares an inode.
+            // A single-link staged file isn't deployed anywhere, so skip it before
+            // paying for the case resolution below. Also no-ops Copy mode.
             struct stat ss;
             if (::stat(QFile::encodeName(realSrc).constData(), &ss) != 0) continue;
             if (ss.st_nlink < 2) continue;
 
             const QString destRel = canonicalizeRelPath(normGameDir,
                                                         srcPath.mid(root.length() + 1));
-            if (newRecord.contains(destRel)) continue;  // this deploy owns it - not an orphan
+            if (newRecord.contains(destRel)) continue;  // this deploy owns it
             const QString dstPath = normGameDir + "/" + destRel;
             if (QDir::cleanPath(dstPath).startsWith(backupRoot)) continue;
-            // The only safe identity test: the game-dir file IS the staged file
-            // (same inode). A copy would be indistinguishable from a vanilla file,
-            // so nothing is removed in Copy/SymLink mode.
+            // Same inode is the only safe test - a copy looks like a vanilla file.
             if (linker.alreadyDeployed(realSrc, dstPath)) orphans << dstPath;
         }
     }

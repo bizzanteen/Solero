@@ -1,7 +1,6 @@
-// Extraction has to land files where the mod expects them. An archive written on
-// Windows can store a whole path as one entry name ("SKSE\Plugins\foo.dll"), and
-// because backslash is a legal filename character here, every extractor happily
-// makes a single file called that. Nothing errors; the mod just never works.
+// A Windows-written archive can store a whole path as one entry name
+// ("SKSE\Plugins\foo.dll"). Backslash is legal in a filename here, so extractors
+// make one file called that and the mod silently does nothing.
 #include <QtTest>
 #include <QTemporaryDir>
 #include <QFile>
@@ -34,8 +33,7 @@ void put32(QByteArray& out, quint32 v) {
     for (int i = 0; i < 4; ++i) out.append(char((v >> (8 * i)) & 0xFF));
 }
 
-// Minimal stored-mode (uncompressed) zip writer. Hand-rolled so the fixture can
-// hold entry names no ordinary archiver would produce on this platform.
+// Hand-rolled so fixtures can hold entry names no archiver here would produce.
 void writeZip(const QString& path, const QList<QPair<QByteArray, QByteArray>>& entries) {
     QByteArray local, central;
     for (const auto& e : entries) {
@@ -101,8 +99,7 @@ private slots:
         if (!haveSevenZip()) QSKIP("7z is not on PATH");
     }
 
-    // Nexus 33574 (Main Menu Randomizer SE) ships exactly this: SKSE never saw the
-    // plugin because the "directory" was part of the filename.
+    // Nexus 33574 ships exactly this; SKSE never saw the plugin.
     void expandsAWindowsPathStoredAsOneEntryName() {
         QTemporaryDir tmp;
         const QString zip  = tmp.path() + "/mod.zip";
@@ -125,7 +122,7 @@ private slots:
         QCOMPARE(f.readAll(), QByteArray("DLL"));
     }
 
-    // Mixed archives are the common real case: most entries are fine and one is not.
+    // The common case: most entries fine, one not.
     void leavesOrdinaryEntriesUntouched() {
         QTemporaryDir tmp;
         const QString zip  = tmp.path() + "/mod.zip";
@@ -140,8 +137,7 @@ private slots:
                  (QStringList{"Data/meshes/a.nif", "Data/textures/b.dds"}));
     }
 
-    // The same trick is how a Windows-separator entry escapes the extraction root,
-    // and 7z does not treat it as a path at all, so it cannot refuse it either.
+    // 7z doesn't see this as a path at all, so it can't refuse it either.
     void rejectsTraversalHiddenInAWindowsPath() {
         QTemporaryDir tmp;
         const QString zip  = tmp.path() + "/evil.zip";
@@ -156,8 +152,7 @@ private slots:
         QVERIFY2(!QFile::exists(outside), "traversal entry escaped the extraction root");
     }
 
-    // A directory entry stored with separators makes the whole subtree land under
-    // one oddly named folder; its files still have to end up in the real tree.
+    // Files under a backslash-named directory still land in the real tree.
     void expandsFilesInsideAWindowsNamedDirectory() {
         QTemporaryDir tmp;
         const QString zip  = tmp.path() + "/mod.zip";

@@ -70,9 +70,7 @@ bool DeployRecord::saveToFile(const QString& path) const {
 DeployRecord DeployRecord::loadFromFile(const QString& path) {
     DeployRecord rec;
     QFile f(path);
-    // A missing record file is still worth a journal check: a full redeploy
-    // deletes the record up front, so after an interrupted one the journal is the
-    // only trace of what got linked.
+    // Still check the journal: a full redeploy deletes the record up front.
     if (!f.open(QIODevice::ReadOnly)) {
         DeployJournal::mergeInto(rec, path);
         return rec;
@@ -104,9 +102,7 @@ DeployRecord DeployRecord::loadFromFile(const QString& path) {
         for (auto it = obj.constBegin(); it != obj.constEnd(); ++it)
             rec.add(it.key(), it.value().toString());
     }
-    // Fold in anything an interrupted deploy linked after this record was written,
-    // so the loaded record stays a superset of what is physically deployed.
-    DeployJournal::mergeInto(rec, path);
+    DeployJournal::mergeInto(rec, path); // anything linked after this was written
     return rec;
 }
 

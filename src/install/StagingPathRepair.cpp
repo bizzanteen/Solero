@@ -13,8 +13,7 @@ int repairWindowsPathsInStaging(const QString& stagingDir, QStringList* repaired
         QDir(stagingDir).entryList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden);
     for (const QString& folder : folders) {
         QStringList expanded;
-        // Scoped per mod folder so a repaired path is always relative to the mod,
-        // exactly as it would have been had the archive extracted correctly.
+        // Per mod folder, so repaired paths come out relative to the mod.
         if (!ArchiveTool::expandWindowsPaths(stagingDir + "/" + folder, &expanded))
             qCWarning(lcInstall) << "staging repair: could not fully expand" << folder;
         if (expanded.isEmpty()) continue;

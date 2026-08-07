@@ -86,6 +86,12 @@ target_include_directories(test_MenuFilter PRIVATE ../src ${CMAKE_BINARY_DIR}/in
 target_link_libraries(test_MenuFilter PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_MenuFilter COMMAND test_MenuFilter)
 
+# sanitizeArchiveEntryPath is header-only (install/ArchivePath.h).
+add_executable(test_ArchivePath test_ArchivePath.cpp)
+target_include_directories(test_ArchivePath PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_ArchivePath PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_ArchivePath COMMAND test_ArchivePath)
+
 # dirHasFiles is header-only (core/FileUtil.h), so no extra sources to compile.
 add_executable(test_DirHasFiles test_DirHasFiles.cpp)
 target_include_directories(test_DirHasFiles PRIVATE ../src ${CMAKE_BINARY_DIR}/include)

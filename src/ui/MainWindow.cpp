@@ -14,6 +14,7 @@
 #include "core/OutputModMigration.h"
 #include "install/StagingPathRepair.h"
 #include "install/InstallGrouping.h"
+#include "nexus/FileSuccessor.h"
 #include "core/FileUtil.h"
 #include "core/ShaderCache.h"
 #include "core/VersionUtil.h"
@@ -3595,32 +3596,36 @@ void MainWindow::onUpdateMod(const QString& modId) {
         return;
     }
 
-    const QString nexusModId = mod->nexusModId;
+    const QString nexusModId  = mod->nexusModId;
+    const QString nexusFileId = mod->nexusFileId;
     m_updateTargetId   = mod->id;
     m_updateTargetName = mod->name;
 
     statusBar()->showMessage("Resolving latest version for " + mod->name + "\xe2\x80\xa6");
 
-    m_updateResolveWatcher.setFuture(QtConcurrent::run([nexusModId]() -> ResolvedUpdate {
+    m_updateResolveWatcher.setFuture(
+        QtConcurrent::run([nexusModId, nexusFileId]() -> ResolvedUpdate {
         ResolvedUpdate out;
-        const auto files = solero::NexusApi::files(nexusModId);
-        if (files.isEmpty()) { out.error = "Could not list files for this mod."; return out; }
+        const auto fl = solero::NexusApi::fileList(nexusModId);
+        if (fl.files.isEmpty()) { out.error = "Could not list files for this mod."; return out; }
 
-        const QString latest = solero::NexusApi::latestVersion(nexusModId);
-
-        // Pick the best file: prefer main-category files, choosing the highest
-        // version among them; otherwise the file whose version == latestVersion;
-        // else fall back to the last (roughly newest) file in the list.
         const solero::NexusApi::NexusFile* picked = nullptr;
-        for (const auto& f : files) {
-            if (f.category.compare("MAIN", Qt::CaseInsensitive) != 0) continue;
-            if (!picked || f.version > picked->version) picked = &f;
+        // Update the file that's installed. Without a fileId there's nothing to
+        // resolve against, so fall back to the newest main file as before.
+        const QString succId =
+            solero::nexusSuccessorFileId(fl.files, fl.updates, nexusFileId);
+        if (!succId.isEmpty()) {
+            for (const auto& f : fl.files) if (f.fileId == succId) { picked = &f; break; }
+        } else if (nexusFileId.isEmpty()) {
+            for (const auto& f : fl.files) {
+                if (f.category.compare("MAIN", Qt::CaseInsensitive) != 0) continue;
+                if (!picked || isVersionNewer(picked->version, f.version)) picked = &f;
+            }
         }
-        if (!picked && !latest.isEmpty()) {
-            for (const auto& f : files)
-                if (f.version == latest) { picked = &f; break; }
+        if (!picked) {
+            out.error = "No newer version of this file is available on Nexus.";
+            return out;
         }
-        if (!picked) picked = &files.last();
 
         out.fileId   = picked->fileId;
         out.fileName = picked->name;
@@ -3973,7 +3978,7 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
         // Bounded fan-out: each NexusApi call blocks on a curl QProcess, so run up
         // to 6 at once on a LOCAL pool (never starve the shared global pool). With
         // ~450 mods this turns minutes of serial round-trips into total/6 batches.
-        QHash<QString, QList<solero::NexusApi::NexusFile>> filesByMod;
+        QHash<QString, solero::NexusApi::FileList> filesByMod;
         filesByMod.reserve(total);
         QMutex mutex;
         std::atomic<int> done{0};
@@ -3982,10 +3987,10 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
             pool.setMaxThreadCount(6);
             for (const QString& modId : modIds) {
                 pool.start([&, modId]() {
-                    const auto files = solero::NexusApi::files(modId);
+                    const auto fl = solero::NexusApi::fileList(modId);
                     {
                         QMutexLocker lock(&mutex);
-                        filesByMod.insert(modId, files);
+                        filesByMod.insert(modId, fl);
                     }
                     const int d = ++done;
                     // Marshal progress to the UI thread. The lambda runs there, so
@@ -4032,20 +4037,19 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
                 scan.backfill.insert(it.id, qMakePair(fileId, installedVer));
             }
 
-            // Accurate check: find the newest main file and flag only when it is a
-            // DIFFERENT, newer-versioned file than the one installed - so having the
-            // current file never false-flags. (Files were pre-fetched above.)
-            const auto files = filesByMod.value(it.modId);
-            const solero::NexusApi::NexusFile* latestMain = nullptr;
-            for (const auto& f : files) {
-                if (f.category.compare("MAIN", Qt::CaseInsensitive) != 0) continue;
-                if (!latestMain || isVersionNewer(latestMain->version, f.version)) latestMain = &f;
-            }
-            if (!latestMain || latestMain->fileId == fileId) continue;
-            if (!installedVer.isEmpty() && !latestMain->version.isEmpty()
-                && isVersionNewer(installedVer, latestMain->version))
+            // Ask the question of the installed FILE, not of the mod page: a page
+            // hosts a main file at 5.0 and a texture pack at 1.2, and the pack's
+            // update is a newer pack, not the main file.
+            const auto& fl = filesByMod[it.modId];
+            const QString succId = solero::nexusSuccessorFileId(fl.files, fl.updates, fileId);
+            if (succId.isEmpty() || succId == fileId) continue;
+            const solero::NexusApi::NexusFile* succ = nullptr;
+            for (const auto& f : fl.files) if (f.fileId == succId) { succ = &f; break; }
+            if (!succ) continue;
+            if (!installedVer.isEmpty() && !succ->version.isEmpty()
+                && isVersionNewer(installedVer, succ->version))
                 scan.updates.insert(it.id, qMakePair(normalizeVersion(installedVer),
-                                                     normalizeVersion(latestMain->version)));
+                                                     normalizeVersion(succ->version)));
         }
         return scan;
     });

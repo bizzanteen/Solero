@@ -351,15 +351,16 @@ NexusApi::ModDetails NexusApi::modDetails(const QString& modId, const QString& g
     return r;
 }
 
-QList<NexusApi::NexusFile> NexusApi::files(const QString& modId, const QString& game) {
-    QList<NexusFile> out;
+NexusApi::FileList NexusApi::fileList(const QString& modId, const QString& game) {
+    FileList out;
     if (modId.isEmpty()) return out;
     qCInfo(lcNexus) << "files" << game << "mod" << modId;
     QByteArray body = curlGet(kBase + game + "/mods/" + modId + "/files.json");
     if (body.isEmpty()) { qCWarning(lcNexus) << "files: empty response for mod" << modId; return out; }
     auto doc = QJsonDocument::fromJson(body);
     if (!doc.isObject()) return out;
-    for (const auto& v : doc.object()["files"].toArray()) {
+    const auto root = doc.object();
+    for (const auto& v : root["files"].toArray()) {
         auto o = v.toObject();
         NexusFile f;
         int id = o["file_id"].toInt();
@@ -370,9 +371,20 @@ QList<NexusApi::NexusFile> NexusApi::files(const QString& modId, const QString& 
         f.description = o["description"].toString();
         f.sizeKb = static_cast<qint64>(o["size_kb"].toDouble());
         if (f.sizeKb == 0) f.sizeKb = static_cast<qint64>(o["size"].toDouble());
-        if (!f.fileId.isEmpty()) out.append(f);
+        if (!f.fileId.isEmpty()) out.files.append(f);
+    }
+    for (const auto& v : root["file_updates"].toArray()) {
+        auto o = v.toObject();
+        const int oldId = o["old_file_id"].toInt();
+        const int newId = o["new_file_id"].toInt();
+        if (oldId > 0 && newId > 0)
+            out.updates.append({QString::number(oldId), QString::number(newId)});
     }
     return out;
+}
+
+QList<NexusApi::NexusFile> NexusApi::files(const QString& modId, const QString& game) {
+    return fileList(modId, game).files;
 }
 
 QList<NexusApi::ModRequirement> NexusApi::modRequirements(const QString& modId, const QString& game) {

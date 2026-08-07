@@ -57,6 +57,13 @@ public:
     struct NexusFile { QString fileId, name, version, category, description; qint64 sizeKb = 0; };
     static QList<NexusFile> files(const QString& modId, const QString& game = kDefaultGame);
 
+    // The author's "this file replaces that one" links, from files.json's
+    // file_updates. The only reliable way to tell which file on a page is the
+    // update for the one that's installed. See nexus/FileSuccessor.h.
+    struct FileUpdate { QString oldFileId, newFileId; };
+    struct FileList { QList<NexusFile> files; QList<FileUpdate> updates; };
+    static FileList fileList(const QString& modId, const QString& game = kDefaultGame);
+
     // Lists a mod's Nexus mod requirements (v2 GraphQL). external == true marks
     // an off-site requirement that isn't a Nexus mod on this game. Returns empty
     // on any failure (network, errors, not-found).

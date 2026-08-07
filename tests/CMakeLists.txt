@@ -92,6 +92,15 @@ target_include_directories(test_ArchivePath PRIVATE ../src ${CMAKE_BINARY_DIR}/i
 target_link_libraries(test_ArchivePath PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_ArchivePath COMMAND test_ArchivePath)
 
+# ArchiveTool shells out to 7z/unrar; the tests build their own zip fixtures and
+# skip when 7z is unavailable.
+add_executable(test_ArchiveTool test_ArchiveTool.cpp
+  ../src/install/ArchiveTool.cpp
+  ../src/core/Log.cpp)
+target_include_directories(test_ArchiveTool PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_ArchiveTool PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_ArchiveTool COMMAND test_ArchiveTool)
+
 # dirHasFiles is header-only (core/FileUtil.h), so no extra sources to compile.
 add_executable(test_DirHasFiles test_DirHasFiles.cpp)
 target_include_directories(test_DirHasFiles PRIVATE ../src ${CMAKE_BINARY_DIR}/include)

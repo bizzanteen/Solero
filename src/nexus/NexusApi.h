@@ -64,11 +64,9 @@ public:
     struct FileList { QList<NexusFile> files; QList<FileUpdate> updates; };
     static FileList fileList(const QString& modId, const QString& game = kDefaultGame);
 
-    // Lists a mod's Nexus mod requirements (v2 GraphQL). external == true marks
-    // an off-site requirement that isn't a Nexus mod on this game. Returns empty
-    // on any failure (network, errors, not-found).
-    // external == true -> off-site (not a Nexus mod for this game); url points to the
-    // off-site page and modId is a meaningless "0". For Nexus reqs, url is empty.
+    // A mod's requirements (v2 GraphQL); empty on any failure. external means
+    // off-site: url points at the page and modId is a meaningless "0". Nexus
+    // requirements carry no url.
     struct ModRequirement { QString modId, modName, notes, url; bool external = false; };
     static QList<ModRequirement> modRequirements(const QString& modId, const QString& game = kDefaultGame);
 

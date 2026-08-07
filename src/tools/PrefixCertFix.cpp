@@ -272,11 +272,9 @@ Result install(const QString& winePrefix, QString* log) {
         return r;
     }
 
-    // Verify against the registry itself, not the exit code: Wine's
-    // certutil -addstore exits 0 while writing nothing, and reg.exe could do the
-    // same. Query rather than re-reading system.reg, because wineserver keeps the
-    // registry in memory and only flushes it out later - reading the file straight
-    // after an import reports the cert missing when it is in fact there.
+    // Check the registry, not the exit code: wine certutil -addstore exits 0
+    // without writing anything. Query rather than re-read system.reg - wineserver
+    // holds the registry in memory and flushes it later.
     if (!runWine(wine, winePrefix, {"reg.exe", "query", kRootStoreKey + thumbprint(der)},
                  log)) {
         r.error = "The certificate still isn't in the prefix's trust store after "

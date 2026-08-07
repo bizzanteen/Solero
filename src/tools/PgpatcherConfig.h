@@ -6,11 +6,9 @@ class QJsonObject;
 namespace solero {
 namespace PgpatcherConfig {
 
-// Converts a native path (/home/...) to the Wine-style path PGPatcher/MO2 store
-// in their JSON config: a "Z:" drive prefix with each '/' replaced by a single
-// backslash. When QJsonDocument serializes the resulting QString, each backslash
-// is JSON-escaped to "\\", so the bytes ON DISK read e.g. "Z:\\home\\eamon\\..."
-// - matching how the launcher saves it (see the ASSOS settings.json).
+// Native path -> the Wine-style path PGPatcher stores: a "Z:" prefix and single
+// backslashes. QJsonDocument escapes each one, so on disk it reads
+// "Z:\\home\\eamon\\...", matching what the launcher writes.
 QString winePath(const QString& native);
 
 // Merge-builds PGPatcher's launcher config (cfg/settings.json). Starts from

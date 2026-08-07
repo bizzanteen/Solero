@@ -3,14 +3,10 @@
 #include <QStringList>
 #include <QByteArray>
 
-// Skyrim (LE + SSE) .ess savegame header parser. STRICTLY read-only: this code
-// only ever opens save files for reading - it never writes, moves, or deletes a
-// save. The guaranteed value is the UNCOMPRESSED header block + screenshot (name,
-// level, location, date, thumbnail), which is present in every save regardless of
-// compression. The plugin list lives after the screenshot; for compressed SSE
-// saves it sits inside the compressed body and is only recovered when a matching
-// decompressor (zlib / LZ4) is linked in - otherwise `pluginsReadable` is false
-// and `plugins` is empty (graceful degrade, never a crash).
+// .ess header parser, read-only - it never writes, moves or deletes a save. The
+// uncompressed header and screenshot are always readable. The plugin list sits
+// after the screenshot, inside the compressed body on SSE saves, so it needs zlib
+// or LZ4 linked in; without one, pluginsReadable is false rather than a crash.
 
 namespace solero {
 
@@ -48,11 +44,9 @@ SaveHeader parseSaveHeader(const QString& path);
 // Empty when the save's plugin list is unreadable or nothing is missing.
 QStringList missingPlugins(const SaveHeader& save, const QStringList& loadOrder);
 
-// Human-readable HTML summary of a save's metadata for the previewer panel
-// (character, level, race + sex, location, in-game date, real save time, save #,
-// game version, plugin count). Pure presentation of SaveHeader; `savedWhen` is a
-// preformatted real-time string the caller supplies (the file's timestamp). An
-// unreadable (compressed) plugin list is noted rather than shown as a count.
+// HTML summary of a save for the previewer panel. Pure presentation of
+// SaveHeader; savedWhen is preformatted by the caller. An unreadable plugin list
+// is noted rather than shown as a count.
 QString saveSummaryHtml(const SaveHeader& save, const QString& savedWhen);
 
 } // namespace solero

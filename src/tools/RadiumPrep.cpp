@@ -156,11 +156,9 @@ bool writeFakeMo2(const Profile& profile,
         return fail("Could not write modlist.txt");
     }
 
-    // ModOrganizer.ini: the GUI's MO2 Setup panel requires this file at the
-    // mo2_folder root to detect the game and enumerate profiles - manual_mode
-    // does not bypass it (the CLI path does, but we drive the GUI). Radium reads
-    // gameName + selected_profile; gamePath is a Wine-style path where it maps a
-    // doubled backslash back to a forward slash, so each '/' becomes "\\".
+    // The GUI's MO2 Setup panel needs this at the mo2_folder root to detect the
+    // game and list profiles; manual_mode doesn't bypass it. gamePath is
+    // Wine-style, and Radium maps a doubled backslash back to a slash.
     QString winePath = gameDir;
     winePath.replace('/', QStringLiteral("\\\\"));
     const QString ini =

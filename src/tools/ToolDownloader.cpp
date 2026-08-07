@@ -113,11 +113,9 @@ bool ToolDownloader::curlDownload(const QString& url, const QString& dest,
     // URL-encode spaces (Nexus CDN URLs contain them).
     QString safe = QString::fromLatin1(QUrl(url).toEncoded());
     QProcess p;
-    // GitHub's release CDN intermittently returns transient 5xx (e.g. 504 Gateway
-    // Timeout) and connections occasionally stall; let curl handle retries itself.
-    // --retry-all-errors makes it retry HTTP 5xx too (plain --retry only covers
-    // connection-level failures), and -sS keeps it quiet while still printing the
-    // real error to stderr so we can surface it.
+    // GitHub's release CDN throws transient 5xx, so let curl retry.
+    // --retry-all-errors covers HTTP 5xx; plain --retry only covers connection
+    // failures. -sS stays quiet but still prints the real error to stderr.
     QStringList args; args << "-L" << "--fail"
                           << "-sS" << "--retry" << "4" << "--retry-all-errors"
                           << "--retry-delay" << "2" << "--connect-timeout" << "30"

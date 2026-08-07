@@ -18,17 +18,12 @@ struct LootPluginRules {
     QString     group;  // empty when the plugin is in no explicit group
 };
 
-// Reading and editing loot-userlist.yaml without a YAML library.
+// Reading and editing loot-userlist.yaml without a YAML library. Line-based and
+// additive, because these files are hand-maintained and a parse + re-emit would
+// reformat them and drop their comments.
 //
-// These files are hand-editable, so every operation here is additive and
-// line-based: it splices into the canonical shape Solero writes and otherwise
-// leaves the user's formatting, comments and ordering alone. A full parse +
-// re-emit would silently reformat (and drop comments from) files people
-// maintain by hand.
-//
-// Everything is pure - no I/O, no libloot. Group *existence* has to be checked
-// against libloot (the masterlist defines most groups), so validateGroupName()
-// takes the list of valid names rather than looking them up.
+// Pure - no I/O, no libloot. Most groups come from the masterlist, so
+// validateGroupName takes the valid names rather than looking them up.
 namespace LootUserlist {
 
 QString ruleTypeName(LootRuleType kind);

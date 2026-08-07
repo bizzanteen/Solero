@@ -27,12 +27,10 @@ inline QString normalizeNexusFileName(const QString& fileName) {
     return out;
 }
 
-// The file that should be offered as an update for installedFileId, or empty.
-//
-// A Nexus page hosts several files at their own versions - a main file at 5.0 and
-// a texture pack at 1.2 - so the page's newest main file is not this file's
-// update. Follows the author's file_updates chain, and falls back to a same-name,
-// same-category file only when there is no chain at all.
+// The update for installedFileId, or empty. A page hosts several files at their
+// own versions, so its newest main file is not this file's update. Follows the
+// author's file_updates chain, falling back to a same-name same-category match
+// only when there is no chain.
 inline QString nexusSuccessorFileId(const QList<NexusApi::NexusFile>& files,
                                     const QList<NexusApi::FileUpdate>& updates,
                                     const QString& installedFileId) {

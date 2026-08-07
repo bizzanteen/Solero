@@ -1,12 +1,9 @@
 #pragma once
-// Solero bug/crash report submitter. Builds a JSON payload from the user's answers
-// + redacted log tail + system info, and POSTs it to a serverless relay (Cloudflare
-// Worker) that holds the GitHub token and creates the issue. The client never sees
-// the token, so users need no GitHub account.
+// Builds a report from the user's answers, a redacted log tail and system info,
+// and POSTs it to a relay that holds the GitHub token and files the issue - so
+// users need no GitHub account and never see the token.
 //
-// buildPayload()/gatherLogTail()/gatherSystemInfo() are pure and network-free so the
-// payload assembly can be unit-tested without a live relay; only submit() touches the
-// network.
+// Everything but submit() is pure, so the payload can be tested without a relay.
 #include <QJsonObject>
 #include <QMap>
 #include <QObject>

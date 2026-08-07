@@ -8,11 +8,8 @@
 
 namespace solero {
 
-// A prefix's dotnet/sdk folder holds one directory per installed SDK, named for
-// its version ("8.0.423", "10.0.302", "10.0.100-preview.1..."). Synthesis refuses
-// to build a patcher whose target framework is newer than every installed SDK, so
-// deciding whether to install has to compare version NUMBERS - "8.0.423" sorts
-// above "10.0.302" as a string.
+// dotnet/sdk holds one directory per installed SDK, named for its version. The
+// comparison has to be numeric: "8.0.423" sorts above "10.0.302" as a string.
 
 // Major version of an SDK version string, or 0 if it isn't one.
 inline int sdkMajor(const QString& version) {

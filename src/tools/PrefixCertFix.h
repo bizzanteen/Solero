@@ -7,18 +7,15 @@ namespace solero {
 
 // Makes NuGet restores work inside a Proton prefix.
 //
-// Under Proton, .NET reports its OS as Windows and so enforces repository-signature
-// verification (on native Linux it skips it). Verifying nuget.org's signatures needs
-// the VeriSign Universal Root CA, SHA1 3679CA35668772304D30A5FB873B0FA77BB70D54.
-// Fedora, Debian and Arch all dropped that root from their system bundles, and Wine
-// seeds a prefix's trust store from the host bundle - so the prefix can validate
-// neither the signature nor its timestamp countersignature, and every restore fails
-// with a wall of NU3028 (untrusted) + NU3037 (expired) errors. Synthesis can't
-// compile git patchers at all in that state.
+// Under Proton .NET thinks it's on Windows and enforces repository-signature
+// verification, which needs the VeriSign Universal Root CA (SHA1
+// 3679CA35668772304D30A5FB873B0FA77BB70D54). Fedora, Debian and Arch have all
+// dropped it, and Wine seeds the prefix store from the host bundle, so every
+// restore fails with NU3028 + NU3037.
 //
-// The fix is prefix-scoped: it writes the certificate into the prefix's own HKLM
-// trust store and touches nothing on the host. The root was distrusted deliberately
-// by those distros, so this is only ever offered to the user, never applied silently.
+// Prefix-scoped: writes into the prefix's own HKLM store and touches nothing on
+// the host. Those distros distrusted the root deliberately, so this is offered,
+// never applied silently.
 namespace PrefixCertFix {
 
 // The VeriSign Universal Root CA in DER form (1213 bytes), bundled so the fix works
@@ -59,11 +56,9 @@ Result install(const QString& winePrefix, QString* log = nullptr);
 // else, so an unrelated NuGet error doesn't get offered a certificate fix.
 bool outputShowsNuGetTrustFailure(const QString& output);
 
-// Same check against a tool's own log files. Synthesis is a GUI app that logs via
-// Serilog to <installDir>/logs/Current.log and writes nothing useful to stdout, so
-// the captured output alone would never show the failure. Only considers logs
-// modified at or after `since` (the start of the run), so a stale log from an
-// earlier failure can't re-trigger the offer.
+// The same check against a tool's log files: Synthesis logs to
+// <installDir>/logs/Current.log and writes nothing useful to stdout. Only logs
+// modified at or after `since`, so a stale one can't re-trigger the offer.
 bool toolLogShowsNuGetTrustFailure(const QString& installDir, const QDateTime& since);
 
 } // namespace PrefixCertFix

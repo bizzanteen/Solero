@@ -47,11 +47,9 @@ QString normalizeName(const QString& s);
 // '\\'->'/' + lowercase (for case-insensitive path comparison).
 QString normalizePath(const QString& s);
 
-// Pure detection core (no archive/IO): surfaces conditional/optional FOMOD files
-// whose fileDependency the live load order now satisfies and that are not already
-// installed - either an option's own <files> that became Required/Recommended, or
-// files from <conditionalFileInstalls> (grouped one candidate per mod). Only emits a
-// candidate when a concrete present trigger can be named; de-duplicated by file key.
+// Detection core, no archive or IO: FOMOD files the live load order now satisfies
+// but that aren't installed, from an option's own <files> or from
+// <conditionalFileInstalls>. Only emits when a concrete trigger can be named.
 QList<PatchCandidate> findPatches(const FomodModule& module,
                                   const FomodEngine::Selection& original,
                                   const FilePresentFn& filePresent,
@@ -59,11 +57,8 @@ QList<PatchCandidate> findPatches(const FomodModule& module,
                                   const CollectFn& collect,
                                   const PatchModMeta& meta);
 
-// Establish a FOMOD mod's original install selection. When a fomod-choices log
-// exists at `choicesLogPath` (Solero-installed mods), it is used verbatim and
-// `reconstruct` is not invoked (`reconstructed` set false). Otherwise (imported
-// MO2/Wabbajack mods) `reconstruct` supplies the selection via file-diff and
-// `reconstructed` is set true.
+// The mod's original install selection: the fomod-choices log verbatim when there
+// is one, else `reconstruct` derives it by file-diff and sets *reconstructed.
 FomodEngine::Selection establishSelection(
     const FomodModule& module,
     const QString& choicesLogPath,

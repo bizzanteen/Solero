@@ -77,11 +77,8 @@ QStringList presentFileDeps(const QString& xml) {
     return out;
 }
 
-// For the file-driven (conditionalFileInstalls) branch: name every present
-// dependency file that now makes the surfaced files apply. Parses the stored
-// <conditionalFileInstalls> XML, finds the <pattern>(s) whose payload overlaps
-// `targetKeys`, and returns the present fileDependencies gating them (deduped,
-// in document order). Empty when none are determinable.
+// Name the present dependency files that make the surfaced files apply: the
+// <pattern>s whose payload overlaps targetKeys, deduped, in document order.
 QStringList presentConditionalTriggers(const QString& conditionalInstallsXml,
                                        const QSet<QString>& targetKeys,
                                        const FilePresentFn& filePresent) {
@@ -230,12 +227,10 @@ QList<PatchCandidate> findPatches(const FomodModule& module,
         }
     }
 
-    // CONDITIONAL: conditionalFileInstalls files now satisfied but not on disk
-    // collect(original) already folds in conditionalFileInstalls whose
-    // fileDependency the live load order now satisfies; anything in there that is
-    // missing from this mod is a newly-applicable patch - BUT only when a concrete
-    // present trigger can be named. A payload gated solely by flags (no
-    // fileDependency) is suppressed (the Embers-XD false-positive class).
+    // collect(original) already folds in the conditionalFileInstalls the live load
+    // order satisfies, so anything missing from the mod is a newly-applicable
+    // patch - but only when a concrete trigger can be named. Flag-only gating is
+    // suppressed (the Embers XD false-positive class).
     QList<FomodFile> fileDriven;
     for (const FomodFile& f : baseline) {
         if (emitted.contains(fileKey(f))) continue;

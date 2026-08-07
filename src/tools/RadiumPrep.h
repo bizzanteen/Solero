@@ -24,13 +24,10 @@ QStringList buildMo2Modlist(const ModList& modList);
 // On-disk mods/ folder token for one entry (the bare folder name, no +/- prefix).
 QString mo2ModFolder(const ModEntry& e);
 
-// Generates a fake-MO2 instance at fakeMo2Dir from the profile's load order
-// (mods/, profiles/solero/ with loadorder/archives/modlist/plugins, ModOrganizer.ini)
-// for any MO2-expecting tool. gameDir's Data/ is scanned for .bsa. Returns false and
-// sets *error on I/O failure.
-// populateMods (PGPatcher-only): symlink each mod into mods/ so MO2 mode can detect
-// inter-mod conflicts; the staging root then comes from AppConfig. Radium leaves it
-// false and works with an empty mods/.
+// Builds a fake-MO2 instance at fakeMo2Dir from the profile's load order, for
+// tools that expect one. Data/ is scanned for .bsa. False + *error on I/O failure.
+// populateMods symlinks each mod into mods/ so MO2 mode can see inter-mod
+// conflicts; Radium leaves it false and works with an empty mods/.
 bool writeFakeMo2(const Profile& profile,
                   const QString& gameDir,
                   const QString& fakeMo2Dir,

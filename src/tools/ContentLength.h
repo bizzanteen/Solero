@@ -4,11 +4,8 @@
 
 namespace solero {
 
-// Content-Length from a `curl -sIL` header dump, or -1 when it can't be
-// determined (absent, chunked, unparsable). curl prints one header block per
-// redirect hop, so the LAST match wins - that's the response the body comes from.
-// Callers use this to turn a long download into a determinate progress bar and
-// should fall back to an indeterminate one on -1.
+// Content-Length from a `curl -sIL` header dump, or -1 if absent, chunked or
+// unparsable. One header block per redirect hop, so the last match wins.
 inline qint64 contentLengthFromHeaders(const QString& headers) {
     qint64 found = -1;
     for (const QString& raw : headers.split('\n')) {

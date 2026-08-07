@@ -101,6 +101,15 @@ target_include_directories(test_ArchiveTool PRIVATE ../src ${CMAKE_BINARY_DIR}/i
 target_link_libraries(test_ArchiveTool PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_ArchiveTool COMMAND test_ArchiveTool)
 
+# The one-time staging repair reuses ArchiveTool's path expansion.
+add_executable(test_StagingPathRepair test_StagingPathRepair.cpp
+  ../src/install/StagingPathRepair.cpp
+  ../src/install/ArchiveTool.cpp
+  ../src/core/Log.cpp)
+target_include_directories(test_StagingPathRepair PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_StagingPathRepair PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_StagingPathRepair COMMAND test_StagingPathRepair)
+
 # dirHasFiles is header-only (core/FileUtil.h), so no extra sources to compile.
 add_executable(test_DirHasFiles test_DirHasFiles.cpp)
 target_include_directories(test_DirHasFiles PRIVATE ../src ${CMAKE_BINARY_DIR}/include)

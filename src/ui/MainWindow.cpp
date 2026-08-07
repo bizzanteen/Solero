@@ -12,6 +12,7 @@
 #include "core/ModList.h"
 #include "core/StagingFolder.h"
 #include "core/OutputModMigration.h"
+#include "install/StagingPathRepair.h"
 #include "core/FileUtil.h"
 #include "core/ShaderCache.h"
 #include "core/VersionUtil.h"
@@ -459,6 +460,28 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             profilesRoot(), solero::AppConfig::instance().stagingDir(), order);
         solero::AppConfig::instance().setOutputModsProfileQualified(true);
         solero::AppConfig::instance().save();
+    }
+
+    // one-time: repair mods staged before extraction expanded Windows path
+    // separators, i.e. files literally named "SKSE\Plugins\foo.dll". Such a mod
+    // installs, deploys and launches without a word of complaint and does nothing,
+    // and re-installing is the only other cure - so it has to be fixed in place.
+    if (!solero::AppConfig::instance().stagingWindowsPathsRepaired()) {
+        QStringList repaired;
+        const int n = solero::repairWindowsPathsInStaging(
+            solero::AppConfig::instance().stagingDir(), &repaired);
+        solero::AppConfig::instance().setStagingWindowsPathsRepaired(true);
+        solero::AppConfig::instance().save();
+        if (n > 0) {
+            QSet<QString> mods;
+            for (const QString& r : repaired) mods.insert(r.section('/', 0, 0));
+            qCInfo(lcInstall) << "staging repair: expanded" << n
+                         << "Windows-separator path(s):" << repaired;
+            statusBar()->showMessage(
+                QString("Repaired %1 file(s) across %2 mod(s) that were installed with "
+                        "Windows folder names. Deploy to apply the fix.")
+                    .arg(n).arg(mods.size()), 15000);
+        }
     }
 
     switchProfile(profileNames.contains(savedProfile) ? savedProfile : profileNames.first());

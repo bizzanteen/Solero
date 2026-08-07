@@ -161,6 +161,7 @@ set(SOLERO_SOURCES
   src/bethini/BethiniWindow.cpp
   src/bethini/IniFile.cpp
   src/install/ArchiveTool.cpp
+  src/install/StagingPathRepair.cpp
   src/install/ArchiveLocator.cpp
   src/install/DataDirDetector.cpp
   src/install/ModInstaller.cpp

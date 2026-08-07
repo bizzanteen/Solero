@@ -49,6 +49,11 @@ public:
     // single bare folder. Set true after the migration runs once.
     bool outputModsProfileQualified() const   { return m_outputModsProfileQualified; }
     void setOutputModsProfileQualified(bool v){ m_outputModsProfileQualified = v; }
+    // One-time repair of mods staged before extraction expanded Windows path
+    // separators (files literally named "SKSE\\Plugins\\foo.dll"). Set true after
+    // the repair runs once.
+    bool stagingWindowsPathsRepaired() const  { return m_stagingWindowsPathsRepaired; }
+    void setStagingWindowsPathsRepaired(bool v){ m_stagingWindowsPathsRepaired = v; }
     bool cycleSeparatorColors() const         { return m_cycleSeparatorColors; }
     void setCycleSeparatorColors(bool v)      { m_cycleSeparatorColors = v; }
     bool dataShowAllFiles() const             { return m_dataShowAllFiles; }
@@ -161,6 +166,7 @@ private:
     bool m_confirmModDeletion = true;
     bool m_toolsMigratedToPerProfile = false;
     bool m_outputModsProfileQualified = false;
+    bool m_stagingWindowsPathsRepaired = false;
     bool m_cycleSeparatorColors = true;
     bool m_dataShowAllFiles = false;
     bool m_promptAfterBrowserDownload = true;

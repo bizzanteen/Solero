@@ -59,11 +59,9 @@ QSet<QString> changedKeys(const Hash& before, const Hash& after) {
 ModListModel::ModListModel(QObject* parent) : QAbstractItemModel(parent) {}
 
 void ModListModel::setProfile(Profile* profile) {
-    // setProfile is also used as a plain REFRESH (after install/update/reorder) with
-    // the same profile pointer. Only the cross-profile resets below should fire on an
-    // actual change; on a refresh we must preserve the update flags (otherwise
-    // updating one mod blanks the whole "update available" column), the per-mod
-    // caches, and the undo history.
+    // setProfile doubles as a plain refresh with the same pointer, so only reset
+    // on an actual profile change - a refresh has to keep the update flags, the
+    // per-mod caches and the undo history.
     const bool changed = (profile != m_profile);
     beginResetModel();
     m_profile = profile;
@@ -214,12 +212,9 @@ void ModListModel::rebuildVisibleRows() {
         return;
     }
 
-    // Level-aware separator collapse: collapsedLevel holds the depth of the
-    // currently-collapsing separator (or -1 = nothing collapsed). A separator
-    // deeper than collapsedLevel sits inside a collapsed ancestor -> hidden; a
-    // separator at the same or shallower level ends that collapse. Mods are hidden
-    // whenever collapsedLevel >= 0. With every separator at level 0 this reduces to
-    // the original flat behaviour.
+    // collapsedLevel is the depth of the separator currently collapsing, -1 for
+    // none. Deeper separators are inside it and hide; same or shallower ends it.
+    // Mods hide whenever it's >= 0.
     int collapsedLevel = -1;
     QString curParentId;       // id of the current top-level parent mod, if any
     bool curParentCollapsed = false;
@@ -353,12 +348,9 @@ bool ModListModel::expandToReveal(int rawIndex) {
         }
     }
 
-    // Walk backwards collecting the collapse ancestry: the nearest preceding
-    // separator at each successively shallower level governs `rawIndex` (mirrors
-    // the collapsedLevel logic in rebuildVisibleRows). Clear every collapsed one so
-    // a nested target is fully revealed; stop once a level-0 governor is reached.
-    // A separator target ignores same/deeper-level separators (only shallower
-    // ancestors can hide it).
+    // Walk back through the collapse ancestry - the nearest preceding separator at
+    // each shallower level - clearing each one so a nested target is fully revealed.
+    // Stop at level 0. Only shallower ancestors can hide a separator.
     int minLevel = (target.type == EntryType::Separator)
                        ? target.separatorLevel : INT_MAX;
     for (int i = rawIndex - 1; i >= 0; --i) {
@@ -728,12 +720,9 @@ bool ModListModel::setData(const QModelIndex& idx, const QVariant& value, int ro
             }
             const QString oldFolder =
                 cur.stagingFolder.isEmpty() ? cur.id : cur.stagingFolder;
-            // Also reserve every folder that physically exists in the staging dir,
-            // even orphans no mod tracks (leftovers from earlier installs/renames).
-            // QDir::rename fails outright if the destination already exists, so a
-            // collision with such an orphan would abort the rename ("Rename
-            // Incomplete"); treating it as taken makes uniqueStagingFolder pick a
-            // free name instead. Exclude this mod's own folder, which it's vacating.
+            // Reserve every folder on disk, orphans included: QDir::rename fails
+            // outright if the destination exists, so a collision would abort with
+            // "Rename Incomplete". Excludes this mod's own folder.
             for (const QString& onDisk :
                      QDir(stagingDir).entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
                 if (onDisk.compare(oldFolder, Qt::CaseInsensitive) == 0) continue;
@@ -929,11 +918,9 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
     }
 
     if (draggingSeparator) {
-        // Move the whole section: the separator plus every entry after it up to
-        // (but excluding) the next separator whose level is <= this one's. That
-        // carries any nested sub-categories (deeper separators) and their mods as a
-        // single block, preserving their relative levels. Reordering a section
-        // changes deploy order only, so we persist modlist-only + emit modsReordered.
+        // Move the separator plus everything up to the next one at the same or a
+        // shallower level, so nested sub-categories travel with it. Deploy order
+        // only, so persist the modlist and emit modsReordered.
         const int srcLevel = list.at(srcRaw).separatorLevel;
         int blockLen = 1;
         for (int i = srcRaw + 1; i < list.count(); ++i) {
@@ -953,11 +940,8 @@ bool ModListModel::moveRows(const QModelIndex&, int src, int count, const QModel
         return true;
     }
 
-    // Snap off a group-child boundary so dropping a single mod into the MIDDLE of
-    // an expanded group lands it after the group, never between two children (which
-    // would orphan the trailing children / split the group). Only snap when the
-    // drop target is a child of a group we're not moving (i.e. a different group),
-    // mirroring the group-parent (~599) and moveSelection (~774) paths.
+    // Dropping into the middle of an expanded group would split it, so land after
+    // the group instead. Only when the target belongs to a group we aren't moving.
     bool snapped = false;
     if (dstRaw > 0 && dstRaw < list.count()) {
         const auto& at = list.at(dstRaw);

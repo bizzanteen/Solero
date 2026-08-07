@@ -15,37 +15,25 @@ public:
     // the list with the block removed). Used to drag a separator together with
     // every mod in its section.
     void moveSection(int from, int count, int to);
-    // Lift the entries at the given raw indices (treated as a SET: sorted ascending
-    // and deduped; out-of-range indices ignored) and reinsert them as one contiguous
-    // block, in their original relative (ascending-index) order, at the position
-    // indicated by `dstRaw`. `dstRaw` is interpreted against the original list as
-    // "insert the block just before whatever entry currently sits at dstRaw", using
-    // anchor-by-identity so it survives the lift. dstRaw >= count appends. Returns
-    // true iff the list order actually changed. Used to drag a non-contiguous
-    // multi-selection so the selected mods drop together as a contiguous block.
+    // Lift the entries at srcRaws (a set: sorted, deduped, out-of-range ignored)
+    // and reinsert them as one block in their original relative order, just before
+    // whatever currently sits at dstRaw. Anchored by identity so it survives the
+    // lift; dstRaw >= count appends. True if the order changed.
     bool reorder(QList<int> srcRaws, int dstRaw);
     void setEnabled(const QString& id, bool enabled);
     void update(const QString& id, const ModEntry& updated);
 
-    // Order snapshot helpers (used by the undo/redo stacks). orderIds() returns
-    // every entry id in raw order; setOrder() rearranges the backing list so its
-    // entries appear in the given id order. Ids absent from the list are ignored;
-    // any entry whose id is not in `ids` keeps its relative position appended at
-    // the end (defensive - snapshots always cover the whole list). Returns true
-    // iff the order actually changed.
+    // Order snapshots for undo/redo. setOrder ignores unknown ids, and entries
+    // missing from `ids` keep their relative position at the end. True if the
+    // order changed.
     QStringList orderIds() const;
     bool setOrder(const QStringList& ids);
 
-    // Multi-file grouping (Stage M2). The storage invariant is: a group PARENT is
-    // a Mod immediately followed by a CONTIGUOUS run of child Mods whose parentId
-    // == the parent's id.
+    // Multi-file grouping. The invariant: a parent is a Mod immediately followed by
+    // a contiguous run of child Mods whose parentId is the parent's id.
     //
-    // groupUnder: set child.parentId = parentId and reposition the child so it
-    // sits at the END of the parent's existing contiguous child run (i.e. right
-    // after the parent + any current children). No-op if either id is missing,
-    // they're the same, or parentId refers to a non-Mod.
-    // Returns true only if the entry was actually REPOSITIONED (the deploy-relevant
-    // change); a pure re-parent that leaves order unchanged returns false.
+    // groupUnder moves the child to the end of that run. Returns true only if it
+    // actually moved - a re-parent that leaves the order alone returns false.
     bool groupUnder(const QString& childId, const QString& parentId);
     // ungroup: clear child.parentId and move it to just after its former parent's
     // group block, so it becomes a top-level mod directly below the group.
@@ -55,13 +43,10 @@ public:
     // (children = Mod entries whose parentId == that mod's id).
     int childRunCount(int parentRaw) const;
 
-    // Enforce the group invariant defensively. For every Mod with a non-empty
-    // parentId: if the parent is missing or not a Mod, clear parentId (orphan ->
-    // top-level); if the parent is itself a child, re-point to the grandparent
-    // (flatten to a single level). Then stable-reorder so each child sits in a
-    // contiguous run immediately after its parent. Top-level order and per-group
-    // child order are preserved. Idempotent. Call after any operation that may
-    // have displaced a child, and on load.
+    // Restore the group invariant: orphaned children go top-level, a child of a
+    // child re-points to the grandparent (one level only), then a stable reorder
+    // puts each run back after its parent. Idempotent; call on load and after
+    // anything that may displace a child.
     void normalizeGroups();
 
     // Version variants (Keep Both). See Types.h ModVariant for the mirror invariant.

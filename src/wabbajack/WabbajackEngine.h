@@ -44,16 +44,12 @@ public:
     static QList<WabbajackModlist> parseModlistsJson(const QByteArray& stdoutBytes,
                                                      QString* error = nullptr);
 
-    // Parse a real jackify-engine progress line. The engine emits (\r-terminated):
+    // Parse a jackify-engine progress line (\r-terminated):
     //   "Installing files 819/1497 (233.3MB/276.7MB) - ..."
     //   "Downloading Mod Archives (0/1) - 20.3MB/s - 0.1GB remaining"
     //   "=== <Phase> ===" banners
-    // On match, fills `op` with a human label and `pct` with a 0..100 percentage
-    // (pct < 0 means "no percentage for this line, but the op label is valid").
-    // `remainingBytes` is set to the parsed "<X> remaining" figure for download
-    // lines (so the caller can compute a size-based pct from the run's peak), and
-    // -1 for every other line.
-    // Returns true if the line is a recognized progress/phase line; false otherwise.
+    // Fills `op` with a label and `pct` with 0..100, or pct < 0 for a line with no
+    // percentage. remainingBytes carries the "<X> remaining" figure, else -1.
     static bool parseProgressLine(const QString& line, QString& op, double& pct,
                                   double& remainingBytes);
 
@@ -71,14 +67,10 @@ public:
     // e.g. "Data_ccbgssse037-curios.bsa" or "ccbgssse037-curios.esl".
     static bool isCreationClub(const QString& name);
 
-    // Remove the redundant all-lowercase Creation Club hard-link duplicates created
-    // by ensureLowercaseCCLinks() from `dataDir`, but only when it is provably safe:
-    // a differently-cased sibling exists in the same dir and both paths share the
-    // same inode/device (a true hard-link duplicate, so no data is ever lost). A
-    // lowercase-only CC file with no proper-case sibling (e.g. Rare Curios'
-    // "ccbgssse037-curios.esl") is always KEPT. Static + dir-parameterized for
-    // testability; the instance method below resolves the game Data dir and calls it.
-    // Returns the names of the lowercase files actually removed.
+    // Remove the lowercase CC duplicates ensureLowercaseCCLinks() made, but only
+    // where a differently-cased sibling shares the same inode - a real hard link,
+    // so nothing is lost. A lowercase-only CC file with no sibling is always kept.
+    // Returns the names removed.
     static QStringList removeRedundantLowercaseCCLinks(const QString& dataDir);
 
     // Async: run `list-modlists -json -sort-by title`, emit modlistsReady/failed.
@@ -103,20 +95,15 @@ signals:
     void installFailed(int exitCode, const QList<FailedArchive>& failed);
 
 private:
-    // Pre-install fix for case-sensitive filesystems (btrfs/ext4): the engine's
-    // GameFileSource downloader requests Skyrim Creation Club files by their
-    // lowercase Bethesda IDs (e.g. "ccbgssse037-curios.bsa"), but Steam stores
-    // them mixed-case on disk ("ccBGSSSE037-Curios.bsa"). On Linux the lowercase
-    // lookup misses and the install aborts. This creates lowercase-named hard
-    // links in the Skyrim Data dir so the lowercase names resolve. Idempotent and
-    // non-fatal: never aborts the install.
+    // GameFileSource asks for CC files by lowercase Bethesda id
+    // ("ccbgssse037-curios.bsa") but Steam stores them mixed-case, so on a
+    // case-sensitive fs the lookup misses and the install aborts. Hard-links
+    // lowercase names into Data. Idempotent and never fatal.
     void ensureLowercaseCCLinks();
 
-    // Post-install counterpart to ensureLowercaseCCLinks(): once jackify-engine has
-    // finished, the install-time lowercase CC hard links are no longer needed and
-    // actively break Mutagen-based tools (PGPatcher sees two case-variants of the
-    // same master and fails). Resolves the Skyrim Data dir and delegates to the
-    // static helper above. Non-fatal.
+    // The install-time lowercase links break Mutagen tools afterwards - PGPatcher
+    // sees two case-variants of the same master and fails - so drop them once the
+    // engine has finished. Non-fatal.
     void removeRedundantLowercaseCCLinks();
 
     QProcess* m_proc = nullptr;

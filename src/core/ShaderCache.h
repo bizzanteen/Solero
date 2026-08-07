@@ -22,34 +22,23 @@ ShaderCacheClearResult clearShaderCache(const QString& gameDir,
                                         const QString& overwriteDir,
                                         const QString& cacheStagingDir);
 
-// Capture newly-compiled shaders after a play session: move any file under
-// <gameDir>/Data/ShaderCache not already staged into <cacheStagingDir>/Data. Info.ini
-// (CS's cache-validation file) is always refreshed so deploy stops restoring a stale
-// copy that makes CS recompile every launch. Returns the number of files moved (0 if
-// cacheStagingDir or the source dir is missing); appends moved gameDir-relative paths
-// to movedRelPaths when non-null.
+// Move newly-compiled shaders out of Data/ShaderCache into the CS mod's staging.
+// Info.ini is always refreshed, or deploy keeps restoring a stale copy and CS
+// recompiles every launch. Returns the count moved.
 int captureShaderCache(const QString& gameDir, const QString& cacheStagingDir,
                        QStringList* movedRelPaths = nullptr);
 
-// Re-assert the managed shader cache into the live game dir. Community Shaders owns
-// <gameDir>/Data/ShaderCache at runtime and deletes the whole tree when it invalidates
-// the cache, wiping Solero's deployed hardlinks; call this before launch (regardless of
-// the deploy-clean flag) so CS validates against the staged snapshot instead of
-// recompiling. For each file under <cacheStagingDir>/Data/ShaderCache, ensure a
-// matching entry exists at the mirrored <gameDir>/Data path (same inode under hardlink,
-// present file under copy; anything missing is re-linked/copied). Returns the count
-// (re)placed and appends their gameDir-relative paths to relinked when non-null; sets
-// *outFailed to the count that needed replacing but could not be linked/copied.
+// Put the staged cache back in the live game dir. CS owns Data/ShaderCache and
+// deletes the tree when it invalidates, taking our hardlinks with it, so run this
+// before every launch regardless of the deploy-clean flag. Re-links only what's
+// missing; *outFailed counts what couldn't be replaced.
 int assertShaderCacheDeployed(const QString& gameDir, const QString& cacheStagingDir,
                               bool hardlink, QStringList* relinked = nullptr,
                               int* outFailed = nullptr);
 
-// Where the Community Shaders shader cache lives: inside the CS mod's own staging
-// folder. Returns "<stagingDir>/<CS stagingFolder>" (the mod root that
-// captureShaderCache/assertShaderCacheDeployed treat as cacheStagingDir), or an
-// empty string when CS is absent or has no resolved staging folder. The CS entry's
-// stagingFolder already mirrors the active version variant, so the cache is
-// version-scoped for free. Single source of truth for "where the CS cache lives".
+// The CS mod's own staging folder, which is where its shader cache lives. Empty
+// when CS is absent. stagingFolder mirrors the active version variant, so the
+// cache is version-scoped for free.
 QString communityShadersCacheRoot(const ModList& ml, const QString& stagingDir);
 
 } // namespace solero

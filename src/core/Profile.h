@@ -47,11 +47,9 @@ public:
     QString saveFolderName() const            { return sanitizeSaveFolder(m_name); }
     static QString sanitizeSaveFolder(const QString& name);
 
-    // Per-profile INI files. When on, deploy/play push this profile's Skyrim.ini /
-    // SkyrimPrefs.ini / SkyrimCustom.ini into the game's My Games folder; when off,
-    // the live (shared) INIs are left untouched. Only INIs the profile actually has
-    // are deployed. Profiles saved before this flag existed migrate to on when they
-    // already carry INIs, preserving the old presence-based behaviour.
+    // When on, deploy/play push this profile's INIs into My Games; when off the
+    // shared ones are left alone. Only INIs the profile actually has. Profiles
+    // predating the flag migrate to on if they already carry INIs.
     bool localInis() const                    { return m_localInis; }
     void setLocalInis(bool v)                 { m_localInis = v; }
     bool hasProfileInis() const;              // any of the three profile INIs exist
@@ -85,22 +83,14 @@ public:
     bool saveModListOnly() const;
     bool load();
 
-    // Seed this profile's executables from a template (the global tool library)
-    // IF and only IF this profile has no executables yet (executables.json absent
-    // / m_executables empty). Each tool's outputModId (and extraActions[].outputModId)
-    // is re-resolved for this profile via resolveOutputMod: the caller is handed
-    // the template tool and returns the output-mod id to use in this profile
-    // (matching a same-named isOutputMod mod in this profile's modlist via
-    // matchOutputModId, or returning empty to defer creation). Returns true if it
-    // seeded (false if executables already exist - never overwrites).
+    // Seed executables from a template, but only when this profile has none - it
+    // never overwrites. resolveOutputMod re-resolves each tool's output mod for
+    // this profile, returning empty to defer creation.
     bool seedExecutablesFrom(const QList<Executable>& templateTools,
                              const std::function<QString(const Executable&)>& resolveOutputMod);
 
-    // Reusable primitive for the "match a same-named output mod in a profile, else
-    // empty" resolution: given a modlist and a desired output-mod name, return the
-    // id of an existing isOutputMod mod whose name matches (case-insensitive), or
-    // an empty string if none. Static + name-based so callers (the seeding
-    // resolver) can drive it from whatever name the template tool's output mod had.
+    // Id of an existing isOutputMod mod matching `name` (case-insensitive), else
+    // empty. Name-based so the seeding resolver can drive it from a template.
     static QString matchOutputModId(const ModList& modList, const QString& outputModName);
 
     // Resolve the on-disk staging folder name for a mod id via the active mod
@@ -108,11 +98,9 @@ public:
     // (older saves before migration).
     QString stagingFolderFor(const QString& id) const;
 
-    // Backfill ModEntry.stagingFolder and rename UUID-named staging folders to
-    // their sanitized, unique mod names. Idempotent: a second run is a no-op.
-    // Reads the staging dir from AppConfig. Backs up the modlist and records a
-    // reversible id->folder mapping before the first rename. Returns true if any
-    // entry was changed (caller should save the profile).
+    // Backfill stagingFolder and rename UUID-named folders to sanitized mod names.
+    // Idempotent. Backs up the modlist and records a reversible id->folder mapping
+    // first. True if anything changed, so the caller saves.
     bool migrateStagingFolders();
 
 private:

@@ -160,23 +160,19 @@ static QString stripLootPathPrefix(const QString& msg) {
     return msg;
 }
 
-// Nexus archive names look like "<name>-<modId>-<version-parts>-<timestamp>"
-// (e.g. "SkyUI_5_2_SE-12604-5-2-SE-1462810437"). When we know the exact modId
-// from the Nexus sidecar, strip everything from that "-<modId>" boundary on so
-// the displayed name reads just "<name>". For manually-added archives (no
-// sidecar / empty modId) leave the name untouched - guessing would be too risky.
-// Normalize a name for fuzzy/identity comparison: lowercase, alphanumerics only.
+// Nexus names archives "<name>-<modId>-<version>-<timestamp>". With the modId from
+// the sidecar, cut from that boundary on. No sidecar, no guessing.
+
+// Normalize a name for comparison: lowercase, alphanumerics only.
 QString normalizeName(const QString& s) {
     QString r;
     for (QChar c : s) if (c.isLetterOrNumber()) r += c.toLower();
     return r;
 }
 
-// Mirror every file under srcRoot's SUBDIRECTORIES into dstRoot (hardlink,
-// fallback copy), recording each file created in outCreated so the caller can
-// remove the mirror afterwards. Root-level loose files (tool icons, sidecars)
-// are skipped. Paths that already exist at the destination (e.g. deployed by a
-// mod) are left alone and NOT recorded, so cleanup never touches them.
+// Mirror srcRoot's subdirectories into dstRoot, recording what was created so the
+// caller can tear it down. Root-level loose files are skipped, and existing
+// destination paths are left alone and unrecorded so cleanup can't touch them.
 bool mirrorToolTreeInto(const QString& srcRoot, const QString& dstRoot,
                         QStringList* outCreated) {
     bool allOk = true;
@@ -444,11 +440,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     const QStringList profileNames = m_profileMgr->profileNames();
     const QString savedProfile = solero::AppConfig::instance().lastProfile();
 
-    // one-time: profile-qualify existing output-mod staging folders so two
-    // profiles no longer share a single bare folder (e.g. "PGPatcher Output").
-    // Must run before switchProfile so the now-active profile reads the migrated
-    // modlist. Processes all profiles on disk; the last/active profile goes first
-    // so it claims the shared folder's content (others get fresh empty folders).
+    // one-time: profile-qualify output-mod staging folders so two profiles stop
+    // sharing one. Before switchProfile, so the active profile reads the migrated
+    // modlist; it goes first and claims the shared content.
     if (!solero::AppConfig::instance().outputModsProfileQualified()) {
         QStringList order = profileNames;
         if (profileNames.contains(savedProfile)) {
@@ -723,11 +717,8 @@ void MainWindow::setupMenuBar() {
     m_toolsMenu = mb->addMenu("&Tools");
     connect(m_toolsMenu, &QMenu::aboutToShow, this, &MainWindow::rebuildToolsMenu);
 
-    // ---- View ▸ Zoom. The Browse Nexus toggle used to live here too, but it now sits
-    // on the main toolbar; m_browseAction is a standalone checkable action added there.
-    // Initial label carries the same arrow as the toggled states (onToggleNexus keeps
-    // it in step) so the toolbar button doesn't change width on first use. Plain char*
-    // literal -> QString::fromUtf8, so the arrow bytes are not the QStringLiteral trap.
+    // ---- View ▸ Zoom. The initial label carries the same arrow as the toggled
+    // states so the toolbar button doesn't change width on first use.
     m_browseAction = new QAction("\xe2\x86\x92 Browse Nexus", this);
     m_browseAction->setCheckable(true);
     m_browseAction->setToolTip("Switch the main view between the mod manager and a full nexusmods.com browser");
@@ -877,15 +868,9 @@ void MainWindow::setupToolbar() {
     connect(m_problemsBtn, &QToolButton::clicked, this, &MainWindow::onShowProblems);
     tb->addWidget(m_problemsBtn);
 
-    // Deploy + Play are THE primary controls - the workflow's terminus. Their
-    // leading glyphs (deploy state / play triangle) are real icons, not text
-    // glyphs, so they can be sized proportionally to the text and scale with zoom
-    // (see applyToolbarFont / toolbarIconPx). The deploy label+icon mutate at
-    // runtime in updateDeployButton().
-    // The visible controls are QPushButtons, which centre their icon+text even under
-    // a stylesheet (a styled QToolButton left-aligns its label). The QActions carry
-    // only the keyboard shortcuts + enabled state; the buttons trigger them and
-    // mirror their enabled state, so the existing enable/disable logic still works.
+    // Deploy and Play use real icons, not text glyphs, so they scale with zoom.
+    // QPushButtons because a styled QToolButton left-aligns its label; the QActions
+    // keep the shortcuts and enabled state, and the buttons mirror them.
     m_deployAction = new QAction("Not Deployed", this);
     m_deployAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_D));
     connect(m_deployAction, &QAction::triggered, this, &MainWindow::onDeployToggle);
@@ -895,11 +880,8 @@ void MainWindow::setupToolbar() {
     connect(m_playAction, &QAction::triggered, this, &MainWindow::onPlay);
     addAction(m_playAction);
 
-    // Promote the pair so it dominates and reads as important as the Profile
-    // selector: bold both, size both to the Profile combo's height, and give Play a
-    // filled accent pill + Deploy a matching bordered pill - both from the resolved
-    // palette, no hardcoded colours. The Deploy label+icon mutate at runtime in
-    // updateDeployButton(); the buttons keep this styling across setText().
+    // Bold, sized to the Profile combo, Play a filled accent pill and Deploy a
+    // bordered one, both from the resolved palette. The styling survives setText().
     const int barH = m_profileCombo ? m_profileCombo->sizeHint().height() : 0;
     const QColor mid = palette().color(QPalette::Mid);
     const QColor btn = palette().color(QPalette::Button);
@@ -1383,12 +1365,9 @@ void MainWindow::setupCentralWidget() {
     // Nexus" toggle can show the real state.
     refreshTrackedMods();
 
-    // Window-wide shortcuts for controls that aren't menu/toolbar actions
-    // (Menu/toolbar actions carry their own shortcuts; these cover the search
-    //  boxes and the mod-move undo/redo buttons.) NOTE: keep this list in sync
-    //  with the static entries in KeyboardShortcutsDialog and the ModListView
-    //  Del/Space handlers.
-    // Ctrl+F -> focus the mod filter box.
+    // Shortcuts for controls that aren't menu/toolbar actions: the search boxes and
+    // the mod-move undo/redo buttons. Keep in sync with KeyboardShortcutsDialog and
+    // the ModListView Del/Space handlers.
     connect(new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_F), this), &QShortcut::activated,
             this, [this]{ if (m_modFilter) { m_modFilter->setFocus(Qt::ShortcutFocusReason); m_modFilter->selectAll(); } });
     // Ctrl+Shift+F -> focus the plugin search box (switches to the Plugins tab).
@@ -1490,11 +1469,9 @@ void MainWindow::switchProfile(const QString& name) {
     auto* profile = m_profileMgr->loadProfile(name);
     seedProfileInis(profile);
     m_ipcServer->setActiveProfile(profile);
-    // Tools are per-profile. We do not seed on switch: a profile's tools come from
-    // its own executables.json (empty for new/other profiles). The legacy global
-    // template is folded into the active profile exactly once, at startup, via the
-    // app-level toolsMigratedToPerProfile flag (see the constructor). Just rebuild
-    // the menu so it reflects this profile's activeTools().
+    // Tools are per-profile and come from the profile's own executables.json, so
+    // don't seed on switch - the legacy global template is folded in once at
+    // startup. Just rebuild the menu.
     rebuildToolsMenu();
     m_modListView->setProfile(profile);
     refreshCategoryFilter(); // repopulate the category facet for this profile's separators
@@ -1528,12 +1505,9 @@ void MainWindow::switchProfile(const QString& name) {
     setWindowTitle(QString("Solero - %1").arg(name));
     syncProfileFlagActions(); // reflect this profile's INI/save flags in the menu
 
-    // Keep the toolbar selector in sync with the actually-active profile. The
-    // startup restore (and onImportProfile) call switchProfile() directly rather
-    // than through the combo, so without this the combo stays at index 0 - the
-    // alphabetically-first profile - making every launch *look* like it opened
-    // the first profile even though the correct one was loaded. Block signals so
-    // this programmatic sync doesn't recursively re-enter switchProfile.
+    // Startup restore and import call switchProfile() directly, not through the
+    // combo, so without this every launch looks like it opened the first profile.
+    // Signals blocked so the sync doesn't re-enter switchProfile.
     if (m_profileCombo && m_profileCombo->currentText() != name) {
         QSignalBlocker blocker(m_profileCombo);
         m_profileCombo->setCurrentText(name);
@@ -1615,11 +1589,8 @@ void MainWindow::promptSwitchToNewProfile(const QString& newName,
         return;
     }
 
-    // No: stay on the prior profile. If the manager already moved active to the
-    // new profile (import path), the old Profile object was freed and its views
-    // were detached, so reload the prior profile to re-attach views and keep the
-    // deploy state consistent. Otherwise (manual path) the prior profile is still
-    // active and attached - just restore the combo selection to it.
+    // No: stay put. On the import path the manager already freed the old Profile
+    // and detached its views, so reload it; otherwise just restore the combo.
     if (m_profileMgr->activeProfile()->name() == newName) {
         switchProfile(prior);
     } else {
@@ -1712,12 +1683,9 @@ void MainWindow::syncGeneratedArtifacts(const QString& reason) {
 }
 
 bool MainWindow::deployCurrent() {
-    // Synchronous bool bridge over the off-thread deployActiveAsync(), for callers
-    // whose surrounding flow is synchronous (ensureDeployed -> Play / tool runs). The
-    // deploy itself still runs on a worker thread; a LOCAL event loop keeps the UI
-    // responsive (repaints/progress) while we wait, rather than freezing it. The
-    // m_deploying guard + app-modal ProgressModal + disabled controls prevent the
-    // nested loop from re-entering a second deploy or a mutating action.
+    // Synchronous bridge over deployActiveAsync for callers whose flow is
+    // synchronous. A local event loop keeps the UI painting while we wait; the
+    // m_deploying guard and modal stop it re-entering a second deploy.
     bool ok = false, done = false;
     QEventLoop loop;
     deployActiveAsync([&](bool s){ ok = s; done = true; if (loop.isRunning()) loop.quit(); });
@@ -2411,11 +2379,9 @@ void MainWindow::onRestoreLo() {
 
     profile->pluginList().restoreSnapshot(snap.plugins);
 
-    // Restore the mod list too when the backup carries one. Old
-    // plugin-only backups leave hasMods false, so the live mod list is untouched.
-    // setOrder reproduces the snapshot's ordering (unknown/new mods keep their
-    // relative position, appended at the end); enabled flags are re-applied per
-    // mod. Separators are ordered but never toggled.
+    // Restore the mod list when the backup carries one; old plugin-only backups
+    // leave hasMods false. Unknown mods keep their relative position at the end.
+    // Separators are ordered but never toggled.
     bool modsRestored = false;
     if (snap.hasMods) {
         QStringList order;
@@ -2978,11 +2944,9 @@ void MainWindow::onReinstallMod(const QString& modId) {
         } else {
             archive.clear(); // none found -> try auto-download, else manual picker below
         }
-        // No archive on disk: if the mod has a Nexus identity, try to re-download it
-        // automatically (Premium API). On success we enqueue and RETURN - the
-        // download-finished handler writes the sidecar and re-invokes onReinstallMod,
-        // at which point findDownloadArchivesFor() locates the freshly-downloaded
-        // file by its (modId, fileId) sidecar and the install proceeds normally.
+        // No archive on disk: re-download it if the mod has a Nexus identity. We
+        // enqueue and return; the download-finished handler writes the sidecar and
+        // calls back in, at which point the archive is findable.
         if (archive.isEmpty()
             && !existing->nexusModId.isEmpty() && !existing->nexusFileId.isEmpty()) {
             const QString url =
@@ -4466,12 +4430,9 @@ void MainWindow::onImportProfile() {
 }
 
 void MainWindow::selectImportedProfile(const QString& name, const QString& priorActiveName) {
-    // The importer loaded the new profile into the ProfileManager (m_active), which
-    // FREED the previously-active Profile - but the view models still hold that raw
-    // pointer. Detach them now so a paint during the prompt or switchProfile's
-    // deploy/undeploy pump can't deref the dangling old profile. This is safe on
-    // both answers: Yes re-attaches the new profile's views via switchProfile, and
-    // No reloads priorActiveName (which also re-attaches its views).
+    // The importer freed the previously-active Profile, but the view models still
+    // hold that pointer. Detach before the prompt so a paint can't deref it; both
+    // answers re-attach afterwards.
     detachProfileFromViews();
     refreshProfileCombo();
     { QSignalBlocker b(m_profileCombo); m_profileCombo->setCurrentText(name); }
@@ -4532,13 +4493,9 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     m_toolRunning = true;
     showRunLock(exe.name);
 
-    // A tool's output mod may be unset - either never configured, or MIGRATED
-    // into this profile (migration leaves outputModId empty) - or it may point at
-    // a mod that's no longer in the active profile. For a producesOutput tool,
-    // auto-create-or-reuse the per-profile output mod on first run (frictionless:
-    // no error, no dialog) and persist it on the STORED Executable so subsequent
-    // runs reuse it. exe is a copy from the menu; we must update the entry in
-    // activeTools(), not this local copy.
+    // A tool's output mod may be unset (never configured, or migrated in) or point
+    // at a mod that's gone. Create or reuse it on first run without a dialog, and
+    // persist it on the stored Executable - exe here is a copy from the menu.
     QString resolvedOutputModId = exe.outputModId;
     if (const auto* preset = solero::ToolCatalog::byId(exe.id); preset && preset->producesOutput) {
         auto* p = m_profileMgr->activeProfile();
@@ -4566,11 +4523,9 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     if (auto* p = m_profileMgr->activeProfile(); p && !resolvedOutputModId.isEmpty())
         outFolder = p->stagingFolderFor(resolvedOutputModId);
 
-    // NOTE: Solero used to disable the tool's output mod (in memory) + redeploy
-    // before the run so the tool wouldn't ingest its own prior output, then
-    // restore after. That flow proved unreliable and is removed for now - tools
-    // run against the deployed Data as-is. If a tool double-ingests its previous
-    // output, disable its output mod and deploy manually before running it.
+    // Solero used to disable the output mod and redeploy before a run so a tool
+    // wouldn't ingest its own prior output. That was unreliable; tools now run
+    // against Data as-is. Disable and deploy by hand if one double-ingests.
     auto* tp = m_profileMgr->activeProfile();
 
     // Radium expects an MO2 layout. Solero hardlink-deploys into Data/, so feed
@@ -4605,14 +4560,10 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
         }
     }
 
-    // PGPatcher also expects an MO2 instance. It reads its own cfg/settings.json
-    // (MO2 mode, pointed at a fake-mo2 dir); regenerate that instance so the load
-    // order is current, then merge-write settings.json so the launcher opens
-    // pre-populated (Game, MO2 + a valid instance, Output) - which also fixes the
-    // "missing ModOrganizer.ini" error on selecting MO2. We merge (not overwrite)
-    // to preserve the user's shader/patcher toggles. The --ignore-mo2vfscheck flag
-    // (added below) stops PGPatcher aborting on "VFS not detected" outside a real
-    // MO2 usvfs.
+    // PGPatcher expects an MO2 instance, so regenerate the fake-mo2 dir for a
+    // current load order and merge-write its settings.json (merge, to keep the
+    // user's toggles). --ignore-mo2vfscheck below stops it aborting on "VFS not
+    // detected" outside a real usvfs.
     if (exe.id == "pgpatcher") {
         auto* p = m_profileMgr->activeProfile();
         const QString installDir = QFileInfo(exe.binaryPath).path();
@@ -4630,11 +4581,8 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
             }
         }
         QString err;
-        // PGPatcher runs in None mode (reads the deployed game Data), so it does
-        // not consume the MO2 instance's mods/+modlist - keep populateMods=false to
-        // skip symlinking the whole profile each launch. (The populate path stays
-        // available via writeFakeMo2 if MO2 mode is ever revisited; see
-        // PgpatcherConfig modmanager comment for why MO2 mode is disabled.)
+        // None mode reads the deployed Data, so the instance's mods/ is unused -
+        // populateMods=false skips symlinking the whole profile each launch.
         if (!p || !solero::RadiumPrep::writeFakeMo2(
                 *p, solero::AppConfig::instance().gameDir(), fakeMo2, &err,
                 /*populateMods=*/false)) {
@@ -4644,13 +4592,9 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
             return;
         }
 
-        // Merge-write cfg/settings.json so the launcher opens pre-populated. The
-        // output dir is the output mod's <folder>/Data subdir - the same place
-        // Solero's other tool outputs live and where the deployer maps to the
-        // game's Data/. (PGPatcher only rejects a path inside the GAME's Data
-        // folder; the mod's own Data subdir is fine.) Pointing it at the mod root
-        // tripped PGPatcher's "output dir has non-PGPatcher files" check on the
-        // empty Data/ scaffold + Solero metadata sitting in the root.
+        // Output goes to the output mod's Data subdir, where Solero's other tool
+        // outputs live. PGPatcher only rejects paths inside the GAME's Data. The mod
+        // root trips its "output dir has non-PGPatcher files" check on our metadata.
         const QString cfgDir = installDir + "/cfg";
         QDir().mkpath(cfgDir);
         QJsonObject existing;
@@ -4666,12 +4610,9 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
             wf.write(QJsonDocument(merged).toJson(QJsonDocument::Indented));
     }
 
-    // Nemesis refuses to run outside the game's Data folder - it locates Data by
-    // walking up from its own exe and aborts with ERROR(1008) otherwise. Solero
-    // is VFS-less, so mirror the tool's payload (Nemesis_Engine, meshes, ...)
-    // into Data for the run (hardlinks - instant) and launch the mirrored exe.
-    // Files the run WRITES are swept into the output mod by the normal post-run
-    // capture; the mirror itself is removed again right after the run.
+    // Nemesis walks up from its own exe to find Data and aborts with ERROR(1008)
+    // outside it. With no VFS, mirror its payload into Data (hardlinks, instant),
+    // run the mirrored exe, then tear the mirror down. Writes are captured as usual.
     QString nemesisRunBinary;
     QStringList nemesisMirror; // files we created in Data; removed after the run
     const auto* runPreset = solero::ToolCatalog::byId(exe.id);
@@ -4721,12 +4662,8 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
                             solero::AppConfig::instance().gameDir() + "/Data");
 
     if (res.launched) {
-        // The tool ran and may have captured fresh output. Make sure the output
-        // mod is enabled and persist that, but deliberately do NOT redeploy: the
-        // output is staged and ready, so leaving the deploy pending lets the user
-        // enable anything else and deploy once, instead of being forced to deploy
-        // here and again after their next change. The deploy button reflects the
-        // pending state.
+        // Enable the output mod and persist that, but don't redeploy: leaving it
+        // pending lets the user make their next change and deploy once.
         if (tp && !resolvedOutputModId.isEmpty()) {
             tp->modList().setEnabled(resolvedOutputModId, true);
             tp->save();
@@ -4961,11 +4898,8 @@ void MainWindow::onAddTool2() {
     connect(&dlg, &solero::ToolSetupWizard::installModRequested,
             this, &MainWindow::installFromArchive);
     dlg.exec();
-    // Add only the tool(s) the user actually set up in this wizard session to the
-    // active profile - never the rest of the global store (the wizard still writes
-    // each set-up tool into m_toolStore as a harmless template, but seeding a
-    // profile from the whole store would re-inject unrelated tools from earlier
-    // sessions and falsely mark them "(installed)" here).
+    // Only the tools set up in this wizard session, not the whole global store -
+    // that would re-inject unrelated tools from earlier sessions.
     auto& profileTools = activeTools();
     bool changedAny = false;
     for (const auto& e : dlg.setUpTools()) {
@@ -5333,14 +5267,10 @@ void MainWindow::onPlay() {
 
     syncGeneratedArtifacts("playing");
 
-    // Re-assert the Community Shaders shader cache into the live game dir on every
-    // launch, for the same reason as the INI re-sync above: Community Shaders OWNS
-    // Data/ShaderCache at runtime and DELETES the whole tree whenever it invalidates
-    // the cache, silently removing the hardlinks we deployed. ensureDeployed() skips
-    // redeploy when the modlist is deployed-and-clean, so the staged Info.ini would
-    // otherwise never get re-linked - CS then finds no Info.ini ("no plugin version
-    // found"), wipes, and recompiles every launch. This re-links only staged files
-    // missing from the live dir; it's a cheap no-op when the cache is already whole.
+    // Community Shaders owns Data/ShaderCache and deletes the whole tree when it
+    // invalidates, taking our hardlinks with it. ensureDeployed() skips a clean
+    // modlist, so without this the staged Info.ini never comes back and CS wipes
+    // and recompiles every launch. Re-links only what's missing.
     if (auto* prof = m_profileMgr->activeProfile()) {
         const QString cacheStaging = cacheStagingPath(prof);
         if (!cacheStaging.isEmpty()) {
@@ -5420,11 +5350,9 @@ void MainWindow::onPlay() {
     exe.workingDir = gameDir;
     exe.runtime    = solero::RuntimeType::Proton;          // launch through the Skyrim Proton prefix
     exe.winePrefix = QDir(gameDir + "/../..").canonicalPath() + "/compatdata/489830";
-    // No VFS: files the game writes at runtime (e.g. Community Shaders' shader
-    // cache) land in the real Data folder and stay there - they are not captured
-    // or moved into Overwrite. Without this the game falls into the custom-tool
-    // loose capture and its runtime writes (including the shader cache the managed
-    // capture wants) get swept into Overwrite instead.
+    // With no VFS the game's runtime writes land in the real Data folder and stay
+    // there. Without this they fall into the custom-tool loose capture and end up
+    // in Overwrite, shader cache included.
     exe.suppressLooseCapture = true;
 
     // Lock the UI (MO2-style) while the game runs; ToolRunner blocks via an event
@@ -5478,11 +5406,9 @@ void MainWindow::onPlay() {
             QStringList moved;
             solero::captureShaderCache(gameDir, cacheStaging, &moved);
             if (!moved.isEmpty() && m_deployed) {
-                // capture MOVED the new shaders out of the live game dir into the CS
-                // mod's staging, leaving the deployed game dir incomplete. Re-link them
-                // straight back in (recorded under the CS mod's id, since they are now
-                // CS content) so the live dir stays whole and the deploy state stays
-                // clean - no stuck "Redeploy" after every Play.
+                // Capture moved the shaders into CS's staging, leaving the live dir
+                // incomplete. Link them straight back, recorded as CS content, so
+                // there's no stuck "Redeploy" after every Play.
                 solero::Linker linker(solero::AppConfig::instance().deployMode());
                 solero::DeployRecord rec =
                     solero::DeployRecord::loadFromFile(solero::DeployEngine::recordPath(gameDir));
@@ -5543,11 +5469,9 @@ QString MainWindow::modNameAnywhere(const QString& id) const {
 }
 
 void MainWindow::removeModEverywhere(const QString& id) {
-    // Resolve the on-disk staging folder name (name-based after migration) from
-    // whichever profile holds the mod, *before* the entry is removed. Staged
-    // files are profile-independent, so we delete them once at the end.
-    // A Keep-Both mod owns one staging folder per version variant; collect them all
-    // (plus the mirror folder) so deleting the mod removes every version's files.
+    // Resolve the staging folder before the entry is removed. Staged files are
+    // profile-independent, so they're deleted once at the end. A Keep-Both mod owns
+    // a folder per variant, so collect them all plus the mirror.
     QStringList folders;
     // Also collect the mod's source archives (every variant's) so the Downloads
     // tab can mark them as "Mod deleted" once the removal succeeds.

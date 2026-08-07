@@ -36,12 +36,9 @@ public:
                            const QString& gameDir,
                            const QString& userlistPath);
 
-    // Dirty-plugin flags (lowercased filename -> short reason, e.g.
-    // "12 ITM, 3 UDR - clean with SSEEdit") gathered during the most recent
-    // sort(). Read by the plugin list to badge dirty rows without threading the
-    // result through MainWindow; dirtiness is a property of the plugin file, so
-    // the last sort's map stays valid across profile switches. Empty until the
-    // first sort, or when libloot exposes no cleaning data.
+    // Dirty-plugin flags from the last sort: lowercased filename -> a short
+    // reason. Read directly by the plugin list. Dirtiness belongs to the file, so
+    // the map stays valid across profile switches.
     static const QHash<QString, QString>& dirtyPlugins();
 
     // Best-effort download of the Skyrim SE masterlist to masterlistPath.

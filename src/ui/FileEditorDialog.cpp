@@ -124,12 +124,9 @@ bool FileEditorDialog::looksBinary(const QByteArray& data) {
     return false;
 }
 
-// True if the path is a symlink or a hardlinked regular file (st_nlink > 1).
-// Such files must be written in place: under hardlink/symlink deploy the staged
-// file and the live game file are the same inode, so an in-place write updates
-// both at once and survives undeploy/redeploy. atomicWrite()'s temp+rename would
-// replace the path with a fresh inode, breaking the link so the edit lands on
-// only one side and a redeploy reverts it.
+// True for a symlink or a hardlinked file. Those must be written in place: the
+// staged and live copies share an inode, so one write updates both. A temp+rename
+// would give the path a fresh inode and the edit would land on only one side.
 static bool isLinkedFile(const QString& path) {
     if (QFileInfo(path).isSymLink()) return true;
     struct stat st;

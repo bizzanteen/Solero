@@ -34,12 +34,11 @@
 
 namespace solero {
 
-// Build the Proton/umu environment for running tools inside the Skyrim prefix.
-// Mirrors what ToolRunner constructs. Returns an empty environment (and the
-// caller should bail) if the prefix is unusable; check protonDir separately.
-// True if `path` exists and contains at least one entry. Used to VERIFY a .NET
-// install actually landed, since umu-run/winetricks (and Windows installers under
-// Proton) frequently exit non-zero even on success.
+// The Proton/umu environment for running tools in the Skyrim prefix, mirroring
+// what ToolRunner builds. Empty means the prefix is unusable; bail.
+
+// True if `path` exists and holds anything. Used to check a .NET install actually
+// landed, since installers under Proton often exit non-zero on success.
 static bool dirHasEntries(const QString& path) {
     QDir d(path);
     return d.exists() && !d.entryList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot).isEmpty();

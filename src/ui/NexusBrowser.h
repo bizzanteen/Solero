@@ -16,11 +16,9 @@ class QNetworkAccessManager;
 
 namespace solero {
 
-// Non-modal in-app Nexus browser: search + curated lists on a results page,
-// and a mod-detail page (image, description, file list) with one-click
-// download + endorse. Reuses the static NexusApi (synchronous curl) for data;
-// image thumbnails are fetched asynchronously via a shared QNetworkAccessManager.
-// Downloads are delegated to MainWindow via the downloadRequested signal.
+// In-app Nexus browser: a results page and a mod-detail page with one-click
+// download and endorse. Data comes from the synchronous NexusApi, thumbnails
+// async. Downloads go to MainWindow via downloadRequested.
 class NexusBrowser : public QDialog {
     Q_OBJECT
 public:

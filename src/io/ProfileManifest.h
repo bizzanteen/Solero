@@ -59,11 +59,9 @@ public:
     static bool exportToFile(const Profile& profile, const QString& path,
                              const QString& fomodChoicesDir);
 
-    // Import
-    // Pure reconstruction: match each manifest mod against a copy of the installed
-    // pool (by nexusModId+fileId, then nexusModId, then case-insensitive name; each
-    // pool mod used once) and build a ModList/PluginList. Unmatched mods go in
-    // `missing`, skipped rather than created as placeholders.
+    // Import. Matches each manifest mod against the installed pool by
+    // (modId,fileId), then modId, then name, each pool mod used once. Unmatched
+    // mods go in `missing` rather than becoming placeholders.
     static ManifestBuildResult build(const QJsonDocument& manifest, ModList pool);
 
     // End-to-end: parse the manifest file, build against `pool`, create a new

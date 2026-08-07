@@ -2874,12 +2874,9 @@ void MainWindow::installFromArchive(const QString& archive) {
         if (!overrideName.isEmpty()) mod.name = overrideName;
         profile->modList().append(mod);
 
-        // Auto-group: if another installed mod shares this Nexus mod id, nest the new
-        // file under that mod's group (the existing mod becomes the group head, or, if
-        // it's already a child, we nest under its parent). Children are stored
-        // contiguously right after the parent - groupUnder handles the repositioning.
-        // (A same-name/same-mod re-install never reaches here - it went through the
-        // Replace branch above - so this only fires for genuine multi-file additions.)
+        // Nest a new file under any installed mod sharing its Nexus id. A same-file
+        // re-install went through the Replace branch above, so this only fires for
+        // genuine multi-file additions.
         {
             const QString parentId = solero::installGroupParent(
                 profile->modList(), mod.id, mod.nexusModId);

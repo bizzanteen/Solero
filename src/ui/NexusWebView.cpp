@@ -24,12 +24,10 @@ namespace solero {
 
 namespace {
 
-// nexusmods.com pins the Chromium renderer at ~67% CPU because the page runs
-// continuous Google ad auctions (GPT/googletag) plus trackers. Blocking those
-// network requests at the profile level stops the web view freezing/janking.
-// Match a request host against a static blocklist by exact equality OR a
-// proper subdomain suffix ("doubleclick.net" matches "stats.g.doubleclick.net"
-// but not "notdoubleclick.net").
+// nexusmods.com pins the renderer at ~67% CPU running continuous ad auctions, so
+// block those requests at the profile level. Hosts match by equality or proper
+// subdomain suffix, so "doubleclick.net" catches "stats.g.doubleclick.net" but
+// not "notdoubleclick.net".
 static bool isAdHost(const QString& host) {
     static const QStringList kBlocklist = {
         QStringLiteral("doubleclick.net"),

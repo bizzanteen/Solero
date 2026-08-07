@@ -2,15 +2,10 @@
 
 namespace solero {
 
-// What an explicit "sort now" request should do.
-//
-// Sorting is always on offer - the action is never disabled - because the
-// reasons someone wants a re-sort are mostly invisible from here. Editing a
-// LOOT rule changes the sort result without touching the load order, so gating
-// on "has the user reordered something" hid the button exactly when it was
-// most wanted. A greyed-out menu item also cannot explain itself; the reasons
-// below are resolved when the sort is requested, where they can be said out
-// loud and, where it makes sense, overridden.
+// What an explicit "sort now" request should do. The action is never disabled:
+// editing a LOOT rule changes the sort result without touching the order, and a
+// greyed-out item can't explain itself. The reasons below are resolved when the
+// sort is asked for, where they can be said out loud or overridden.
 enum class SortGate {
     Go,            // nothing in the way
     NeedsDeploy,   // libloot reads plugin headers out of the game's Data folder

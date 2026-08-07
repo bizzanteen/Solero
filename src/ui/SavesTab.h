@@ -11,11 +11,9 @@ class QResizeEvent;
 namespace solero {
 class Profile;
 
-// A read-only list of the Skyrim Saves directory. Parses each *.ess header for
-// character name / level / location / date / save # and a thumbnail, and flags any
-// save that references plugins missing from the active profile's load order (MO2's
-// "this save needs plugins you don't have"). It never deletes, renames, or moves a
-// save - the only action is a directory rescan (Refresh).
+// Read-only list of the Saves directory: character, level, location, date and a
+// thumbnail from each .ess header, plus a flag when a save wants plugins the
+// profile doesn't have. Never deletes, renames or moves a save.
 class SavesTab : public QWidget {
     Q_OBJECT
 public:

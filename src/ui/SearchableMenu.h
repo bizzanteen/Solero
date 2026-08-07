@@ -9,13 +9,10 @@ class QShowEvent;
 
 namespace solero {
 
-// A QMenu whose content is a search line edit above a BOUNDED, scrolling list of
-// items (added via addItem()). The list is capped to a handful of visible rows
-// with a scrollbar, so a long list (e.g. dozens of mod categories) shows as a
-// compact, searchable dropdown instead of a full-screen-height column of actions.
-// Matching uses menuFilterMatch() (substring + loose subsequence). Pressing Enter
-// activates the first visible item; clicking one activates it. Either way the menu
-// (and its ancestor menus) close. The line edit is focused each time it opens.
+// A QMenu holding a search box above a capped, scrolling item list, so dozens of
+// categories show as a compact dropdown rather than a screen-height column.
+// Matching is menuFilterMatch. Enter takes the first visible item; either way the
+// menu and its ancestors close.
 class SearchableMenu : public QMenu {
     Q_OBJECT
 public:

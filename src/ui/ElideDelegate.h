@@ -6,15 +6,10 @@
 
 namespace solero {
 
-// Item delegate that elides overlong cell text at CHARACTER precision
-// ("Some Long Mod Na…") rather than at word boundaries ("Some Long…").
-//
-// Qt's built-in item text rendering lays the string out through QTextLayout,
-// which wraps at word boundaries before eliding the final line - so a long name
-// with spaces gets cut back to the last whole word that fits, then an ellipsis.
-// Setting the view's textElideMode alone does not change that. Pre-eliding the
-// text here with QFontMetrics (which truncates per character) and disabling the
-// style's own elision gives the expected char-level "…".
+// Elides cell text per character ("Some Long Mod Na...") rather than at word
+// boundaries. Qt lays item text out through QTextLayout, which wraps at words
+// before eliding, and textElideMode alone doesn't change that - so pre-elide with
+// QFontMetrics and turn the style's own elision off.
 class ElideRightDelegate : public QStyledItemDelegate {
 public:
     using QStyledItemDelegate::QStyledItemDelegate;

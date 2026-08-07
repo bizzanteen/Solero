@@ -1,10 +1,9 @@
 #pragma once
-// Solero bug/crash report dialog. Two modes:
-//   Issue - Help ▸ Report Issue…  (Summary / What happened / Expected / Steps)
-//   Crash - auto-shown on the launch after a caught crash ("what were you doing?"
-//           + a checkbox to enable detailed logging on the next launch only).
-// The log tail + system info are attached automatically (home paths redacted); there
-// is no editable log preview, only a fixed note that the log is attached.
+// Bug/crash report dialog. Two modes:
+//   Issue - Help > Report Issue (summary / what happened / expected / steps)
+//   Crash - shown on the launch after a caught crash, plus a detailed-logging
+//           checkbox for the next launch only.
+// Log tail and system info attach automatically, with home paths redacted.
 #include <QDialog>
 
 #include "report/ReportSubmitter.h"

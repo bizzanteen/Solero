@@ -6,13 +6,9 @@ namespace solero {
 
 namespace ToolSetup {
 
-// Build a tool Executable from a catalog preset, the resolved primary exe path,
-// and the Skyrim Proton wine prefix. Mirrors the inline logic the Set-Up-Tool
-// wizard used: sets id/name/binary/args/runtime, the detected Proton version,
-// the icon (preset's resource), and resolves each of the preset's extraActions
-// to its secondary exe (case-insensitively) inside the primary exe's install
-// dir. Output-mod wiring (isCapturingOutput/outputModId) is intentionally left
-// to the caller, since that needs the active profile. Headless / GUI-free.
+// Build a tool Executable from a catalog preset, the resolved exe and the wine
+// prefix, resolving each extraAction to its secondary exe in the same install
+// dir. Output-mod wiring is left to the caller, since it needs the profile.
 Executable buildExecutable(const ToolPreset& preset,
                            const QString& exePath,
                            const QString& winePrefix);

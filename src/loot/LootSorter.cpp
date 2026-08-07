@@ -166,12 +166,9 @@ LootSorter::SortResult LootSorter::sort(PluginList& pluginList,
         pluginList = newList;
         result.success = true;
 
-        // after loading the plugins, ask LOOT which are known-dirty
-        // (ITM/UDR/navmesh records needing SSEEdit). Best-effort and additive -
-        // guarded so a libloot without cleaning data (or a metadata hiccup) just
-        // yields no flags rather than failing the sort. Plugins are loaded
-        // headers-only, so their CRC is unavailable; when it is available we
-        // report only the dirty record matching the installed version.
+        // Ask LOOT which plugins are known-dirty. Best-effort: a libloot without
+        // cleaning data yields no flags rather than failing the sort. Headers-only
+        // loading means no CRC, so any version's dirty record may match.
         try {
             for (const auto& name : sorted) {
                 auto meta = db.GetPluginMetadata(name, true /* incl. user */, false /* no cond. eval */);

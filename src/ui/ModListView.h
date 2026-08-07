@@ -102,11 +102,9 @@ signals:
     // A profile save (after a list edit) failed to write to disk; MainWindow shows
     // a status-bar warning so the change loss isn't silent.
     void saveFailed();
-    // Emitted by selectModById when it must drop an active name/state filter to
-    // reveal a jump-to target. The filter widgets live in MainWindow's left pane,
-    // so MainWindow clears its search box + resets the state combo in response;
-    // those widgets' own signals then drive setFilter("")/setStateFilter(All),
-    // keeping the visible filter box and the list in sync.
+    // selectModById emits this when it has to drop a filter to reveal its target.
+    // The filter widgets live in MainWindow, which clears them in response; their
+    // own signals then drive setFilter/setStateFilter, keeping the two in sync.
     void filterCleared();
 
 protected:

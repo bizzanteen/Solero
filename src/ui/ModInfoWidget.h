@@ -49,11 +49,8 @@ private:
     // per-widget font/stylesheet otherwise freezes at its construction size.
     void applyZoomFonts();
 
-    // Disk-cached thumbnail loader shared by regular mods and output-mod tool
-    // images. Tries in-memory cache, then on-disk PNG, else fetches over the
-    // network (using pictureUrlIfKnown, or first resolving modDetails). The
-    // resulting image is applied only if nexusModId still matches the image key
-    // currently expected for the selection (m_expectedImageKey).
+    // Thumbnail loader: memory cache, then on-disk PNG, then the network. The
+    // result is only applied if the selection still expects that image key.
     void loadThumbnailFor(const QString& nexusModId, const QString& pictureUrlIfKnown = {});
     // Path to the on-disk PNG thumbnail for a given nexusModId (mkpath on call).
     static QString thumbnailPath(const QString& nexusModId);

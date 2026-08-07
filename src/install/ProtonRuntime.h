@@ -4,13 +4,9 @@
 
 namespace solero {
 
-// An off-site mod requirement that is actually a Windows runtime component
-// (VC++ redistributable, .NET, XNA, DirectX). Proton ships these in the game's
-// prefix, so they almost never need separate installation on Linux - and they
-// can never be installed as mod files (they live in the Wine prefix, not Data).
-//
-// If `url`/`name`/`notes` describe such a runtime, return a friendly display
-// name; otherwise return an empty string (a genuine off-Nexus mod/tool).
+// Off-site requirements that are really Windows runtimes (VC++, .NET, XNA,
+// DirectX). Proton ships these in the prefix, and they could never install as mod
+// files anyway. Returns a display name, or empty for a genuine off-Nexus mod.
 inline QString protonProvidedRuntime(const QString& url, const QString& name,
                                      const QString& notes) {
     const QString h = (url + QLatin1Char(' ') + name + QLatin1Char(' ') + notes).toLower();

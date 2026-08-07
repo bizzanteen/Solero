@@ -1,5 +1,7 @@
 #include "ArchiveTool.h"
+#include "ArchivePath.h"
 #include "core/Log.h"
+#include <algorithm>
 #include <QProcess>
 #include <QFileInfo>
 #include <QStandardPaths>
@@ -133,6 +135,68 @@ QList<ArchiveTool::Entry> ArchiveTool::listEntriesWithCrc(const QString& archive
     return result;
 }
 
+bool ArchiveTool::expandWindowsPaths(const QString& rootDirPath, QStringList* expanded) {
+    const QString root = QDir::cleanPath(rootDirPath);
+    QDir rootDir(root);
+
+    // Collect first: moving files while the iterator walks the same tree is not
+    // safe, and a move can create directories the walk would then revisit.
+    QStringList wrong;
+    {
+        QDirIterator it(root, QDir::Files | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot,
+                        QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString abs = it.next();
+            if (rootDir.relativeFilePath(abs).contains('\\')) wrong << abs;
+        }
+    }
+    if (wrong.isEmpty()) return true;
+
+    bool ok = true;
+    for (const QString& abs : wrong) {
+        const QString rel  = rootDir.relativeFilePath(abs);
+        const QString safe = sanitizeArchiveEntryPath(rel);
+        if (safe.isEmpty()) {
+            // Traversal or an otherwise unwritable name. Nothing here is worth
+            // installing, so let the caller throw the whole extraction away.
+            qCWarning(lcInstall) << "archive entry cannot be made safe, rejecting:" << rel;
+            ok = false;
+            continue;
+        }
+        const QString dst = root + "/" + safe;
+        if (QDir::cleanPath(dst) == QDir::cleanPath(abs)) continue;
+        QDir().mkpath(QFileInfo(dst).path());
+        // A real entry at the same path wins the collision the way an extractor
+        // resolves one: last write wins.
+        if (QFile::exists(dst)) QFile::remove(dst);
+        if (!QFile::rename(abs, dst)) {
+            qCWarning(lcInstall) << "could not expand Windows path" << rel << "->" << safe;
+            ok = false;
+            continue;
+        }
+        if (expanded) *expanded << safe;
+        qCDebug(lcInstall) << "expanded Windows path" << rel << "->" << safe;
+    }
+
+    // Drop the backslash-named directories the files came out of, deepest first so
+    // a nested one empties before its parent is considered.
+    QStringList dirs;
+    {
+        QDirIterator it(root, QDir::Dirs | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot,
+                        QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString abs = it.next();
+            if (QFileInfo(abs).fileName().contains('\\')) dirs << abs;
+        }
+    }
+    std::sort(dirs.begin(), dirs.end(),
+              [](const QString& a, const QString& b) { return a.size() > b.size(); });
+    for (const QString& d : dirs)
+        if (QDir(d).isEmpty()) QDir(d).removeRecursively();
+
+    return ok;
+}
+
 bool ArchiveTool::validateExtraction(const QString& destDir) {
     const QString rootCanon = QFileInfo(destDir).canonicalFilePath();
     if (rootCanon.isEmpty()) {
@@ -170,7 +234,9 @@ bool ArchiveTool::validateExtraction(const QString& destDir) {
 
 bool ArchiveTool::finalizeExtract(const QString& destDir, bool extractOk) {
     if (!extractOk) return false;
-    if (validateExtraction(destDir)) return true;
+    // Expand first: a "..\evil" entry is a harmless filename until the separators
+    // are normalised, so validateExtraction has to see the real destinations.
+    if (expandWindowsPaths(destDir) && validateExtraction(destDir)) return true;
     qCWarning(lcInstall) << "extraction failed path-safety validation, removing" << destDir;
     QDir(destDir).removeRecursively();
     return false;
@@ -270,7 +336,7 @@ bool ArchiveTool::extractPaths(const QString& archivePath, const QString& destDi
         // fallback handles that.
         bool ok = proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
         if (!ok) qCWarning(lcInstall) << "unrar extractPaths failed (exit" << proc.exitCode() << ") for" << archivePath;
-        return ok;
+        return finalizeExtract(destDir, ok);
     }
 
     QString bin = sevenZipBinary();
@@ -290,7 +356,7 @@ bool ArchiveTool::extractPaths(const QString& archivePath, const QString& destDi
     loop.exec();
     bool ok = proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
     if (!ok) qCWarning(lcInstall) << "7z extractPaths failed (exit" << proc.exitCode() << ") for" << archivePath;
-    return ok;
+    return finalizeExtract(destDir, ok);
 }
 
 } // namespace solero

@@ -27,6 +27,18 @@ public:
                              const QStringList& paths, bool recursive = true,
                              const std::function<void(int)>& onProgress = {});
     static bool sevenZipAvailable();
+
+    // Post-extract repair for archives written on Windows. An entry stored as
+    // "SKSE\Plugins\foo.dll" is a single legal filename here, so every extractor
+    // creates one backslash-named file instead of the directory tree - silently,
+    // and the mod then does nothing. Moves each such file to its expanded path and
+    // removes the emptied backslash-named directories; `expanded` (optional)
+    // collects the destination paths, relative to root. Returns false when an entry
+    // cannot be made safe (see sanitizeArchiveEntryPath) or could not be moved, so
+    // an extraction can be failed rather than installed half-escaped. Public so the
+    // one-time staging repair can reuse it on mods installed before this existed.
+    static bool expandWindowsPaths(const QString& root, QStringList* expanded = nullptr);
+
 private:
     static QString sevenZipBinary(); // "7z" or "7za"
     // Post-extract path-safety pass: walk destDir and reject any entry whose

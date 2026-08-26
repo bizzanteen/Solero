@@ -483,6 +483,9 @@ void WabbajackEngine::install(const QString& machineUrlOrFile, bool isLocalFile,
 
     m_log.clear();  // fresh capture for this run's failure parsing
     m_dlPeakRemaining = 0;  // fresh download peak for size-based download pct
+    m_dlEta.reset();
+    m_installEta.reset();
+    m_runClock.start();
 
     // Parse one line and, if it is a progress line, push it to the UI. Shared by the
     // streaming drain and the flush of the final unterminated fragment.
@@ -496,6 +499,14 @@ void WabbajackEngine::install(const QString& machineUrlOrFile, bool isLocalFile,
             m_dlPeakRemaining = std::max(m_dlPeakRemaining, p.remainingBytes);
             if (m_dlPeakRemaining > 0)
                 p.pct = 100.0 * (m_dlPeakRemaining - p.remainingBytes) / m_dlPeakRemaining;
+        }
+        EtaEstimator* eta = nullptr;
+        if (p.phase == ProgressPhase::Downloading)      eta = &m_dlEta;
+        else if (p.phase == ProgressPhase::Installing)  eta = &m_installEta;
+        if (eta && p.remainingBytes >= 0) {
+            eta->sample(p.remainingBytes, m_runClock.elapsed());
+            const QString left = formatDuration(eta->secondsRemaining());
+            if (!left.isEmpty()) p.op += QStringLiteral(" - about %1 left").arg(left);
         }
         emit progress(p.op, QString(), p.pct);
     };

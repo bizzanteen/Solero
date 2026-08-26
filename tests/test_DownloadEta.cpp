@@ -37,13 +37,31 @@ private slots:
         QCOMPARE(e.secondsRemaining(), -1.0);
     }
 
-    // A stall shouldn't leave a stale ETA standing; a zero delta is a real reading.
-    void aStallDragsTheRateDown() {
+    // A real stall shouldn't leave a stale ETA standing.
+    void aLongStallDragsTheRateDown() {
         EtaEstimator e;
         for (int i = 0; i <= 3; ++i) e.sample((100 - 10 * i) * MB, i * 2000);
         const double before = e.secondsRemaining();
-        for (int i = 1; i <= 5; ++i) e.sample(70 * MB, 6000 + i * 2000);
+        for (int i = 1; i <= 5; ++i) e.sample(70 * MB, 6000 + i * 35000);
         QVERIFY(e.secondsRemaining() > before);
+    }
+
+    // The engine rounds "remaining" to 0.1GB, so at GB scale the same figure is
+    // reprinted for ten-odd seconds at a time. Those repeats are not a stall - the
+    // rate has to come out of the gap between two figures that actually differ.
+    void survivesTheEnginesRoundedRemainingFigure() {
+        const double GB = 1024.0 * MB;
+        EtaEstimator e;
+        // 61.4GB at a true 10MB/s: one 0.1GB step roughly every 10s, printed every 2s.
+        double rem = 61.4;
+        qint64 t = 0;
+        for (int step = 0; step < 6; ++step) {
+            for (int i = 0; i < 5; ++i, t += 2000) e.sample(rem * GB, t);
+            rem -= 0.1;
+        }
+        const double rate = e.bytesPerSecond();
+        QVERIFY2(rate > 8 * MB && rate < 12 * MB,
+                 qPrintable(QString::number(rate / MB) + "MB/s"));
     }
 
     // The engine discovers more archives mid-run, so remaining can go up. That is

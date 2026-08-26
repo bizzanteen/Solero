@@ -20,20 +20,32 @@ public:
             m_lastMs = elapsedMs;
             return;
         }
-        const qint64 dt = elapsedMs - m_lastMs;
-        if (dt < kMinGapMs) return;               // too close together to divide by
-
         const double delta = m_lastRemaining - remainingBytes;
-        m_lastRemaining = remainingBytes;
-        m_lastMs = elapsedMs;
+        const qint64 dt = elapsedMs - m_lastMs;
 
         // Remaining went up: the engine found more work, not negative throughput.
         // Re-baseline and leave the rate alone.
-        if (delta < 0) return;
+        if (delta < 0) {
+            m_lastRemaining = remainingBytes;
+            m_lastMs = elapsedMs;
+            return;
+        }
+
+        if (delta == 0) {
+            // The engine rounds the remaining figure to 0.1GB, so on a big list most
+            // readings repeat and a zero here would be read as zero throughput. Hold
+            // the baseline and let dt grow instead, until it has been still long
+            // enough that the transfer really has stalled.
+            if (dt < kStallMs) return;
+        } else if (dt < kMinGapMs) {
+            return;                               // too close together to divide by
+        }
 
         const double instant = delta / (dt / 1000.0);
         m_rate = (m_rate < 0) ? instant : kAlpha * instant + (1 - kAlpha) * m_rate;
         ++m_accepted;
+        m_lastRemaining = remainingBytes;
+        m_lastMs = elapsedMs;
     }
 
     // Seconds left at the smoothed rate, or -1 while there is no usable estimate.
@@ -50,6 +62,7 @@ public:
 private:
     static constexpr double kAlpha = 0.25;     // weight of each new reading
     static constexpr qint64 kMinGapMs = 1500;  // readings closer than this are noise
+    static constexpr qint64 kStallMs = 30000;  // unchanged this long counts as stalled
     static constexpr int kMinSamples = 3;      // show nothing until the rate settles
 
     double m_lastRemaining = -1;

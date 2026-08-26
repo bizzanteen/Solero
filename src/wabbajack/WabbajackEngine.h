@@ -1,5 +1,7 @@
 #pragma once
 #include "WabbajackModlist.h"
+#include "DownloadEta.h"
+#include <QElapsedTimer>
 #include <QObject>
 #include <QList>
 #include <QString>
@@ -121,6 +123,11 @@ private:
     // Largest "<X> remaining" download figure seen this run, used as the effective
     // download total for a monotonic, size-based download percentage.
     double m_dlPeakRemaining = 0;
+    // Time remaining, tracked per phase - a download runs at network speed and the
+    // install at disk speed, so one estimator across both would be meaningless.
+    QElapsedTimer m_runClock;
+    EtaEstimator m_dlEta;
+    EtaEstimator m_installEta;
 };
 
 } // namespace solero

@@ -130,6 +130,7 @@ private:
     QProgressBar* m_progBar = nullptr;
     QLabel* m_progOp = nullptr;
     QPlainTextEdit* m_progLog = nullptr;
+    QString m_lastLogLine;  // collapses the engine's repeated progress redraws
     QPushButton* m_cancelBtn = nullptr;
     QPushButton* m_backBtn = nullptr;
 

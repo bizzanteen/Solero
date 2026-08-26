@@ -629,6 +629,7 @@ void WabbajackDialog::startInstallRun() {
     m_progBar->setValue(0);
     m_progOp->setText("Starting\xe2\x80\xa6");
     m_progLog->clear();
+    m_lastLogLine.clear();
     m_backBtn->setVisible(false);
     if (m_retryInstallBtn) m_retryInstallBtn->setVisible(false);
     m_cancelBtn->setEnabled(true);
@@ -649,6 +650,12 @@ void WabbajackDialog::onProgress(const QString& op, const QString& file, double 
 }
 
 void WabbajackDialog::onLogLine(const QString& line) {
+    // The engine redraws its progress line with \r, so the identical text arrives
+    // once a second while one big archive extracts. Appending each copy fills the
+    // pane with rows that look like a spin loop, and evicts the real history out of
+    // the 5000-block cap. The label carries the liveness signal instead.
+    if (line == m_lastLogLine) return;
+    m_lastLogLine = line;
     m_progLog->appendPlainText(line);
 }
 

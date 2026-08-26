@@ -707,3 +707,9 @@ add_executable(test_HostProcess test_HostProcess.cpp ../src/core/HostProcess.cpp
 target_include_directories(test_HostProcess PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_HostProcess PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_HostProcess COMMAND test_HostProcess)
+
+# EtaEstimator/formatDuration are header-only (wabbajack/DownloadEta.h).
+add_executable(test_DownloadEta test_DownloadEta.cpp)
+target_include_directories(test_DownloadEta PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_DownloadEta PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_DownloadEta COMMAND test_DownloadEta)

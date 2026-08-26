@@ -27,6 +27,19 @@ struct FailedArchive {
     bool wrongHash = false;
 };
 
+// What one progress line carries. `pct` is 0..100, or -1 for a line with no
+// percentage. `remainingBytes` is what is still to transfer, or -1 when unknown.
+// `phase` keeps the download rate and the install rate in separate estimators -
+// they differ by orders of magnitude.
+enum class ProgressPhase { Other, Downloading, Installing };
+
+struct EngineProgress {
+    QString op;
+    double pct = -1;
+    double remainingBytes = -1;
+    ProgressPhase phase = ProgressPhase::Other;
+};
+
 // Wraps the jackify-engine CLI (a Linux-native .NET fork of wabbajack-cli)
 // as a subprocess: lists the gallery and drives installs. Async via QProcess.
 class WabbajackEngine : public QObject {
@@ -48,10 +61,7 @@ public:
     //   "Installing files 819/1497 (233.3MB/276.7MB) - ..."
     //   "Downloading Mod Archives (0/1) - 20.3MB/s - 0.1GB remaining"
     //   "=== <Phase> ===" banners
-    // Fills `op` with a label and `pct` with 0..100, or pct < 0 for a line with no
-    // percentage. remainingBytes carries the "<X> remaining" figure, else -1.
-    static bool parseProgressLine(const QString& line, QString& op, double& pct,
-                                  double& remainingBytes);
+    static bool parseProgressLine(const QString& line, EngineProgress& out);
 
     // Parse a human size token ("233.3MB", "0.1 GB", "1024KB", case-insensitive,
     // optional whitespace) into bytes (1024-based units). Returns -1 if unparseable.

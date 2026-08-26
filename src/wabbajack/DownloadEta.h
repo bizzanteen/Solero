@@ -10,47 +10,69 @@ namespace solero {
 // swings hard enough that an ETA built on it jumps between "2m" and "40m" between
 // redraws. This smooths a rate out of our own readings of the remaining figure and
 // stays quiet until there is enough history for the number to mean something.
+//
+// Two things make that harder than it sounds. The remaining figure is rounded to
+// 0.1GB, so most readings simply repeat the last one - treating those as zero
+// throughput swings the estimate by hours. And the engine keeps reprinting the same
+// line while one huge archive extracts, which is a genuine stall as far as the
+// figures go, so the estimate has to shut up rather than inflate.
 class EtaEstimator {
 public:
     // A "<remaining> bytes still to go" reading taken at elapsedMs since the run began.
     void sample(double remainingBytes, qint64 elapsedMs) {
         if (remainingBytes < 0) return;
+        m_lastSeenMs = elapsedMs;
         if (m_lastMs < 0) {                       // first reading is the baseline only
             m_lastRemaining = remainingBytes;
             m_lastMs = elapsedMs;
+            m_lastChangeMs = elapsedMs;
             return;
         }
         const double delta = m_lastRemaining - remainingBytes;
         const qint64 dt = elapsedMs - m_lastMs;
 
+        // Repeat of the last figure. Hold the baseline so dt keeps growing - the rate
+        // has to come out of the gap between two readings that actually differ.
+        if (delta == 0) return;
+        m_lastChangeMs = elapsedMs;
+
         // Remaining went up: the engine found more work, not negative throughput.
-        // Re-baseline and leave the rate alone.
         if (delta < 0) {
             m_lastRemaining = remainingBytes;
             m_lastMs = elapsedMs;
             return;
         }
-
-        if (delta == 0) {
-            // The engine rounds the remaining figure to 0.1GB, so on a big list most
-            // readings repeat and a zero here would be read as zero throughput. Hold
-            // the baseline and let dt grow instead, until it has been still long
-            // enough that the transfer really has stalled.
-            if (dt < kStallMs) return;
-        } else if (dt < kMinGapMs) {
-            return;                               // too close together to divide by
-        }
+        if (dt < kMinGapMs) return;               // too close together to divide by
 
         const double instant = delta / (dt / 1000.0);
         m_rate = (m_rate < 0) ? instant : kAlpha * instant + (1 - kAlpha) * m_rate;
+        m_lastStep = delta;
         ++m_accepted;
         m_lastRemaining = remainingBytes;
         m_lastMs = elapsedMs;
     }
 
-    // Seconds left at the smoothed rate, or -1 while there is no usable estimate.
+    // How long the remaining figure has sat unchanged. 0 before the first reading.
+    qint64 stalledForMs() const {
+        if (m_lastChangeMs < 0) return 0;
+        return m_lastSeenMs - m_lastChangeMs;
+    }
+
+    // Nothing has moved for longer than a step at this rate ought to take. On a slow
+    // link one 0.1GB step is legitimately minutes, so a flat threshold would call a
+    // healthy transfer stalled; scale it, with a floor for when the rate is unknown.
+    bool isStalled() const {
+        qint64 threshold = kStallFloorMs;
+        if (m_rate > 0 && m_lastStep > 0)
+            threshold = qMax(threshold, qint64(3000.0 * m_lastStep / m_rate));
+        return stalledForMs() > threshold;
+    }
+
+    // Seconds left at the smoothed rate, or -1 when there is no usable estimate -
+    // too little history, or stalled, where any number would be a guess.
     double secondsRemaining() const {
         if (m_accepted < kMinSamples || m_rate <= 0 || m_lastRemaining < 0) return -1;
+        if (isStalled()) return -1;
         return m_lastRemaining / m_rate;
     }
 
@@ -60,13 +82,16 @@ public:
     void reset() { *this = EtaEstimator(); }
 
 private:
-    static constexpr double kAlpha = 0.25;     // weight of each new reading
-    static constexpr qint64 kMinGapMs = 1500;  // readings closer than this are noise
-    static constexpr qint64 kStallMs = 30000;  // unchanged this long counts as stalled
-    static constexpr int kMinSamples = 3;      // show nothing until the rate settles
+    static constexpr double kAlpha = 0.25;          // weight of each new reading
+    static constexpr qint64 kMinGapMs = 1500;       // readings closer than this are noise
+    static constexpr qint64 kStallFloorMs = 30000;  // never call a stall sooner than this
+    static constexpr int kMinSamples = 3;           // show nothing until the rate settles
 
     double m_lastRemaining = -1;
-    qint64 m_lastMs = -1;
+    double m_lastStep = -1;      // size of the last real step, for the stall threshold
+    qint64 m_lastMs = -1;        // baseline for the next rate measurement
+    qint64 m_lastChangeMs = -1;  // when the figure last actually moved
+    qint64 m_lastSeenMs = -1;    // most recent reading of any kind
     double m_rate = -1;
     int m_accepted = 0;
 };

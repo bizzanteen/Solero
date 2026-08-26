@@ -505,8 +505,17 @@ void WabbajackEngine::install(const QString& machineUrlOrFile, bool isLocalFile,
         else if (p.phase == ProgressPhase::Installing)  eta = &m_installEta;
         if (eta && p.remainingBytes >= 0) {
             eta->sample(p.remainingBytes, m_runClock.elapsed());
-            const QString left = formatDuration(eta->secondsRemaining());
-            if (!left.isEmpty()) p.op += QStringLiteral(" - about %1 left").arg(left);
+            if (eta->isStalled()) {
+                // The engine is still printing, so it is alive - it is just inside
+                // one huge archive (7z runs single-threaded here, and a 12GB one
+                // takes minutes) and its counters won't budge until that finishes.
+                // Say so; a label that never changes reads as a hang.
+                p.op += QStringLiteral(" - still working, no change for %1")
+                            .arg(formatDuration(eta->stalledForMs() / 1000.0));
+            } else {
+                const QString left = formatDuration(eta->secondsRemaining());
+                if (!left.isEmpty()) p.op += QStringLiteral(" - about %1 left").arg(left);
+            }
         }
         emit progress(p.op, QString(), p.pct);
     };

@@ -37,13 +37,53 @@ private slots:
         QCOMPARE(e.secondsRemaining(), -1.0);
     }
 
-    // A real stall shouldn't leave a stale ETA standing.
-    void aLongStallDragsTheRateDown() {
+    // jackify-engine reprints an identical line while one huge archive extracts.
+    // Feeding those repeats in as zero throughput inflated the estimate without
+    // bound (4m57s -> 1h19m over five minutes of freeze). Say nothing instead.
+    void aStallReportsNoEstimateRatherThanAGrowingOne() {
         EtaEstimator e;
         for (int i = 0; i <= 3; ++i) e.sample((100 - 10 * i) * MB, i * 2000);
-        const double before = e.secondsRemaining();
-        for (int i = 1; i <= 5; ++i) e.sample(70 * MB, 6000 + i * 35000);
-        QVERIFY(e.secondsRemaining() > before);
+        QVERIFY(e.secondsRemaining() > 0);
+        for (int i = 1; i <= 150; ++i) e.sample(70 * MB, 6000 + i * 2000);
+        QVERIFY(e.isStalled());
+        QCOMPARE(e.secondsRemaining(), -1.0);
+    }
+
+    void reportsHowLongItHasBeenStuck() {
+        EtaEstimator e;
+        for (int i = 0; i <= 3; ++i) e.sample((100 - 10 * i) * MB, i * 2000);
+        QCOMPARE(e.stalledForMs(), qint64(0));
+        e.sample(70 * MB, 66000);
+        QCOMPARE(e.stalledForMs(), qint64(60000));
+        QVERIFY(e.isStalled());
+    }
+
+    void recoversTheEstimateOnceProgressResumes() {
+        EtaEstimator e;
+        for (int i = 0; i <= 3; ++i) e.sample((100 - 10 * i) * MB, i * 2000);
+        for (int i = 1; i <= 150; ++i) e.sample(70 * MB, 6000 + i * 2000);
+        QCOMPARE(e.secondsRemaining(), -1.0);
+        e.sample(60 * MB, 308000);
+        QVERIFY(!e.isStalled());
+        QVERIFY(e.secondsRemaining() > 0);
+    }
+
+    // A slow download still steps 0.1GB at a time, so the gap between two figures
+    // can be minutes without anything being wrong. The stall threshold has to scale
+    // with how long a step actually takes, not sit at a flat 30s.
+    void doesNotCallASlowButHealthyTransferStalled() {
+        const double GB = 1024.0 * MB;
+        EtaEstimator e;
+        // ~1MB/s: one 0.1GB step every ~107s, line redrawn every 2s.
+        double rem = 61.4;
+        qint64 t = 0;
+        for (int step = 0; step < 4; ++step) {
+            for (int i = 0; i < 53; ++i, t += 2000) e.sample(rem * GB, t);
+            rem -= 0.1;
+        }
+        for (int i = 0; i < 30; ++i, t += 2000) e.sample(rem * GB, t);  // 60s in
+        QVERIFY2(!e.isStalled(), qPrintable(QString::number(e.stalledForMs())));
+        QVERIFY(e.secondsRemaining() > 0);
     }
 
     // The engine rounds "remaining" to 0.1GB, so at GB scale the same figure is

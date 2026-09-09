@@ -1,4 +1,5 @@
 #include "SettingsDialog.h"
+#include "nexus/NexusCredentials.h"
 #include "ui/SetupPanel.h"
 #include "core/AppConfig.h"
 #include "app/NxmRegister.h"
@@ -359,6 +360,45 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
         applyStatus({});
         QMessageBox::information(this, "Nexus Account", "Signed out.");
     });
+
+    // Saved website login (keyring), shown only where a keyring exists - without
+    // one there is nothing to save and the group would just be dead UI.
+    if (solero::NexusCredentials::keyringAvailable()) {
+        auto* loginGroup = new QGroupBox("Saved website login", nexus);
+        auto* loginLayout = new QVBoxLayout(loginGroup);
+        auto* row = new QHBoxLayout;
+        auto* who = new QLabel(loginGroup);
+        auto* forget = new QPushButton("Forget", loginGroup);
+        auto refresh = [who, forget]() {
+            const QString saved = solero::NexusCredentials::savedLogin();
+            who->setText(saved.isEmpty() ? QStringLiteral("Nothing saved") : saved);
+            forget->setEnabled(!saved.isEmpty());
+        };
+        refresh();
+        row->addWidget(who);
+        row->addStretch();
+        row->addWidget(forget);
+        loginLayout->addLayout(row);
+        auto* help = new QLabel(
+            "Used to fill the sign-in form in the Nexus browser. The password lives in "
+            "your system keyring, not in Solero's settings. Solero offers to save it "
+            "after you sign in.", loginGroup);
+        help->setWordWrap(true);
+        help->setStyleSheet("color:#888;");
+        loginLayout->addWidget(help);
+        nexusLayout->addWidget(loginGroup);
+
+        connect(forget, &QPushButton::clicked, this, [this, refresh]{
+            const QString saved = solero::NexusCredentials::savedLogin();
+            if (saved.isEmpty()) return;
+            if (QMessageBox::question(this, "Forget saved login",
+                    QStringLiteral("Remove the saved Nexus login for %1 from your keyring?")
+                        .arg(saved)) != QMessageBox::Yes)
+                return;
+            solero::NexusCredentials::forget(saved);
+            refresh();
+        });
+    }
 
     // Script Extender (SKSE) group
     auto* skseGroup = new QGroupBox("Script Extender (SKSE)", nexus);

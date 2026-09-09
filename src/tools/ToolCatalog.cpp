@@ -110,6 +110,9 @@ const QList<ToolPreset>& ToolCatalog::presets() {
             t.proton = true;
             t.producesOutput = true;
             t.outputModName = "PGPatcher Output";
+            // Reads the deployed meshes and the fake-MO2 mod list, so its own
+            // previous output has to be out of both or it re-patches it.
+            t.clearsOutputBeforeRun = true;
             v << t;
         }
 

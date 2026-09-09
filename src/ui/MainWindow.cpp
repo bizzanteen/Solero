@@ -47,6 +47,7 @@
 #include "ui/PatchWizardDialog.h"
 #include "tools/ToolRunner.h"
 #include "tools/ToolCatalog.h"
+#include "tools/OutputModGate.h"
 #include "tools/ToolNameMap.h"
 #include "tools/ToolSetup.h"
 #include "tools/RadiumPrep.h"
@@ -209,6 +210,28 @@ void removeMirroredFiles(const QStringList& files, const QString& stopDir) {
         }
     }
 }
+
+// True when the tool's output mod has anything staged under its Data/. A first
+// run has produced nothing yet, so there is nothing deployed to get in the way.
+bool outputModHasStagedFiles(solero::Profile* p, const QString& modId) {
+    if (!p || modId.isEmpty()) return false;
+    const QString dir = solero::AppConfig::instance().stagingDir() + "/" +
+                        p->stagingFolderFor(modId) + "/Data";
+    return solero::dirHasFiles(dir);
+}
+
+// Runs its callback when it goes out of scope. onRunTool leaves by a dozen early
+// returns and every one of them has to put the output mod back; the last attempt
+// at this did it by hand at each return and that is what made it fragile.
+class ScopeExit {
+public:
+    explicit ScopeExit(std::function<void()> f) : m_f(std::move(f)) {}
+    ~ScopeExit() { if (m_f) m_f(); }
+    ScopeExit(const ScopeExit&) = delete;
+    ScopeExit& operator=(const ScopeExit&) = delete;
+private:
+    std::function<void()> m_f;
+};
 
 QString cleanModName(const QString& raw, const QString& nexusModId) {
     if (nexusModId.isEmpty())
@@ -4549,10 +4572,44 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     if (auto* p = m_profileMgr->activeProfile(); p && !resolvedOutputModId.isEmpty())
         outFolder = p->stagingFolderFor(resolvedOutputModId);
 
-    // Solero used to disable the output mod and redeploy before a run so a tool
-    // wouldn't ingest its own prior output. That was unreliable; tools now run
-    // against Data as-is. Disable and deploy by hand if one double-ingests.
     auto* tp = m_profileMgr->activeProfile();
+
+    // Patchers that read their own previous output need it out of the way first
+    // (see tools/OutputModGate.h). Persist the disable rather than keeping it in
+    // memory: the deploy below calls Profile::save() anyway, so an "in memory
+    // only" toggle reaches disk regardless - the previous version of this claimed
+    // otherwise and left output mods disabled when a run bailed out.
+    const solero::ToolPreset* runPreset = solero::ToolCatalog::byId(exe.id);
+    const solero::ModEntry* outMod = (tp && !resolvedOutputModId.isEmpty())
+        ? tp->modList().findById(resolvedOutputModId) : nullptr;
+    bool outputCleared = false;
+    ScopeExit restoreOutput([&]{
+        if (!outputCleared || !tp) return;
+        tp->modList().setEnabled(resolvedOutputModId, true);
+        tp->save();
+        redeployForTool("Restoring output mod",
+                        QStringLiteral("Re-deploying with the output mod") + QChar(0x2026));
+    });
+
+    if (solero::shouldClearOutputBeforeRun(runPreset && runPreset->clearsOutputBeforeRun,
+                                           outMod != nullptr,
+                                           outMod && outMod->enabled,
+                                           outputModHasStagedFiles(tp, resolvedOutputModId))) {
+        tp->modList().setEnabled(resolvedOutputModId, false);
+        tp->save();
+        if (!redeployForTool("Preparing " + exe.name,
+                             QStringLiteral("Removing the previous output") + QChar(0x2026))) {
+            tp->modList().setEnabled(resolvedOutputModId, true);
+            tp->save();
+            hideRunLock();
+            m_toolRunning = false;
+            QMessageBox::warning(this, exe.name,
+                "Could not deploy without the output mod, so the run was cancelled.");
+            return;
+        }
+        outputCleared = true;
+        m_modListView->setProfile(tp);
+    }
 
     // Radium expects an MO2 layout. Solero hardlink-deploys into Data/, so feed
     // it a generated fake-mo2 + a settings.json pointing at the live Data/ and the
@@ -4641,7 +4698,6 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     // run the mirrored exe, then tear the mirror down. Writes are captured as usual.
     QString nemesisRunBinary;
     QStringList nemesisMirror; // files we created in Data; removed after the run
-    const auto* runPreset = solero::ToolCatalog::byId(exe.id);
     if (runPreset && runPreset->runsFromDataDir) {
         // The tool's own install dir, not a walk up from the exe: how deeply the
         // exe is nested varies per tool (Nemesis_Engine/... vs
@@ -4694,6 +4750,7 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
             tp->modList().setEnabled(resolvedOutputModId, true);
             tp->save();
         }
+        outputCleared = false;   // handled here; the guard must not redeploy too
         m_contentDirty = true;
         refreshDeployDirty();
     }

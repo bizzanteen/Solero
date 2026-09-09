@@ -32,6 +32,10 @@ struct ToolPreset {
     // free from its VFS; Solero deploys real files, so it hardlink-mirrors the
     // tool into Data for the run and removes the mirror afterwards.
     bool runsFromDataDir = false;
+    // Tool re-ingests its own previous output: disable the output mod and deploy
+    // before the run so its old files are out of Data (and out of the generated
+    // fake-MO2 mod list), then put it back afterwards.
+    bool clearsOutputBeforeRun = false;
     struct PresetAction { QString label, exeRelPath, args, outputModName; };
     QList<PresetAction> extraActions;
 };

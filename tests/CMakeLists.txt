@@ -722,3 +722,9 @@ add_executable(test_NexusLoginFill test_NexusLoginFill.cpp
 target_include_directories(test_NexusLoginFill PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_NexusLoginFill PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_NexusLoginFill COMMAND test_NexusLoginFill)
+
+# shouldClearOutputBeforeRun is header-only (tools/OutputModGate.h).
+add_executable(test_OutputModGate test_OutputModGate.cpp)
+target_include_directories(test_OutputModGate PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_OutputModGate PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_OutputModGate COMMAND test_OutputModGate)

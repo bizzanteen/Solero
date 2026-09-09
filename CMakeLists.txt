@@ -46,7 +46,7 @@ foreach(_pair IN LISTS _solero_qt_dirs)
   endif()
 endforeach()
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network Xml Svg Test Concurrent WebEngineWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network Xml Svg Test Concurrent WebEngineWidgets WebChannel)
 
 # Optional decompressors for the READ-ONLY savegame (.ess) parser: zlib for
 # compressionType 1, LZ4 for compressionType 2 (Skyrim SE's default). Both are
@@ -188,6 +188,7 @@ set(SOLERO_SOURCES
   src/nexus/DownloadManager.cpp
   src/nexus/DownloadWorker.cpp
   src/ui/NexusWebView.cpp
+  src/nexus/NexusCredentials.cpp
   src/ui/ToolSetupWizard.cpp
   src/ui/ToolsManagerDialog.cpp
   src/ui/ThemeAdapter.cpp
@@ -204,7 +205,7 @@ set(SOLERO_SOURCES
 add_executable(solero ${SOLERO_SOURCES})
 target_include_directories(solero PRIVATE src ${CMAKE_BINARY_DIR}/include ${SOLERO_SAVE_INCLUDES})
 target_compile_definitions(solero PRIVATE ${SOLERO_SAVE_DEFS})
-target_link_libraries(solero PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::Xml Qt6::Svg Qt6::Concurrent Qt6::WebEngineWidgets libloot::libloot ${SOLERO_SAVE_LIBS})
+target_link_libraries(solero PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::Xml Qt6::Svg Qt6::Concurrent Qt6::WebEngineWidgets Qt6::WebChannel libloot::libloot ${SOLERO_SAVE_LIBS})
 
 # ── Install rules (for Flatpak / AppImage / `cmake --install`) ────────────────
 # App id is reverse-DNS after the GitHub owner (github.com/bizzanteen/Solero).

@@ -10,6 +10,11 @@
 #include <QWebEngineView>
 #include <QWebEnginePage>
 #include <QWebEngineProfile>
+#include <QWebChannel>
+#include <QMessageBox>
+#include <QFile>
+#include "NexusLoginFill.h"
+#include "nexus/NexusCredentials.h"
 #include <QWebEngineHistory>
 #include <QFileInfo>
 #include <QDir>
@@ -188,6 +193,12 @@ NexusWebView::NexusWebView(QWidget* parent) : QWidget(parent) {
     // tied to the profile's.
     m_profile->setUrlRequestInterceptor(new AdBlockInterceptor(m_profile));
 
+    // Channel used only to hear back from the sign-in form. Attached per page while
+    // a sign-in page is open and detached again on the way out.
+    m_capture = new NexusLoginCapture(this);
+    m_channel = new QWebChannel(this);
+    m_channel->registerObject(QStringLiteral("soleroLogin"), m_capture);
+
     // Tabs
     m_tabs = new QTabWidget(this);
     m_tabs->setTabsClosable(true);
@@ -239,6 +250,80 @@ QWebEngineView* NexusWebView::currentView() const {
     return qobject_cast<QWebEngineView*>(m_tabs->currentWidget());
 }
 
+// The channel is attached only while a sign-in page is showing, and the fill runs
+// once that page has finished loading. Nothing here ever presses the button:
+// the page carries a Cloudflare Turnstile widget, which is the user's to clear.
+void NexusWebView::setUpLoginAutofill(QWebEngineView* view) {
+    if (!NexusCredentials::keyringAvailable()) return;
+
+    connect(view, &QWebEngineView::loadFinished, this, [this, view](bool ok) {
+        if (!ok) return;
+        const QUrl url = view->url();
+
+        if (!isNexusSignInUrl(url)) {
+            view->page()->setWebChannel(nullptr);
+            // Left the sign-in page for a real Nexus page - the login worked, so
+            // this is the moment to ask about saving it.
+            if (url.host().endsWith(QLatin1String("nexusmods.com"), Qt::CaseInsensitive))
+                offerToSaveLogin();
+            return;
+        }
+
+        view->page()->setWebChannel(m_channel);
+
+        const QString login = NexusCredentials::savedLogin();
+        const QString pass  = login.isEmpty() ? QString() : NexusCredentials::password(login);
+        if (!login.isEmpty() && !pass.isEmpty())
+            view->page()->runJavaScript(buildFillScript(login, pass));
+
+        // Hand the typed values back on change/click rather than on submit: both
+        // fire well before the page navigates, so there is no race with teardown.
+        QFile qwc(QStringLiteral(":/qtwebchannel/qwebchannel.js"));
+        if (!qwc.open(QIODevice::ReadOnly)) return;
+        const QString bridge = QString::fromUtf8(qwc.readAll()) + QStringLiteral(R"JS(
+new QWebChannel(qt.webChannelTransport, function(channel) {
+  var cap = channel.objects.soleroLogin;
+  var u = document.getElementById('user_login');
+  var p = document.getElementById('password');
+  if (!cap || !u || !p) return;
+  function push() { if (p.value) cap.submitted(u.value, p.value); }
+  u.addEventListener('change', push);
+  p.addEventListener('change', push);
+  var b = document.querySelector('input[name="commit"]');
+  if (b) b.addEventListener('click', push, true);
+});
+)JS");
+        view->page()->runJavaScript(bridge);
+    });
+}
+
+void NexusWebView::offerToSaveLogin() {
+    if (m_savePromptOpen || !m_capture) return;
+    const QString login = m_capture->login, pass = m_capture->password;
+    if (login.isEmpty() || pass.isEmpty()) return;
+    m_capture->login.clear();
+    m_capture->password.clear();
+
+    // Nothing to ask if this is already what we have stored.
+    if (NexusCredentials::savedLogin() == login
+        && NexusCredentials::password(login) == pass) return;
+
+    m_savePromptOpen = true;
+    const bool replacing = !NexusCredentials::savedLogin().isEmpty();
+    QMessageBox box(this);
+    box.setWindowTitle(replacing ? tr("Update saved login") : tr("Save Nexus login"));
+    box.setText(replacing ? tr("Update the saved Nexus login for %1?").arg(login)
+                          : tr("Save your Nexus login for %1?").arg(login));
+    box.setInformativeText(tr("Solero will fill the sign-in form next time. The password "
+                              "goes into your system keyring, not into Solero's settings."));
+    box.setIcon(QMessageBox::Question);
+    box.addButton(replacing ? tr("Update") : tr("Save"), QMessageBox::AcceptRole);
+    box.addButton(tr("Not now"), QMessageBox::RejectRole);
+    const bool accepted = (box.exec() == 0);
+    m_savePromptOpen = false;
+    if (accepted) NexusCredentials::save(login, pass);
+}
+
 QWebEngineView* NexusWebView::createTabView(bool foreground) {
     auto* view = new QWebEngineView(m_tabs);
     // The onNewTab callback captures `this` (not `view`): when a link inside this
@@ -277,6 +362,8 @@ QWebEngineView* NexusWebView::createTabView(bool foreground) {
         int idx = m_tabs->indexOf(view);
         if (idx >= 0) m_tabs->setTabIcon(idx, icon);
     });
+
+    setUpLoginAutofill(view);
 
     int idx = m_tabs->addTab(view, QStringLiteral("Nexus"));
     if (foreground) m_tabs->setCurrentIndex(idx);

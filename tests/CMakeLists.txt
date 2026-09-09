@@ -713,3 +713,12 @@ add_executable(test_DownloadEta test_DownloadEta.cpp)
 target_include_directories(test_DownloadEta PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_DownloadEta PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_DownloadEta COMMAND test_DownloadEta)
+
+# Sign-in URL matching + JS quoting are header-only (ui/NexusLoginFill.h); the
+# secret-tool output parser comes from NexusCredentials.
+add_executable(test_NexusLoginFill test_NexusLoginFill.cpp
+  ../src/nexus/NexusCredentials.cpp
+  ../src/core/Log.cpp)
+target_include_directories(test_NexusLoginFill PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_NexusLoginFill PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_NexusLoginFill COMMAND test_NexusLoginFill)

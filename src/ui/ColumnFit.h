@@ -90,7 +90,7 @@ inline void scaleColumnWidths(QAbstractItemView* view, QHeaderView* hh, double r
                               int fillCol, int fillMin) {
     if (!view || !hh || ratio <= 0.0 || qFuzzyCompare(ratio, 1.0)) return;
     hh->setStretchLastSection(false);
-    // Scale EVERY column (fill column included) so the layout keeps its shape even
+    // Scale every column (fill column included) so the layout keeps its shape even
     // when the viewport isn't laid out yet (construction-time restore, width 0).
     for (int c = 0; c < hh->count(); ++c) {
         if (hh->isSectionHidden(c)) continue;

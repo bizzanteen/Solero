@@ -11,11 +11,10 @@ namespace solero {
 // redraws. This smooths a rate out of our own readings of the remaining figure and
 // stays quiet until there is enough history for the number to mean something.
 //
-// Two things make that harder than it sounds. The remaining figure is rounded to
-// 0.1GB, so most readings simply repeat the last one - treating those as zero
-// throughput swings the estimate by hours. And the engine keeps reprinting the same
-// line while one huge archive extracts, which is a genuine stall as far as the
-// figures go, so the estimate has to shut up rather than inflate.
+// The remaining figure is rounded to 0.1GB, so most readings repeat the last one;
+// counting those as zero throughput swings the estimate by hours. And the engine
+// reprints the same line for minutes while one huge archive extracts, so a stall
+// has to read as "no estimate" rather than an inflating one.
 class EtaEstimator {
 public:
     // A "<remaining> bytes still to go" reading taken at elapsedMs since the run began.

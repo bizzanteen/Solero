@@ -1,19 +1,9 @@
-// Regression test for the table column-resize model used by ModListView,
-// PluginListView and DownloadsTab.
+// Column-resize geometry for ModListView, PluginListView and DownloadsTab, checked
+// against a plain QTreeView.
 //
-// The proven rule (see project memory / the header comments in those views): the
-// column that absorbs slack must be the last column (setStretchLastSection(true)),
-// never a middle "flex" column. This test codifies WHY, by exercising the exact
-// geometry with a plain QTreeView:
-//
-//   * Strategy F (stretch the last column): dragging ANY divider - including the
-//     Name column's - follows the cursor, and total width always == viewport.
-//   * A middle flex column (Stretch on a non-last section, which is what the old
-//     manual fillNameColumn emulated) INVERTS every divider to its right and makes
-//     the flex column itself unresizable.
-//
-// If someone reintroduces a middle-flex layout in a shared helper, the assertions
-// here document the failure they'll reproduce.
+// The column that absorbs slack has to be the last one (setStretchLastSection), not
+// a middle flex column: a middle flex column inverts every divider to its right and
+// can't be dragged itself, which is what the old manual fillNameColumn did.
 #include <QApplication>
 #include <QTreeView>
 #include <QStandardItemModel>

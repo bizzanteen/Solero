@@ -1,21 +1,8 @@
-// Regression test for the shared column-fit helpers (ui/ColumnFit.h) used by the
-// Mods, Downloads and Saves tables.
+// Column-fit helpers (ui/ColumnFit.h) for the Mods, Downloads and Saves tables.
 //
-// Bug this locks in: applyFitFillDefaults() used to set the fill column (Name) to
-// QHeaderView::Stretch, which Qt makes non-draggable - so the user could not resize
-// Name. The fix keeps EVERY column Interactive (resizable) while the fill column still
-// takes the leftover viewport width by default, and fillColumnToViewport() keeps it
-// absorbing pane-resize / zoom slack.
-//
-// Assertions:
-//   (a) after applyFitFillDefaults every section is Interactive (draggable, no Stretch
-//       mode) but stretchLastSection is on so the pane is always filled with no gap,
-//   (b) the fill column is itself resizable (Interactive),
-//   (c) the fill column is the widest and the columns span the viewport exactly,
-//   (d) shrinking the viewport keeps the columns spanning it (no gap, via the last
-//       column absorbing), and
-//   (e) widening the viewport + refillFillColumn re-maximizes the FILL column (not the
-//       last one) while the columns still span the pane.
+// Locks in the fix for: applyFitFillDefaults() set the fill column (Name) to
+// QHeaderView::Stretch, which Qt makes non-draggable, so Name could not be resized.
+// Every column is Interactive now, with the fill column taking the leftover width.
 #include "ui/ColumnFit.h"
 #include <QApplication>
 #include <QTableWidget>

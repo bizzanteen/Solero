@@ -133,7 +133,8 @@ NexusApi::EndorseResult NexusApi::endorse(const QString& modId, const QString& v
     if (modId.isEmpty()) { r.message = "No Nexus mod id."; return r; }
     qCInfo(lcNexus) << (abstain ? "abstain" : "endorse") << game << "mod" << modId << "version" << version;
     QString url = kBase + game + "/mods/" + modId + "/" + (abstain ? "abstain" : "endorse") + ".json";
-    // Send version both as a query parameter and a form body for robustness.
+    // Send version as a query parameter and in the form body; Nexus has accepted
+    // it either way and this survives whichever they keep.
     if (!version.isEmpty()) {
         QUrlQuery q; q.addQueryItem("version", version);
         url += "?" + q.query(QUrl::FullyEncoded);

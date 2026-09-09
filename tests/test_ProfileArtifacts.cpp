@@ -115,7 +115,7 @@ private slots:
 
     // A profile whose plugin list hasn't been populated must never blank out a live
     // load order - an empty Plugins.txt makes the game load no mods at all. Launch
-    // writes the artifacts on EVERY start, so this has to be safe.
+    // writes the artifacts on every start, so this has to be safe.
     void neverBlanksLiveOrderWithAnEmptyPluginList() {
         Env e; setup(e);
         writeFile(e.appdata + "/Plugins.txt", "*Skyrim.esm\n*Real.esp\n");

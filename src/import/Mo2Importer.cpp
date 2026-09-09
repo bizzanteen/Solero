@@ -649,7 +649,7 @@ Mo2InstanceImportResult Mo2Importer::importInstance(const QString& mo2InstanceDi
         parsedByProfile.insert(mp, entries);
     }
 
-    // Stage each unique mod EXACTLY once; share id+name across all profiles.
+    // Stage each unique mod once; share id+name across all profiles.
     QHash<QString, ModEntry> sharedMods; // lowercased name -> staged ModEntry
     int copyFailures = 0;
     QSet<QString> taken; // assigned name-based staging folders, kept unique

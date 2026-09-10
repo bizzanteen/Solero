@@ -147,6 +147,26 @@ private slots:
         QCOMPARE(files[1].isFolder, false);
         QCOMPARE(files[1].destination, QString("a/b.esp")); // file -> source path
     }
+
+    // ModInstaller reads an empty destination on a file as "the Data root", which
+    // only works because an OMITTED one is resolved to the source here instead.
+    // Pin both halves: if this ever parsed omitted as empty too, every FOMOD file
+    // would silently flatten to its basename.
+    void explicitEmptyFileDestinationStaysEmpty() {
+        QTemporaryDir tmp;
+        QString cfg = writeConfig(tmp, R"(<?xml version="1.0"?>
+<config><moduleName>M</moduleName>
+ <requiredInstallFiles>
+   <file source="Cotn_serie/patch.esp" destination=""/>
+   <file source="a/b.esp"/>
+ </requiredInstallFiles>
+ <installSteps/></config>)");
+        FomodEngine engine; QVERIFY(engine.load(cfg));
+        auto files = engine.collectFiles({});
+        QCOMPARE(files.size(), 2);
+        QCOMPARE(files[0].destination, QString());          // explicit "" -> empty
+        QCOMPARE(files[1].destination, QString("a/b.esp")); // omitted -> source
+    }
 };
 QTEST_MAIN(TestFomodEngine)
 #include "test_FomodEngine.moc"

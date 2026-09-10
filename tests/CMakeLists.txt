@@ -734,3 +734,9 @@ add_executable(test_FileVersionPick test_FileVersionPick.cpp)
 target_include_directories(test_FileVersionPick PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_FileVersionPick PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_FileVersionPick COMMAND test_FileVersionPick)
+
+# Nexus download metadata recovery is header-only (nexus/DownloadMeta.h).
+add_executable(test_DownloadMeta test_DownloadMeta.cpp)
+target_include_directories(test_DownloadMeta PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_DownloadMeta PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_DownloadMeta COMMAND test_DownloadMeta)

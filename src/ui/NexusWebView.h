@@ -43,6 +43,12 @@ public:
 
 signals:
     void nxmRequested(const QString& url);
+    // A file the website downloaded itself (the plain "Download" button, not the
+    // nxm one) has landed in the downloads folder. Carries whatever Nexus identity
+    // could be recovered so the owner can write the sidecar.
+    void fileDownloaded(const QString& path, const QString& modId,
+                        const QString& fileId, const QString& version);
+    void downloadProgress(const QString& fileName, qint64 received, qint64 total);
 
 private:
     QWebEngineView* currentView() const;
@@ -59,6 +65,7 @@ private:
     // Drop the saved login into the sign-in form, and arm the capture that offers
     // to save it when there is nothing stored yet.
     void setUpLoginAutofill(QWebEngineView* view);
+    void setUpDownloadCapture();
     void offerToSaveLogin();
 
     QWebChannel*        m_channel = nullptr;

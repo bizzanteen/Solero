@@ -15,6 +15,10 @@
 #include <QFile>
 #include "NexusLoginFill.h"
 #include "nexus/NexusCredentials.h"
+#include "nexus/DownloadMeta.h"
+#include "core/AppConfig.h"
+#include <QWebEngineDownloadRequest>
+#include <QDir>
 #include <QWebEngineHistory>
 #include <QFileInfo>
 #include <QDir>
@@ -199,6 +203,8 @@ NexusWebView::NexusWebView(QWidget* parent) : QWidget(parent) {
     m_channel = new QWebChannel(this);
     m_channel->registerObject(QStringLiteral("soleroLogin"), m_capture);
 
+    setUpDownloadCapture();
+
     // Tabs
     m_tabs = new QTabWidget(this);
     m_tabs->setTabsClosable(true);
@@ -294,6 +300,49 @@ new QWebChannel(qt.webChannelTransport, function(channel) {
 });
 )JS");
         view->page()->runJavaScript(bridge);
+    });
+}
+
+// The site's own "Download" button issues an ordinary HTTP download, which
+// QtWebEngine drops on the floor unless something accepts it - so those clicks
+// did nothing at all. Send them to Solero's downloads folder, where the Downloads
+// tab already picks up anything that appears.
+//
+// The engine does the transfer itself rather than handing the URL to Solero's
+// downloader: the CDN link is signed and tied to this browser session, so
+// re-fetching it elsewhere is not reliable.
+void NexusWebView::setUpDownloadCapture() {
+    if (!m_profile) return;
+    connect(m_profile, &QWebEngineProfile::downloadRequested,
+            this, [this](QWebEngineDownloadRequest* dl) {
+        if (!dl) return;
+        const QString dir = solero::AppConfig::instance().downloadsDir();
+        if (dir.isEmpty()) return;              // unconfigured: leave it cancelled
+        QDir().mkpath(dir);
+
+        const QString fileName = dl->downloadFileName();
+        dl->setDownloadDirectory(dir);
+
+        // Page ids are firmer than the filename, so read them while the tab is
+        // still on the mod page.
+        NexusDownloadMeta meta;
+        if (auto* vw = currentView())
+            meta = mergeNexusMeta(nexusMetaFromPageUrl(vw->url()),
+                                  nexusMetaFromFileName(fileName));
+        else
+            meta = nexusMetaFromFileName(fileName);
+
+        connect(dl, &QWebEngineDownloadRequest::receivedBytesChanged, this, [this, dl, fileName]{
+            emit downloadProgress(fileName, dl->receivedBytes(), dl->totalBytes());
+        });
+        connect(dl, &QWebEngineDownloadRequest::isFinishedChanged, this,
+                [this, dl, meta, fileName]{
+            if (!dl->isFinished()) return;
+            if (dl->state() != QWebEngineDownloadRequest::DownloadCompleted) return;
+            emit fileDownloaded(dl->downloadDirectory() + "/" + dl->downloadFileName(),
+                                meta.modId, meta.fileId, meta.version);
+        });
+        dl->accept();
     });
 }
 

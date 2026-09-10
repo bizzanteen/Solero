@@ -1411,6 +1411,38 @@ void MainWindow::setupCentralWidget() {
     connect(m_nexusWeb, &solero::NexusWebView::nxmRequested,
             this, &MainWindow::onBrowserNxmDownload);
 
+    // The website's own Download button. QtWebEngine has already written the file
+    // into the downloads folder; all that's left is the Nexus sidecar, without
+    // which the Downloads tab shows the raw CDN filename and a blank version.
+    connect(m_nexusWeb, &solero::NexusWebView::fileDownloaded, this,
+            [this](const QString& path, const QString& modId, const QString& fileId,
+                   const QString& version) {
+        const QString fn = QFileInfo(path).fileName();
+        if (!modId.isEmpty()) {
+            QJsonObject meta{{"game", solero::NexusApi::kDefaultGame}, {"modId", modId}};
+            if (!fileId.isEmpty())  meta["fileId"] = fileId;
+            if (!version.isEmpty()) meta["version"] = version;
+            // The filename names the FILE ("00 - Males of Skyrim - Body and
+            // textures"); the mod list wants the mod. One lookup, and the entry
+            // reads the same as an nxm download.
+            QApplication::setOverrideCursor(Qt::WaitCursor);
+            const auto details = solero::NexusApi::modDetails(modId);
+            QApplication::restoreOverrideCursor();
+            if (details.ok && !details.name.isEmpty()) meta["name"] = details.name;
+            QFile sf(path + ".solero-nexus.json");
+            if (sf.open(QIODevice::WriteOnly))
+                sf.write(QJsonDocument(meta).toJson(QJsonDocument::Indented));
+        }
+        m_rightPane->downloadsTab()->refresh();
+        m_rightPane->showDownloadsTab();
+        statusBar()->showMessage("Downloaded: " + fn);
+    });
+
+    connect(m_nexusWeb, &solero::NexusWebView::downloadProgress, this,
+            [this](const QString& fileName, qint64 received, qint64 total) {
+        m_rightPane->downloadsTab()->setDownloadProgress(fileName, received, total);
+    });
+
     // Learn which mods the user tracks on Nexus so the mod list's "Track on
     // Nexus" toggle can show the real state.
     refreshTrackedMods();

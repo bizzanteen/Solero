@@ -19,6 +19,7 @@
 #include <QPainter>
 #include <QPalette>
 #include <QTextOption>
+#include <QFileInfo>
 
 namespace solero {
 
@@ -207,8 +208,11 @@ void PatchWizardDialog::buildTree() {
             tip += "\n\n" + c.optionDescription;
         QStringList paths;
         for (const FomodFile& f : c.files) {
+            // Empty destination means the Data root for files as well as folders,
+            // so preview the basename rather than the source path.
             const QString d = f.destination.isEmpty()
-                ? (f.isFolder ? QStringLiteral("Data/") : f.source) : f.destination;
+                ? (f.isFolder ? QStringLiteral("Data/") : QFileInfo(f.source).fileName())
+                : f.destination;
             paths << (f.isFolder ? (d + "/*") : d);
         }
         if (!paths.isEmpty()) {

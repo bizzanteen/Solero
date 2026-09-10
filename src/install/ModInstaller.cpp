@@ -297,8 +297,13 @@ bool ModInstaller::copyFomodFiles(const QString& fomodBase, const QList<FomodFil
             qCDebug(lcInstall) << "copyFomodFiles dir:" << src << "->" << dst;
             if (!copyDirInto(src, dst)) { qCWarning(lcInstall) << "copyFomodFiles: copyDirInto failed" << src << "->" << dst; allOk = false; }
         } else {
-            // File: destination defaults to source path (relative to Data).
-            QString destRel = f.destination.isEmpty() ? f.source : f.destination;
+            // File: an empty destination means the Data root, so keep only the
+            // basename. An omitted destination means "same as source" and
+            // FomodEngine already resolved it to the source, so it is never empty
+            // here. Patch hubs use destination="" to flatten their category
+            // folders; falling back to the source buried the plugins a level down.
+            QString destRel = f.destination.isEmpty() ? QFileInfo(f.source).fileName()
+                                                      : f.destination;
             QString dst = modDir + "/Data/" + destRel;
             // extra guard: the resolved path must stay under the mod dir.
             if (!QDir::cleanPath(dst).startsWith(cleanMod + "/")) {

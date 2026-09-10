@@ -164,6 +164,62 @@ private slots:
         QVERIFY(QFile::exists(modDir + "/Data/a.txt"));   // successful path preserved
         QVERIFY(!QFile::exists(modDir + "/Data/nope.txt"));
     }
+    // Regression: a FOMOD <file> with an EMPTY destination means the Data root,
+    // not the source path. eFPS - Official Patch Hub sorts its patches into
+    // category folders and flattens them this way; installing them at the source
+    // path buried the plugins in Data/Cotn_serie/, where Skyrim never loads them.
+    // An OMITTED destination still means "same as source" - FomodEngine resolves
+    // that to the source at parse time, so an empty string here can only be the
+    // explicit destination="" case.
+    void stageFomod_emptyDestination_landsAtDataRoot() {
+        QTemporaryDir tmp;
+        QString src = tmp.path() + "/srcmod";
+        writeFile(src + "/fomod/ModuleConfig.xml", "<config><moduleName>P</moduleName></config>");
+        writeFile(src + "/Cotn_serie/Occ_COTN-Dawnstar.esp", "esp");
+        writeFile(src + "/Nested/Deep/tex.dds", "tex");
+        QString archive = tmp.path() + "/PatchHub.7z";
+        QProcess z; z.setWorkingDirectory(src);
+        z.start("7z", {"a", archive, "."});
+        QVERIFY(z.waitForFinished(60000));
+
+        auto prep = ModInstaller::prepare(archive);
+        QVERIFY2(prep.ok, prep.errorMessage.toUtf8());
+
+        FomodFile flat;  flat.source = "Cotn_serie/Occ_COTN-Dawnstar.esp"; flat.destination = "";
+        FomodFile kept;  kept.source = "Nested/Deep/tex.dds"; kept.destination = "Nested/Deep/tex.dds";
+        QString staging = tmp.path() + "/staging";
+        auto r = ModInstaller::stageFomod(prep, staging, {flat, kept});
+        QVERIFY2(r.success, r.errorMessage.toUtf8());
+        QString mod = staging + "/" + r.modId;
+        // empty destination -> Data root, basename only
+        QVERIFY2(QFile::exists(mod + "/Data/Occ_COTN-Dawnstar.esp"),
+                 "empty destination must flatten to the Data root");
+        QVERIFY2(!QFile::exists(mod + "/Data/Cotn_serie/Occ_COTN-Dawnstar.esp"),
+                 "empty destination must not fall back to the source path");
+        // an explicit destination is still honoured verbatim
+        QVERIFY(QFile::exists(mod + "/Data/Nested/Deep/tex.dds"));
+    }
+    // The spec default (destination attribute absent) must keep meaning "same as
+    // source". FomodEngine hands us the source in that case, so it arrives here as
+    // a non-empty destination and must not be flattened.
+    void stageFomod_omittedDestination_keepsSourcePath() {
+        QTemporaryDir tmp;
+        QString src = tmp.path() + "/srcmod";
+        writeFile(src + "/fomod/ModuleConfig.xml", "<config><moduleName>P</moduleName></config>");
+        writeFile(src + "/meshes/rock/a.nif", "nif");
+        QString archive = tmp.path() + "/Keep.7z";
+        QProcess z; z.setWorkingDirectory(src);
+        z.start("7z", {"a", archive, "."});
+        QVERIFY(z.waitForFinished(60000));
+
+        auto prep = ModInstaller::prepare(archive);
+        QVERIFY2(prep.ok, prep.errorMessage.toUtf8());
+        FomodFile f; f.source = "meshes/rock/a.nif"; f.destination = "meshes/rock/a.nif";
+        QString staging = tmp.path() + "/staging";
+        auto r = ModInstaller::stageFomod(prep, staging, {f});
+        QVERIFY2(r.success, r.errorMessage.toUtf8());
+        QVERIFY(QFile::exists(staging + "/" + r.modId + "/Data/meshes/rock/a.nif"));
+    }
 };
 QTEST_MAIN(TestModInstaller)
 #include "test_ModInstaller.moc"

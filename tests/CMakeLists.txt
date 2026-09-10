@@ -728,3 +728,9 @@ add_executable(test_OutputModGate test_OutputModGate.cpp)
 target_include_directories(test_OutputModGate PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
 target_link_libraries(test_OutputModGate PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_OutputModGate COMMAND test_OutputModGate)
+
+# bestFileIndexForVersion is header-only (nexus/FileVersionPick.h) but pulls NexusApi.
+add_executable(test_FileVersionPick test_FileVersionPick.cpp)
+target_include_directories(test_FileVersionPick PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_FileVersionPick PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_FileVersionPick COMMAND test_FileVersionPick)

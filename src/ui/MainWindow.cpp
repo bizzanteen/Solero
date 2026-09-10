@@ -42,6 +42,7 @@
 #include "ui/ToolsManagerDialog.h"
 #include "ui/NexusWebView.h"
 #include "ui/RequirementsDialog.h"
+#include "ui/NexusIdentifyDialog.h"
 #include "ui/LootRulesEditor.h"
 #include "ui/SortGate.h"
 #include "ui/PatchWizardDialog.h"
@@ -4153,51 +4154,49 @@ bool MainWindow::ensureNexusIds(solero::ModEntry* mod) {
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) return false;
 
-    // Nexus md5_search matches the uploaded ARCHIVE's md5, so we need the original
-    // source archive. Imported mods without one can't be matched.
-    if (mod->sourceArchive.isEmpty() || !QFile::exists(mod->sourceArchive)) {
-        QMessageBox::information(this, "Redownload from Nexus",
-            "Re-downloading needs to identify this mod on Nexus first, which requires "
-            "the original archive it was installed from.\nThis mod has no source "
-            "archive on disk, so it can't be matched.");
-        return false;
-    }
+    auto adopt = [&](const QString& nexusModId, const QString& fileId, const QString& version) {
+        mod->nexusModId = nexusModId;
+        mod->nexusFileId = fileId;
+        if (!version.isEmpty()) mod->version = version;
+        profile->save();
+        m_modListView->setProfile(profile);
+        return true;
+    };
 
-    QString md5;
-    {
-        solero::ProgressModal prog(this, "Redownload from Nexus", "Hashing\xe2\x80\xa6");
-        prog.pump();
-        QFile f(mod->sourceArchive);
-        if (!f.open(QIODevice::ReadOnly)) {
-            QMessageBox::warning(this, "Redownload from Nexus",
-                "Could not read the source archive for this mod. The file may have been moved or deleted from the downloads folder.");
-            return false;
-        }
-        QCryptographicHash hash(QCryptographicHash::Md5);
-        constexpr qint64 kChunk = 1 << 20; // 1 MiB
-        while (!f.atEnd()) {
-            QByteArray chunk = f.read(kChunk);
-            if (chunk.isEmpty()) break;
-            hash.addData(chunk);
+    // Nexus md5_search matches the uploaded ARCHIVE's md5, so it only works with
+    // the original file. Imported mods often have no archive, and a repacked one
+    // hashes to nothing - either way, fall through to identifying by name.
+    if (!mod->sourceArchive.isEmpty() && QFile::exists(mod->sourceArchive)) {
+        QString md5;
+        {
+            solero::ProgressModal prog(this, "Redownload from Nexus",
+                                       QStringLiteral("Hashing") + QChar(0x2026));
             prog.pump();
+            QFile f(mod->sourceArchive);
+            if (f.open(QIODevice::ReadOnly)) {
+                QCryptographicHash hash(QCryptographicHash::Md5);
+                constexpr qint64 kChunk = 1 << 20; // 1 MiB
+                while (!f.atEnd()) {
+                    QByteArray chunk = f.read(kChunk);
+                    if (chunk.isEmpty()) break;
+                    hash.addData(chunk);
+                    prog.pump();
+                }
+                md5 = QString::fromLatin1(hash.result().toHex());
+            }
         }
-        md5 = QString::fromLatin1(hash.result().toHex());
+        if (!md5.isEmpty()) {
+            auto m = solero::NexusApi::md5Search(md5);
+            if (m.ok) return adopt(m.modId, m.fileId, m.version);
+        }
     }
 
-    auto m = solero::NexusApi::md5Search(md5);
-    if (!m.ok) {
-        QMessageBox::information(this, "Redownload from Nexus",
-            "No Nexus match found for this archive, so it can't be re-downloaded "
-            "automatically.");
-        return false;
-    }
-
-    mod->nexusModId = m.modId;
-    mod->nexusFileId = m.fileId;
-    if (!m.version.isEmpty()) mod->version = m.version;
-    profile->save();
-    m_modListView->setProfile(profile);
-    return true;
+    // No archive, or the hash matched nothing: search Nexus by name and let the
+    // user confirm the mod and the exact file.
+    solero::NexusIdentifyDialog dlg(mod->name, mod->version, mod->nexusModId, this);
+    if (dlg.exec() != QDialog::Accepted) return false;
+    if (dlg.chosenModId().isEmpty() || dlg.chosenFileId().isEmpty()) return false;
+    return adopt(dlg.chosenModId(), dlg.chosenFileId(), dlg.chosenVersion());
 }
 
 void MainWindow::refreshDeployState() {

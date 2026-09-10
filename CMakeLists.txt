@@ -128,6 +128,7 @@ set(SOLERO_SOURCES
   src/ui/ProblemsDialog.cpp
   src/ui/KeyboardShortcutsDialog.cpp
   src/ui/RequirementsDialog.cpp
+  src/ui/NexusIdentifyDialog.cpp
   src/ui/BottomPanel.cpp
   src/ui/ModInfoWidget.cpp
   src/ui/SeparatorDialog.cpp

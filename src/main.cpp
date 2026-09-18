@@ -1,5 +1,6 @@
 #include "app/Application.h"
 #include "app/SingleInstance.h"
+#include "app/Rebuild.h"
 #include "core/AppConfig.h"
 #include "core/Log.h"
 #include "ui/MainWindow.h"
@@ -36,6 +37,11 @@ int main(int argc, char* argv[]) {
     solero::ThemeAdapter::apply(app);
     qCInfo(lcApp) << "Solero" << QCoreApplication::applicationVersion()
                   << "starting; data dir" << solero::AppConfig::dataRoot();
+
+    // Headless repair: re-stage every mod whose staging folder is missing.
+    for (int i = 1; i < argc; ++i)
+        if (QString::fromLocal8Bit(argv[i]) == "--rebuild")
+            return solero::runRebuild(i + 1 < argc ? QString::fromLocal8Bit(argv[i + 1]) : QString());
 
     // An nxm:// URL may be passed by the browser (the .desktop Exec gets %u).
     QString nxmArg;

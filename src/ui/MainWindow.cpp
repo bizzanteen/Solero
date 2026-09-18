@@ -5637,6 +5637,11 @@ void MainWindow::removeModEverywhere(const QString& id) {
     const QString stagingDir = solero::AppConfig::instance().stagingDir();
     bool anyLeftBehind = false;
     for (const QString& folder : folders) {
+        // An empty or dotted folder name would resolve to the staging root.
+        if (folder.isEmpty() || folder == "." || folder == ".." || folder.contains('/')) {
+            qCCritical(lcProfile) << "refusing to delete staging folder" << folder << "for mod" << id;
+            anyLeftBehind = true; continue;
+        }
         QDir dir(stagingDir + "/" + folder);
         if (dir.exists() && !dir.removeRecursively()) anyLeftBehind = true;
     }

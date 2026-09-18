@@ -202,6 +202,14 @@ InstallResult ModInstaller::stageSimple(InstallPrep& prep, const QString& stagin
     // provided, else fall back to the UUID dir (new installs).
     QString modDir = stagingFolderOverride.isEmpty()
         ? (stagingRoot + "/" + r.modId) : stagingFolderOverride;
+    // Never stage into (or wipe) the staging root itself: an empty folder name
+    // resolves modDir to stagingRoot and the reinstall wipe below would delete
+    // every mod. Refuse instead.
+    if (QDir::cleanPath(modDir) == QDir::cleanPath(stagingRoot) || r.modId.isEmpty()) {
+        r.errorMessage = "Refusing to install into the staging root (empty mod folder name).";
+        qCCritical(lcInstall) << "staging target resolves to the staging root for" << r.modName << "- aborting";
+        return r;
+    }
     if (!existingModId.isEmpty()) {
         // Reinstall: wipe the previous staged files (keep the dir).
         QDir md(modDir);
@@ -236,6 +244,14 @@ InstallResult ModInstaller::stageFomod(InstallPrep& prep, const QString& staging
     // provided, else fall back to the UUID dir (new installs).
     QString modDir = stagingFolderOverride.isEmpty()
         ? (stagingRoot + "/" + r.modId) : stagingFolderOverride;
+    // Never stage into (or wipe) the staging root itself: an empty folder name
+    // resolves modDir to stagingRoot and the reinstall wipe below would delete
+    // every mod. Refuse instead.
+    if (QDir::cleanPath(modDir) == QDir::cleanPath(stagingRoot) || r.modId.isEmpty()) {
+        r.errorMessage = "Refusing to install into the staging root (empty mod folder name).";
+        qCCritical(lcInstall) << "staging target resolves to the staging root for" << r.modName << "- aborting";
+        return r;
+    }
     if (!existingModId.isEmpty()) {
         // Reinstall: wipe the previous staged files (keep the dir).
         QDir md(modDir);

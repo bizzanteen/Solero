@@ -1,5 +1,6 @@
 /build/
 /build-release/
+/build-*/
 /_deps/
 *.user
 .qt/

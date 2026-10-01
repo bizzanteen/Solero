@@ -58,6 +58,12 @@ target_include_directories(test_ExeResolve PRIVATE ../src ${CMAKE_BINARY_DIR}/in
 target_link_libraries(test_ExeResolve PRIVATE Qt6::Core Qt6::Test)
 add_test(NAME test_ExeResolve COMMAND test_ExeResolve)
 
+# SteamGameLaunch.h is header-only.
+add_executable(test_SteamGameLaunch test_SteamGameLaunch.cpp)
+target_include_directories(test_SteamGameLaunch PRIVATE ../src ${CMAKE_BINARY_DIR}/include)
+target_link_libraries(test_SteamGameLaunch PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME test_SteamGameLaunch COMMAND test_SteamGameLaunch)
+
 # Source lint: fail if a UTF-8 multi-byte sequence is written as \xNN byte escapes
 # inside a QStringLiteral / u"..." (renders as mojibake - see the script header).
 add_test(NAME check_no_mojibake

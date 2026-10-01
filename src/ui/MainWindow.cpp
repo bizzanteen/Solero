@@ -53,6 +53,7 @@
 #include "tools/ToolSetup.h"
 #include "tools/RadiumPrep.h"
 #include "tools/PgpatcherConfig.h"
+#include "tools/SteamGameLaunch.h"
 #include "fomod/FomodEngine.h"
 #include "loot/LootSorter.h"
 #include "PluginListView.h"
@@ -5357,6 +5358,64 @@ void MainWindow::onOpenLootRules() {
     dlg.exec();
 }
 
+// Hand the launch to Steam and block until the game closes. Steam has to start the
+// game itself: with Steam packaged as a Flatpak its client sits in its own PID
+// namespace, so a game Solero starts registers a PID the client can't see, gets
+// dropped from the running list a second later, and steamclient tears the session
+// down mid-play ("fatal stalled cross-thread pipe"). gameExe is the process to watch
+// - matched on the command line, because wine renames the main thread to "Main".
+static solero::ToolRunner::Result runGameViaSteam(
+    const QString& appId, const QString& gameExe, qint64* ranMs,
+    const std::function<void(const QString&)>& status) {
+    solero::ToolRunner::Result res;
+    const bool inFlatpak = solero::runningInFlatpak();
+    auto gameAlive = [&] {
+        const auto hc = solero::hostCommand("pgrep", {"-f", gameExe}, {}, inFlatpak);
+        QProcess p;
+        p.start(hc.program, hc.args);
+        p.waitForFinished(5000);
+        return p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0;
+    };
+
+    const auto launch =
+        solero::hostCommand("steam", solero::steamAppLaunchArgs(appId), {}, inFlatpak);
+    if (!QProcess::startDetached(launch.program, launch.args)) {
+        res.error = "Couldn't run Steam to launch the game.";
+        return res;
+    }
+    res.launched = true;
+    res.output = "launched via steam -applaunch " + appId
+                 + "\nSteam owns the process, so the game's output isn't captured here.\n";
+
+    constexpr qint64 kStartTimeoutMs = 180000;  // Steam can sit on an update or a prompt
+    QElapsedTimer t;
+    t.start();
+    bool everAlive = false;
+    qint64 startedAt = 0;
+    while (true) {
+        const solero::GameSession step =
+            solero::gameSessionStep(gameAlive(), everAlive, t.elapsed(), kStartTimeoutMs);
+        if (step == solero::GameSession::Running) {
+            if (!everAlive) {
+                everAlive = true;
+                startedAt = t.elapsed();
+                status("Game running - Solero stays locked until it closes.");
+            }
+        } else if (step == solero::GameSession::Ended) {
+            break;
+        } else if (step == solero::GameSession::NeverStarted) {
+            res.launched = false;
+            res.error = "Steam never started the game. Check Steam for a prompt (an "
+                        "update, a EULA or a compatibility dialog), then press Play again.";
+            break;
+        }
+        QThread::msleep(1000);
+        qApp->processEvents();
+    }
+    if (ranMs) *ranMs = everAlive ? t.elapsed() - startedAt : 0;
+    return res;
+}
+
 void MainWindow::onPlay() {
     if (m_deploying) {
         statusBar()->showMessage("A deploy is in progress - wait for it to finish.");
@@ -5469,20 +5528,39 @@ void MainWindow::onPlay() {
     // in Overwrite, shader cache included.
     exe.suppressLooseCapture = true;
 
-    // Lock the UI (MO2-style) while the game runs; ToolRunner blocks via an event
-    // loop until the process exits, then we unlock.
+    // Steam launches the game, we just watch it (see runGameViaSteam). The script
+    // extender still gets in: GE-Proton's protonfixes swaps SkyrimSELauncher.exe for
+    // skse64_loader.exe, which is why the loader has to be deployed either way.
+    // Launching it ourselves is the fallback for setups with no steam command.
+    const QString appId = [&] {
+        const QString id = solero::steamAppIdFromPrefix(exe.winePrefix);
+        return id.isEmpty() ? QStringLiteral("489830") : id;
+    }();
+    const bool viaSteam =
+        solero::runningInFlatpak() || !QStandardPaths::findExecutable("steam").isEmpty();
+
+    // Lock the UI (MO2-style) while the game runs; both paths block until it exits.
     m_toolRunning = true;
     showRunLock(exe.name);
-    statusBar()->showMessage("Launching " + exe.name + "\xe2\x80\xa6");
     QElapsedTimer runTimer; runTimer.start();
-    QString outFolder, owDir;
-    if (auto* p = m_profileMgr->activeProfile()) {
-        if (!exe.outputModId.isEmpty()) outFolder = p->stagingFolderFor(exe.outputModId);
-        owDir = solero::AppConfig::overwriteDir(p->name());
+    solero::ToolRunner::Result res;
+    qint64 ranMs = 0;
+    if (viaSteam) {
+        statusBar()->showMessage("Asking Steam to launch " + exe.name + "\xe2\x80\xa6");
+        const QString watched = QFileInfo(findExeCI("SkyrimSE.exe")).fileName();
+        res = runGameViaSteam(appId, watched.isEmpty() ? QStringLiteral("SkyrimSE.exe") : watched,
+                              &ranMs, [this](const QString& m) { statusBar()->showMessage(m); });
+    } else {
+        statusBar()->showMessage("Launching " + exe.name + "\xe2\x80\xa6");
+        QString outFolder, owDir;
+        if (auto* p = m_profileMgr->activeProfile()) {
+            if (!exe.outputModId.isEmpty()) outFolder = p->stagingFolderFor(exe.outputModId);
+            owDir = solero::AppConfig::overwriteDir(p->name());
+        }
+        res = solero::ToolRunner::run(exe, gameDir, solero::AppConfig::instance().stagingDir(),
+                                      outFolder, owDir);
+        ranMs = runTimer.elapsed();
     }
-    auto res = solero::ToolRunner::run(exe, gameDir, solero::AppConfig::instance().stagingDir(),
-                                       outFolder, owDir);
-    const qint64 ranMs = runTimer.elapsed();
     hideRunLock();
     m_toolRunning = false;
 

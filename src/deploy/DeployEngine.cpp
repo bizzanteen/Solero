@@ -32,6 +32,18 @@ bool onDifferentFilesystems(const QString& a, const QString& b) {
 // loadorder.txt, copied INIs) that land inside gameDir. Lets undeploy() remove
 // them like any other recorded path without attributing them to a real mod.
 const QString kGeneratedArtifactOwner = QStringLiteral("__solero_generated__");
+
+bool hasPathPrefix(const QString& path, const QString& prefix) {
+    return path.compare(prefix, Qt::CaseInsensitive) == 0
+        || (path.size() > prefix.size()
+            && path.left(prefix.size()).compare(prefix, Qt::CaseInsensitive) == 0
+            && path.at(prefix.size()) == QLatin1Char('/'));
+}
+
+QString trimLeadingSlash(QString path) {
+    while (path.startsWith(QLatin1Char('/'))) path.remove(0, 1);
+    return path;
+}
 }
 
 namespace solero {
@@ -45,6 +57,48 @@ QString DeployEngine::recordPath(const QString& gameDir) {
 
 QString DeployEngine::conflictIndexPath(const QString& profileDir) {
     return profileDir + "/conflicts.json";
+}
+
+QString DeployEngine::routeRelativePath(const QString& gameType, const QString& relPath) {
+    QString path = relPath;
+    path.replace(QLatin1Char('\\'), QLatin1Char('/'));
+    path = trimLeadingSlash(path);
+    if (gameType != AppConfig::oblivionRemasteredGame()) return path;
+
+    const QString dataRoot = QStringLiteral("OblivionRemastered/Content/Dev/ObvData/Data");
+    const QString paksRoot = QStringLiteral("OblivionRemastered/Content/Paks/~mods");
+    const QString ue4ssRoot = QStringLiteral("OblivionRemastered/Binaries/Win64/ue4ss/Mods");
+
+    if (hasPathPrefix(path, dataRoot)) return path;
+
+    // UE4SS packages commonly contain either the game-relative tree or just
+    // the ue4ss subtree. Keep each mod's own directory below Mods intact.
+    const QString lower = path.toLower();
+    const QString ue4ssMarker = QStringLiteral("ue4ss/mods/");
+    int ue4ssAt = lower.indexOf(ue4ssMarker);
+    if (ue4ssAt >= 0)
+        return ue4ssRoot + "/" + path.mid(ue4ssAt + ue4ssMarker.size());
+
+    // Unreal package companions must stay beside their .pak file.
+    const QString suffix = QFileInfo(path).suffix().toLower();
+    static const QSet<QString> packageExtensions = {
+        QStringLiteral("pak"), QStringLiteral("ucas"),
+        QStringLiteral("utoc"), QStringLiteral("sig")
+    };
+    if (packageExtensions.contains(suffix))
+        return paksRoot + "/" + QFileInfo(path).fileName();
+
+    // MO2 and archive installers normally stage these files below Data/. A
+    // plugin supplied at the staging root is accepted as well.
+    if (hasPathPrefix(path, QStringLiteral("Data"))) {
+        const QString contents = path.size() > 4 ? path.mid(5) : QString();
+        return contents.isEmpty() ? dataRoot : dataRoot + "/" + contents;
+    }
+    if (suffix == QStringLiteral("esp") || suffix == QStringLiteral("esm")
+        || suffix == QStringLiteral("esl"))
+        return dataRoot + "/" + path;
+
+    return path;
 }
 
 DeployResult DeployEngine::deploy(Profile& profile, DeployMode mode,
@@ -334,7 +388,9 @@ QHash<QString, QString> DeployEngine::computeWinners(const Profile& profile) con
                 continue;
             if (hasHidden && hiddenIt.value().contains(relPath))
                 continue;
-            winner.insert(relPath.toLower(), modId); // later scan (higher priority) wins
+            const QString destPath = DeployEngine::routeRelativePath(
+                AppConfig::instance().gameType(), relPath);
+            winner.insert(destPath.toLower(), modId); // later scan (higher priority) wins
         }
     };
     // Order mirrors deploy(): mods in list order (the CS shader cache rides inside
@@ -389,10 +445,11 @@ int DeployEngine::deployMod(const ModEntry& mod,
 
         // Funnel every mod into one on-disk casing per directory, and let the
         // backup check below find a vanilla file of differing case.
-        const QString destRel = canonicalizeRelPath(gameDir, relPath);
+        const QString routedPath = routeRelativePath(AppConfig::instance().gameType(), relPath);
+        const QString destRel = canonicalizeRelPath(gameDir, routedPath);
         QString dstPath = gameDir + "/" + destRel;
 
-        const QString ciKey = relPath.toLower();
+        const QString ciKey = routedPath.toLower();
 
         // Another mod wins this path. Record the conflict but don't link, so a
         // conflicted path is touched once per deploy rather than once per provider.
@@ -529,24 +586,44 @@ int DeployEngine::applyWinnerOverrides(Profile& profile,
                                 << "is missing/disabled for" << relPath;
             continue;
         }
-        // A hidden file isn't provided by the mod - never override to it.
-        {
-            auto hit = m_hiddenFiles.constFind(modId);
-            if (hit != m_hiddenFiles.constEnd() && hit.value().contains(relPath))
-                continue;
+        // Overrides are keyed by deployed paths. Find the corresponding staged
+        // path because an Oblivion destination may differ from its archive path.
+        const QString modRoot = stagingPathFor(m_stagingRoot, *entry);
+        QString srcPath;
+        QString sourceRel;
+        const QString wantedDest = routeRelativePath(AppConfig::instance().gameType(), relPath);
+        QDirIterator sourceIt(modRoot, QDir::Files | QDir::NoDotAndDotDot,
+                              QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
+        while (sourceIt.hasNext()) {
+            const QString candidate = sourceIt.next();
+            const QString candidateRel = candidate.mid(modRoot.length() + 1);
+            if (routeRelativePath(AppConfig::instance().gameType(), candidateRel)
+                    .compare(wantedDest, Qt::CaseInsensitive) == 0) {
+                srcPath = candidate;
+                sourceRel = candidateRel;
+                break;
+            }
         }
-        // Validate the mod actually stages this path.
-        const QString srcPath = stagingPathFor(m_stagingRoot, *entry) + "/" + relPath;
-        if (!QFile::exists(srcPath)) {
+        // Keep old profile overrides usable when the source and destination were
+        // identical (as they are for Skyrim and for ordinary game-root files).
+        if (srcPath.isEmpty() && QFile::exists(modRoot + "/" + relPath)) {
+            srcPath = modRoot + "/" + relPath;
+            sourceRel = relPath;
+        }
+        if (srcPath.isEmpty()) {
             qCWarning(lcDeploy) << "Winner override skipped: mod" << modId
                                 << "does not provide" << relPath;
             continue;
         }
+        // A hidden source file isn't provided by the mod - never override to it.
+        const auto hiddenIt = m_hiddenFiles.constFind(modId);
+        if (hiddenIt != m_hiddenFiles.constEnd() && hiddenIt.value().contains(sourceRel))
+            continue;
 
         // Resolve to the canonical on-disk casing (mirrors deployMod).
-        const QString destRel = canonicalizeRelPath(gameDir, relPath);
+        const QString destRel = canonicalizeRelPath(gameDir, wantedDest);
 
-        const QString ciKey  = relPath.toLower();
+        const QString ciKey  = wantedDest.toLower();
         const QString priorRel = ciOwners.value(ciKey);
         const QString currentOwner = priorRel.isEmpty() ? QString() : record.ownerOf(priorRel);
         if (currentOwner == modId && priorRel == destRel)
@@ -855,8 +932,9 @@ int DeployEngine::sweepUndeployedModOrphans(const Profile& profile,
             if (::stat(QFile::encodeName(realSrc).constData(), &ss) != 0) continue;
             if (ss.st_nlink < 2) continue;
 
+            const QString stagedRel = srcPath.mid(root.length() + 1);
             const QString destRel = canonicalizeRelPath(normGameDir,
-                                                        srcPath.mid(root.length() + 1));
+                routeRelativePath(AppConfig::instance().gameType(), stagedRel));
             if (newRecord.contains(destRel)) continue;  // this deploy owns it
             const QString dstPath = normGameDir + "/" + destRel;
             if (QDir::cleanPath(dstPath).startsWith(backupRoot)) continue;

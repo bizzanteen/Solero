@@ -6,6 +6,7 @@
 #include "deploy/DeployEngine.h"
 #include "deploy/DeployRecord.h"
 #include "deploy/ConflictIndex.h"
+#include "core/AppConfig.h"
 #include "core/Profile.h"
 using namespace solero;
 
@@ -24,6 +25,26 @@ private slots:
         // that don't inject an Overwrite dir don't pick up the real (populated)
         // ~/.local/share/solero/overwrite folder.
         qputenv("HOME", m_home.path().toLocal8Bit());
+    }
+    void oblivionRemasteredRoutesStagedPaths() {
+        const QString game = AppConfig::oblivionRemasteredGame();
+        QCOMPARE(DeployEngine::routeRelativePath(game, "Data/Foo.esp"),
+                 QString("OblivionRemastered/Content/Dev/ObvData/Data/Foo.esp"));
+        QCOMPARE(DeployEngine::routeRelativePath(game, "Data/meshes/Foo.nif"),
+                 QString("OblivionRemastered/Content/Dev/ObvData/Data/meshes/Foo.nif"));
+        QCOMPARE(DeployEngine::routeRelativePath(game, "Foo.esm"),
+                 QString("OblivionRemastered/Content/Dev/ObvData/Data/Foo.esm"));
+        QCOMPARE(DeployEngine::routeRelativePath(game, "Content/Paks/MyMod.pak"),
+                 QString("OblivionRemastered/Content/Paks/~mods/MyMod.pak"));
+        QCOMPARE(DeployEngine::routeRelativePath(game, "MyMod.ucas"),
+                 QString("OblivionRemastered/Content/Paks/~mods/MyMod.ucas"));
+        QCOMPARE(DeployEngine::routeRelativePath(game,
+                    "Binaries/Win64/ue4ss/Mods/MyMod/mod.txt"),
+                 QString("OblivionRemastered/Binaries/Win64/ue4ss/Mods/MyMod/mod.txt"));
+        QCOMPARE(DeployEngine::routeRelativePath(game, "OblivionRemastered.exe"),
+                 QString("OblivionRemastered.exe"));
+        QCOMPARE(DeployEngine::routeRelativePath(AppConfig::skyrimSeGame(), "Data/Foo.esp"),
+                 QString("Data/Foo.esp"));
     }
     void deploy_copiesModFilesToGameDir() {
         QTemporaryDir tmp;

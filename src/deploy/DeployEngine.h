@@ -64,6 +64,8 @@ public:
 
     static QString recordPath(const QString& gameDir);
     static QString conflictIndexPath(const QString& profileDir);
+    // Translate a staged path into the location read by the selected game.
+    static QString routeRelativePath(const QString& gameType, const QString& relPath);
 
 private:
     QString m_gameDir;

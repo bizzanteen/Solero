@@ -45,7 +45,8 @@ QString dirtyReason(const loot::PluginCleaningData& d) {
 const QHash<QString, QString>& LootSorter::dirtyPlugins() { return g_dirtyPlugins; }
 
 QString LootSorter::masterlistDir() {
-    return AppConfig::dataRoot() + "/loot";
+    const QString game = AppConfig::instance().gameType();
+    return AppConfig::dataRoot() + "/loot/" + game;
 }
 
 QString LootSorter::masterlistPath() {
@@ -56,8 +57,10 @@ LootSorter::GroupsResult LootSorter::groups(const QString& gameDir,
                                             const QString& userlistPath) {
     GroupsResult result;
     try {
+        const auto gameType = AppConfig::instance().gameType() == AppConfig::oblivionRemasteredGame()
+            ? loot::GameType::oblivionRemastered : loot::GameType::tes5se;
         auto handle = loot::CreateGameHandle(
-            loot::GameType::tes5se,
+            gameType,
             std::filesystem::path(gameDir.toStdString()),
             std::filesystem::path(AppConfig::instance().localAppDataDir().toStdString()));
         auto& db = handle->GetDatabase();
@@ -88,8 +91,10 @@ LootSorter::SortResult LootSorter::sort(PluginList& pluginList,
         // libloot needs the game's local appdata folder (Plugins.txt / loadorder.txt)
         // which on a Proton install lives inside the Wine prefix.
         QString localPath = AppConfig::instance().localAppDataDir();
+        const auto gameType = AppConfig::instance().gameType() == AppConfig::oblivionRemasteredGame()
+            ? loot::GameType::oblivionRemastered : loot::GameType::tes5se;
         auto handle = loot::CreateGameHandle(
-            loot::GameType::tes5se,
+            gameType,
             std::filesystem::path(gameDir.toStdString()),
             std::filesystem::path(localPath.toStdString()));
 
@@ -107,7 +112,7 @@ LootSorter::SortResult LootSorter::sort(PluginList& pluginList,
 
         // Build the plugin path + name lists from our PluginList, using only
         // plugins that actually exist on disk in Data/.
-        QString dataDir = gameDir + "/Data";
+        QString dataDir = AppConfig::instance().dataDir();
         std::vector<std::filesystem::path> pluginPaths;
         std::vector<std::string> pluginNames;
         for (int i = 0; i < pluginList.count(); ++i) {
@@ -203,12 +208,13 @@ LootSorter::SortResult LootSorter::sort(PluginList& pluginList,
 
 bool LootSorter::updateMasterlist(const QString& mlPath) {
     QDir().mkpath(QFileInfo(mlPath).path());
-    // LOOT Skyrim SE masterlist. The v0.26 branch is metadata-syntax compatible
-    // with libloot 0.27+. Best-effort via curl; failure is non-fatal.
+    const QString repo = AppConfig::instance().gameType() == AppConfig::oblivionRemasteredGame()
+        ? QStringLiteral("oblivion-remastered") : QStringLiteral("skyrimse");
+    const QString branch = repo == "skyrimse" ? QStringLiteral("v0.26") : QStringLiteral("v0.29");
     QString cmd = QString(
         "curl -fsSL -o '%1' "
-        "https://raw.githubusercontent.com/loot/skyrimse/v0.26/masterlist.yaml")
-        .arg(mlPath);
+        "https://raw.githubusercontent.com/loot/%1/%2/masterlist.yaml")
+        .arg(mlPath, repo, branch);
     int rc = system(cmd.toLocal8Bit().constData());
     if (rc != 0)
         qCWarning(lcLoot) << "masterlist update failed: curl exited" << rc;

@@ -116,6 +116,7 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     addTab(m_downloadsTab, "Downloads");
     m_savesTab = new SavesTab(this);
     addTab(m_savesTab, "Saves");
+    refreshGameTabs();
 
     // Double-clicking a conflict row jumps to that mod's Data view.
     connect(m_conflictsTab, &ConflictsTab::fileActivated, this,
@@ -139,6 +140,12 @@ RightPane::RightPane(QWidget* parent) : QTabWidget(parent) {
     connect(m_pluginsTab, &PluginListView::loadOrderChanged,
             this, &RightPane::updatePluginCounts);
     updatePluginCounts(); // seed the (empty) label before a profile is bound
+}
+
+void RightPane::refreshGameTabs() {
+    const bool supportsSaves = AppConfig::instance().gameType() != AppConfig::oblivionRemasteredGame();
+    const int savesIndex = indexOf(m_savesTab);
+    if (savesIndex >= 0) setTabVisible(savesIndex, supportsSaves);
 }
 
 void RightPane::showDownloadsTab() {
@@ -185,6 +192,7 @@ void RightPane::invalidateModPluginCache(const QString& id) {
 }
 
 void RightPane::setProfile(Profile* profile, bool reconcilePlugins) {
+    refreshGameTabs();
     m_currentProfile = profile;
     // New profile -> different mods; drop the per-mod plugin highlight cache.
     m_modPluginCache.clear();

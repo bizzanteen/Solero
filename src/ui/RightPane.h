@@ -28,6 +28,7 @@ public:
     // reconcilePlugins=false skips the (expensive) game-data plugin scan+save -
     // used during a deployed-profile switch where a redeploy will reconcile once.
     void setProfile(Profile* profile, bool reconcilePlugins = true);
+    void refreshGameTabs();
     void refreshPlugins(Profile* profile);
     void setConflictIndex(const ConflictIndex& index);
     DownloadsTab* downloadsTab() const { return m_downloadsTab; }

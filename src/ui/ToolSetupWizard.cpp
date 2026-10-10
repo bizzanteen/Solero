@@ -56,7 +56,7 @@ static QProcessEnvironment dotnetPrefixEnv(const QString& winePrefix) {
     env.insert("WINEPREFIX", winePrefix + "/pfx");
     env.insert("STEAM_COMPAT_DATA_PATH", winePrefix);
     env.insert("STEAM_COMPAT_CLIENT_INSTALL_PATH", steamRoot);
-    env.insert("GAMEID", "umu-489830");
+    env.insert("GAMEID", "umu-" + AppConfig::gameAppId(AppConfig::instance().gameType()));
     env.insert("STORE", "none");
     env.insert("PROTONPATH", protonDir);
     // No PROTON_VERB needed for winetricks / silent installers.
@@ -536,7 +536,8 @@ ToolSetupWizard::ToolSetupWizard(QWidget* parent, ToolStore* store,
                 QMessageBox::warning(this, "Set Up Tool",
                     "Synthesis was installed, but " + which + " could not be set up automatically. "
                     "To fix this, open a terminal and run:\n\n"
-                    "protontricks 489830 dotnetdesktop8\n\n"
+                    "protontricks " + AppConfig::gameAppId(AppConfig::instance().gameType())
+                    + " dotnetdesktop8\n\n"
                     "Then download the .NET SDK (win-x64) from microsoft.com and install it via the same Proton bottle. "
                     "Synthesis may not build patchers until both are in place.");
             }

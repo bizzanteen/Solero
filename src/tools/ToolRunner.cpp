@@ -63,7 +63,7 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
     // (e.g. DynDOLOD_Output, xEdit root logs) relative to gameDir. Empty extras =
     // identical behavior to the old Data-only capture.
     QStringList captureBases;
-    captureBases << gameDir + "/Data";
+    captureBases << AppConfig::instance().dataDir();
     for (const QString& extra : exe.captureRoots) {
         const QString trimmed = extra.trimmed();
         if (trimmed.isEmpty()) continue;
@@ -143,7 +143,7 @@ ToolRunner::Result ToolRunner::run(const Executable& exe, const QString& gameDir
         ov["WINEPREFIX"] = prefix + "/pfx";
         ov["STEAM_COMPAT_DATA_PATH"] = prefix;
         ov["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = steamRoot;
-        ov["GAMEID"] = "umu-489830";
+        ov["GAMEID"] = "umu-" + AppConfig::gameAppId(AppConfig::instance().gameType());
         ov["STORE"] = "none";
         ov["PROTONPATH"] = protonDir;
         ov["PROTON_VERB"] = "waitforexitandrun";

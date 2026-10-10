@@ -73,7 +73,7 @@ int runRebuild(const QString& downloadsOverride) {
                 r = ModInstaller::stageSimple(prep, staging, m.id, {}, dir);
             } else {
                 engine.setFilePresent([&](const QString& file) {
-                    if (ciExists(cfg.gameDir() + "/Data", file)) return true;
+                    if (ciExists(cfg.dataDir(), file)) return true;
                     for (const ModEntry& o : profile->modList().entries())
                         if (o.type == EntryType::Mod && o.enabled
                             && ciExists(stagingPathFor(staging, o) + "/Data", file)) return true;

@@ -418,6 +418,11 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     skseHelp->setStyleSheet("color:#888;");
     skseLayout->addWidget(skseHelp);
     nexusLayout->addWidget(skseGroup);
+    skseGroup->setVisible(cfg.gameType() == AppConfig::skyrimSeGame());
+    connect(m_setupPanel, &SetupPanel::gameTypeChanged, skseGroup,
+            [skseGroup](const QString& gameType) {
+        skseGroup->setVisible(gameType == AppConfig::skyrimSeGame());
+    });
 
     // "Change version…": fetch the SKSE file list from Nexus (blocking), let the
     // user pick a build, then hand the chosen fileId+version to MainWindow which

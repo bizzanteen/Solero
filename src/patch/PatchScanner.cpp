@@ -443,7 +443,7 @@ QList<PatchCandidate> scanProfile(const Profile& profile,
 
     // Loose files: case-insensitive normalized relative Data paths (recursive)
     // across every enabled mod + the live game Data.
-    QSet<QString> looseFiles = recursiveRelSet(gameDir + "/Data");
+    QSet<QString> looseFiles = recursiveRelSet(AppConfig::instance().dataDir());
     for (const auto& m : profile.modList()) {
         if (m.type != EntryType::Mod || !m.enabled) continue;
         const QString data = childCI(stagingPathFor(stagingRoot, m), "Data");

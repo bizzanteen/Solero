@@ -342,7 +342,7 @@ QByteArray IPCServer::handleSortPlugins(const QJsonObject& req) {
 
     // libloot reads plugin headers out of the game's Data folder, so an
     // undeployed profile sorts "successfully" without moving anything.
-    const QString dataDir = gameDir + "/Data";
+    const QString dataDir = AppConfig::instance().dataDir();
     int onDisk = 0;
     for (int i = 0; i < m_profile->pluginList().count(); ++i)
         if (QFile::exists(dataDir + "/" + m_profile->pluginList().at(i).filename)) ++onDisk;

@@ -50,18 +50,31 @@ QString AppConfig::gameInstallDirectory(const QString& game) {
 
 QString AppConfig::gameExecutable(const QString& game) {
     return game == oblivionRemasteredGame()
-        ? QStringLiteral("OblivionRemastered.exe")
+        ? QStringLiteral("OblivionRemastered/Binaries/Win64/OblivionRemastered-Win64-Shipping.exe")
         : QStringLiteral("SkyrimSE.exe");
+}
+
+QString AppConfig::gameInstallMarker(const QString& game) {
+    return game == oblivionRemasteredGame()
+        ? QStringLiteral("OblivionRemastered/Content/Dev/ObvData/Data/Oblivion.esm")
+        : gameExecutable(skyrimSeGame());
+}
+
+QString AppConfig::gameDataRelativePath(const QString& game) {
+    return game == oblivionRemasteredGame()
+        ? QStringLiteral("OblivionRemastered/Content/Dev/ObvData/Data")
+        : QStringLiteral("Data");
 }
 
 void AppConfig::setGameType(const QString& game) {
     m_gameType = (game == oblivionRemasteredGame())
         ? oblivionRemasteredGame() : skyrimSeGame();
+    m_dataDir = m_gameDir.isEmpty() ? QString() : m_gameDir + "/" + gameDataRelativePath(m_gameType);
 }
 
 void AppConfig::setGameDir(const QString& p) {
     m_gameDir = p;
-    m_dataDir = p + "/Data";
+    m_dataDir = p + "/" + gameDataRelativePath(m_gameType);
     // Auto-detect the Proton-prefix runtime paths (only if not already set).
     if (m_localAppData.isEmpty()) m_localAppData = detectLocalAppData(p);
     if (m_documents.isEmpty())    m_documents    = detectDocumentsDir(p);
@@ -106,7 +119,7 @@ bool AppConfig::load() {
         QDir d(m_stagingDir); d.cdUp();
         m_downloads = d.absolutePath() + "/downloads";
     }
-    m_dataDir      = m_gameDir.isEmpty() ? QString() : m_gameDir + "/Data";
+    m_dataDir      = m_gameDir.isEmpty() ? QString() : m_gameDir + "/" + gameDataRelativePath(m_gameType);
     // Back-fill runtime paths for configs written before this field existed.
     if (m_localAppData.isEmpty() && !m_gameDir.isEmpty())
         m_localAppData = detectLocalAppData(m_gameDir);
@@ -292,9 +305,9 @@ QStringList AppConfig::detectGamePaths(const QString& game) {
 
     QStringList found;
     const QString installDir = gameInstallDirectory(game);
-    const QString executable = gameExecutable(game);
+    const QString marker = gameInstallMarker(game);
     auto probe = [&](const QString& gameDir) {
-        if (QFile::exists(gameDir + "/" + executable) && !found.contains(gameDir))
+        if (QFile::exists(gameDir + "/" + marker) && !found.contains(gameDir))
             found.append(gameDir);
     };
     for (const QString& lib : libraryRoots)

@@ -91,8 +91,8 @@ SetupPanel::SetupPanel(QWidget* parent) : QWidget(parent) {
     refreshGameChoices();
     connect(m_gameTypeCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this](int) {
-        const QString exe = AppConfig::gameExecutable(m_gameTypeCombo->currentData().toString());
-        if (!m_gameDirEdit->text().isEmpty() && !QFile::exists(m_gameDirEdit->text() + "/" + exe))
+        const QString marker = AppConfig::gameInstallMarker(m_gameTypeCombo->currentData().toString());
+        if (!m_gameDirEdit->text().isEmpty() && !QFile::exists(m_gameDirEdit->text() + "/" + marker))
             m_gameDirEdit->clear();
         refreshGameChoices();
         refreshValidity();
@@ -193,8 +193,8 @@ void SetupPanel::browseDownloadsDir() {
 
 bool SetupPanel::isValid() const {
     QString gameDir = m_gameDirEdit->text().trimmed();
-    const QString exe = AppConfig::gameExecutable(m_gameTypeCombo->currentData().toString());
-    bool gameOk = !gameDir.isEmpty() && QFile::exists(gameDir + "/" + exe);
+    const QString marker = AppConfig::gameInstallMarker(m_gameTypeCombo->currentData().toString());
+    bool gameOk = !gameDir.isEmpty() && QFile::exists(gameDir + "/" + marker);
     const QString stagingDir = m_stagingDirEdit->text().trimmed();
     if (!gameOk || stagingDir.isEmpty()) return false;
     // Staging must not be the game dir or live inside it (would deploy into
@@ -210,15 +210,15 @@ bool SetupPanel::isValid() const {
 void SetupPanel::refreshValidity() {
     QString gameDir = m_gameDirEdit->text().trimmed();
     const QString game = m_gameTypeCombo->currentData().toString();
-    const QString exe = AppConfig::gameExecutable(game);
-    bool gameOk = !gameDir.isEmpty() && QFile::exists(gameDir + "/" + exe);
+    const QString marker = AppConfig::gameInstallMarker(game);
+    bool gameOk = !gameDir.isEmpty() && QFile::exists(gameDir + "/" + marker);
     const QString stagingDir = m_stagingDirEdit->text().trimmed();
 
     if (gameDir.isEmpty()) {
         m_statusLabel->setText("");
         m_statusLabel->setStyleSheet("color: red;");
     } else if (!gameOk) {
-        m_statusLabel->setText("⚠ " + exe + " not found in that directory.");
+        m_statusLabel->setText("⚠ Required game file " + marker + " not found in that directory.");
         m_statusLabel->setStyleSheet("color: red;");
     } else if (isInsideOrEqual(stagingDir, gameDir)) {
         m_statusLabel->setText("⚠ Staging directory cannot be inside the game directory.");
@@ -245,12 +245,12 @@ void SetupPanel::refreshValidity() {
 void SetupPanel::refreshGameChoices() {
     const QString game = m_gameTypeCombo->currentData().toString();
     const QString name = AppConfig::gameDisplayName(game);
-    const QString exe = AppConfig::gameExecutable(game);
+    const QString marker = AppConfig::gameInstallMarker(game);
     m_gameGroup->setTitle(name + " Game Directory");
     m_gameDirEdit->setPlaceholderText("/path/to/" + AppConfig::gameInstallDirectory(game));
     m_detectedLabel->setText("Detected " + name + " installation(s):");
     m_gameHint->setText("No " + name + " install was detected in your Steam libraries. "
-                        "Browse to the folder containing " + exe + ".");
+                        "Browse to the folder containing " + marker + ".");
 
     const QString current = m_gameDirEdit->text().trimmed();
     const QStringList detected = AppConfig::detectGamePaths(game);
@@ -261,7 +261,7 @@ void SetupPanel::refreshGameChoices() {
     m_gameHint->setVisible(detected.isEmpty());
     m_gameDetectedCombo->setVisible(!detected.isEmpty());
 
-    if (!current.isEmpty() && QFile::exists(current + "/" + exe))
+    if (!current.isEmpty() && QFile::exists(current + "/" + marker))
         m_gameDirEdit->setText(current);
     else if (!detected.isEmpty())
         m_gameDirEdit->setText(detected.first());

@@ -98,8 +98,19 @@ private slots:
         QCOMPARE(AppConfig::gameInstallDirectory(AppConfig::oblivionRemasteredGame()),
                  QString("Oblivion Remastered"));
         QCOMPARE(AppConfig::gameExecutable(AppConfig::oblivionRemasteredGame()),
-                 QString("OblivionRemastered.exe"));
+                 QString("OblivionRemastered/Binaries/Win64/OblivionRemastered-Win64-Shipping.exe"));
+        QCOMPARE(AppConfig::gameInstallMarker(AppConfig::oblivionRemasteredGame()),
+                 QString("OblivionRemastered/Content/Dev/ObvData/Data/Oblivion.esm"));
+        QCOMPARE(AppConfig::gameDataRelativePath(AppConfig::oblivionRemasteredGame()),
+                 QString("OblivionRemastered/Content/Dev/ObvData/Data"));
         QCOMPARE(AppConfig::gameExecutable("unknown"), QString("SkyrimSE.exe"));
+
+        auto& cfg = AppConfig::instance();
+        cfg.setGameDir("/games/oblivion");
+        cfg.setGameType(AppConfig::oblivionRemasteredGame());
+        QCOMPARE(cfg.dataDir(), QString("/games/oblivion/OblivionRemastered/Content/Dev/ObvData/Data"));
+        cfg.setGameType(AppConfig::skyrimSeGame());
+        QCOMPARE(cfg.dataDir(), QString("/games/oblivion/Data"));
     }
 
     // Modern nested libraryfolders.vdf form.

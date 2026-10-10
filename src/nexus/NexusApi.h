@@ -21,6 +21,9 @@ public:
     // "https://www.nexusmods.com/skyrimspecialedition/mods/12345".
     static QString modPageUrl(const QString& modId, const QString& game = kDefaultGame);
 
+    // The numeric game identifier used by Nexus's v2 GraphQL API.
+    static QString numericGameId(const QString& game = kDefaultGame);
+
     struct EndorseResult { bool ok = false; QString message; };
     static EndorseResult endorse(const QString& modId, const QString& version, bool abstain = false,
                                  const QString& game = kDefaultGame);
@@ -73,6 +76,8 @@ public:
     // First mirror URI from v1 download_link.json. Premium accounts get this
     // without an nxm key/expires; non-premium returns "" (caller handles).
     static QString downloadUrl(const QString& modId, const QString& fileId, const QString& game = kDefaultGame);
+    static QString downloadUrl(const QString& modId, const QString& fileId,
+                               const QString& game, const QString& key, const QString& expires);
 
     static bool keyAvailable();
 

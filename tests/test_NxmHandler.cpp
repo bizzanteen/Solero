@@ -24,15 +24,18 @@ private slots:
     }
 
     void parse_rejectsUnknownGame() {
-        // Non-Skyrim domains must be rejected so they aren't downloaded as junk.
+        // Unknown domains must be rejected so they aren't downloaded as junk.
         auto ob = NxmHandler::parse("nxm://oblivion/mods/1/files/2");
         QVERIFY(!ob.valid);
+        auto remastered = NxmHandler::parse("nxm://oblivionremastered/mods/12/files/34");
+        QVERIFY(remastered.valid);
+        QCOMPARE(remastered.game, QString("oblivionremastered"));
         auto fo = NxmHandler::parse("nxm://fallout4/mods/1/files/2?key=k&expires=1");
         QVERIFY(!fo.valid);
     }
 
     void parse_trailingSlash() {
-        // A trailing slash must not break segment parsing (Qt::SkipEmptyParts).
+        // Nexus may include one trailing slash in links copied from a browser.
         auto l = NxmHandler::parse("nxm://skyrimspecialedition/mods/12345/files/67890/");
         QVERIFY(l.valid);
         QCOMPARE(l.modId, QString("12345"));
@@ -44,10 +47,27 @@ private slots:
         QVERIFY(!l.valid);
     }
 
+    void parse_rejectsMalformedUrls() {
+        QVERIFY(!NxmHandler::parse("https://oblivionremastered/mods/1/files/2").valid);
+        QVERIFY(!NxmHandler::parse("nxm://user@oblivionremastered/mods/1/files/2").valid);
+        QVERIFY(!NxmHandler::parse("nxm://oblivionremastered:80/mods/1/files/2").valid);
+        QVERIFY(!NxmHandler::parse("nxm://oblivionremastered/mods//1/files/2").valid);
+        QVERIFY(!NxmHandler::parse("nxm://oblivionremastered/mods/1/files/2?key=only").valid);
+        QVERIFY(!NxmHandler::parse("nxm://oblivionremastered/mods/1/files/2?key=a&key=b&expires=1").valid);
+    }
+
+    void parse_normalizesGameDomain() {
+        const auto link = NxmHandler::parse("nxm://OblivionRemastered/mods/12/files/34");
+        QVERIFY(link.valid);
+        QCOMPARE(link.game, QString("oblivionremastered"));
+    }
+
     void isSupportedGame_cases() {
         QVERIFY(NxmHandler::isSupportedGame("skyrimspecialedition"));
         QVERIFY(NxmHandler::isSupportedGame("SkyrimSpecialEdition")); // case-insensitive
         QVERIFY(NxmHandler::isSupportedGame("skyrim"));
+        QVERIFY(NxmHandler::isSupportedGame("oblivionremastered"));
+        QVERIFY(NxmHandler::isSupportedGame("OblivionRemastered"));
         QVERIFY(!NxmHandler::isSupportedGame("oblivion"));
         QVERIFY(!NxmHandler::isSupportedGame(""));
     }

@@ -16,6 +16,11 @@ private slots:
         QCOMPARE(NexusApi::modPageUrl("7", "fallout4"),
                  QString("https://www.nexusmods.com/fallout4/mods/7"));
     }
+
+    void numericGameId_oblivionRemastered() {
+        QCOMPARE(NexusApi::numericGameId("oblivionremastered"), QString("7587"));
+        QCOMPARE(NexusApi::numericGameId("OblivionRemastered"), QString("7587"));
+    }
 };
 
 QTEST_MAIN(TestNexusApi)

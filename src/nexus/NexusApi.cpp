@@ -97,11 +97,12 @@ static QByteArray curlPostJson(const QString& url, const QByteArray& body, QStri
     return curlRun(args, err);
 }
 
-// Map a Nexus game slug to its numeric v2 gameId. Defaults to SkyrimSE (1704).
-static QString numericGameId(const QString& game) {
-    if (game == "skyrim") return "110";       // Skyrim LE
-    if (game == "fallout4") return "1151";
-    return "1704";                            // skyrimspecialedition + default
+QString NexusApi::numericGameId(const QString& game) {
+    const QString slug = game.toLower();
+    if (slug == "skyrim") return "110";                    // Skyrim LE
+    if (slug == "fallout4") return "1151";
+    if (slug == "oblivionremastered") return "7587";
+    return "1704";                                         // Skyrim Special Edition
 }
 
 bool NexusApi::keyAvailable() { return !ToolDownloader::nexusApiKey().isEmpty(); }
@@ -437,9 +438,21 @@ QList<NexusApi::ModRequirement> NexusApi::modRequirements(const QString& modId, 
 }
 
 QString NexusApi::downloadUrl(const QString& modId, const QString& fileId, const QString& game) {
+    return downloadUrl(modId, fileId, game, {}, {});
+}
+
+QString NexusApi::downloadUrl(const QString& modId, const QString& fileId,
+                              const QString& game, const QString& key, const QString& expires) {
     if (modId.isEmpty() || fileId.isEmpty()) return {};
     qCInfo(lcNexus) << "downloadUrl" << game << "mod" << modId << "file" << fileId;
-    QByteArray body = curlGet(kBase + game + "/mods/" + modId + "/files/" + fileId + "/download_link.json");
+    QUrl url(kBase + game + "/mods/" + modId + "/files/" + fileId + "/download_link.json");
+    if (!key.isEmpty() && !expires.isEmpty()) {
+        QUrlQuery query;
+        query.addQueryItem("key", key);
+        query.addQueryItem("expires", expires);
+        url.setQuery(query);
+    }
+    QByteArray body = curlGet(url.toString(QUrl::FullyEncoded));
     if (body.isEmpty()) { qCWarning(lcNexus) << "downloadUrl: empty response for mod" << modId << "file" << fileId; return {}; }
     auto doc = QJsonDocument::fromJson(body);
     if (!doc.isArray()) { qCWarning(lcNexus) << "downloadUrl: non-array response (non-premium?) for mod" << modId << "file" << fileId; return {}; }   // non-premium returns an error object

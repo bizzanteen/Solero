@@ -1,49 +1,56 @@
 #include "NxmHandler.h"
 #include "NexusApi.h"
-#include "MirrorPick.h"
-#include "core/AppConfig.h"
 #include "tools/ToolDownloader.h"
 #include <QUrl>
 #include <QUrlQuery>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonArray>
 #include <QProcess>
+#include <QRegularExpression>
 
 namespace solero {
 
 static bool isNumericish(const QString& s) {
     if (s.isEmpty()) return false;
-    for (QChar c : s) if (!c.isDigit()) return false;
+    for (QChar c : s) if (c < QLatin1Char('0') || c > QLatin1Char('9')) return false;
     return true;
 }
 
 bool NxmHandler::isSupportedGame(const QString& game) {
-    // Only the Skyrim games Solero manages. "skyrimspecialedition" is the primary
-    // target; "skyrim" (LE) matches the LE id mapping in NexusApi. Non-Skyrim
-    // domains (e.g. "oblivion", "fallout4") are rejected so they aren't downloaded
-    // as junk. Matched case-insensitively.
+    // Domains are deliberately allow-listed: accepting arbitrary nxm:// links can
+    // make Solero download unrelated or unsupported game files. Oblivion Remastered
+    // uses its own Nexus domain (distinct from classic Oblivion).
     const QString g = game.toLower();
     return g == QStringLiteral("skyrimspecialedition")
-        || g == QStringLiteral("skyrim");
+        || g == QStringLiteral("skyrim")
+        || g == QStringLiteral("oblivionremastered");
 }
 
 NxmLink NxmHandler::parse(const QString& url) {
     NxmLink link;
     QUrl u(url, QUrl::StrictMode);
-    link.game = u.host();
-    // SkipEmptyParts so a trailing slash (or the leading slash) doesn't shift the
-    // path segments: expect ["mods", "<modId>", "files", "<fileId>"].
-    const QStringList parts = u.path().split('/', Qt::SkipEmptyParts);
-    if (parts.size() == 4 && parts[0] == "mods" && parts[2] == "files") {
-        link.modId = parts[1];
-        link.fileId = parts[3];
+    if (!u.isValid() || u.scheme().compare("nxm", Qt::CaseInsensitive) != 0
+        || !u.userInfo().isEmpty() || u.port(-1) != -1 || !u.fragment().isEmpty())
+        return link;
+    link.game = u.host().toLower();
+    static const QRegularExpression pathPattern(
+        QStringLiteral("^/mods/([0-9]+)/files/([0-9]+)/?$"));
+    const auto pathMatch = pathPattern.match(u.path(QUrl::FullyEncoded));
+    if (pathMatch.hasMatch()) {
+        link.modId = pathMatch.captured(1);
+        link.fileId = pathMatch.captured(2);
     }
     QUrlQuery q(u);
+    const auto keys = q.allQueryItemValues("key", QUrl::FullyDecoded);
+    const auto expiries = q.allQueryItemValues("expires", QUrl::FullyDecoded);
+    const auto users = q.allQueryItemValues("user_id", QUrl::FullyDecoded);
+    if (keys.size() > 1 || expiries.size() > 1 || users.size() > 1
+        || (!keys.isEmpty() && keys.first().isEmpty())
+        || (!expiries.isEmpty() && expiries.first().isEmpty())
+        || keys.isEmpty() != expiries.isEmpty())
+        return link;
     link.key = q.queryItemValue("key");
     link.expires = q.queryItemValue("expires");
     link.userId = q.queryItemValue("user_id");
-    // A link is valid only for a Skyrim game domain Solero manages.
+    // A link is valid only for a game domain Solero explicitly supports.
     link.valid = isSupportedGame(link.game)
               && isNumericish(link.modId) && isNumericish(link.fileId);
     return link;
@@ -64,23 +71,7 @@ static QByteArray curlGet(const QString& url, QString* err = nullptr) {
 
 QString NxmHandler::resolveDownloadUrl(const NxmLink& link) {
     if (!link.valid) return {};
-    QString url = "https://api.nexusmods.com/v1/games/" + link.game + "/mods/" + link.modId
-                + "/files/" + link.fileId + "/download_link.json";
-    // Only append key+expires when both are present (a dangling expires= breaks the
-    // API call); free-account nxm links carry both, premium links carry neither.
-    if (!link.key.isEmpty() && !link.expires.isEmpty()) {
-        QUrlQuery q;
-        q.addQueryItem("key", link.key);
-        q.addQueryItem("expires", link.expires);
-        url += "?" + q.query(QUrl::FullyEncoded);
-    }
-    QString err;
-    QByteArray body = curlGet(url, &err);
-    if (body.isEmpty()) return {};   // curl failed or empty body; caller warns generically
-    const QJsonArray arr = QJsonDocument::fromJson(body).array();
-    if (arr.isEmpty()) return {};
-    AppConfig::instance().setCachedDownloadServers(mirrorServerNames(arr));
-    return pickMirror(arr, AppConfig::instance().preferredDownloadServer());
+    return NexusApi::downloadUrl(link.modId, link.fileId, link.game, link.key, link.expires);
 }
 
 QString NxmHandler::fileName(const NxmLink& link) {

@@ -1,4 +1,5 @@
 #include "NexusWebView.h"
+#include "core/AppConfig.h"
 #include "nexus/NexusApi.h"
 #include "app/Application.h"
 #include <QVBoxLayout>
@@ -128,12 +129,13 @@ private:
 };
 
 QUrl NexusWebView::homepageUrl() {
-    return QUrl(QStringLiteral("https://www.nexusmods.com/skyrimspecialedition"));
+    const QString game = AppConfig::instance().gameType();
+    return QUrl(QStringLiteral("https://www.nexusmods.com/") + game);
 }
 
 QUrl NexusWebView::signInUrl() {
-    return QUrl(QStringLiteral(
-        "https://users.nexusmods.com/auth/sign_in?redirect_url=https://www.nexusmods.com/skyrimspecialedition"));
+    const QString game = AppConfig::instance().gameType();
+    return QUrl(QStringLiteral("https://users.nexusmods.com/auth/sign_in?redirect_url=https://www.nexusmods.com/") + game);
 }
 
 QUrl NexusWebView::apiKeyUrl() {

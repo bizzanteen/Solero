@@ -1,6 +1,7 @@
 #include "NexusBrowser.h"
 #include "ProgressModal.h"
 #include "core/Log.h"
+#include "core/AppConfig.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -180,11 +181,13 @@ NexusBrowser::NexusBrowser(QWidget* parent) : QDialog(parent) {
     connect(openBtn, &QPushButton::clicked, this, [this]{
         if (!m_currentModId.isEmpty())
             QDesktopServices::openUrl(QUrl(
-                "https://www.nexusmods.com/skyrimspecialedition/mods/" + m_currentModId));
+                "https://www.nexusmods.com/" + AppConfig::instance().gameType()
+                    + "/mods/" + m_currentModId));
     });
     connect(endorseBtn, &QPushButton::clicked, this, [this]{
         if (m_currentModId.isEmpty()) return;
-        auto res = NexusApi::endorse(m_currentModId, m_currentVersion, false);
+        auto res = NexusApi::endorse(m_currentModId, m_currentVersion, false,
+            AppConfig::instance().gameType());
         if (res.ok)
             QMessageBox::information(this, "Endorse", "Endorsed. Thank you!");
         else
@@ -204,7 +207,8 @@ void NexusBrowser::doSearch() {
     m_pendingLabel.clear();
     // Off the UI thread - the synchronous curl call would otherwise freeze the
     // window. Results land on the UI thread via m_listWatcher::finished.
-    m_listWatcher.setFuture(QtConcurrent::run([q]{ return NexusApi::search(q); }));
+    const QString game = AppConfig::instance().gameType();
+    m_listWatcher.setFuture(QtConcurrent::run([q, game]{ return NexusApi::search(q, 20, game); }));
 }
 
 void NexusBrowser::showList(const QString& which) {
@@ -215,10 +219,11 @@ void NexusBrowser::showList(const QString& which) {
     m_pendingEmptyMsg = "No " + label + " mods found.";
     m_pendingLabel = label;
     // Off the UI thread; results populate via m_listWatcher::finished.
-    m_listWatcher.setFuture(QtConcurrent::run([which]() -> QList<NexusApi::ModSummary> {
-        if (which == "trending") return NexusApi::trending();
-        if (which == "latest")   return NexusApi::latestAdded();
-        return NexusApi::latestUpdated();
+    const QString game = AppConfig::instance().gameType();
+    m_listWatcher.setFuture(QtConcurrent::run([which, game]() -> QList<NexusApi::ModSummary> {
+        if (which == "trending") return NexusApi::trending(game);
+        if (which == "latest")   return NexusApi::latestAdded(game);
+        return NexusApi::latestUpdated(game);
     }));
 }
 
@@ -297,8 +302,9 @@ void NexusBrowser::openMod(const QString& modId) {
     ProgressModal prog(this, "Nexus", "Loading mod\xe2\x80\xa6");
     prog.show(); prog.pump();
 
-    auto d = NexusApi::modDetails(modId);
-    auto files = NexusApi::files(modId);
+    const QString game = AppConfig::instance().gameType();
+    auto d = NexusApi::modDetails(modId, game);
+    auto files = NexusApi::files(modId, game);
 
     if (!d.ok) {
         QMessageBox::warning(this, "Nexus", "Could not load this mod's details from Nexus. Check your connection or try refreshing.");

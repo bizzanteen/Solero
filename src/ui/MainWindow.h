@@ -375,6 +375,8 @@ private:
     // Profile menu: per-profile INI / save toggles for the active profile.
     QAction* m_localInisAction = nullptr;
     QAction* m_localSavesAction = nullptr;
+    QAction* m_wabbajackAction = nullptr;
+    QAction* m_bethiniAction = nullptr;
     // View ▸ Zoom: preset actions (exclusive) + a disabled "Current: N%" label.
     QActionGroup* m_zoomGroup = nullptr;
     QAction* m_zoomCurrentAction = nullptr;

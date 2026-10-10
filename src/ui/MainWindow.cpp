@@ -691,7 +691,8 @@ void MainWindow::onToggleNexus(bool on) {
 
 void MainWindow::onNexusDownload(const QString& modId, const QString& fileId,
                                  const QString& fileName, const QString& version) {
-    QString url = solero::NexusApi::downloadUrl(modId, fileId);
+    const QString game = solero::AppConfig::instance().gameType();
+    QString url = solero::NexusApi::downloadUrl(modId, fileId, game);
     if (url.isEmpty()) {
         QMessageBox::information(this, "Download",
             "In-app download needs Nexus Premium. Use the mod page's "
@@ -700,7 +701,7 @@ void MainWindow::onNexusDownload(const QString& modId, const QString& fileId,
     }
     // Record metadata so the sidecar + update-checker work, exactly like the nxm path.
     m_nxmMeta[fileName] = QJsonObject{
-        {"game", "skyrimspecialedition"}, {"modId", modId},
+        {"game", game}, {"modId", modId},
         {"fileId", fileId}, {"version", version}};
     m_downloads->enqueue(url, fileName, solero::AppConfig::instance().downloadsDir());
     m_rightPane->showDownloadsTab();
@@ -724,7 +725,10 @@ void MainWindow::setupMenuBar() {
     QAction* installAct = fileMenu->addAction(
         QStringLiteral("Install Mod") + ell, this, &MainWindow::onInstallMod);
     installAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_I));
-    fileMenu->addAction(QStringLiteral("Install Wabbajack Modlist") + ell, this, &MainWindow::onInstallWabbajack);
+    m_wabbajackAction = fileMenu->addAction(
+        QStringLiteral("Install Wabbajack Modlist") + ell, this, &MainWindow::onInstallWabbajack);
+    m_wabbajackAction->setEnabled(
+        solero::AppConfig::instance().gameType() == solero::AppConfig::skyrimSeGame());
     fileMenu->addSeparator();
     fileMenu->addAction(QStringLiteral("Export Profile") + ell, this, &MainWindow::onExportProfile);
     fileMenu->addAction(QStringLiteral("Import Profile") + ell, this, &MainWindow::onImportProfile);
@@ -854,7 +858,7 @@ void MainWindow::maybePromptCrashReport() {
 void MainWindow::onAboutSolero() {
     QMessageBox::about(this, "About Solero",
         QStringLiteral("<b>Solero</b> %1<br><br>An MO2-style mod manager for "
-                       "Skyrim Special / Anniversary Edition.")
+                       "Skyrim Special / Anniversary Edition and Oblivion Remastered.")
             .arg(qApp->applicationVersion()));
 }
 
@@ -1420,14 +1424,15 @@ void MainWindow::setupCentralWidget() {
                    const QString& version) {
         const QString fn = QFileInfo(path).fileName();
         if (!modId.isEmpty()) {
-            QJsonObject meta{{"game", solero::NexusApi::kDefaultGame}, {"modId", modId}};
+            const QString game = solero::AppConfig::instance().gameType();
+            QJsonObject meta{{"game", game}, {"modId", modId}};
             if (!fileId.isEmpty())  meta["fileId"] = fileId;
             if (!version.isEmpty()) meta["version"] = version;
             // The filename names the FILE ("00 - Males of Skyrim - Body and
             // textures"); the mod list wants the mod. One lookup, and the entry
             // reads the same as an nxm download.
             QApplication::setOverrideCursor(Qt::WaitCursor);
-            const auto details = solero::NexusApi::modDetails(modId);
+            const auto details = solero::NexusApi::modDetails(modId, game);
             QApplication::restoreOverrideCursor();
             if (details.ok && !details.name.isEmpty()) meta["name"] = details.name;
             QFile sf(path + ".solero-nexus.json");
@@ -1795,7 +1800,8 @@ void MainWindow::deployActiveAsync(std::function<void(bool)> onDone, bool forceF
     // If Skyrim's AppData/Documents (inside the Proton prefix) couldn't be
     // located, deploy falls back to writing Plugins.txt into Data/, where
     // Skyrim SE will not read it - plugins silently won't load. Warn once.
-    if (!m_warnedMissingAppData &&
+    if (solero::AppConfig::instance().gameType() == solero::AppConfig::skyrimSeGame()
+        && !m_warnedMissingAppData &&
         solero::AppConfig::instance().localAppDataDir().isEmpty()) {
         m_warnedMissingAppData = true;
         QMessageBox::warning(this, "Skyrim AppData Not Found",
@@ -2783,7 +2789,7 @@ void MainWindow::installFromArchive(const QString& archive) {
             engine.setFilePresent([this](const QString& file) -> bool {
                 // Present if the plugin file is in the live game Data dir, or in
                 // any enabled mod's staged Data dir (case-insensitive by name).
-                QString dataDir = solero::AppConfig::instance().gameDir() + "/Data";
+                QString dataDir = solero::AppConfig::instance().dataDir();
                 auto ciExists = [](const QString& dir, const QString& name){
                     QDir d(dir);
                     for (const QString& e : d.entryList(QDir::Files))
@@ -3029,13 +3035,14 @@ void MainWindow::onReinstallMod(const QString& modId) {
         // calls back in, at which point the archive is findable.
         if (archive.isEmpty()
             && !existing->nexusModId.isEmpty() && !existing->nexusFileId.isEmpty()) {
-            const QString url =
-                solero::NexusApi::downloadUrl(existing->nexusModId, existing->nexusFileId);
+            const QString game = solero::AppConfig::instance().gameType();
+            const QString url = solero::NexusApi::downloadUrl(
+                existing->nexusModId, existing->nexusFileId, game);
             if (!url.isEmpty()) {
                 // Resolve the real filename for this file from the Nexus file list;
                 // fall back to the stored archive basename if the list is unavailable.
                 QString fileName;
-                for (const auto& f : solero::NexusApi::files(existing->nexusModId))
+                for (const auto& f : solero::NexusApi::files(existing->nexusModId, game))
                     if (f.fileId == existing->nexusFileId) { fileName = f.name; break; }
                 if (fileName.isEmpty() && !existing->sourceArchive.isEmpty())
                     fileName = QFileInfo(existing->sourceArchive).fileName();
@@ -3043,7 +3050,7 @@ void MainWindow::onReinstallMod(const QString& modId) {
                     // Sidecar metadata so the re-entered reinstall finds the archive
                     // by (modId, fileId) and so the download tags it correctly.
                     m_nxmMeta[fileName] = QJsonObject{
-                        {"game",   solero::NexusApi::kDefaultGame},
+                        {"game",   game},
                         {"modId",  existing->nexusModId},
                         {"fileId", existing->nexusFileId},
                         {"version", existing->version},
@@ -3128,7 +3135,7 @@ void MainWindow::onReinstallMod(const QString& modId) {
             engine.setFilePresent([this](const QString& file) -> bool {
                 // Present if the plugin file is in the live game Data dir, or in
                 // any enabled mod's staged Data dir (case-insensitive by name).
-                QString dataDir = solero::AppConfig::instance().gameDir() + "/Data";
+                QString dataDir = solero::AppConfig::instance().dataDir();
                 auto ciExists = [](const QString& dir, const QString& name){
                     QDir d(dir);
                     for (const QString& e : d.entryList(QDir::Files))
@@ -3466,7 +3473,8 @@ void MainWindow::onRedownloadMod(const QString& modId) {
     const QString fileId     = mod->nexusFileId;
     const QString name       = mod->name;
 
-    const QString url = solero::NexusApi::downloadUrl(nexusModId, fileId);
+    const QString game = solero::AppConfig::instance().gameType();
+    const QString url = solero::NexusApi::downloadUrl(nexusModId, fileId, game);
     if (url.isEmpty()) {
         if (!solero::NexusApi::keyAvailable())
             requireNexusKey("download from within Solero");
@@ -3480,7 +3488,7 @@ void MainWindow::onRedownloadMod(const QString& modId) {
     // Pick a clean filename + current version from the Nexus file list (same source
     // the update flow uses); fall back to the URL/synthetic name.
     QString fileName, version = mod->version;
-    for (const auto& f : solero::NexusApi::files(nexusModId)) {
+    for (const auto& f : solero::NexusApi::files(nexusModId, game)) {
         if (f.fileId == fileId) {
             fileName = f.name;
             if (!f.version.isEmpty()) version = f.version;
@@ -3492,7 +3500,7 @@ void MainWindow::onRedownloadMod(const QString& modId) {
 
     // Tag the download so its sidecar is written on finish (matches onNexusDownload).
     m_nxmMeta[fileName] = QJsonObject{
-        {"game", "skyrimspecialedition"}, {"modId", nexusModId},
+        {"game", game}, {"modId", nexusModId},
         {"fileId", fileId}, {"version", version}};
     m_downloads->enqueue(url, fileName, solero::AppConfig::instance().downloadsDir());
     m_rightPane->showDownloadsTab();
@@ -3549,6 +3557,8 @@ void MainWindow::openSettingsDialog() {
     // "Connect to Nexus": switch the central view to the embedded browser and
     // jump straight to the personal API-key page (login cookie persists there).
     connect(&dlg, &solero::SettingsDialog::connectNexusRequested, this, [this]{
+    const QString previousGame = solero::AppConfig::instance().gameType();
+    const QString previousGameDir = solero::AppConfig::instance().gameDir();
         if (m_browseAction) m_browseAction->setChecked(true);
         if (m_nexusWeb) m_nexusWeb->openUrl(solero::NexusWebView::apiKeyUrl());
     });
@@ -3559,12 +3569,41 @@ void MainWindow::openSettingsDialog() {
             [this](const QString& fileId, const QString& version) {
                 installSkseVersion(fileId, version);
             });
-    if (dlg.exec() == QDialog::Accepted)
+    if (dlg.exec() == QDialog::Accepted) {
+        auto& cfg = solero::AppConfig::instance();
+        if (previousGame != cfg.gameType() || previousGameDir != cfg.gameDir()) {
+            if (m_deployed && !previousGameDir.isEmpty()) {
+                solero::DeployEngine oldGame(previousGameDir, cfg.stagingDir());
+                if (!oldGame.undeploy(previousGameDir)) {
+                    QMessageBox::warning(this, "Game Changed",
+                        "Solero couldn't remove every tracked file from the previous game. "
+                        "The old deployment record remains in that game folder.");
+                }
+            }
+            m_deployed = false;
+            m_deployDirty = true;
+            m_contentDirty = true;
+            m_loadOrderDirty = false;
+            m_lastConflicts.clear();
+            m_lastDeployWarning.clear();
+            m_lastDeployHadFailures = false;
+            m_rightPane->invalidateModPluginCache();
+            if (auto* profile = m_profileMgr->activeProfile())
+                m_rightPane->setProfile(profile);
+            syncProfileFlagActions();
+            const bool skyrim = cfg.gameType() == solero::AppConfig::skyrimSeGame();
+            if (m_wabbajackAction) m_wabbajackAction->setEnabled(skyrim);
+            if (m_bethiniAction) m_bethiniAction->setEnabled(skyrim);
+            updateDeployButton();
+            updatePluginNotice();
+            updateSortButton();
+        }
         statusBar()->showMessage("Settings updated.");
 }
 
 bool MainWindow::requireNexusKey(const QString& context) {
     if (solero::NexusApi::keyAvailable()) return true;
+    }
     QMessageBox box(QMessageBox::Information, "Nexus Account",
         QString("A Nexus account is required to %1.\n\n"
                 "Connect your Nexus account in Settings \xe2\x80\xba Nexus Account.")
@@ -3588,9 +3627,11 @@ void MainWindow::onEndorseMod(const QString& modId) {
 
     QString version = mod->version;
     if (version.isEmpty())
-        version = solero::NexusApi::modInfo(mod->nexusModId).version;
+        version = solero::NexusApi::modInfo(mod->nexusModId,
+            solero::AppConfig::instance().gameType()).version;
 
-    auto res = solero::NexusApi::endorse(mod->nexusModId, version, false);
+    auto res = solero::NexusApi::endorse(mod->nexusModId, version, false,
+        solero::AppConfig::instance().gameType());
     if (res.ok)
         QMessageBox::information(this, "Endorse on Nexus",
             "Thanks - endorsed " + mod->name + "!");
@@ -3609,7 +3650,8 @@ void MainWindow::refreshTrackedMods() {
         m_trackedNexusIds = r.modIds;
         m_modListView->setTrackedMods(m_trackedNexusIds);
     });
-    w->setFuture(QtConcurrent::run([]{ return solero::NexusApi::trackedMods(); }));
+    const QString game = solero::AppConfig::instance().gameType();
+    w->setFuture(QtConcurrent::run([game]{ return solero::NexusApi::trackedMods(game); }));
 }
 
 void MainWindow::onTrackMod(const QString& modId) {
@@ -3620,7 +3662,8 @@ void MainWindow::onTrackMod(const QString& modId) {
 
     if (!requireNexusKey("track mods")) return;
 
-    auto res = solero::NexusApi::track(mod->nexusModId);
+    auto res = solero::NexusApi::track(mod->nexusModId,
+        solero::AppConfig::instance().gameType());
     if (res.ok) {
         m_trackedNexusIds.insert(mod->nexusModId);
         m_modListView->setTrackedMods(m_trackedNexusIds);
@@ -3638,7 +3681,8 @@ void MainWindow::onUntrackMod(const QString& modId) {
 
     if (!requireNexusKey("untrack mods")) return;
 
-    auto res = solero::NexusApi::untrack(mod->nexusModId);
+    auto res = solero::NexusApi::untrack(mod->nexusModId,
+        solero::AppConfig::instance().gameType());
     if (res.ok) {
         m_trackedNexusIds.remove(mod->nexusModId);
         m_modListView->setTrackedMods(m_trackedNexusIds);
@@ -3654,7 +3698,8 @@ void MainWindow::onViewNexusPage(const QString& modId) {
     solero::ModEntry* mod = profile->modList().findById(modId);
     if (!mod || mod->nexusModId.isEmpty()) return; // not a Nexus mod: nothing to open
 
-    const QString url = solero::NexusApi::modPageUrl(mod->nexusModId);
+    const QString url = solero::NexusApi::modPageUrl(mod->nexusModId,
+        solero::AppConfig::instance().gameType());
     if (m_browseAction) m_browseAction->setChecked(true);
     if (m_nexusWeb) m_nexusWeb->openUrl(QUrl(url));
 }
@@ -3683,9 +3728,10 @@ void MainWindow::onUpdateMod(const QString& modId) {
     statusBar()->showMessage("Resolving latest version for " + mod->name + "\xe2\x80\xa6");
 
     m_updateResolveWatcher.setFuture(
-        QtConcurrent::run([nexusModId, nexusFileId]() -> ResolvedUpdate {
+        QtConcurrent::run([nexusModId, nexusFileId, game]() -> ResolvedUpdate {
         ResolvedUpdate out;
-        const auto fl = solero::NexusApi::fileList(nexusModId);
+        const auto fl = solero::NexusApi::fileList(nexusModId, game);
+    const QString game = solero::AppConfig::instance().gameType();
         if (fl.files.isEmpty()) { out.error = "Could not list files for this mod."; return out; }
 
         const solero::NexusApi::NexusFile* picked = nullptr;
@@ -3709,7 +3755,7 @@ void MainWindow::onUpdateMod(const QString& modId) {
         out.fileId   = picked->fileId;
         out.fileName = picked->name;
         out.version  = picked->version;
-        out.url      = solero::NexusApi::downloadUrl(nexusModId, picked->fileId);
+        out.url      = solero::NexusApi::downloadUrl(nexusModId, picked->fileId, game);
         if (out.url.isEmpty()) {
             out.error = "Could not get a download link (Premium required, or file unavailable).";
             return out;
@@ -4047,10 +4093,11 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
     // QPointer so a queued progress callback arriving during teardown can never
     // touch a dead widget; if the panel is gone, so is this window.
     QPointer<solero::BottomPanel> panel(m_bottomPanel);
+    const QString game = solero::AppConfig::instance().gameType();
     const int total = modIds.size();
     if (panel) panel->setUpdateProgress(0, total);
 
-    auto future = QtConcurrent::run([this, items, modIds, doBackfill, gen, panel, total]() -> UpdateScan {
+    auto future = QtConcurrent::run([this, items, modIds, doBackfill, gen, panel, total, game]() -> UpdateScan {
         UpdateScan scan;
         scan.gen = gen;
 
@@ -4066,7 +4113,7 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
             pool.setMaxThreadCount(6);
             for (const QString& modId : modIds) {
                 pool.start([&, modId]() {
-                    const auto fl = solero::NexusApi::fileList(modId);
+                    const auto fl = solero::NexusApi::fileList(modId, game);
                     {
                         QMutexLocker lock(&mutex);
                         filesByMod.insert(modId, fl);
@@ -4109,7 +4156,8 @@ void MainWindow::runUpdateCheck(bool silentIfNone) {
                 }
                 f.close();
                 ++backfilled;
-                const auto m = solero::NexusApi::md5Search(QString::fromLatin1(hash.result().toHex()));
+                const auto m = solero::NexusApi::md5Search(
+                    QString::fromLatin1(hash.result().toHex()), game);
                 if (!m.ok || m.fileId.isEmpty()) continue;
                 fileId = m.fileId;
                 if (!m.version.isEmpty()) installedVer = m.version;
@@ -4312,6 +4360,7 @@ void MainWindow::onToggleLocalInis(bool on) {
     if (!prof || prof->localInis() == on) return;
     if (on) seedProfileInisFromLive(prof); // capture current settings as the baseline
     prof->setLocalInis(on);
+    if (solero::AppConfig::instance().gameType() != solero::AppConfig::skyrimSeGame()) return;
     prof->saveSettings();
     m_contentDirty = true; m_deployDirty = true; updateDeployButton();
     statusBar()->showMessage(on
@@ -4324,6 +4373,7 @@ void MainWindow::onToggleLocalSaves(bool on) {
     if (!prof || prof->localSaves() == on) return;
     prof->setLocalSaves(on);
     prof->saveSettings();
+    if (solero::AppConfig::instance().gameType() != solero::AppConfig::skyrimSeGame()) return;
     m_contentDirty = true; m_deployDirty = true; updateDeployButton();
     statusBar()->showMessage(on
         ? "Per-profile saves on. A Saves/<profile> folder is used from the next Deploy."
@@ -4335,12 +4385,13 @@ void MainWindow::syncProfileFlagActions() {
     if (m_localInisAction) {
         QSignalBlocker b(m_localInisAction);
         m_localInisAction->setChecked(prof && prof->localInis());
-        m_localInisAction->setEnabled(prof != nullptr);
+        m_localInisAction->setEnabled(prof != nullptr && skyrim);
+    const bool skyrim = solero::AppConfig::instance().gameType() == solero::AppConfig::skyrimSeGame();
     }
     if (m_localSavesAction) {
         QSignalBlocker b(m_localSavesAction);
         m_localSavesAction->setChecked(prof && prof->localSaves());
-        m_localSavesAction->setEnabled(prof != nullptr);
+        m_localSavesAction->setEnabled(prof != nullptr && skyrim);
     }
 }
 
@@ -4738,7 +4789,7 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
         QString toolRoot = solero::AppConfig::instance().toolsDir() + "/" + exe.id;
         if (!QDir(toolRoot).exists())
             toolRoot = QFileInfo(QFileInfo(exe.binaryPath).path()).path();
-        const QString dataDir = solero::AppConfig::instance().gameDir() + "/Data";
+        const QString dataDir = solero::AppConfig::instance().dataDir();
         mirrorToolTreeInto(toolRoot, dataDir, &nemesisMirror);
         const QString mirroredExe =
             dataDir + "/" + QDir(toolRoot).relativeFilePath(exe.binaryPath);
@@ -4773,7 +4824,7 @@ void MainWindow::onRunTool(const solero::Executable& exe) {
     // only the untouched mirrored files remain to remove.
     if (!nemesisMirror.isEmpty())
         removeMirroredFiles(nemesisMirror,
-                            solero::AppConfig::instance().gameDir() + "/Data");
+                            solero::AppConfig::instance().dataDir());
 
     if (res.launched) {
         // Enable the output mod and persist that, but don't redeploy: leaving it
@@ -5260,12 +5311,14 @@ void MainWindow::rebuildToolsMenu() {
     m_toolsMenu->addAction(QIcon::fromTheme("system-search", QIcon::fromTheme("edit-find")),
                            QStringLiteral("Patch Wizard") + QChar(0x2026), this, &MainWindow::onPatchWizard);
     // BethINI (INI editor) folded into Tools per the declutter spec.
-    m_toolsMenu->addAction(QIcon::fromTheme("preferences-system"),
+    m_bethiniAction = m_toolsMenu->addAction(QIcon::fromTheme("preferences-system"),
                            QStringLiteral("BethINI") + QChar(0x2026), this, &MainWindow::onOpenBethini);
     m_toolsMenu->addSeparator();
     // Add and Manage are one entry: the manager dialog hosts add / edit / remove.
     m_toolsMenu->addAction(QIcon::fromTheme("configure", QIcon::fromTheme("applications-utilities")),
                            QStringLiteral("Add or Manage Tools") + QChar(0x2026), this, &MainWindow::onManageTools);
+    m_bethiniAction->setEnabled(
+        solero::AppConfig::instance().gameType() == solero::AppConfig::skyrimSeGame());
 
     // escape hatch: force a full teardown+relink (bypass the incremental
     // diff) if a deploy ever looks wrong.
@@ -5448,6 +5501,7 @@ void MainWindow::onPlay() {
         const QString cacheStaging = cacheStagingPath(prof);
         if (!cacheStaging.isEmpty()) {
             const bool hardlink =
+    if (solero::AppConfig::instance().gameType() == solero::AppConfig::skyrimSeGame())
                 solero::AppConfig::instance().deployMode() == solero::DeployMode::HardLink;
             int failedRelink = 0;
             const int relinked = solero::assertShaderCacheDeployed(
@@ -5473,13 +5527,21 @@ void MainWindow::onPlay() {
             if (f.compare(name, Qt::CaseInsensitive) == 0) return gameDir + "/" + f;
         return {};
     };
-    const QString skse = findExeCI("skse64_loader.exe");
-    if (skse.isEmpty()) {
+    const auto& cfg = solero::AppConfig::instance();
+    const bool isOblivionRemastered = cfg.gameType() == solero::AppConfig::oblivionRemasteredGame();
+    QString launchExe = gameDir + "/" + solero::AppConfig::gameExecutable(cfg.gameType());
+    if (!isOblivionRemastered) launchExe = findExeCI("skse64_loader.exe");
+    if (launchExe.isEmpty() || !QFile::exists(launchExe)) {
         // SKSE's loader isn't deployed - required by virtually every modlist (and
         // launching the bare game would load no script-extender mods). Offer to
         // install it from Nexus rather than starting a broken session.
-        statusBar()->showMessage("SKSE not found - it's needed to launch with script-extender mods.");
-        ensureSkse();
+        if (isOblivionRemastered) {
+            QMessageBox::warning(this, "Play",
+                "The Oblivion Remastered game executable wasn't found. Check the game path in Settings and verify the Steam installation.");
+        } else {
+            statusBar()->showMessage("SKSE not found - it's needed to launch with script-extender mods.");
+            ensureSkse();
+        }
         return;
     }
 
@@ -5489,9 +5551,16 @@ void MainWindow::onPlay() {
     // instantly (diagnosed: "steam-runtime-steam-remote: Steam is not running").
     {
         QFile appid(gameDir + "/steam_appid.txt");
-        if (!appid.exists() && appid.open(QIODevice::WriteOnly)) {
-            appid.write("489830"); appid.close();
+        if (appid.open(QIODevice::ReadOnly)) {
+            const bool matches = appid.readAll().trimmed() == expectedAppId.toLatin1();
+            appid.close();
+            if (!matches && appid.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                appid.write(expectedAppId.toLatin1()); appid.close();
+            }
+        } else if (appid.open(QIODevice::WriteOnly)) {
+            appid.write(expectedAppId.toLatin1()); appid.close();
         }
+        const QString expectedAppId = solero::AppConfig::gameAppId(cfg.gameType());
     }
     auto steamRunning = [] {
         // pgrep + steam are HOST binaries; inside Flatpak run them via flatpak-spawn.
@@ -5508,7 +5577,7 @@ void MainWindow::onPlay() {
         while (!steamRunning() && t.elapsed() < 30000) { QThread::msleep(400); qApp->processEvents(); }
         if (!steamRunning()) {
             QMessageBox::warning(this, "Play",
-                "Steam must be running to launch the game (it handles Skyrim's DRM).\n"
+                "Steam must be running to launch the game (it handles the game's DRM).\n"
                 "Please start Steam, then click Play again.");
             return;
         }
@@ -5518,11 +5587,13 @@ void MainWindow::onPlay() {
     }
 
     solero::Executable exe;
-    exe.name       = "Skyrim Special Edition (SKSE)";
-    exe.binaryPath = skse;
+    const QString gameName = solero::AppConfig::gameDisplayName(cfg.gameType());
+    exe.name       = isOblivionRemastered ? gameName : gameName + " (SKSE)";
+    exe.binaryPath = launchExe;
     exe.workingDir = gameDir;
-    exe.runtime    = solero::RuntimeType::Proton;          // launch through the Skyrim Proton prefix
-    exe.winePrefix = QDir(gameDir + "/../..").canonicalPath() + "/compatdata/489830";
+    exe.runtime    = solero::RuntimeType::Proton;
+    exe.winePrefix = QDir(gameDir + "/../..").canonicalPath() + "/compatdata/"
+                   + solero::AppConfig::gameAppId(cfg.gameType());
     // With no VFS the game's runtime writes land in the real Data folder and stay
     // there. Without this they fall into the custom-tool loose capture and end up
     // in Overwrite, shader cache included.
@@ -5534,7 +5605,7 @@ void MainWindow::onPlay() {
     // Launching it ourselves is the fallback for setups with no steam command.
     const QString appId = [&] {
         const QString id = solero::steamAppIdFromPrefix(exe.winePrefix);
-        return id.isEmpty() ? QStringLiteral("489830") : id;
+        return id.isEmpty() ? solero::AppConfig::gameAppId(cfg.gameType()) : id;
     }();
     const bool viaSteam =
         solero::runningInFlatpak() || !QStandardPaths::findExecutable("steam").isEmpty();
@@ -5547,8 +5618,8 @@ void MainWindow::onPlay() {
     qint64 ranMs = 0;
     if (viaSteam) {
         statusBar()->showMessage("Asking Steam to launch " + exe.name + "\xe2\x80\xa6");
-        const QString watched = QFileInfo(findExeCI("SkyrimSE.exe")).fileName();
-        res = runGameViaSteam(appId, watched.isEmpty() ? QStringLiteral("SkyrimSE.exe") : watched,
+        const QString watched = QFileInfo(launchExe).fileName();
+        res = runGameViaSteam(appId, watched,
                               &ranMs, [this](const QString& m) { statusBar()->showMessage(m); });
     } else {
         statusBar()->showMessage("Launching " + exe.name + "\xe2\x80\xa6");
@@ -5575,7 +5646,9 @@ void MainWindow::onPlay() {
     if (!res.launched) {
         QMessageBox::warning(this, "Play",
             looksHumanReadable(res.error) ? "The game failed to start: " + res.error
-                : "The game failed to start. Make sure Steam is running, SKSE is installed and deployed, and the game path is correct in Settings.");
+                : (isOblivionRemastered
+                    ? "The game failed to start. Make sure Steam is running and the game path is correct in Settings."
+                    : "The game failed to start. Make sure Steam is running, SKSE is installed and deployed, and the game path is correct in Settings."));
     } else if (ranMs < 8000) {
         // The game exited almost immediately - almost always a launch problem.
         QMessageBox::warning(this, "Play",
@@ -5590,7 +5663,7 @@ void MainWindow::onPlay() {
     // game dir into the Community Shaders mod's own staging folder (scoped strictly to
     // Data/ShaderCache). Because the cache lives inside the CS mod, it is version-
     // scoped for free and goes away when CS is removed. Best-effort; never blocks.
-    if (auto* p = m_profileMgr->activeProfile()) {
+    if (!isOblivionRemastered) if (auto* p = m_profileMgr->activeProfile()) {
         const solero::ModEntry* cs = p->modList().findCommunityShaders();
         const QString cacheStaging = cacheStagingPath(p);
         if (cs && !cacheStaging.isEmpty()) {

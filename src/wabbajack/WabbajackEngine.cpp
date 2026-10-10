@@ -321,6 +321,7 @@ bool WabbajackEngine::isCreationClub(const QString& name) {
 }
 
 void WabbajackEngine::ensureLowercaseCCLinks() {
+    if (AppConfig::instance().gameType() != AppConfig::skyrimSeGame()) return;
     const QString gameDir = AppConfig::instance().gameDir();
     if (gameDir.isEmpty()) return;
     const QString dataPath = gameDir + QStringLiteral("/Data");
@@ -396,6 +397,7 @@ QStringList WabbajackEngine::removeRedundantLowercaseCCLinks(const QString& data
 }
 
 void WabbajackEngine::removeRedundantLowercaseCCLinks() {
+    if (AppConfig::instance().gameType() != AppConfig::skyrimSeGame()) return;
     const QString gameDir = AppConfig::instance().gameDir();
     if (gameDir.isEmpty()) return;
     const QStringList removed =

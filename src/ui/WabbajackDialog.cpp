@@ -95,7 +95,7 @@ void WabbajackDialog::buildGalleryPage() {
     m_tagBtn->setMenu(m_tagMenu);
     topBar->addWidget(m_tagBtn);
 
-    // Solero targets Skyrim SE only - the gallery is filtered to it (no game switcher).
+    // The gallery follows the game selected in Solero's Settings.
     m_refreshBtn = new QPushButton("Refresh", m_galleryPage);
     topBar->addWidget(m_refreshBtn);
 
@@ -378,8 +378,8 @@ void WabbajackDialog::onFailed(const QString& error) {
 
 void WabbajackDialog::applyFilter() {
     const QString q = m_search->text().trimmed();
-    // Solero targets Skyrim SE only - the gallery is fixed to it.
-    static const QString kGame = QStringLiteral("Skyrim Special Edition");
+    const QString selectedGame = AppConfig::gameDisplayName(
+        AppConfig::instance().gameType());
     const auto official = m_officialCombo
         ? OfficialFilter(m_officialCombo->currentData().toInt())
         : OfficialFilter::All;
@@ -390,7 +390,7 @@ void WabbajackDialog::applyFilter() {
     m_list->clear();
 
     for (const auto& ml : m_all) {
-        if (ml.gameHuman != kGame) continue;
+        if (ml.gameHuman.compare(selectedGame, Qt::CaseInsensitive) != 0) continue;
         if (!passesFilters(ml, q, official, m_selectedTags)) continue;
         m_filtered << ml;
     }
@@ -548,8 +548,10 @@ void WabbajackDialog::triggerInstall(const QString& target, bool isLocalFile,
     QString soleroHome = QFileInfo(AppConfig::instance().stagingDir()).path();
     if (soleroHome.isEmpty())
         soleroHome = QDir::homePath() + "/Modding/Tools/Solero";
-    QString defInstall = soleroHome + "/Wabbajack/" +
-                         (defName.isEmpty() ? "modlist" : defName);
+    QString defInstall = soleroHome + "/Wabbajack/";
+    if (AppConfig::instance().gameType() != AppConfig::skyrimSeGame())
+        defInstall += AppConfig::instance().gameType() + "/";
+    defInstall += defName.isEmpty() ? QStringLiteral("modlist") : defName;
 
     auto* installEdit = new QLineEdit(defInstall, &dirDlg);
     auto* installBrowse = new QPushButton("Browse\xe2\x80\xa6", &dirDlg);
@@ -575,8 +577,8 @@ void WabbajackDialog::triggerInstall(const QString& target, bool isLocalFile,
     dv->addLayout(form);
 
     auto* note = new QLabel(
-        "Requires Skyrim Special Edition installed via Steam. This downloads many "
-        "GB and can take a long time.", &dirDlg);
+        QString("Requires %1 installed through Steam. This downloads many GB and can take a long time.")
+            .arg(AppConfig::gameDisplayName(AppConfig::instance().gameType())), &dirDlg);
     note->setWordWrap(true);
     note->setStyleSheet("color:#aaa;");
     dv->addWidget(note);
@@ -693,6 +695,8 @@ void WabbajackDialog::onInstallFailed(int exitCode, const QList<FailedArchive>& 
 
 void WabbajackDialog::showFailureReport(int exitCode,
                                         const QList<FailedArchive>& failed) {
+    const QString gameName = AppConfig::gameDisplayName(AppConfig::instance().gameType());
+    const bool isSkyrim = AppConfig::instance().gameType() == AppConfig::skyrimSeGame();
     // Partition by group.
     QList<FailedArchive> ck;          // Creation-Kit tool files (GameFileSource)
     QList<FailedArchive> creationClub; // Creation Club files (need in-game Creations)
@@ -702,7 +706,7 @@ void WabbajackDialog::showFailureReport(int exitCode,
         if (fa.source == FailedSource::GameFileSource) {
             // Creation Club files (cc*) are a distinct case: the fix is to delete
             // and re-download them via the in-game Creations menu, not Steam verify.
-            if (WabbajackEngine::isCreationClub(fa.name)) {
+            if (isSkyrim && WabbajackEngine::isCreationClub(fa.name)) {
                 creationClub << fa;
                 continue;
             }
@@ -716,7 +720,7 @@ void WabbajackDialog::showFailureReport(int exitCode,
                 p.endsWith(QStringLiteral(".esm"), Qt::CaseInsensitive) ||
                 p.endsWith(QStringLiteral(".esp"), Qt::CaseInsensitive) ||
                 p.endsWith(QStringLiteral(".bsa"), Qt::CaseInsensitive);
-            if (isGameData) gameData << fa;
+            if (isGameData || !isSkyrim) gameData << fa;
             else            ck << fa;
         } else {
             manual << fa;
@@ -743,7 +747,7 @@ void WabbajackDialog::showFailureReport(int exitCode,
     auto* bodyL = new QVBoxLayout(body);
 
     // Creation Club files group
-    if (!creationClub.isEmpty()) {
+    if (isSkyrim && !creationClub.isEmpty()) {
         // Friendly creation names for the four free Creations (best-effort).
         // Keyed by the lowercase filename stem (no Data_ prefix, no extension).
         auto friendlyName = [](const QString& fileName) -> QString {
@@ -828,18 +832,18 @@ void WabbajackDialog::showFailureReport(int exitCode,
         auto* heading = new QLabel(box);
         heading->setWordWrap(true);
         heading->setStyleSheet("font-weight:bold;");
-        heading->setText(QString(
-            "Your Skyrim install is missing required game files: %1.")
-            .arg(names.join(", ")));
+        heading->setText(QString("Your %1 install is missing required game files: %2.")
+            .arg(gameName, names.join(", ")));
         gl->addWidget(heading);
 
-        auto* detail = new QLabel(QString(
-            "These are Anniversary Edition / Creation Club files that must be "
-            "present in your Skyrim Data folder. In Steam, verify/repair Skyrim "
-            "Special Edition (and ensure AE content is installed), then Retry.\n\n"
-            "Note: Solero auto-links lowercase copies of Creation Club files "
-            "before each install to handle Linux case-sensitivity; if this still "
-            "fails, the content is genuinely absent."), box);
+        const QString detailText = isSkyrim
+            ? QString("These are Anniversary Edition / Creation Club files that must be "
+                      "present in your Skyrim Data folder. In Steam, verify/repair Skyrim "
+                      "Special Edition (and ensure AE content is installed), then Retry.\n\n"
+                      "Solero handles lowercase Creation Club filenames for Linux.")
+            : QString("These files are required by the %1 modlist. Verify the game files "
+                      "in Steam, then Retry / Resume.").arg(gameName);
+        auto* detail = new QLabel(detailText, box);
         detail->setWordWrap(true);
         detail->setStyleSheet("color:#aaa;");
         gl->addWidget(detail);
@@ -848,7 +852,7 @@ void WabbajackDialog::showFailureReport(int exitCode,
     }
 
     // Creation Kit group
-    if (!ck.isEmpty()) {
+    if (isSkyrim && !ck.isEmpty()) {
         const QString version = ck.first().version;
         const QString gameDir = AppConfig::instance().gameDir();
         const bool ckInstalled =

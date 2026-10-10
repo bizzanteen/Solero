@@ -732,7 +732,8 @@ void MainWindow::setupMenuBar() {
     m_wabbajackAction = fileMenu->addAction(
         QStringLiteral("Install Wabbajack Modlist") + ell, this, &MainWindow::onInstallWabbajack);
     m_wabbajackAction->setEnabled(
-        solero::AppConfig::instance().gameType() == solero::AppConfig::skyrimSeGame());
+        solero::AppConfig::instance().gameType() == solero::AppConfig::skyrimSeGame() ||
+        solero::AppConfig::instance().gameType() == solero::AppConfig::oblivionRemasteredGame());
     fileMenu->addSeparator();
     fileMenu->addAction(QStringLiteral("Export Profile") + ell, this, &MainWindow::onExportProfile);
     fileMenu->addAction(QStringLiteral("Import Profile") + ell, this, &MainWindow::onImportProfile);
@@ -3609,7 +3610,9 @@ void MainWindow::openSettingsDialog() {
             m_rightPane->invalidateModPluginCache();
             syncProfileFlagActions();
             const bool skyrim = cfg.gameType() == solero::AppConfig::skyrimSeGame();
-            if (m_wabbajackAction) m_wabbajackAction->setEnabled(skyrim);
+            const bool wabbajackSupported = skyrim || cfg.gameType() ==
+                solero::AppConfig::oblivionRemasteredGame();
+            if (m_wabbajackAction) m_wabbajackAction->setEnabled(wabbajackSupported);
             if (m_bethiniAction) m_bethiniAction->setEnabled(skyrim);
             updateDeployButton();
             updatePluginNotice();
@@ -3816,6 +3819,8 @@ void MainWindow::ensureSkse() {
     // prompting. If there's no Nexus key (or no network), defer quietly - the call
     // fires again on the next launch / profile switch, so it self-heals later.
     if (m_skseInstalling) return;                  // already downloading SKSE
+    if (solero::AppConfig::instance().gameType() != solero::AppConfig::skyrimSeGame())
+        return;
     auto* profile = m_profileMgr->activeProfile();
     if (!profile) return;
     if (skseInstalledFor(profile)) return;

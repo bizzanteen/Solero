@@ -8,6 +8,12 @@ namespace solero {
 
 class AppConfig {
 public:
+    static QString skyrimSeGame() { return QStringLiteral("skyrimspecialedition"); }
+    static QString oblivionRemasteredGame() { return QStringLiteral("oblivionremastered"); }
+    static QString gameDisplayName(const QString& game);
+    static QString gameInstallDirectory(const QString& game);
+    static QString gameExecutable(const QString& game);
+
     static AppConfig& instance();
 
     bool isConfigured() const;
@@ -15,6 +21,8 @@ public:
     bool save() const;
 
     const QString& gameDir() const     { return m_gameDir; }
+    const QString& gameType() const    { return m_gameType; }
+    void setGameType(const QString& game);
     const QString& stagingDir() const  { return m_stagingDir; }
     const QString& dataDir() const     { return m_dataDir; }
 
@@ -144,6 +152,7 @@ public:
     static QString overwriteDir(const QString& profileName);
     static QString configPath();
     static QStringList detectSkyrimPaths();
+    static QStringList detectGamePaths(const QString& game);
     // Library roots (the dir containing steamapps/) out of libraryfolders.vdf.
     // Handles both the flat and the nested ("libraryfolders" -> "0" -> path) forms.
     static QStringList parseLibraryFoldersVdf(const QString& vdfContents);
@@ -159,6 +168,7 @@ public:
 private:
     AppConfig() = default;
     QString m_gameDir;
+    QString m_gameType = "skyrimspecialedition";
     QString m_stagingDir;
     QString m_dataDir; // derived: gameDir/Data
     QString m_localAppData;

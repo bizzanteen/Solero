@@ -50,55 +50,60 @@ SetupPanel::SetupPanel(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
 
     // Header
-    auto* header = new QLabel(
-        "<h2>Welcome to Solero</h2>"
-        "<p>Before we start, tell us where Skyrim Special Edition is installed "
-        "and where you'd like to store your mods.</p>", this);
+    auto* header = new QLabel("<h2>Welcome to Solero</h2>"
+        "<p>Choose a game and where you'd like to store its mods.</p>", this);
     header->setWordWrap(true);
     layout->addWidget(header);
 
-    // Game directory
-    auto* gameGroup = new QGroupBox("Skyrim SE Game Directory", this);
-    auto* gameLayout = new QVBoxLayout(gameGroup);
+    auto* gameChoiceRow = new QHBoxLayout;
+    gameChoiceRow->addWidget(new QLabel("Game:", this));
+    m_gameTypeCombo = new QComboBox(this);
+    m_gameTypeCombo->addItem(AppConfig::gameDisplayName(AppConfig::skyrimSeGame()),
+                             AppConfig::skyrimSeGame());
+    m_gameTypeCombo->addItem(AppConfig::gameDisplayName(AppConfig::oblivionRemasteredGame()),
+                             AppConfig::oblivionRemasteredGame());
+    m_gameTypeCombo->setCurrentIndex(m_gameTypeCombo->findData(AppConfig::instance().gameType()));
+    gameChoiceRow->addWidget(m_gameTypeCombo, 1);
+    layout->addLayout(gameChoiceRow);
 
-    QStringList detected = AppConfig::detectSkyrimPaths();
-
-    if (!detected.isEmpty()) {
-        auto* detectedLabel = new QLabel("Detected installation(s):", gameGroup);
-        m_gameDetectedCombo = new QComboBox(gameGroup);
-        for (const auto& p : detected) m_gameDetectedCombo->addItem(p);
-        m_gameDetectedCombo->addItem("Browse manually…");
-        gameLayout->addWidget(detectedLabel);
-        gameLayout->addWidget(m_gameDetectedCombo);
-        connect(m_gameDetectedCombo, &QComboBox::currentTextChanged, this, [this](const QString& text) {
-            if (text == "Browse manually…") {
-                browseGameDir();
-            } else {
-                m_gameDirEdit->setText(text);
-                refreshValidity();
-            }
-        });
-    } else {
-        // No Steam library yielded a Skyrim SE install - guide the user to browse.
-        auto* noneHint = new QLabel(
-            "No Skyrim Special Edition install was detected in your Steam libraries. "
-            "Use Browse\xe2\x80\xa6 to locate the folder containing SkyrimSE.exe.", gameGroup);
-        noneHint->setWordWrap(true);
-        noneHint->setStyleSheet("color:#aaa;");
-        gameLayout->addWidget(noneHint);
-    }
+    m_gameGroup = new QGroupBox(this);
+    auto* gameLayout = new QVBoxLayout(m_gameGroup);
+    m_detectedLabel = new QLabel("Detected installation(s):", m_gameGroup);
+    m_gameDetectedCombo = new QComboBox(m_gameGroup);
+    m_gameHint = new QLabel(m_gameGroup);
+    m_gameHint->setWordWrap(true);
+    m_gameHint->setStyleSheet("color:#aaa;");
+    gameLayout->addWidget(m_detectedLabel);
+    gameLayout->addWidget(m_gameDetectedCombo);
+    gameLayout->addWidget(m_gameHint);
 
     auto* gameRow = new QHBoxLayout;
     QString gameDefault = AppConfig::instance().gameDir();
-    if (gameDefault.isEmpty() && !detected.isEmpty()) gameDefault = detected.first();
-    m_gameDirEdit = new QLineEdit(gameDefault, gameGroup);
-    m_gameDirEdit->setPlaceholderText("/path/to/Skyrim Special Edition");
-    auto* gameBrowse = new QPushButton("Browse…", gameGroup);
+    m_gameDirEdit = new QLineEdit(gameDefault, m_gameGroup);
+    m_gameDirEdit->setPlaceholderText("/path/to/game installation");
+    auto* gameBrowse = new QPushButton("Browse…", m_gameGroup);
     gameBrowse->setFixedWidth(80);
     gameRow->addWidget(m_gameDirEdit);
     gameRow->addWidget(gameBrowse);
     gameLayout->addLayout(gameRow);
-    layout->addWidget(gameGroup);
+    layout->addWidget(m_gameGroup);
+
+    refreshGameChoices();
+    connect(m_gameTypeCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this](int) {
+        const QString exe = AppConfig::gameExecutable(m_gameTypeCombo->currentData().toString());
+        if (!m_gameDirEdit->text().isEmpty() && !QFile::exists(m_gameDirEdit->text() + "/" + exe))
+            m_gameDirEdit->clear();
+        refreshGameChoices();
+        refreshValidity();
+    });
+    connect(m_gameDetectedCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this](int index) {
+        if (index < 0) return;
+        const QString path = m_gameDetectedCombo->itemData(index).toString();
+        if (path.isEmpty()) browseGameDir();
+        else m_gameDirEdit->setText(path);
+    });
 
     // Staging directory
     auto* stagingGroup = new QGroupBox("Mod Staging Directory", this);
@@ -163,7 +168,8 @@ SetupPanel::SetupPanel(QWidget* parent) : QWidget(parent) {
 
 void SetupPanel::browseGameDir() {
     QString path = QFileDialog::getExistingDirectory(
-        this, "Select Skyrim SE Game Directory",
+        this, "Select " + AppConfig::gameDisplayName(m_gameTypeCombo->currentData().toString())
+            + " Game Directory",
         QDir::homePath() + "/.local/share/Steam/steamapps/common");
     if (!path.isEmpty()) {
         m_gameDirEdit->setText(path);
@@ -187,7 +193,8 @@ void SetupPanel::browseDownloadsDir() {
 
 bool SetupPanel::isValid() const {
     QString gameDir = m_gameDirEdit->text().trimmed();
-    bool gameOk = !gameDir.isEmpty() && QFile::exists(gameDir + "/SkyrimSE.exe");
+    const QString exe = AppConfig::gameExecutable(m_gameTypeCombo->currentData().toString());
+    bool gameOk = !gameDir.isEmpty() && QFile::exists(gameDir + "/" + exe);
     const QString stagingDir = m_stagingDirEdit->text().trimmed();
     if (!gameOk || stagingDir.isEmpty()) return false;
     // Staging must not be the game dir or live inside it (would deploy into
@@ -202,14 +209,16 @@ bool SetupPanel::isValid() const {
 
 void SetupPanel::refreshValidity() {
     QString gameDir = m_gameDirEdit->text().trimmed();
-    bool gameOk = !gameDir.isEmpty() && QFile::exists(gameDir + "/SkyrimSE.exe");
+    const QString game = m_gameTypeCombo->currentData().toString();
+    const QString exe = AppConfig::gameExecutable(game);
+    bool gameOk = !gameDir.isEmpty() && QFile::exists(gameDir + "/" + exe);
     const QString stagingDir = m_stagingDirEdit->text().trimmed();
 
     if (gameDir.isEmpty()) {
         m_statusLabel->setText("");
         m_statusLabel->setStyleSheet("color: red;");
     } else if (!gameOk) {
-        m_statusLabel->setText("⚠ SkyrimSE.exe not found in that directory.");
+        m_statusLabel->setText("⚠ " + exe + " not found in that directory.");
         m_statusLabel->setStyleSheet("color: red;");
     } else if (isInsideOrEqual(stagingDir, gameDir)) {
         m_statusLabel->setText("⚠ Staging directory cannot be inside the game directory.");
@@ -226,15 +235,41 @@ void SetupPanel::refreshValidity() {
                                "- hard-link deploy will fall back to copies (extra disk).");
         m_statusLabel->setStyleSheet("color: #c8a000;");
     } else {
-        m_statusLabel->setText("✓ Skyrim SE found.");
+        m_statusLabel->setText("✓ " + AppConfig::gameDisplayName(game) + " found.");
         m_statusLabel->setStyleSheet("color: green;");
     }
 
     emit validityChanged(isValid());
 }
 
+void SetupPanel::refreshGameChoices() {
+    const QString game = m_gameTypeCombo->currentData().toString();
+    const QString name = AppConfig::gameDisplayName(game);
+    const QString exe = AppConfig::gameExecutable(game);
+    m_gameGroup->setTitle(name + " Game Directory");
+    m_gameDirEdit->setPlaceholderText("/path/to/" + AppConfig::gameInstallDirectory(game));
+    m_detectedLabel->setText("Detected " + name + " installation(s):");
+    m_gameHint->setText("No " + name + " install was detected in your Steam libraries. "
+                        "Browse to the folder containing " + exe + ".");
+
+    const QString current = m_gameDirEdit->text().trimmed();
+    const QStringList detected = AppConfig::detectGamePaths(game);
+    m_gameDetectedCombo->clear();
+    for (const QString& path : detected) m_gameDetectedCombo->addItem(path, path);
+    m_gameDetectedCombo->addItem("Browse manually…", QString());
+    m_detectedLabel->setVisible(!detected.isEmpty());
+    m_gameHint->setVisible(detected.isEmpty());
+    m_gameDetectedCombo->setVisible(!detected.isEmpty());
+
+    if (!current.isEmpty() && QFile::exists(current + "/" + exe))
+        m_gameDirEdit->setText(current);
+    else if (!detected.isEmpty())
+        m_gameDirEdit->setText(detected.first());
+}
+
 void SetupPanel::save() {
     auto& cfg = AppConfig::instance();
+    cfg.setGameType(m_gameTypeCombo->currentData().toString());
     cfg.setGameDir(m_gameDirEdit->text().trimmed());
     cfg.setStagingDir(m_stagingDirEdit->text().trimmed());
 

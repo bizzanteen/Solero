@@ -36,6 +36,29 @@ bool AppConfig::isConfigured() const {
     return !m_gameDir.isEmpty() && QDir(m_gameDir).exists();
 }
 
+QString AppConfig::gameDisplayName(const QString& game) {
+    return game == oblivionRemasteredGame()
+        ? QStringLiteral("Oblivion Remastered")
+        : QStringLiteral("Skyrim Special Edition");
+}
+
+QString AppConfig::gameInstallDirectory(const QString& game) {
+    return game == oblivionRemasteredGame()
+        ? QStringLiteral("Oblivion Remastered")
+        : QStringLiteral("Skyrim Special Edition");
+}
+
+QString AppConfig::gameExecutable(const QString& game) {
+    return game == oblivionRemasteredGame()
+        ? QStringLiteral("OblivionRemastered.exe")
+        : QStringLiteral("SkyrimSE.exe");
+}
+
+void AppConfig::setGameType(const QString& game) {
+    m_gameType = (game == oblivionRemasteredGame())
+        ? oblivionRemasteredGame() : skyrimSeGame();
+}
+
 void AppConfig::setGameDir(const QString& p) {
     m_gameDir = p;
     m_dataDir = p + "/Data";
@@ -74,6 +97,7 @@ bool AppConfig::load() {
     if (!f.open(QIODevice::ReadOnly)) return false;
     auto obj = QJsonDocument::fromJson(f.readAll()).object();
     m_gameDir      = obj["gameDir"].toString();
+    setGameType(obj["gameType"].toString(skyrimSeGame()));
     m_stagingDir   = obj["stagingDir"].toString();
     m_localAppData = obj["localAppDataDir"].toString();
     m_documents    = obj["documentsDir"].toString();
@@ -139,6 +163,7 @@ bool AppConfig::save() const {
     QDir().mkpath(QFileInfo(configPath()).path());
     QJsonObject obj;
     obj["gameDir"]         = m_gameDir;
+    obj["gameType"]        = m_gameType;
     obj["stagingDir"]      = m_stagingDir;
     obj["localAppDataDir"] = m_localAppData;
     obj["documentsDir"]    = m_documents;
@@ -238,6 +263,10 @@ QStringList AppConfig::parseLibraryFoldersVdf(const QString& vdfContents) {
 }
 
 QStringList AppConfig::detectSkyrimPaths() {
+    return detectGamePaths(skyrimSeGame());
+}
+
+QStringList AppConfig::detectGamePaths(const QString& game) {
     // Steam roots to probe for libraryfolders.vdf.
     const QStringList steamRoots = {
         QDir::homePath() + "/.local/share/Steam",
@@ -262,19 +291,21 @@ QStringList AppConfig::detectSkyrimPaths() {
     }
 
     QStringList found;
+    const QString installDir = gameInstallDirectory(game);
+    const QString executable = gameExecutable(game);
     auto probe = [&](const QString& gameDir) {
-        if (QFile::exists(gameDir + "/SkyrimSE.exe") && !found.contains(gameDir))
+        if (QFile::exists(gameDir + "/" + executable) && !found.contains(gameDir))
             found.append(gameDir);
     };
     for (const QString& lib : libraryRoots)
-        probe(lib + "/steamapps/common/Skyrim Special Edition");
+        probe(lib + "/steamapps/common/" + installDir);
 
     // Fixed fallbacks (in case no vdf was readable) - harmless dedupe via probe().
     const QStringList fixed = {
-        QDir::homePath() + "/.local/share/Steam/steamapps/common/Skyrim Special Edition",
-        QDir::homePath() + "/.steam/steam/steamapps/common/Skyrim Special Edition",
-        QDir::homePath() + "/.steam/root/steamapps/common/Skyrim Special Edition",
-        QDir::homePath() + "/.var/app/com.valvesoftware.Steam/data/Steam/steamapps/common/Skyrim Special Edition",
+        QDir::homePath() + "/.local/share/Steam/steamapps/common/" + installDir,
+        QDir::homePath() + "/.steam/steam/steamapps/common/" + installDir,
+        QDir::homePath() + "/.steam/root/steamapps/common/" + installDir,
+        QDir::homePath() + "/.var/app/com.valvesoftware.Steam/data/Steam/steamapps/common/" + installDir,
     };
     for (const QString& p : fixed) probe(p);
     return found;

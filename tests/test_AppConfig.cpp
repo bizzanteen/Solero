@@ -1,4 +1,6 @@
 #include <QtTest>
+#include <QDir>
+#include <QFile>
 #include <QTemporaryDir>
 #include "core/AppConfig.h"
 
@@ -58,6 +60,46 @@ private slots:
         QCOMPARE(cfg.accentColor(), QString("#3daee9"));
         QCOMPARE(cfg.fontFamily(), QString("Noto Sans"));
         QCOMPARE(cfg.fontSize(), 11);
+    }
+
+    void gameType_roundTrips() {
+        QTemporaryDir home;
+        QVERIFY(home.isValid());
+        qputenv("HOME", home.path().toLocal8Bit());
+
+        auto& cfg = AppConfig::instance();
+        cfg.setGameType(AppConfig::oblivionRemasteredGame());
+        QVERIFY(cfg.save());
+        cfg.setGameType(AppConfig::skyrimSeGame());
+        QVERIFY(cfg.load());
+        QCOMPARE(cfg.gameType(), AppConfig::oblivionRemasteredGame());
+    }
+
+    void legacyConfigDefaultsToSkyrim() {
+        QTemporaryDir home;
+        QVERIFY(home.isValid());
+        qputenv("HOME", home.path().toLocal8Bit());
+        QVERIFY(QDir().mkpath(AppConfig::dataRoot()));
+        QFile f(AppConfig::configPath());
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("{\"gameDir\":\"/legacy/skyrim\"}");
+        f.close();
+
+        auto& cfg = AppConfig::instance();
+        cfg.setGameType(AppConfig::oblivionRemasteredGame());
+        QVERIFY(cfg.load());
+        QCOMPARE(cfg.gameType(), AppConfig::skyrimSeGame());
+    }
+
+    void gameDescriptors() {
+        QCOMPARE(AppConfig::gameInstallDirectory(AppConfig::skyrimSeGame()),
+                 QString("Skyrim Special Edition"));
+        QCOMPARE(AppConfig::gameExecutable(AppConfig::skyrimSeGame()), QString("SkyrimSE.exe"));
+        QCOMPARE(AppConfig::gameInstallDirectory(AppConfig::oblivionRemasteredGame()),
+                 QString("Oblivion Remastered"));
+        QCOMPARE(AppConfig::gameExecutable(AppConfig::oblivionRemasteredGame()),
+                 QString("OblivionRemastered.exe"));
+        QCOMPARE(AppConfig::gameExecutable("unknown"), QString("SkyrimSE.exe"));
     }
 
     // Modern nested libraryfolders.vdf form.

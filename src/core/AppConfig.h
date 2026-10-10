@@ -161,9 +161,9 @@ public:
     static QStringList parseLibraryFoldersVdf(const QString& vdfContents);
 
     // Derive the Proton-prefix local appdata + documents dirs from a game dir
-    // (Steam appid 489830). Returns empty strings if not found.
-    static QString detectLocalAppData(const QString& gameDir);
-    static QString detectDocumentsDir(const QString& gameDir);
+    // (Steam prefix and game appid). Returns empty strings if not found.
+    static QString detectLocalAppData(const QString& gameDir, const QString& game);
+    static QString detectDocumentsDir(const QString& gameDir, const QString& game);
 
     // Find the Proton directory Skyrim uses (prefer GE). Empty if none found.
     QString detectProtonDir() const;

@@ -3,6 +3,8 @@
 #include "tools/ToolDownloader.h"
 #include <QUrl>
 #include <QUrlQuery>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QProcess>
 #include <QRegularExpression>
 

@@ -81,8 +81,8 @@ void AppConfig::setGameType(const QString& game) {
     m_gameType = selected;
     m_dataDir = m_gameDir.isEmpty() ? QString() : m_gameDir + "/" + gameDataRelativePath(m_gameType);
     if (!m_gameDir.isEmpty()) {
-        if (m_localAppData.isEmpty()) m_localAppData = detectLocalAppData(m_gameDir);
-        if (m_documents.isEmpty()) m_documents = detectDocumentsDir(m_gameDir);
+        if (m_localAppData.isEmpty()) m_localAppData = detectLocalAppData(m_gameDir, m_gameType);
+        if (m_documents.isEmpty()) m_documents = detectDocumentsDir(m_gameDir, m_gameType);
     }
 }
 
@@ -90,8 +90,8 @@ void AppConfig::setGameDir(const QString& p) {
     m_gameDir = p;
     m_dataDir = p + "/" + gameDataRelativePath(m_gameType);
     // Auto-detect the Proton-prefix runtime paths (only if not already set).
-    if (m_localAppData.isEmpty()) m_localAppData = detectLocalAppData(p);
-    if (m_documents.isEmpty())    m_documents    = detectDocumentsDir(p);
+    if (m_localAppData.isEmpty()) m_localAppData = detectLocalAppData(p, m_gameType);
+    if (m_documents.isEmpty())    m_documents    = detectDocumentsDir(p, m_gameType);
 }
 
 void AppConfig::setStagingDir(const QString& p) {
@@ -102,23 +102,23 @@ void AppConfig::setStagingDir(const QString& p) {
     }
 }
 
-QString AppConfig::detectLocalAppData(const QString& gameDir) {
+QString AppConfig::detectLocalAppData(const QString& gameDir, const QString& game) {
     QDir d(gameDir);
     d.cdUp(); d.cdUp(); // -> steamapps
-    const QString appId = gameAppId(m_gameType);
+    const QString appId = gameAppId(game);
     QString candidate = d.absolutePath() + "/compatdata/" + appId
         + "/pfx/drive_c/users/steamuser/AppData/Local";
-    if (m_gameType == skyrimSeGame()) candidate += "/Skyrim Special Edition";
+    if (game == skyrimSeGame()) candidate += "/Skyrim Special Edition";
     return QDir(candidate).exists() ? candidate : QString();
 }
 
-QString AppConfig::detectDocumentsDir(const QString& gameDir) {
+QString AppConfig::detectDocumentsDir(const QString& gameDir, const QString& game) {
     QDir d(gameDir);
     d.cdUp(); d.cdUp(); // -> steamapps
-    const QString appId = gameAppId(m_gameType);
+    const QString appId = gameAppId(game);
     QString candidate = d.absolutePath() + "/compatdata/" + appId
         + "/pfx/drive_c/users/steamuser/Documents/My Games/";
-    candidate += m_gameType == oblivionRemasteredGame()
+    candidate += game == oblivionRemasteredGame()
         ? "Oblivion Remastered/Saved/Config/Windows"
         : "Skyrim Special Edition";
     return QDir(candidate).exists() ? candidate : QString();
@@ -141,9 +141,9 @@ bool AppConfig::load() {
     m_dataDir      = m_gameDir.isEmpty() ? QString() : m_gameDir + "/" + gameDataRelativePath(m_gameType);
     // Back-fill runtime paths for configs written before this field existed.
     if (m_localAppData.isEmpty() && !m_gameDir.isEmpty())
-        m_localAppData = detectLocalAppData(m_gameDir);
+        m_localAppData = detectLocalAppData(m_gameDir, m_gameType);
     if (m_documents.isEmpty() && !m_gameDir.isEmpty())
-        m_documents = detectDocumentsDir(m_gameDir);
+        m_documents = detectDocumentsDir(m_gameDir, m_gameType);
     m_confirmModDeletion   = obj["confirmModDeletion"].toBool(true);
     m_toolsMigratedToPerProfile = obj["toolsMigratedToPerProfile"].toBool(false);
     m_outputModsProfileQualified = obj["outputModsProfileQualified"].toBool(false);

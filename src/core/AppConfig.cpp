@@ -15,12 +15,26 @@ AppConfig& AppConfig::instance() {
     return s;
 }
 
+QString AppConfig::lastProfile(const QString& game) const {
+    const auto it = m_lastProfiles.constFind(game);
+    if (it != m_lastProfiles.cend()) return it.value();
+    return game == skyrimSeGame() ? m_lastProfile : QString();
+}
+
+void AppConfig::setLastProfile(const QString& game, const QString& profile) {
+    m_lastProfiles.insert(game, profile);
+    if (game == skyrimSeGame()) m_lastProfile = profile;
+}
+
 QString AppConfig::dataRoot() {
     return QDir::homePath() + "/.local/share/solero";
 }
 
-QString AppConfig::overwriteDir(const QString& profileName) {
-    const QString base = dataRoot() + "/overwrite";
+QString AppConfig::overwriteDir(const QString& profileName, const QString& game) {
+    QString gameName = game.isEmpty() ? instance().gameType() : game;
+    if (gameName.isEmpty()) gameName = skyrimSeGame();
+    const QString base = dataRoot() + "/overwrite" +
+        (gameName == skyrimSeGame() ? QString() : "/" + gameName);
     if (profileName.isEmpty()) return base; // legacy/global fallback
     // Sanitize for use as a single path component.
     QString safe = profileName;
@@ -168,6 +182,10 @@ bool AppConfig::load() {
     m_fontFamily  = obj["fontFamily"].toString();
     m_fontSize    = obj["fontSize"].toInt(0);
     m_lastProfile = obj["lastProfile"].toString();
+    m_lastProfiles.clear();
+    const auto lastProfiles = obj["lastProfiles"].toObject();
+    for (auto it = lastProfiles.begin(); it != lastProfiles.end(); ++it)
+        m_lastProfiles.insert(it.key(), it.value().toString());
     m_preferredDownloadServer = obj["preferredDownloadServer"].toString();
     m_cachedDownloadServers.clear();
     for (const auto& v : obj["cachedDownloadServers"].toArray())
@@ -223,6 +241,10 @@ bool AppConfig::save() const {
     obj["fontFamily"]  = m_fontFamily;
     obj["fontSize"]    = m_fontSize;
     obj["lastProfile"] = m_lastProfile;
+    QJsonObject lastProfiles;
+    for (auto it = m_lastProfiles.cbegin(); it != m_lastProfiles.cend(); ++it)
+        lastProfiles[it.key()] = it.value();
+    obj["lastProfiles"] = lastProfiles;
     obj["preferredDownloadServer"] = m_preferredDownloadServer;
     QJsonArray servers;
     for (const QString& s : m_cachedDownloadServers) servers.append(s);

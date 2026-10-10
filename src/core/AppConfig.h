@@ -2,6 +2,7 @@
 #include <QString>
 #include <QByteArray>
 #include <QList>
+#include <QMap>
 #include "deploy/DeployMode.h"
 
 namespace solero {
@@ -110,6 +111,8 @@ public:
     // Name of the profile active when Solero last closed; restored on next launch.
     const QString& lastProfile() const        { return m_lastProfile; }
     void setLastProfile(const QString& v)     { m_lastProfile = v; }
+    QString lastProfile(const QString& game) const;
+    void setLastProfile(const QString& game, const QString& profile);
     // Preferred Nexus CDN mirror short_name (empty = automatic / first mirror).
     const QString& preferredDownloadServer() const  { return m_preferredDownloadServer; }
     void setPreferredDownloadServer(const QString& v) { m_preferredDownloadServer = v; }
@@ -152,7 +155,7 @@ public:
     static QString dataRoot();   // ~/.local/share/solero
     // Per-profile Overwrite capture dir: dataRoot()/overwrite/<sanitized profileName>.
     // Falls back to the legacy global dataRoot()/overwrite when profileName is empty.
-    static QString overwriteDir(const QString& profileName);
+    static QString overwriteDir(const QString& profileName, const QString& game = {});
     static QString configPath();
     static QStringList detectSkyrimPaths();
     static QStringList detectGamePaths(const QString& game);
@@ -198,6 +201,7 @@ private:
     QString m_fontFamily;
     int m_fontSize = 0;
     QString m_lastProfile;
+    QMap<QString, QString> m_lastProfiles;
     QString m_preferredDownloadServer;
     QStringList m_cachedDownloadServers;
     QStringList m_removedModArchives;

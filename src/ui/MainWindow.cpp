@@ -465,7 +465,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // Restore the profile active at last close; fall back to the first profile
     // (alphabetical) only when none was saved or it no longer exists on disk.
     const QStringList profileNames = m_profileMgr->profileNames();
-    const QString savedProfile = solero::AppConfig::instance().lastProfile();
+    const QString savedProfile = solero::AppConfig::instance().lastProfile(
+        solero::AppConfig::instance().gameType());
 
     // one-time: profile-qualify output-mod staging folders so two profiles stop
     // sharing one. Before switchProfile, so the active profile reads the migrated
@@ -709,7 +710,10 @@ void MainWindow::onNexusDownload(const QString& modId, const QString& fileId,
 }
 
 QString MainWindow::profilesRoot() const {
-    return solero::AppConfig::dataRoot() + "/profiles";
+    const QString game = solero::AppConfig::instance().gameType();
+    const QString base = solero::AppConfig::dataRoot() + "/profiles";
+    return game == solero::AppConfig::skyrimSeGame() || game.isEmpty()
+        ? base : base + "/" + game;
 }
 
 QString MainWindow::txLogPath() const {
@@ -1630,8 +1634,9 @@ void MainWindow::switchProfile(const QString& name) {
     }
     // Persist the active profile so the next launch restores it instead of
     // defaulting to the first profile alphabetically.
-    if (solero::AppConfig::instance().lastProfile() != name) {
-        solero::AppConfig::instance().setLastProfile(name);
+    auto& config = solero::AppConfig::instance();
+    if (config.lastProfile(config.gameType()) != name) {
+        config.setLastProfile(config.gameType(), name);
         solero::AppConfig::instance().save();
     }
     // A profile switch starts from a clean (just-loaded or just-deployed) order.
@@ -3574,6 +3579,9 @@ void MainWindow::openSettingsDialog() {
         if (previousGame != cfg.gameType() || previousGameDir != cfg.gameDir()) {
             if (m_deployed && !previousGameDir.isEmpty()) {
                 solero::DeployEngine oldGame(previousGameDir, cfg.stagingDir());
+                if (auto* oldProfile = m_profileMgr->activeProfile())
+                    oldGame.setOverwriteDir(solero::AppConfig::overwriteDir(
+                        oldProfile->name(), previousGame));
                 if (!oldGame.undeploy(previousGameDir)) {
                     QMessageBox::warning(this, "Game Changed",
                         "Solero couldn't remove every tracked file from the previous game. "
@@ -3587,9 +3595,18 @@ void MainWindow::openSettingsDialog() {
             m_lastConflicts.clear();
             m_lastDeployWarning.clear();
             m_lastDeployHadFailures = false;
+            if (auto* oldProfile = m_profileMgr->activeProfile()) oldProfile->save();
+            detachProfileFromViews();
+            m_ipcServer->setActiveProfile(nullptr);
+            delete m_profileMgr;
+            m_profileMgr = new solero::ProfileManager(profilesRoot());
+            if (m_profileMgr->profileNames().isEmpty())
+                m_profileMgr->createProfile("Default");
+            refreshProfileCombo();
+            const QStringList names = m_profileMgr->profileNames();
+            const QString saved = cfg.lastProfile(cfg.gameType());
+            switchProfile(names.contains(saved) ? saved : names.first());
             m_rightPane->invalidateModPluginCache();
-            if (auto* profile = m_profileMgr->activeProfile())
-                m_rightPane->setProfile(profile);
             syncProfileFlagActions();
             const bool skyrim = cfg.gameType() == solero::AppConfig::skyrimSeGame();
             if (m_wabbajackAction) m_wabbajackAction->setEnabled(skyrim);

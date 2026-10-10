@@ -59,7 +59,7 @@ void PluginListModel::reconcile(const QStringList& available) {
     beginResetModel();
     PluginList& pl = m_profile->pluginList();
     const QString gameDir = AppConfig::instance().gameDir();
-    const QString dataDir = gameDir + "/Data";
+    const QString dataDir = AppConfig::instance().dataDir();
 
     // Official load order (base masters + Skyrim.ccc) computed once per reconcile.
     const QStringList official = PluginScanner::officialPlugins(gameDir);
@@ -200,7 +200,7 @@ void PluginListModel::setPluginLight(const QString& filename, bool light) {
     if (PluginEntry* pe = pl.findByFilename(pl.at(row).filename)) pe->isLight = light;
     // Drop the mtime-keyed cache entry for the live file so a later reconcile
     // re-reads the (now edited) header instead of returning the stale flags.
-    const QString dataDir = AppConfig::instance().gameDir() + "/Data";
+    const QString dataDir = AppConfig::instance().dataDir();
     m_metaCache.remove(dataDir + "/" + pl.at(row).filename);
     // Type text + row font both derive from isLight - repaint the whole row.
     emit dataChanged(index(row, 0), index(row, ColCount - 1));

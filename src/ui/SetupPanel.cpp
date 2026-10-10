@@ -96,6 +96,7 @@ SetupPanel::SetupPanel(QWidget* parent) : QWidget(parent) {
             m_gameDirEdit->clear();
         refreshGameChoices();
         refreshValidity();
+        emit gameTypeChanged(m_gameTypeCombo->currentData().toString());
     });
     connect(m_gameDetectedCombo, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this](int index) {

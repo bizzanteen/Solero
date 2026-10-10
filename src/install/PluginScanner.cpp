@@ -2,6 +2,7 @@
 #include "core/ModList.h"
 #include "core/Types.h"
 #include "core/StagingFolder.h"
+#include "core/AppConfig.h"
 #include <QDir>
 #include <QFile>
 #include <QSet>
@@ -18,13 +19,19 @@ QStringList PluginScanner::scan(const ModList& list, const QString& stagingRoot)
     QSet<QString> seen; // lowercased plugin names already emitted (case-insensitive dedup)
     for (const auto& e : list) {
         if (e.type != EntryType::Mod || !e.enabled) continue;
-        QString data = childCI(stagingPathFor(stagingRoot, e), "Data");
-        if (data.isEmpty()) continue;
-        QDir d(data);
-        const auto plugins = d.entryList({"*.esp","*.esm","*.esl","*.ESP","*.ESM","*.ESL"},
-                                         QDir::Files, QDir::Name);
-        for (const QString& p : plugins)
-            if (!seen.contains(p.toLower())) { seen.insert(p.toLower()); out << p; }
+        const QString root = stagingPathFor(stagingRoot, e);
+        QStringList dirs;
+        if (AppConfig::instance().gameType() == AppConfig::oblivionRemasteredGame())
+            dirs << root;
+        const QString data = childCI(root, "Data");
+        if (!data.isEmpty()) dirs << data;
+        for (const QString& dir : dirs) {
+            QDir d(dir);
+            const auto plugins = d.entryList({"*.esp","*.esm","*.esl","*.ESP","*.ESM","*.ESL"},
+                                             QDir::Files, QDir::Name);
+            for (const QString& p : plugins)
+                if (!seen.contains(p.toLower())) { seen.insert(p.toLower()); out << p; }
+        }
     }
     return out;
 }
@@ -88,6 +95,12 @@ QStringList PluginScanner::readMasters(const QString& pluginPath) {
 }
 
 QStringList PluginScanner::officialPlugins(const QString& gameDir) {
+    if (AppConfig::instance().gameType() == AppConfig::oblivionRemasteredGame()) {
+        return {"Oblivion.esm", "DLCBattlehornCastle.esp", "DLCFrostcrag.esp",
+                "DLCMehrunesRazor.esp", "DLCOrrery.esp", "DLCSpellTomes.esp",
+                "DLCThievesDen.esp", "DLCVileLair.esp", "Knights.esp",
+                "DLCShiveringIsles.esp"};
+    }
     static const QStringList kBase = {
         "Skyrim.esm", "Update.esm", "Dawnguard.esm", "HearthFires.esm", "Dragonborn.esm"
     };
@@ -103,7 +116,7 @@ QStringList PluginScanner::officialPlugins(const QString& gameDir) {
 }
 
 QStringList PluginScanner::scanGameData(const QString& gameDir) {
-    const QString dataPath = gameDir + "/Data";
+    const QString dataPath = AppConfig::instance().dataDir();
     QDir d(dataPath);
     QStringList masters, lights, esps;
     if (d.exists()) {

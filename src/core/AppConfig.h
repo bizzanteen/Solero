@@ -13,6 +13,7 @@ public:
     static QString gameDisplayName(const QString& game);
     static QString gameInstallDirectory(const QString& game);
     static QString gameExecutable(const QString& game);
+    static QString gameAppId(const QString& game);
     static QString gameInstallMarker(const QString& game);
     static QString gameDataRelativePath(const QString& game);
 

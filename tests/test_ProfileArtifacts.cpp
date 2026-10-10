@@ -48,6 +48,12 @@ class TestProfileArtifacts : public QObject {
     }
 
 private slots:
+    void initTestCase() {
+        qputenv("HOME", QDir::tempPath().toLocal8Bit() + "/solero-profile-artifacts-tests");
+        QDir(qEnvironmentVariable("HOME")).removeRecursively();
+        QDir().mkpath(qEnvironmentVariable("HOME"));
+    }
+
     // The bug: a reordered load order must reach the game's Plugins.txt without a
     // deploy. Writing the artifacts is the whole job, so this is the regression
     // test for "changed the order, hit Play, game loaded the old order".
@@ -165,6 +171,44 @@ private slots:
         const auto r = writeProfileArtifacts(p, e.game);
         QVERIFY(r.written.isEmpty() || !r.written.contains(e.game + "/Data/Plugins.txt"));
         QVERIFY(r.inPlace.contains(e.game + "/Data/Plugins.txt"));
+    }
+
+    void writesOblivionRemasteredLoadOrderAndUe4ssModList() {
+        Env e; setup(e);
+        auto& cfg = AppConfig::instance();
+        cfg.setGameType(AppConfig::oblivionRemasteredGame());
+        cfg.setGameDir(e.game);
+        cfg.setStagingDir(e.tmp.path() + "/staging");
+        QDir().mkpath(cfg.stagingDir());
+
+        Profile p("T", e.profiles);
+        p.pluginList().append(plugin("Oblivion.esm", true));
+        p.pluginList().append(plugin("Example.esp", true));
+        ModEntry ue4ss;
+        ue4ss.id = "ue4ss-mod";
+        ue4ss.name = "Example UE4SS Mod";
+        ue4ss.stagingFolder = "Example UE4SS Mod";
+        ue4ss.enabled = true;
+        QDir().mkpath(cfg.stagingDir() + "/" + ue4ss.stagingFolder
+                      + "/Binaries/Win64/ue4ss/Mods/ExampleMod/scripts");
+        writeFile(cfg.stagingDir() + "/" + ue4ss.stagingFolder
+                  + "/Binaries/Win64/ue4ss/Mods/ExampleMod/scripts/main.lua", "return");
+        p.modList().append(ue4ss);
+
+        const QString data = e.game + "/OblivionRemastered/Content/Dev/ObvData/Data";
+        const auto result = writeProfileArtifacts(p, e.game);
+        QVERIFY2(result.ok, qPrintable(result.errors.join("; ")));
+        QCOMPARE(loadOrderDir(e.game), data);
+        QCOMPARE(readAll(data + "/Plugins.txt"),
+                 QString("*Oblivion.esm\n*Example.esp\n"));
+        QCOMPARE(readAll(data + "/loadorder.txt"),
+                 QString("Oblivion.esm\nExample.esp\n"));
+        const QString modsTxt = e.game
+            + "/OblivionRemastered/Binaries/Win64/ue4ss/Mods/mods.txt";
+        QCOMPARE(readAll(modsTxt), QString("ExampleMod : 1\n"));
+        QVERIFY(result.written.contains(modsTxt));
+        QVERIFY(!QFileInfo::exists(e.docs + "/Skyrim.ini"));
+        cfg.setGameType(AppConfig::skyrimSeGame());
     }
 
     // localInis ON: the profile's own INIs are pushed to My Games on every write,

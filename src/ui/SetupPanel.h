@@ -19,6 +19,7 @@ public:
 
 signals:
     void validityChanged(bool valid);
+    void gameTypeChanged(const QString& gameType);
 
 private:
     void browseGameDir();

@@ -3,10 +3,14 @@
 #include "core/AppConfig.h"
 #include "core/FileUtil.h"
 #include "core/Log.h"
+#include "core/StagingFolder.h"
 #include "bethini/IniFile.h"
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
+#include <QSaveFile>
+#include <QCryptographicHash>
 
 namespace solero {
 
@@ -15,6 +19,9 @@ namespace solero {
 // prefix isn't known - the game won't read it there, but MainWindow warns about that
 // separately and a discoverable file beats a silently discarded one.
 QString loadOrderDir(const QString& gameDir) {
+    const auto& cfg = AppConfig::instance();
+    if (cfg.gameType() == AppConfig::oblivionRemasteredGame())
+        return cfg.dataDir();
     const QString localAppData = AppConfig::instance().localAppDataDir();
     return localAppData.isEmpty() ? (gameDir + "/Data") : localAppData;
 }
@@ -23,6 +30,85 @@ QString loadOrderDir(const QString& gameDir) {
 QString iniDir(const QString& gameDir) {
     const QString docs = AppConfig::instance().documentsDir();
     return docs.isEmpty() ? gameDir : docs;
+}
+
+static bool writeUe4ssModList(Profile& profile, const QString& gameDir,
+                              QString* pathOut) {
+    QSet<QString> managed;
+    QStringList enabled;
+    const QString staging = AppConfig::instance().stagingDir();
+    for (const ModEntry& mod : profile.modList()) {
+        if (mod.type != EntryType::Mod) continue;
+        const QString root = stagingPathFor(staging, mod);
+        QDirIterator it(root, QDir::Files | QDir::NoDotAndDotDot,
+                        QDirIterator::Subdirectories | QDirIterator::FollowSymlinks);
+        while (it.hasNext()) {
+            QString rel = QDir(root).relativeFilePath(it.next());
+            rel.replace(QLatin1Char('\\'), QLatin1Char('/'));
+            const QString lower = rel.toLower();
+            const int marker = lower.indexOf(QStringLiteral("ue4ss/mods/"));
+            if (marker < 0) continue;
+            const QString tail = rel.mid(marker + 11);
+            const int slash = tail.indexOf('/');
+            if (slash <= 0) continue;
+            const QString name = tail.left(slash);
+            managed.insert(name);
+            if (mod.enabled && !enabled.contains(name, Qt::CaseInsensitive))
+                enabled.append(name);
+        }
+    }
+    const QString modsDir = gameDir + "/OblivionRemastered/Binaries/Win64/ue4ss/Mods";
+    const QString modsTxt = modsDir + "/mods.txt";
+
+    const QString stateDir = AppConfig::dataRoot() + "/ue4ss";
+    const QString key = QString::fromLatin1(
+        QCryptographicHash::hash(QFile::encodeName(QDir::cleanPath(gameDir)),
+                                 QCryptographicHash::Sha256).toHex());
+    const QString statePath = stateDir + "/" + key + ".txt";
+    QSet<QString> previouslyManaged;
+    QFile stateIn(statePath);
+    if (stateIn.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!stateIn.atEnd()) {
+            const QString name = QString::fromUtf8(stateIn.readLine()).trimmed();
+            if (!name.isEmpty()) previouslyManaged.insert(name);
+        }
+    }
+    if (managed.isEmpty() && previouslyManaged.isEmpty()) return true;
+    QDir().mkpath(modsDir);
+
+    QStringList lines;
+    QFile live(modsTxt);
+    if (live.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!live.atEnd()) {
+            const QString line = QString::fromUtf8(live.readLine()).trimmed();
+            if (line.isEmpty()) continue;
+            const int colon = line.lastIndexOf(':');
+            const QString name = (colon < 0 ? line : line.left(colon)).trimmed();
+            bool managedName = false;
+            for (const QString& known : previouslyManaged)
+                if (name.compare(known, Qt::CaseInsensitive) == 0) { managedName = true; break; }
+            for (const QString& known : managed)
+                if (name.compare(known, Qt::CaseInsensitive) == 0) { managedName = true; break; }
+            if (!managedName) lines.append(line);
+        }
+    }
+    for (const QString& name : enabled) lines.append(name + " : 1");
+
+    QSaveFile output(modsTxt);
+    if (!output.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    const QByteArray contents = (lines.join(QLatin1Char('\n')) + QLatin1Char('\n')).toUtf8();
+    if (output.write(contents) != contents.size() || !output.commit()) return false;
+    QSaveFile stateOut(statePath);
+    if (stateOut.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QStringList managedNames;
+        for (const QString& name : managed) managedNames.append(name);
+        const QByteArray state = (managedNames.join(QLatin1Char('\n'))
+                                  + QLatin1Char('\n')).toUtf8();
+        stateOut.write(state);
+        stateOut.commit();
+    }
+    *pathOut = modsTxt;
+    return true;
 }
 
 ArtifactWriteResult writeProfileArtifacts(Profile& profile, const QString& gameDir) {
@@ -60,6 +146,15 @@ ArtifactWriteResult writeProfileArtifacts(Profile& profile, const QString& gameD
     }
 
     const QString inis = iniDir(gameDir);
+    if (AppConfig::instance().gameType() == AppConfig::oblivionRemasteredGame()) {
+        QString modsTxt;
+        if (!writeUe4ssModList(profile, gameDir, &modsTxt))
+            wrote(gameDir + "/OblivionRemastered/Binaries/Win64/ue4ss/Mods/mods.txt",
+                  false, "the UE4SS mod list");
+        else if (!modsTxt.isEmpty())
+            result.written.append(modsTxt);
+        return result;
+    }
     QDir().mkpath(inis);
 
     // INIs: only when the profile owns its INIs (localInis), and only the ones it

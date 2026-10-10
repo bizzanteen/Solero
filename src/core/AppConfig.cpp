@@ -54,6 +54,11 @@ QString AppConfig::gameExecutable(const QString& game) {
         : QStringLiteral("SkyrimSE.exe");
 }
 
+QString AppConfig::gameAppId(const QString& game) {
+    return game == oblivionRemasteredGame()
+        ? QStringLiteral("2623190") : QStringLiteral("489830");
+}
+
 QString AppConfig::gameInstallMarker(const QString& game) {
     return game == oblivionRemasteredGame()
         ? QStringLiteral("OblivionRemastered/Content/Dev/ObvData/Data/Oblivion.esm")
@@ -67,9 +72,18 @@ QString AppConfig::gameDataRelativePath(const QString& game) {
 }
 
 void AppConfig::setGameType(const QString& game) {
-    m_gameType = (game == oblivionRemasteredGame())
+    const QString selected = (game == oblivionRemasteredGame())
         ? oblivionRemasteredGame() : skyrimSeGame();
+    if (selected != m_gameType) {
+        m_localAppData.clear();
+        m_documents.clear();
+    }
+    m_gameType = selected;
     m_dataDir = m_gameDir.isEmpty() ? QString() : m_gameDir + "/" + gameDataRelativePath(m_gameType);
+    if (!m_gameDir.isEmpty()) {
+        if (m_localAppData.isEmpty()) m_localAppData = detectLocalAppData(m_gameDir);
+        if (m_documents.isEmpty()) m_documents = detectDocumentsDir(m_gameDir);
+    }
 }
 
 void AppConfig::setGameDir(const QString& p) {
@@ -89,19 +103,24 @@ void AppConfig::setStagingDir(const QString& p) {
 }
 
 QString AppConfig::detectLocalAppData(const QString& gameDir) {
-    // gameDir = <steamapps>/common/Skyrim Special Edition
     QDir d(gameDir);
     d.cdUp(); d.cdUp(); // -> steamapps
-    QString candidate = d.absolutePath()
-        + "/compatdata/489830/pfx/drive_c/users/steamuser/AppData/Local/Skyrim Special Edition";
+    const QString appId = gameAppId(m_gameType);
+    QString candidate = d.absolutePath() + "/compatdata/" + appId
+        + "/pfx/drive_c/users/steamuser/AppData/Local";
+    if (m_gameType == skyrimSeGame()) candidate += "/Skyrim Special Edition";
     return QDir(candidate).exists() ? candidate : QString();
 }
 
 QString AppConfig::detectDocumentsDir(const QString& gameDir) {
     QDir d(gameDir);
     d.cdUp(); d.cdUp(); // -> steamapps
-    QString candidate = d.absolutePath()
-        + "/compatdata/489830/pfx/drive_c/users/steamuser/Documents/My Games/Skyrim Special Edition";
+    const QString appId = gameAppId(m_gameType);
+    QString candidate = d.absolutePath() + "/compatdata/" + appId
+        + "/pfx/drive_c/users/steamuser/Documents/My Games/";
+    candidate += m_gameType == oblivionRemasteredGame()
+        ? "Oblivion Remastered/Saved/Config/Windows"
+        : "Skyrim Special Edition";
     return QDir(candidate).exists() ? candidate : QString();
 }
 
